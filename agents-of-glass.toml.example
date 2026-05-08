@@ -1,0 +1,37 @@
+# Agents of Glass — non-secret config
+# Copy to `agents-of-glass.toml` (or `agents-of-glass.local.toml`) and adjust.
+# Never commit secrets here. Inject via the operator's secrets manager.
+
+[postgres]
+# host/port/database for the LAN Postgres
+host = "192.168.66.3"
+port = 5432
+database = "agents_of_glass"
+# user/password come from the secrets manager (env: AOG_PG_USER / AOG_PG_PASSWORD)
+
+[falkordb]
+# host/port for the LAN FalkorDB (same instance the lore repo uses)
+host = "192.168.66.3"
+port = 6379
+graph = "agents_of_glass"
+
+[lore]
+# read-only path to the world bible
+path = "../the-glass-frontier-lore"
+
+[paths]
+content = "content"
+sessions = "content/sessions"
+ephemeral_cwd = ".glass-cwd"
+
+[claude]
+# claude-p invocation tunables
+model = "claude-sonnet-4-6"
+turn_timeout_seconds = 300
+
+[caps]
+# v0 closure — hard limits to guarantee sessions terminate
+session_max_turns = 200
+mode_default_max_turns = 12
+mode_combat_max_turns = 8
+mode_travel_max_turns = 4
