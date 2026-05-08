@@ -8,11 +8,12 @@ A Python orchestrator + CLI that runs a closed-loop, fully agentic TTRPG simulat
 
 ## Non-negotiable principles
 
-Three principles govern every decision. **Read these first:**
+Four principles govern every decision. **Read these first:**
 
 1. **[Codify only what drifts](docs/principles/codify-only-what-drifts.md)** — codification (`glass` CLI, Postgres, FalkorDB) is for numbers, inventory, names, dice. Everything else is prose. If you find yourself adding YAML schema fields to capture agent intent, stop.
 2. **[Transcripts are the corpus](docs/principles/transcripts-as-corpus.md)** — the artifact is the product. Structure comes from the orchestrator and CLI; the agent emits prose.
-3. **[Goals and motivation](docs/principles/goals-and-motivation.md)** — what we're researching and why this exists.
+3. **[Resist generic drift](docs/principles/resist-generic-drift.md)** — LLMs default to generic fantasy. Multi-turn loops drift toward "Thorgrim the Bold" / "the tavern" / "ancient evil stirs" unless actively resisted. Specificity is the defense.
+4. **[Goals and motivation](docs/principles/goals-and-motivation.md)** — what we're researching and why this exists.
 
 ## Code conventions
 
@@ -28,7 +29,8 @@ Three principles govern every decision. **Read these first:**
 - Don't add new design docs unless explicitly designing — prefer updating existing ones.
 - Don't write tests for the orchestrator loop or for agent behavior; CLI-only tests against real data stores. See [`docs/design/architecture.md`](docs/design/architecture.md#testing-strategy).
 - Don't add backwards-compat shims; this is pre-v1, change canonical shapes freely. See [`docs/principles/transcripts-as-corpus.md`](docs/principles/transcripts-as-corpus.md#schema-stability).
-- Don't author content for `content/players/*/role.md` or `content/dm/mara.md` unless explicitly asked — those are the operator's authoring step.
+- Don't author content for `templates/players/*/persona.md` or `templates/dm/persona.md` unless explicitly asked — those are the operator's authoring step.
+- Don't write to `templates/` to record runtime mutations — `templates/` is authored input only. Runtime state belongs in `sessions/<id>/` (and the future per-campaign live root).
 
 ## Build commands
 

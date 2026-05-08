@@ -1,14 +1,14 @@
 # Agents of Glass
 
-A closed-loop, fully agentic tabletop RPG simulation. One DM agent, four player agents, no human at the table. The agents take turns inside an orchestrated loop and produce a session transcript as the artifact.
+A closed-loop, fully agentic tabletop RPG simulation. One DM agent, four player agents, no human at the table. The agents take turns inside an orchestrated loop and produce scene transcripts as the artifact.
 
 The world is the Kaleidos system from [The Glass Frontier](docs/research/the-glass-frontier-lore.md) — a shattered ring world, a planet dusted in crystal, a solar system relearning how to be one civilization. Serious hopecore. The agents inhabit this world the way fictional players inhabit a game.
 
-This is a research project, not a product. The output is a corpus of session transcripts and the structured graph that grew alongside them. Later passes turn the corpus into narrative.
+This is a research project, not a product. The output is a corpus of scene transcripts and the structured graph that grew alongside them. Later passes turn the corpus into narrative.
 
 ## Why
 
-The interesting question isn't "can an LLM run a TTRPG session." That's been done. The interesting questions are:
+The interesting question isn't "can an LLM run a TTRPG game." That's been done. The interesting questions are:
 
 - **What kind of fiction emerges when nobody at the table is human, but every participant is a *specific person* with preferences and friction?**
 - **Can a multi-agent loop produce something with more texture than single-prompt narrative generation — improv, push-back, mistakes, in-jokes — by giving each agent enough autonomy to actually disagree?**
@@ -26,13 +26,15 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 
 ## What's Here
 
-- [docs/principles/](docs/principles/) — the deep "why" of the project; the artifact-first principle; the codify-only-what-drifts rule; non-negotiable design commitments
-- [docs/design/](docs/design/) — concrete designs for the orchestrator, agents, turn loop, modes, mechanics, context packages, messaging, shared vocabulary, and (deferred) closure; plus [open questions](docs/design/open-questions.md) we want real sessions to settle
+- [docs/principles/](docs/principles/) — the deep "why" of the project; the artifact-first principle; codify-only-what-drifts; resist-generic-drift; non-negotiable design commitments
+- [docs/design/](docs/design/) — concrete designs for the orchestrator, agents, turn loop, modes, mechanics, context packages, messaging, shared vocabulary, [game start](docs/design/game-start.md), and (deferred) closure; plus [open questions](docs/design/open-questions.md) we want real play to settle
 - [docs/research/](docs/research/) — summaries of the supporting repos and a place to drop future research notes
-- [docs/backlog.md](docs/backlog.md) — sketches of out-of-scope ideas (map integration, image gen, live session site)
-- [src/cli/](src/cli/) — the `glass` CLI (in-session tool surface). Spec at [src/cli/SPEC.md](src/cli/SPEC.md).
+- [docs/backlog.md](docs/backlog.md) — sketches of out-of-scope ideas (map integration, image gen, live viewer)
+- [src/cli/](src/cli/) — the `glass` CLI (in-play tool surface). Spec at [src/cli/SPEC.md](src/cli/SPEC.md).
 - [src/orchestrator/](src/orchestrator/) — the Python orchestrator + the `aog` operator CLI. Spec at [src/orchestrator/SPEC.md](src/orchestrator/SPEC.md).
-- [content/](content/) — actual play content: people files, character sheets, journals, drafts, campaign lore, vocabulary, sessions. See [content/README.md](content/README.md).
+- [src/webui/](src/webui/) — read-only public live viewer (out of v1 scope; spec home only). See [src/webui/SPEC.md](src/webui/SPEC.md).
+- [templates/](templates/) — authored baseline content: personas, methodologies, vocabulary, character templates. Copied to a campaign at start. See [templates/README.md](templates/README.md).
+- `campaigns/<id>/` — runtime per-campaign root, created by `aog campaign new`. Mutates during play. Three-level player-facing context plus DM workspace plus per-arc and per-scene state. See [docs/design/game-start.md](docs/design/game-start.md).
 - [tracking-immediate-decisions.md](tracking-immediate-decisions.md) — what's deferred for organic resolution during the build.
 - [CLAUDE.md](CLAUDE.md) / [codex.md](codex.md) — agent instructions for AI assistants working in this repo.
 - [agents-of-glass.toml.example](agents-of-glass.toml.example) — config template; copy to `agents-of-glass.toml`.

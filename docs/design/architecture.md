@@ -33,17 +33,18 @@ The orchestrator is dumb. The CLI is the only path to state. The agents have age
 
 All prose lives in markdown, in three layers:
 
-- **World bible** — `../the-glass-frontier-lore/player/`. Read-only at session time. The canonical world: cosmology, history, named entities that pre-exist the campaign. The DM additionally has read access to `../the-glass-frontier-lore/dm/` (themes, threads, loops, secret truths). The orchestrator surfaces relevant lore in each agent's CWD via symlinks.
-- **Campaign lore** — `sessions/shared/lore/`. Writable. The campaign-specific canonical layer that evolves session by session: NPCs the party has met, locations they've discovered, events they've caused, faction reputations they've earned. **Encyclopedia-shaped, not notes-shaped** — same frontmatter + prose + sections pattern as the world bible, FalkorDB-mirrored. Players draft entries into a pending area; the DM ratifies (canonize) or rejects via `glass note`. Ratified entries land here.
-- **Personal notes** — agent-private. Player journals (free-form, may have subdirectories) and the DM workspace (planning drafts, in-progress NPCs). **Journal-shaped, not encyclopedia-shaped.** These are for thinking; they are not the canonical record.
+- **World bible** — `../the-glass-frontier-lore/player/`. Read-only at play time. The canonical world: cosmology, history, named entities that pre-exist the campaign. The DM additionally has read access to `../the-glass-frontier-lore/dm/` (themes, threads, loops, secret truths). The orchestrator surfaces relevant lore in each agent's CWD via symlinks.
+- **Campaign lore** — `campaigns/<id>/shared/lore/`. Writable. The campaign-specific canonical layer that evolves scene by scene: NPCs the party has met, locations they've discovered, events they've caused, faction reputations they've earned. **Encyclopedia-shaped, not notes-shaped** — same frontmatter + prose + sections pattern as the world bible, FalkorDB-mirrored. Players draft entries into a pending area; the DM ratifies (canonize) or rejects via `glass note`. Ratified entries land here.
+- **Player-facing context** — three levels: `campaigns/<id>/context.md`, `arcs/<arc>/context.md`, `arcs/<arc>/scenes/<scene>/context.md`. Each authored by the DM, projected into player CWDs as `campaign-context.md`, `arc-context.md`, `scene-context.md`. See [`game-start.md`](game-start.md) and [`context-packages.md`](context-packages.md).
+- **Personal notes** — agent-private. Player journals (free-form, may have subdirectories) and the DM workspace (planning drafts, in-progress NPCs). **Journal-shaped, not encyclopedia-shaped.** For thinking; not the canonical record.
 
-Plus session transcripts (`sessions/<id>/transcript.md`) — the artifact (see [`../principles/transcripts-as-corpus.md`](../principles/transcripts-as-corpus.md)).
+Plus per-scene transcripts (`arcs/<arc>/scenes/<scene>/transcript.md`) — the artifact (see [`../principles/transcripts-as-corpus.md`](../principles/transcripts-as-corpus.md)).
 
 Markdown is human-diffable, version-controllable, and the natural medium for narrative content.
 
 ### 2. FalkorDB — the coherence layer
 
-A graph database mirrors the markdown notes. Entities (NPCs, locales, factions, items, beats, sessions) are nodes; typed edges describe relationships (`LOCATED_IN`, `MET_AT`, `ADVANCES_BEAT`, etc.). Embeddings on entity sections support semantic search — "have I seen this kind of NPC before?"
+A graph database mirrors the markdown notes. Entities (NPCs, locales, factions, items, arcs, scenes, beats) are nodes; typed edges describe relationships (`LOCATED_IN`, `MET_AT`, `ADVANCES_BEAT`, `OCCURRED_IN`, etc.). Embeddings on entity sections support semantic search — "have I seen this kind of NPC before?"
 
 We reuse the lore repo's pattern: Entity/Section unified node model, typed-edge taxonomy, no free text in the graph itself (prose stays in markdown).
 
@@ -62,7 +63,7 @@ Anything that needs crisp ground-truth, plus the orchestrator-supplied metadata 
 - Dice events (every roll, with context)
 - Mode transitions (when, why, with what budget)
 - Session metadata
-- **Per-turn metadata** (turn id, session, scene, mode, speaker, role, character, turn number, timestamp) — orchestrator-supplied, not agent-supplied. See [`context-packages.md`](context-packages.md).
+- **Per-turn metadata** (turn id, campaign, arc, scene, mode/scene-type, speaker, role, character, turn number, timestamp) — orchestrator-supplied, not agent-supplied. See [`context-packages.md`](context-packages.md).
 - **Messages** (the `glass msg` bus — sender, recipient, type, body, read state). See [`messaging.md`](messaging.md).
 
 The Postgres schema is small. Don't push narrative into it as "description" columns — narrative lives in markdown. The Postgres layer is for the things agents drift on (numbers, IDs) plus the structural metadata around the prose that makes "find me what Sumi said in the market scene" answerable without scraping text.
@@ -73,7 +74,7 @@ Postgres is on the LAN.
 
 A Python process. Its job is small:
 
-1. Hold the session state machine (which mode, which budgets, whose turn).
+1. Hold the campaign + scene state machine (which phase, which arc, which scene, which mode, which budgets, whose turn).
 2. Build the per-turn ephemeral CWD and `TURN_START.md` for the next agent.
 3. Spawn `claude -p --dangerously-skip-permissions` in that CWD. All tools available; the role-specific allowlist is enforced at the `glass` CLI level via env vars set by the orchestrator at spawn time.
 4. Wait for the subprocess to exit.
@@ -88,19 +89,19 @@ The orchestrator does **not**:
 
 ### Resumability
 
-The orchestrator is **resumable**, not one-shot. State lives in Postgres (session row, mode stack, current turn number, last-spoken agent), the markdown transcript, and the FalkorDB graph. If the process dies or is ctrl-C'd mid-session, restarting picks up where it left off — the previous turn either committed or didn't (transactionally, via the `glass turn append` boundary), and the orchestrator advances from the last consistent state.
+The orchestrator is **resumable**, not one-shot. State lives in Postgres (campaign row, scene row, mode stack, current turn number, last-spoken agent), the markdown transcript, and the FalkorDB graph. If the process dies or is ctrl-C'd mid-scene, restarting picks up where it left off — the previous turn either committed or didn't (transactionally, via the `glass turn append` boundary), and the orchestrator advances from the last consistent state.
 
 For v1, when an agent fails (timeout, claude error, malformed output), the orchestrator stops and waits for the operator. No automatic retries, no automatic recovery. The operator inspects, fixes, resumes — or clears state and starts over.
 
 ### Operator CLI (separate from `glass`)
 
-`glass` is the in-session tool surface for agents and the orchestrator. The operator (the human running this) needs a different surface: start a session, list sessions, tail a running session, clear scene/session/campaign state, restart from a known point. This is a separate CLI — name TBD — and is not exposed to agents.
+`glass` is the in-play tool surface for agents and the orchestrator. The operator (the human running this) needs a different surface: create a campaign, list campaigns, tail a running scene, clear scene/arc/campaign state, restart from a known point. This is the `aog` CLI and is not exposed to agents.
 
 For v1: foreground stdout monitoring is enough. The operator runs the orchestrator in the foreground, watches turns scroll by, ctrl-C's to interrupt. Real logging and a richer ops CLI are post-MVP.
 
 ### Audit log
 
-Every `glass` call (including the orchestrator's own internal calls) writes to a per-session audit log — JSON lines, `sessions/<id>/audit.jsonl`. This is the operational record (timestamps, command, args, return, errors) and is distinct from the transcript (the corpus). Useful for debugging, replay, and post-hoc analysis. The orchestrator inlines a subset of these (rolls, HP changes) into the transcript at the right turn boundary; the full audit lives in the JSONL.
+Every `glass` call (including the orchestrator's own internal calls) writes to a per-scene audit log — JSON lines, `arcs/<arc>/scenes/<scene>/audit.jsonl`. This is the operational record (timestamps, command, args, return, errors) and is distinct from the transcript (the corpus). Useful for debugging, replay, and post-hoc analysis. The orchestrator inlines a subset of these (rolls, HP changes) into the transcript at the right turn boundary; the full audit lives in the JSONL.
 
 This separation is deliberate. The orchestrator is straightforward to reason about; the agents are swappable; the CLI is the only state-mutation choke point.
 
@@ -108,11 +109,14 @@ This separation is deliberate. The orchestrator is straightforward to reason abo
 
 A single binary (Python, distributed via the project's venv). All state mutations go through it. Both the orchestrator and the agents call it.
 
-Surface (subject to refinement in [`turn-loop.md`](turn-loop.md) and [`mechanics.md`](mechanics.md)):
+Surface (subject to refinement in [`turn-loop.md`](turn-loop.md), [`mechanics.md`](mechanics.md), [`messaging.md`](messaging.md)):
 
 ```
-glass session new|append|show|wrap
-glass mode start <mode> | end <mode> | current
+glass arc create <slug>               # DM only — scaffold an arc dir
+glass arc current | list
+glass scene create <slug> --type <mode>   # DM only — scaffold a scene dir
+glass scene current | list | end
+glass mode push <mode> | pop | current    # nested modes within a scene
 glass roll <skill> <attribute> --risk <level> [--character <id>]
 glass character new|get|set-hp|set-momentum|inventory-add|inventory-rm
 glass note write <kind> <id> <file.md>
@@ -121,7 +125,9 @@ glass note ratify <id>                # DM accepts proposal
 glass entity upsert <file.md>         # markdown → graph
 glass entity neighborhood <id> | similar <id>
 glass thread current | beat <id>
-glass turn append <session> <speaker> <markdown>
+glass turn append <markdown>          # orchestrator typically calls this
+glass msg <type> <recipient> <body>   # see messaging.md
+glass turns find ...
 ```
 
 Permissions are per-subcommand, enforced by an environment variable the orchestrator sets when it spawns each agent (e.g. `GLASS_ROLE=player_tev`). The CLI checks the role and rejects calls outside the allowlist.
@@ -164,7 +170,7 @@ Possible upgrade: per-player Unix users with file-system group permissions. More
 | Concern | Store |
 |---------|-------|
 | Lore prose | Markdown (read-only from lore repo) |
-| Session transcript | Markdown (`sessions/<id>/transcript.md`) |
+| Scene transcript | Markdown (`campaigns/<id>/arcs/<arc>/scenes/<scene>/transcript.md`) |
 | DM canonical NPCs | Markdown + FalkorDB |
 | Player private journal | Markdown (per-agent dir) |
 | Character sheet | Postgres + cached markdown summary |
@@ -176,7 +182,7 @@ Possible upgrade: per-player Unix users with file-system group permissions. More
 
 ## Configuration
 
-A single `agents-of-glass.toml` at the repo root holds non-secret config: Postgres URL, FalkorDB URL, model selection, hard caps, debug flags, paths to lore-repo and session storage.
+A single `agents-of-glass.toml` at the repo root holds non-secret config: Postgres URL, FalkorDB URL, model selection, hard caps, debug flags, paths to lore-repo, templates dir, and campaigns dir.
 
 Secrets (API keys, database passwords) are injected by the operator's secrets-management solution at the environment level — not stored in the TOML, not committed.
 
@@ -199,25 +205,22 @@ agents-of-glass/
     glass/                # the CLI
     orchestrator/         # the Python loop
     schema/               # graph + postgres schemas
-  agents/
-    dm/
-      mara.md
-      canonical-notes/
-      intake/
-    players/
-      tev.md
-      sumi.md
-      renno.md
-      kit.md
-      journals/
-        tev/
-        sumi/
-        renno/
-        kit/
-  characters/             # PCs the players are running this session
-  modes/                  # one md file per mode
-  sessions/               # one dir per session, transcripts + state
+  templates/              # authored input — copied into campaigns/<id>/ on creation
+    dm/, players/, shared/, methodologies/
+  campaigns/<id>/         # per-campaign live state — see game-start.md and context-packages.md
+    state.json
+    context.md            # player-facing campaign-level
+    dm/, players/, shared/
+    arcs/<arc>/
+      context.md          # player-facing arc-level
+      plan.md             # DM-only
+      scenes/<scene>/
+        context.md        # player-facing scene-level
+        prep.md           # DM-only
+        transcript.md
+        audit.jsonl
+  modes/                  # one md file per mode (scene type)
   pyproject.toml
 ```
 
-This is a sketch — final layout settles when the orchestrator and CLI exist.
+The detailed campaign layout lives in [`game-start.md`](game-start.md) and [`context-packages.md`](context-packages.md). Final layout settles when the orchestrator and CLI exist.

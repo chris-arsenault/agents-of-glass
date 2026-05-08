@@ -11,25 +11,35 @@ This is a **spec, not an implementation**. We fill in details as we build. Align
 - **Output is YAML on stdout** for machine-readable returns. Errors go to stderr with a non-zero exit code.
 - **Permissions are role-enforced via env var.** The orchestrator sets `GLASS_ROLE=dm` or `GLASS_ROLE=player:tev` (etc.) when spawning each agent's subprocess. The CLI checks the role on each subcommand and rejects calls outside that role's allowlist.
 - **Errors are agent-friendly.** When an agent's call fails (unknown type, missing field, permission denied), the error message names what went wrong and lists valid options. The agent can retry inline.
-- **Audit log everywhere.** Every successful call appends to `content/sessions/<active-session>/audit.jsonl`.
+- **Audit log everywhere.** Every successful call appends to the active scene's `audit.jsonl` (`campaigns/<id>/arcs/<arc>/scenes/<scene>/audit.jsonl`). Calls outside an active scene (e.g. during campaign planning) append to a campaign-level audit.
 
 ## Subcommands
 
-### Session lifecycle
+### Arc and scene lifecycle (DM only — manages the dir hierarchy)
+
+The DM scaffolds arcs and scenes through the CLI; the CLI creates the directory and stub files. The DM then writes content into the scaffolded files.
 
 ```
-glass session new --campaign <name>
-glass session show
-glass session wrap                  # DM only — produces session summary, ends loop
-glass session list                  # operator-friendly
+glass arc create <slug>                        # creates arcs/<slug>/ with plan.md, context.md, scenes/
+glass arc current                              # which arc is active
+glass arc list
+
+glass scene create <slug> --type <mode>        # creates arcs/<active-arc>/scenes/<slug>/
+                                               #   with prep.md, context.md, transcript.md, audit.jsonl
+                                               # use --arc <slug> to attach to a non-active arc
+glass scene current
+glass scene list [--arc <slug>]
+glass scene end                                # ends the active scene
 ```
 
-### Mode lifecycle
+### Mode lifecycle (within a scene)
+
+A scene has a primary mode (set at creation via `--type`). Modes can be pushed for nested situations (combat in a town scene).
 
 ```
-glass mode start <mode-name> <scene-id>     # DM only
-glass mode end                              # DM only — pops the mode stack
-glass mode current                          # show current mode + stack
+glass mode push <mode-name>           # DM only — push a nested mode
+glass mode pop                        # DM only — pop back to parent
+glass mode current                    # show current mode + stack
 ```
 
 ### Dice
@@ -99,7 +109,9 @@ glass turns find [--scene X] [--speaker Y] [--mode Z] [--turn-id N]
 The CLI reads:
 
 - `GLASS_ROLE` — `dm` or `player:<id>`. Set by the orchestrator.
-- `GLASS_SESSION_ID` — active session. Set by the orchestrator.
+- `GLASS_CAMPAIGN_ID` — active campaign. Set by the orchestrator.
+- `GLASS_ARC_ID` — active arc, if any.
+- `GLASS_SCENE_ID` — active scene, if any.
 - `GLASS_CONFIG` — path to `agents-of-glass.toml`. Defaults to repo root.
 
 If `GLASS_ROLE` is unset, the CLI assumes operator and allows everything. (The operator CLI `aog` is the friendlier interface for humans; `glass` from the shell is for debugging.)

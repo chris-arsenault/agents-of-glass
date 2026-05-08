@@ -20,9 +20,9 @@ graph = "agents_of_glass"
 path = "../the-glass-frontier-lore"
 
 [paths]
-content = "content"
-sessions = "content/sessions"
-ephemeral_cwd = ".glass-cwd"
+templates = "templates"          # authored content; stable input copied at campaign start
+sessions = "sessions"            # runtime per-session state (transcripts, audit logs, scene framing)
+ephemeral_cwd = ".glass-cwd"     # per-turn agent CWDs; not committed
 
 [claude]
 # claude-p invocation tunables
