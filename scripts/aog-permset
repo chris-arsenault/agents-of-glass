@@ -114,12 +114,22 @@ cmd_campaign() {
         local puser="aog-$pid"
         if [[ ! -d "$pdir" ]]; then continue; fi
 
-        # The player dir itself: owner = player, group = player's group, setgid
+        # Private subdirs: owner = player, group = player's own group, setgid
+        # so files created inside inherit the player-private group.
         apply_perms_recursive "$puser" "$puser" 2750 0640 \
             "$pdir/journal" \
             "$pdir/drafts" \
             "$pdir/notes" \
-            "$pdir/inbox"
+            "$pdir/inbox" \
+            "$pdir/secrets"
+
+        # Public subdir: owner = player, group = aog-agents, setgid so files
+        # created inside inherit the shared group and become party-readable.
+        # This is where intro.md, relationships.md, the cached character.md
+        # display, and any other party-visible artifacts live.
+        if [[ -d "$pdir/public" ]]; then
+            apply_perms_recursive "$puser" "$SHARED_GROUP" 2750 0640 "$pdir/public"
+        fi
 
         for f in persona.md scratchpad.md; do
             if [[ -f "$pdir/$f" ]]; then
@@ -127,15 +137,15 @@ cmd_campaign() {
             fi
         done
 
-        # character.md is all-readable, player-writable
-        if [[ -f "$pdir/character.md" ]]; then
-            apply_perms "$puser" "$SHARED_GROUP" 0640 0640 "$pdir/character.md"
-        fi
-
-        # Player root dir: owner = player, mode setgid + group rx so dev (in
-        # the player's group) can list it.
-        chown "$puser:$puser" "$pdir"
-        chmod 2750 "$pdir"
+        # Player root dir: owner = player, group = aog-agents, mode 0750
+        # (NO setgid). Group-traversable so other agents can cd into
+        # public/. Top-level files written here at runtime get the player's
+        # primary group (aog-<player>) and stay private by default.
+        # NOTE: explicit `g-s` is needed before the numeric chmod because on
+        # ZFS+nfs4acl filesystems chmod 0750 does not clear the setgid bit.
+        chown "$puser:$SHARED_GROUP" "$pdir"
+        chmod g-s "$pdir"
+        chmod 0750 "$pdir"
     done
 
     # The players/ container itself: dev:aog-agents 2750 (all agents can

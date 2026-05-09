@@ -25,6 +25,34 @@ The DM gets one turn at the end of each round to read what the party authored an
 
 This applies to the rest of play too. Make your own rolls via `glass roll`. Take your own HP changes via `glass character set-hp`. Spend your own momentum. The system is the system — don't ask the DM to confirm each mechanical step. Propose / ratify is reserved for **public journal entries** during play (canonical, party-shared lore that the DM might want to fold into the campaign record).
 
+### Things you must run via `glass` (not narrate, not Write-tool)
+
+- `glass character new` — your character row in Postgres. **If you skip this, every later `glass roll` will error: there's no character to roll for.**
+- `glass character inventory-add` / `inventory-rm` — items. Inventory is a jsonb column on your character row, not a markdown file.
+- `glass roll <skill> <attribute> --risk <level> --character <id>` — every uncertain action. Don't narrate "I rolled a 9"; the dice are the dice.
+- `glass character set-hp <id> <delta>` — when you take damage or heal. The number that lives in the DB is the number that's true.
+- `glass character set-momentum <id> <value>` — momentum changes from rolls happen automatically; only call this for narrative resets.
+
+Things you write as markdown via your file-write tool (no `glass` involvement):
+- `players/<your-id>/public/intro.md`
+- `players/<your-id>/public/relationships.md`
+- `players/<your-id>/public/character.md` (optional cached display)
+- `players/<your-id>/secrets/<name>.md` (optional, DM-readable only)
+- Your private journal/drafts/notes/scratchpad — anything under `players/<your-id>/` that isn't `public/`.
+
+### Where files live in your player dir
+
+```
+players/<your-id>/
+  persona.md            you (the player) — provided by the operator
+  scratchpad.md         your working notes — overwrite freely
+  public/               party-readable: intros, relationships, cached character display
+  secrets/              DM-readable, other-player-private: hidden knowledge files
+  drafts/, journal/, notes/, inbox/   private to you
+```
+
+Anything you put in `public/` is automatically party-readable (filesystem permissions handle this). Anything you put in `secrets/` is DM-readable but not visible to other players. You don't have to chmod anything — drop the file in the right subdir and the perms follow.
+
 ## Round 1: Build your character
 
 ### 1. Read before you write
@@ -128,7 +156,7 @@ These go in your `intro.md` under a "Traits" section. The DM uses them for adjud
 
 ### 8. Write backstory and goals
 
-In `players/<your-id>/intro.md`, write:
+In `players/<your-id>/public/intro.md`, write:
 
 - **Backstory: 3-4 paragraphs.** Where the character is from. What shaped them. How they ended up at the org. **Reference at least one of the DM's planning-phase hooks, NPCs, factions, or locations by name.** This is the connective tissue that makes the campaign actually feel like a place this character lives in.
 - **Goals: 2-3 specific goals.** Present-tense. Achievable but with friction. Not "save the world." Not "get rich." Specific things this character is *currently trying to do*. The DM may or may not weave them into the campaign — that's their judgment call. Goals you don't reach are fine.
@@ -147,7 +175,7 @@ The character.md `org_tie` field is a one-line free-form description: what this 
 
 ### 10. Optional: hidden knowledge
 
-You may write **hidden knowledge** to a file the DM can read but other players can't. Drop it at `players/<your-id>/secrets.md` and message the DM via `glass msg secret dm <one-line summary>` so they know to read it. Use it for:
+You may write **hidden knowledge** to a file the DM can read but other players can't. Drop it under `players/<your-id>/secrets/<name>.md` (the `secrets/` subdir is provisioned DM-readable but party-private) and message the DM via `glass msg secret dm <one-line summary>` so they know to read it. Use it for:
 
 - Alternative motivations (something your character is *also* doing while in the org)
 - Backstory the character hasn't told anyone (an old name, a buried debt, a relationship the org doesn't know about)
@@ -174,7 +202,7 @@ glass character inventory-add <character-id> <slug> --qty 1
 glass character inventory-add <character-id> <slug> --qty 1
 ```
 
-Then write your intro markdown directly to `players/<your-id>/intro.md` using your file-write tool. The structure is up to you, but include:
+Then write your intro markdown directly to `players/<your-id>/public/intro.md` using your file-write tool. The `public/` subdir is party-readable; this is the file your fellow PCs will read in round 2. Include:
 
 - Frontmatter with at least `title:` (your character's name) and `type: character`
 - A Traits section listing your 3-5 traits
@@ -182,7 +210,7 @@ Then write your intro markdown directly to `players/<your-id>/intro.md` using yo
 - A Goals section (2-3 goals)
 - An Org Tie line
 
-Optionally write a short cached display at `players/<your-id>/character.md` with attribute/skill/inventory summary for quick reference. The canonical numbers are in Postgres; this is just a human-readable mirror.
+Optionally write a short cached display at `players/<your-id>/public/character.md` with attribute/skill/inventory summary for quick reference. The canonical numbers are in Postgres; this is just a human-readable mirror.
 
 When your turn ends, that's it for round 1. The other players take their turns; the DM reviews after.
 
@@ -190,15 +218,15 @@ When your turn ends, that's it for round 1. The other players take their turns; 
 
 ## Round 2: Relationship round
 
-Once all four PCs are authored — visible at `players/*/intro.md` — each player adds 1-2 relationship ties to other PCs. This is the round that turns four strangers into a party with shared history.
+Once all four PCs are authored — visible at `players/*/public/intro.md` — each player adds 1-2 relationship ties to other PCs. This is the round that turns four strangers into a party with shared history.
 
 ### Process
 
-1. **Read all four intros** at `players/*/intro.md`. You're now writing as someone who can see the others' characters.
+1. **Read all four intros** at `players/*/public/intro.md`. You're now writing as someone who can see the others' characters.
 2. **Pick 1-2 relationship seeds** from the list below. Each seed must name a *specific other PC* — not a generic placeholder. You cannot point both at the same PC if you pick two; each seed must name a different other PC.
 3. **Write a paragraph for each seed** filling it in with specifics. Names, places, the particular thing that happened, the particular feeling that lingers. Use the same anti-sameness rigor you used for your backstory — this is shared canon, it should have texture.
 4. **Coordinate.** If two players pick a seed pointing at each other (e.g., A picks "we were lovers once" pointing at B, and B picks something different pointing at A), both versions become canon. If two players write contradictory specifics for the *same* shared event, the DM may flag it on their round-end turn — you may need to revise on a follow-up turn.
-5. **Write the file** directly to `players/<your-id>/relationships.md`. Use frontmatter with `title:` (e.g., "<your character>'s relationships") and `type: relationships`.
+5. **Write the file** directly to `players/<your-id>/public/relationships.md`. Use frontmatter with `title:` (e.g., "<your character>'s relationships") and `type: relationships`.
 
 ### The seed list
 
@@ -241,9 +269,14 @@ The character_creation phase ends. The DM signals phase-complete and the campaig
 Two turns total during character creation — one at the end of each round. On each turn the DM:
 
 - Reads what the players authored that round.
-- Optionally writes a short campaign-intro update at `shared/campaign-framing.md` (round 1) reflecting the actual party. After round 2, may add a "what the party knows about each other" passage.
+- Reads each player's `secrets/` subdir for any hidden-knowledge files dropped this round (the players will message you when they drop one).
+- Optionally writes a short campaign-intro update at `shared/campaign-framing.md` (after round 1) reflecting the actual party. After round 2, may add a "what the party knows about each other" passage.
 - If a player produced something off-spec (impossible species, broken attribute budget, generic-fantasy slop, contradictory shared events), pushes back via `glass msg secret <player> "revise: ..."` — the player can fix it on a follow-up turn.
-- Round 1 turn: announces "relationships round begins" via a transcript line so the players know to start round 2.
-- Round 2 turn: ends the mode (`glass mode end`) to signal phase-complete.
+
+**Round-1 DM turn (your first one in this phase):** announce "relationships round begins" in your turn prose. **Do NOT end the mode yet** — the players still need round 2.
+
+**Round-2 DM turn (your second and final):** end the mode with `glass mode end`. That signals phase-complete and the orchestrator exits the loop.
+
+If you end the mode after round 1, players never get a chance to write their relationships and the phase finishes incomplete. Don't.
 
 The DM is not pre-approving every character. They are reviewing the party as a whole and only intervening when something concrete needs fixing.
