@@ -209,6 +209,8 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         hp_max,
         inventory,
         tags,
+        xp,
+        level,
         created_at,
         updated_at,
     ) = row
@@ -230,6 +232,8 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         "hp": {"current": int(hp_current), "max": int(hp_max)},
         "inventory": list(inventory or []),
         "tags": list(tags or []),
+        "xp": int(xp),
+        "level": int(level),
         "created_at": _iso(created_at),
         "updated_at": _iso(updated_at),
     }
@@ -238,7 +242,7 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
 _CHARACTER_COLUMNS = (
     "campaign_id, character_id, player_id, name, archetype, pronouns, bio, "
     "attributes, skills, momentum_current, momentum_floor, momentum_ceiling, "
-    "hp_current, hp_max, inventory, tags, created_at, updated_at"
+    "hp_current, hp_max, inventory, tags, xp, level, created_at, updated_at"
 )
 
 
@@ -410,6 +414,36 @@ def character_set_momentum_internal(
             "WHERE campaign_id = %s AND character_id = %s",
             (value, campaign_id, character_id),
         )
+
+
+def character_award_xp(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    delta: int,
+) -> tuple[dict[str, Any], int, int]:
+    """Add `delta` to xp. Returns (character, before, after). delta may be negative."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT xp FROM characters "
+            "WHERE campaign_id = %s AND character_id = %s FOR UPDATE",
+            (campaign_id, character_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(character_id)
+        before = int(row[0])
+        after = max(0, before + delta)
+        cur.execute(
+            f"UPDATE characters SET xp = %s "
+            f"WHERE campaign_id = %s AND character_id = %s "
+            f"RETURNING {_CHARACTER_COLUMNS}",
+            (after, campaign_id, character_id),
+        )
+        updated = cur.fetchone()
+    conn.commit()
+    return _row_to_character(updated), before, after
 
 
 def character_set_inventory(

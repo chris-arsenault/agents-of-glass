@@ -1277,6 +1277,59 @@ def character_set_hp(ctx: click.Context, character_id: str, delta: int) -> None:
     )
 
 
+@character.command("award-xp", context_settings={"ignore_unknown_options": True})
+@click.argument("character_id")
+@click.argument("delta", type=int)
+@click.pass_context
+def character_award_xp(ctx: click.Context, character_id: str, delta: int) -> None:
+    """DM-only: award (or revoke) XP. Bumps `xp`; `level` is unchanged.
+
+    Resolution of crossed level thresholds (HP roll, attribute bump, momentum
+    ceiling) happens via `glass character level-up` (TBD).
+    """
+    role = require_dm()
+    paths = get_paths()
+    state = load_state(paths)
+    campaign_id = active_campaign_id()
+
+    with pg_connection() as conn:
+        existing = _db.character_get(conn, campaign_id, character_id)
+        if existing is None:
+            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+        try:
+            updated, before, after = _db.character_award_xp(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                delta=delta,
+            )
+        except LookupError:
+            raise GlassError(f"unknown character {character_id!r}") from None
+
+    sign = f"{delta:+d}"
+    summary = f"{character_id} xp {sign} ({before} -> {after}, level {updated['level']})"
+    queue_event(state, role.actor, summary)
+    # Threshold: level N requires xp >= (N-1)*10. So at xp X, the level the
+    # character could reach is floor(X/10) + 1. Pending = that - actual.
+    pending_levels = max(0, (after // 10) + 1 - int(updated["level"]))
+    result = {
+        "character_id": character_id,
+        "xp_before": before,
+        "delta": delta,
+        "xp_after": after,
+        "level": updated["level"],
+        "pending_level_ups": pending_levels,
+    }
+    commit(
+        paths,
+        state,
+        ctx,
+        "character.award-xp",
+        command_params(character_id=character_id, delta=delta),
+        result,
+    )
+
+
 @character.command("set-momentum", context_settings={"ignore_unknown_options": True})
 @click.argument("character_id")
 @click.argument("value", type=int)
