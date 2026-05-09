@@ -25,6 +25,7 @@ from .campaign import (
 )
 from .config import config_env_value, load_config
 from .runner import Orchestrator, TurnFailure
+from .state import PLAYER_IDS
 from .store import SessionStore, summarize_states
 
 
@@ -205,6 +206,14 @@ def campaign_bootstrap(
             raise click.ClickException(
                 f"campaign planning failed: {exc}\n{detail}"
             ) from exc
+        _require_bootstrap_mode_ended(
+            cli,
+            campaign_id=campaign_id,
+            mode_name="campaign-planning",
+            scene_id="planning",
+            phase_label="campaign planning",
+            turns_run=turns_run,
+        )
         click.echo(f"      DM produced {turns_run} planning turn(s)")
         click.echo(f"      transcript: {cli.store.transcript_path(state.campaign)}")
         click.echo(f"      DM workspace: {space.campaign_dir / 'dm'}")
@@ -245,6 +254,16 @@ def campaign_bootstrap(
             raise click.ClickException(
                 f"character creation failed: {exc}\n{detail}"
             ) from exc
+        _require_bootstrap_mode_ended(
+            cli,
+            campaign_id=campaign_id,
+            mode_name="character-creation",
+            scene_id="character-creation",
+            phase_label="character creation",
+            turns_run=creation_turns,
+        )
+        if not dry_run:
+            _validate_character_creation_complete(cli, campaign_id)
         click.echo(f"      ran {creation_turns} character-creation turn(s)")
         click.echo(f"      transcript: {cli.store.transcript_path(creation_state.campaign)}")
         cm_state = cli.campaign_manager.load_state(campaign_id)
@@ -271,6 +290,91 @@ def _phase_completed(cm_state: dict, phase_name: str) -> bool:
         if entry.get("phase") == phase_name and "completed_at" in entry:
             return True
     return False
+
+
+def _require_bootstrap_mode_ended(
+    cli: CliState,
+    *,
+    campaign_id: str,
+    mode_name: str,
+    scene_id: str,
+    phase_label: str,
+    turns_run: int,
+) -> None:
+    state = cli.store.load(campaign_id)
+    still_active = any(
+        frame.mode == mode_name and frame.scene_id == scene_id
+        for frame in state.mode_stack
+    )
+    if not still_active:
+        return
+    state.mark_paused(
+        f"{phase_label} incomplete after {turns_run} turn(s); "
+        f"DM must call glass mode end"
+    )
+    cli.store.save(state)
+    raise click.ClickException(
+        f"{phase_label} did not explicitly complete after {turns_run} turn(s); "
+        f"`{mode_name}` is still on the mode stack. Not advancing bootstrap phase."
+    )
+
+
+def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> None:
+    from cli import db as _db
+    from cli.config import load_config as _load_glass_config
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        pg_config = _db.load_pg_config(_load_glass_config())
+        with _db.connect(pg_config) as conn:
+            characters = _db.character_list(conn, campaign_id)
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
+
+    by_player: dict[str, list[dict]] = {player_id: [] for player_id in PLAYER_IDS}
+    for character in characters:
+        player_id = str(character.get("player_id") or "")
+        if player_id in by_player:
+            by_player[player_id].append(character)
+
+    failures: list[str] = []
+    campaign_root = cli.config.campaigns_dir / campaign_id
+    for player_id in PLAYER_IDS:
+        player_characters = by_player[player_id]
+        if len(player_characters) != 1:
+            failures.append(
+                f"{player_id}: expected exactly one character row, "
+                f"found {len(player_characters)}"
+            )
+            continue
+        character = player_characters[0]
+        inventory = list(character.get("inventory") or [])
+        if not (3 <= len(inventory) <= 5):
+            failures.append(
+                f"{player_id}: expected 3-5 inventory entries, found {len(inventory)}"
+            )
+        for rel_path in (
+            Path("players") / player_id / "public" / "intro.md",
+            Path("players") / player_id / "public" / "relationships.md",
+        ):
+            path = campaign_root / rel_path
+            try:
+                has_text = path.read_text(encoding="utf-8").strip()
+            except OSError:
+                has_text = ""
+            if not has_text:
+                failures.append(f"{player_id}: missing or empty {rel_path}")
+
+    if failures:
+        detail = "\n".join(f"- {failure}" for failure in failures)
+        raise click.ClickException(
+            "character creation hard-state validation failed; not advancing "
+            f"bootstrap phase:\n{detail}"
+        )
 
 
 def _restart_api_daemon_for_run(cli: CliState) -> None:

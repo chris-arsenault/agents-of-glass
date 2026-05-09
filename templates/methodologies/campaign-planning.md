@@ -17,8 +17,8 @@ If the answer is no, the prep is too narrow. Re-shape it.
 ## Read first
 
 1. Your own [`persona.md`](../../dm/persona.md) — your voice, your tastes, what you cut.
-2. The world bible (player-facing): `world-lore/` — places, peoples, history, technology, resonance, ringglass.
-3. The world bible (DM-facing): `dm-world-lore/` — themes, threads, loops, secret truths.
+2. The world bible's player-facing entries — places, peoples, history, technology, resonance, ringglass. Use `glass lore search <query>` to locate entries in the configured lore repo.
+3. The world bible's DM-facing entries — themes, threads, loops, secret truths. Players never see these directly.
 4. Any starter framing the operator dropped in `shared/campaign-framing.md`.
 5. The companion methodology — [`arc-creation.md`](arc-creation.md). You'll use this for the opening arc(s) below.
 
@@ -36,7 +36,7 @@ Before each major output (the Question, each faction, each named NPC, each arc's
 - Pick one specific concrete detail — a name, a behavioral tell, a sensory fact, a piece of history.
 - Let it inform the thing you're about to write. Not as plot import — as **texture**.
 
-Example: you're about to write a faction. You read `world-lore/player/concepts/ringglass.md` (which you weren't going to use) and notice the specific detail that *kite-cord prices doubled after the Conclave seizure*. That fact lands in your faction's hold — they control a kite-cord cache nobody else has access to. The faction is now grounded in a specific lore-shaped fact that wasn't on the local-maximum gradient.
+Example: you're about to write a faction. You find `player/concepts/ringglass.md` with `glass lore search ringglass` (which you weren't going to use) and notice the specific detail that *kite-cord prices doubled after the Conclave seizure*. That fact lands in your faction's hold — they control a kite-cord cache nobody else has access to. The faction is now grounded in a specific lore-shaped fact that wasn't on the local-maximum gradient.
 
 ### 2. Creative web pull
 
@@ -78,7 +78,7 @@ This copies the world-bible entry into `campaigns/<id>/shared/lore/`, preserves 
 
 Two layers of lore from now on:
 
-- **World bible** (`world-lore/`, `dm-world-lore/`) — your reference, always available, never bulk-imported. Players never see it directly.
+- **World bible** (the configured lore repo searched through `glass lore search`) — your reference, always available, never bulk-imported. Players never see it directly.
 - **Campaign lore** (`campaigns/<id>/shared/lore/`) — the curated subset that *is* canon for this campaign. Players see this. The graph knows about this.
 
 Each output below names where to import from when relevant.
@@ -259,7 +259,7 @@ These are what character creation will hang from — players will pick a hook to
 
 **Path:** `dm/notes/philosophy/<slug>.md`. Free-form prose, one or two short entries.
 
-What kinds of stories is this campaign *about*? Which themes from the lore repo (`dm-world-lore/themes/`) pull on this campaign specifically? "Builders gone." "Who remembers." "How strangers learn to share a world." Write one or two short entries that name the thematic territory in your own words. This is for *you* — to keep your prep and adjudication coherent across scenes and arcs.
+What kinds of stories is this campaign *about*? Which DM-facing themes from the configured lore repo pull on this campaign specifically? "Builders gone." "Who remembers." "How strangers learn to share a world." Write one or two short entries that name the thematic territory in your own words. This is for *you* — to keep your prep and adjudication coherent across scenes and arcs.
 
 ### 11. Opening arcs
 

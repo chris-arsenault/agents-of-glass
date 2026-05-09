@@ -94,6 +94,9 @@ from ..yaml_io import (
 )
 
 
+_campaign_workspace = resolve_active_campaign_workspace
+
+
 @click.group()
 def arc() -> None:
     """Arc lifecycle (DM-only): create, list, current."""

@@ -39,6 +39,7 @@ class TurnResult:
     spawn_cwd: Path
     prose: str
     dry_run: bool
+    queued_speaker_entry: dict[str, Any] | None = None
 
 
 class Orchestrator:
@@ -48,30 +49,29 @@ class Orchestrator:
         self.context_builder = ContextBuilder(config, store)
 
     def prepare_turn(self, state: SessionState) -> ContextPackage:
-        agent, turn_meta = self._resolve_next_agent(state)
+        agent, turn_meta, _queued_entry = self._resolve_next_agent(state)
         return self.context_builder.build(state, agent, turn_meta=turn_meta)
 
     def _resolve_next_agent(
         self, state: SessionState
-    ) -> tuple[Agent, dict[str, Any]]:
+    ) -> tuple[Agent, dict[str, Any], dict[str, Any] | None]:
         """Pick the next agent + any per-turn metadata.
 
-        Pops the head of `state["next_speakers"]` if non-empty. Each entry is
+        Peeks at the head of `state["next_speakers"]` if non-empty. Each entry is
         a dict with at least an `agent` key plus optional `rapid_prompt` for
         rapid-response turns. Falls back to round-robin if the queue is empty
-        or the popped agent id is unrecognized.
+        or the queued agent id is unrecognized.
         """
-        entry = self._consume_next_speaker_entry(state.campaign)
+        entry = self._peek_next_speaker_entry(state.campaign)
         if entry:
             agent_id = entry.get("agent")
             if agent_id in AGENTS_BY_ID:
                 meta = {k: v for k, v in entry.items() if k != "agent"}
-                return AGENTS_BY_ID[agent_id], meta
-        return next_agent_for(state), {}
+                return AGENTS_BY_ID[agent_id], meta, entry
+            return next_agent_for(state), {}, entry
+        return next_agent_for(state), {}, None
 
-    def _consume_next_speaker_entry(
-        self, campaign: str
-    ) -> dict[str, Any] | None:
+    def _peek_next_speaker_entry(self, campaign: str) -> dict[str, Any] | None:
         path = self.store.glass_state_path(campaign)
         if not path.exists():
             return None
@@ -82,16 +82,34 @@ class Orchestrator:
         queue = raw.get("next_speakers")
         if not isinstance(queue, list) or not queue:
             return None
-        entry = queue.pop(0)
+        entry = queue[0]
         if not isinstance(entry, dict):
-            entry = {"agent": entry} if isinstance(entry, str) else None
-        raw["next_speakers"] = queue
+            entry = {"agent": entry}
+        return entry
+
+    def _consume_next_speaker_entry(
+        self, campaign: str, expected_entry: dict[str, Any]
+    ) -> None:
+        path = self.store.glass_state_path(campaign)
+        if not path.exists():
+            return
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        queue = raw.get("next_speakers")
+        if not isinstance(queue, list) or not queue:
+            return
+        entry = queue[0]
+        normalized = entry if isinstance(entry, dict) else {"agent": entry}
+        if normalized != expected_entry:
+            return
+        raw["next_speakers"] = queue[1:]
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(
             json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         tmp.replace(path)
-        return entry
 
     def run_loop(
         self,
@@ -135,7 +153,7 @@ class Orchestrator:
             raise
 
     def run_one_turn(self, state: SessionState, *, dry_run: bool) -> TurnResult:
-        agent, turn_meta = self._resolve_next_agent(state)
+        agent, turn_meta, queued_entry = self._resolve_next_agent(state)
         package = self.context_builder.build(state, agent, turn_meta=turn_meta)
         if dry_run:
             prose = (
@@ -149,9 +167,10 @@ class Orchestrator:
                 spawn_cwd=package.spawn_cwd,
                 prose=prose,
                 dry_run=True,
+                queued_speaker_entry=queued_entry,
             )
 
-        return self._invoke_agent(state, agent, package)
+        return self._invoke_agent(state, agent, package, queued_entry=queued_entry)
 
     def commit_turn(self, state: SessionState, result: TurnResult) -> None:
         active = state.active_mode
@@ -204,6 +223,10 @@ class Orchestrator:
             },
         )
         self._tick_closing_countdown(state.campaign)
+        if result.queued_speaker_entry is not None:
+            self._consume_next_speaker_entry(
+                state.campaign, result.queued_speaker_entry
+            )
         synced = self.store.sync_from_glass(state)
         state.__dict__.update(synced.__dict__)
 
@@ -234,7 +257,12 @@ class Orchestrator:
         tmp.replace(path)
 
     def _invoke_agent(
-        self, state: SessionState, agent: Agent, package: ContextPackage
+        self,
+        state: SessionState,
+        agent: Agent,
+        package: ContextPackage,
+        *,
+        queued_entry: dict[str, Any] | None,
     ) -> TurnResult:
         # The prompt is intentionally short — the heavy lifting is in
         # TURN_START.md, which the agent reads as its first action.
@@ -436,6 +464,7 @@ class Orchestrator:
             spawn_cwd=package.spawn_cwd,
             prose=prose,
             dry_run=False,
+            queued_speaker_entry=queued_entry,
         )
 
     def _should_continue(

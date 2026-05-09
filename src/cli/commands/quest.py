@@ -94,6 +94,9 @@ from ..yaml_io import (
 )
 
 
+_campaign_workspace = resolve_active_campaign_workspace
+
+
 @click.group()
 def quest() -> None:
     """Party-visible story log: beats."""
@@ -143,4 +146,31 @@ def quest_beat(
         command_params(scene=scene, arc=arc, text=text), result,
     )
 
+
+def _append_quest_beat(
+    workspace: _workspace.CampaignWorkspace,
+    text: str,
+    *,
+    scene_id: str | None = None,
+    arc_id: str | None = None,
+) -> Path:
+    log_path = workspace.root / "shared" / "quest-log.md"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    if not log_path.exists():
+        log_path.write_text(
+            "---\ntitle: Quest Log\n---\n\n"
+            "# Quest Log\n\n"
+            "Party-visible log of story-shifting beats. Appended to via "
+            "`glass quest beat` and `glass scene end --beats`.\n\n",
+            encoding="utf-8",
+        )
+    tag_parts = []
+    if arc_id:
+        tag_parts.append(arc_id)
+    if scene_id:
+        tag_parts.append(scene_id)
+    prefix = f"[{':'.join(tag_parts)}] " if tag_parts else ""
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(f"- {prefix}{text}\n")
+    return log_path
 

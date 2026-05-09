@@ -33,7 +33,7 @@ You write into the new directory. The orchestrator picks up these files automati
 1. Your own [`persona.md`](../../dm/persona.md).
 2. The campaign foundation: `shared/campaign-framing.md`, `dm/notes/factions/`, `dm/notes/npcs/`, `dm/notes/philosophy/`, `dm/notes/creatures/`, `dm/notes/artifacts/`, `dm/notes/ships/`.
 3. If you're authoring this arc mid-campaign: the recent transcript and any threads the arc emerged from.
-4. The world bible (DM-facing): `dm-world-lore/threads/` and `dm-world-lore/loops/` — these are authorial scaffolding patterns the lore explicitly invites you to use.
+4. The world bible's DM-facing threads and loops. Use `glass lore search <query>` to locate candidates in the configured lore repo; these are authorial scaffolding patterns the lore explicitly invites you to use.
 
 ## On-demand lore imports
 

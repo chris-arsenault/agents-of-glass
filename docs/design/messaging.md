@@ -10,7 +10,7 @@ A simple typed message bus, exposed as a single CLI command:
 glass msg <type> <recipient> <body>
 ```
 
-- **`type`** — a string from a controlled vocabulary (`table-talk`, `banter`, `instruction`, `plot-hint`, `secret`, ...). The CLI validates against `sessions/shared/vocabulary/message-types.md`. Unknown types produce a helpful error so the agent can retry inline (the error includes the valid set and the closest match to what they tried).
+- **`type`** — a string from a controlled vocabulary (`table-talk`, `banter`, `instruction`, `plot-hint`, `secret`, ...). The CLI validates against `shared/vocabulary/message-types.md` in the active campaign. Unknown types produce a helpful error so the agent can retry inline (the error includes the valid set and the closest match to what they tried).
 - **`recipient`** — a player name (`tev`, `sumi`, `renno`, `kit`), `party` (all players), or `dm`. The CLI validates against the active session's roster.
 - **`body`** — a multi-line string. Free-form prose. No other fields.
 
@@ -71,7 +71,7 @@ The type vocabulary is the one place we validate, because untyped messages would
 - A message to `dm` is readable only by the DM.
 - A message to a specific player is readable by that player **and by the DM** (the DM is the table arbiter and sees everything; players' journals are also DM-visible — see [`context-packages.md`](context-packages.md)).
 - A message to `party` is readable by all players (and the DM).
-- A player cannot read messages sent to other specific players. File-permission-level isolation (per-turn ephemeral CWD) makes this enforceable, not just policy.
+- A player cannot read messages sent to other specific players. Campaign workspace file permissions plus the role-scoped `glass` API grant make this enforceable, not just policy.
 
 ## Failure Cases
 

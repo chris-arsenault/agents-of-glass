@@ -91,7 +91,9 @@ def resolve_content_path(paths: Paths, path_text: str) -> Path:
     return paths.content / rel
 
 
-def resolve_note_write_path(paths: Paths, path_text: str) -> Path:
+def resolve_note_write_path(
+    paths: Paths, path_text: str, *, campaign_id: str
+) -> Path:
     role = current_role()
     rel = clean_relative_path(path_text)
     if rel.parts and rel.parts[0] == "content":
@@ -111,18 +113,22 @@ def resolve_note_write_path(paths: Paths, path_text: str) -> Path:
     elif role.kind == "dm":
         if rel.parts and rel.parts[0] == "workspace":
             rel = Path("dm") / "workspace" / Path(*rel.parts[1:])
+        elif rel.parts and rel.parts[0] == "notes":
+            rel = Path("dm") / "notes" / Path(*rel.parts[1:])
+        elif rel.parts and rel.parts[0] == "canonical-notes":
+            rel = Path("dm") / "notes" / Path(*rel.parts[1:])
         elif rel.parts and rel.parts[0] == "lore":
             rel = Path("shared") / "lore" / Path(*rel.parts[1:])
         allowed_roots = [
             Path("dm") / "workspace",
-            Path("dm") / "canonical-notes",
+            Path("dm") / "notes",
             Path("dm") / "intake",
             Path("shared") / "lore",
         ]
         if not any(rel == root or root in rel.parents for root in allowed_roots):
             raise GlassError(
                 "permission denied: DM note writes must stay in workspace/, dm/intake/, "
-                "dm/canonical-notes/, or shared lore"
+                "dm/notes/, or shared lore"
             )
 
-    return paths.content / rel
+    return paths.campaigns / campaign_id / rel

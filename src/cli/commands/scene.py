@@ -94,6 +94,9 @@ from ..yaml_io import (
 )
 
 
+_campaign_workspace = resolve_active_campaign_workspace
+
+
 @click.group()
 def scene() -> None:
     """Scene lifecycle (DM-only): create, end, current, list."""
@@ -153,9 +156,9 @@ def scene_end_cmd(
     """
     role = require_dm()
     workspace = _campaign_workspace()
-    state = load_state(get_paths())
     paths = get_paths()
     campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     session_id = state["campaign"]
 
     current = _workspace.current_scene(workspace)
@@ -373,5 +376,4 @@ def scene_list(ctx: click.Context, arc_id: str | None) -> None:
     workspace = _campaign_workspace()
     scenes = _workspace.list_scenes(workspace, arc_id=arc_id)
     emit({"campaign_id": workspace.campaign_id, "arc_id": arc_id, "scenes": scenes})
-
 

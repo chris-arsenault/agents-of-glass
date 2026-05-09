@@ -50,7 +50,7 @@ Just-in-time curation. The world bible is your reference; campaign lore is the c
 
 The scene level needs less of this than campaign or arc, but it's not zero — back-to-back scenes with the same texture is the most common drift failure. Two small pulls. (Full principle: [`campaign-planning.md`](campaign-planning.md#anti-sameness-pulls-do-this--it-is-not-optional).)
 
-- **Lore pull (1-2 entries you weren't planning to use).** Open something from `world-lore/` or `dm-world-lore/` that doesn't directly touch this scene's locale or NPCs. Take one concrete detail — a sensory fact, a piece of history, a name. Land it somewhere in the scene's strong start, an NPC tell, or the locale framing.
+- **Lore pull (1-2 entries you weren't planning to use).** Use `glass lore search <query>` to find something in the configured lore repo that doesn't directly touch this scene's locale or NPCs. Take one concrete detail — a sensory fact, a piece of history, a name. Land it somewhere in the scene's strong start, an NPC tell, or the locale framing.
 - **Creative web pull (1, optional but encouraged).** A short web search on something *outside fantasy and outside TTRPGs*. Current events, an architectural detail, a recipe, an obituary, a science article — anything specific from the real non-fictional world. Pull one texture (a sensory detail, a fragment of language). Let it inform the strong start's atmosphere or one NPC's behavioral tic. Texture, not content.
 
 If the prior scene already had the pulls done and the new scene is a continuation in the same locale with the same NPCs, one pull is enough. If you're moving to a new locale, NPCs, or arc focus, do both.

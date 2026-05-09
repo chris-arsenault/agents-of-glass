@@ -94,6 +94,16 @@ from ..yaml_io import (
 )
 
 
+_campaign_workspace = resolve_active_campaign_workspace
+
+
+def _mirror_entity_to_graph(
+    record: "dict[str, Any]", path: "Path", campaign_id_override: "str | None"
+) -> "dict[str, Any]":
+    from .entity import _mirror_entity_to_graph as _impl
+    return _impl(record, path, campaign_id_override)
+
+
 @click.group()
 def lore() -> None:
     """Lore curation: import / list / search."""
@@ -126,8 +136,7 @@ def lore_import(ctx: click.Context, source_path: str, alias: str | None) -> None
         raise GlassError(str(exc)) from exc
 
     # Mirror the imported entry into the graph (best-effort).
-    state = load_state(paths) if active_session_file(paths).exists() else {"entities": {}}
-    record = upsert_entity_from_path(paths, state, dest) if False else _record_for_lore_import(dest)
+    record = _record_for_lore_import(dest)
     graph_status = _mirror_entity_to_graph(record, dest, workspace.campaign_id)
 
     result = {

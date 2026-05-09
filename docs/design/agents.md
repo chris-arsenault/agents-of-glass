@@ -102,9 +102,9 @@ The full file layout — what each role can read, what each role can write, wher
 
 **Lore is encyclopedia-shaped, not notes-shaped.** When a player or the DM is writing material that should become canonical (an NPC the party met, a locale they discovered, an event they caused), they write it as an encyclopedia entry — same shape as the world bible (`../the-glass-frontier-lore/`). When they're writing for themselves (theories, character thoughts, planning sketches), they write journal-style. The two don't blur; the shape signals the intent.
 
-Players draft lore in their `drafts/` directory and use `glass note` to push to the DM's intake. The DM canonizes (entry moves to `sessions/shared/lore/`, graph upserted) or rejects.
+Players draft lore in their `drafts/` directory and use `glass note` to push to the DM's intake. The DM canonizes (entry moves to the campaign's `shared/lore/`, graph upserted) or rejects.
 
-The orchestrator builds an ephemeral per-turn working directory for each agent containing only their permitted view — process-level isolation, not policy. See [`context-packages.md`](context-packages.md) for the file structure and the isolation mechanism.
+The orchestrator spawns each agent directly in the campaign workspace; OS permissions expose only that agent's permitted view. See [`context-packages.md`](context-packages.md) for the file structure and the isolation mechanism.
 
 The `glass` CLI is the only path to state mutation. Nobody writes directly to FalkorDB or Postgres.
 

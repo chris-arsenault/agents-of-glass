@@ -75,8 +75,8 @@ Postgres is on the LAN.
 A Python process. Its job is small:
 
 1. Hold the campaign + scene state machine (which phase, which arc, which scene, which mode, which budgets, whose turn).
-2. Build the per-turn ephemeral CWD and `TURN_START.md` for the next agent.
-3. Spawn `claude -p --dangerously-skip-permissions` in that CWD. All tools available; the role-specific allowlist is enforced at the `glass` CLI level via env vars set by the orchestrator at spawn time.
+2. Build the next agent's per-turn `TURN_START.md` under `dm/turns/` or `players/<id>/turns/`.
+3. Spawn `claude -p --dangerously-skip-permissions` in the campaign workspace. All tools are available; the role-specific state grant is enforced by the local `glass` API/CLI boundary.
 4. Wait for the subprocess to exit.
 5. Append the agent's prose to the transcript with the orchestrator-supplied header and inlined mechanical events from the audit log.
 6. Update state. Decide next speaker. Loop.
@@ -147,12 +147,12 @@ See [`agents.md`](agents.md) for the people, [`turn-loop.md`](turn-loop.md) for 
 ## Data Flow Per Turn
 
 1. Orchestrator decides whose turn it is (mode-dependent — see [`modes.md`](modes.md)).
-2. Orchestrator builds the agent's per-turn ephemeral working directory and writes `TURN_START.md` into it (see [`context-packages.md`](context-packages.md)). The CWD contains only the files the agent's role is allowed to see — process-level isolation, not policy.
-3. Orchestrator spawns `claude -p "Read TURN_START.md and take your turn."` with CWD set to that ephemeral dir and the role-specific tool allowlist.
+2. Orchestrator writes the agent's per-turn `TURN_START.md` into that agent's campaign directory (see [`context-packages.md`](context-packages.md)). The process CWD is the campaign root; OS permissions determine which files the agent can see.
+3. Orchestrator spawns `claude -p "Read <TURN_START path> and take your turn."` with CWD set to `campaigns/<id>/` and a role-scoped `glass` grant.
 4. Agent runs its own tool loop. May call `glass roll`, `glass entity neighborhood`, `glass character set-hp`, `glass msg`, etc. — each call is logged to the audit trail.
 5. Agent emits prose (their turn) and exits.
 6. Orchestrator wraps the prose with a header (speaker, role, mode, scene, turn number, timestamp) and inlines mechanical event lines drawn from the audit trail (rolls, HP changes), then calls `glass turn append`. Orchestrator records the turn metadata in Postgres alongside the markdown.
-7. Orchestrator tears down the ephemeral CWD and evaluates mode-end conditions (deferred — see [`scene-ending.md`](scene-ending.md)).
+7. Orchestrator evaluates mode-end conditions (deferred — see [`scene-ending.md`](scene-ending.md)); per-turn files remain available for debugging.
 8. Loop.
 
 Note: agents do not emit structured delta blocks. Whose turn is next, what mode is active, what the player intended — none of that is YAML the agent ships. The orchestrator already knows the speaker and mode from its own state; the DM reads the player's prose to understand intent. See [`turn-loop.md`](turn-loop.md) for the full prose-first principle, and [`../principles/codify-only-what-drifts.md`](../principles/codify-only-what-drifts.md) for the rule.
@@ -167,7 +167,7 @@ Each agent runs as a separate `claude -p` subprocess **directly inside the campa
 - Each player agent has a dedicated Unix user: `aog-tev`, `aog-sumi`, `aog-renno`, `aog-kit`.
 - A shared group `aog-agents` contains all agents. Each player has their own primary group (`aog-tev`, etc.) that includes `dev` so the DM can read player private content via group membership.
 - Campaign workspace files are owned by the appropriate user/group with mode bits that enforce per-agent isolation. DM-only files: `dev:dev` mode `0700/0600`. Shared content: `dev:aog-agents` mode `2750/0640`. Per-player private: `aog-<player>:aog-<player>` mode `2750/0640` (player rw, dev r via group, others none).
-- Per-turn artifacts (TURN_START.md the agent reads, TURN.md the agent writes) live at `sessions/<session-id>/turns/<NNNN>/`, separate from the campaign workspace. Permissions on this dir are set so the spawning user can read/write inside.
+- Per-turn artifacts (TURN_START.md the agent reads, TURN.md the agent writes) live under the spawning agent's campaign directory (`dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`). Permissions on this dir are set so the spawning user can read/write inside.
 - Player invocations spawn via `sudo -u aog-<player>` (NOPASSWD per a sudoers entry installed at provisioning time).
 
 **Operator setup (run once):**

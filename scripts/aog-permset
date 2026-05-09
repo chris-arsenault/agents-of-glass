@@ -85,6 +85,92 @@ apply_perms_recursive() {
     done
 }
 
+apply_nfs4_turns_acl() {
+    local turns_dir="$1"
+    local python_bin=""
+
+    if command -v python3 >/dev/null 2>&1; then
+        python_bin="$(command -v python3)"
+    elif command -v python >/dev/null 2>&1; then
+        python_bin="$(command -v python)"
+    else
+        return 0
+    fi
+
+    "$python_bin" - "$turns_dir" "$OPERATOR" <<'PY'
+import errno
+import os
+import pwd
+import struct
+import sys
+
+path, operator_name = sys.argv[1], sys.argv[2]
+
+try:
+    os.getxattr(path, "system.nfs4_acl_xdr")
+except OSError as exc:
+    if exc.errno in (errno.ENODATA, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", 95)):
+        sys.exit(0)
+    raise
+
+operator_uid = pwd.getpwnam(operator_name).pw_uid
+
+ACL_IS_DIR = 0x20000
+ALLOW = 0
+SPECIAL_WHO = 1
+OWNER = 1
+GROUP = 2
+EVERYONE = 3
+
+FILE_INHERIT = 0x01
+DIRECTORY_INHERIT = 0x02
+INHERIT_ONLY = 0x08
+IDENTIFIER_GROUP = 0x40
+OWNER_MODIFY_DIR = 0x1E01FF
+OWNER_MODIFY_FILE = 0x1E019F
+GROUP_MODIFY_DIR = 0x1200EF
+GROUP_MODIFY_FILE = 0x12008F
+EVERYONE_READ_ATTRS = 0x120088
+
+aces = [
+    # Split directory and file inheritance so turn dirs are traversable while
+    # in.md/out.md remain non-executable.
+    (ALLOW, DIRECTORY_INHERIT | INHERIT_ONLY,
+     SPECIAL_WHO, OWNER_MODIFY_DIR, OWNER),
+    (ALLOW, FILE_INHERIT | DIRECTORY_INHERIT | INHERIT_ONLY,
+     SPECIAL_WHO, OWNER_MODIFY_FILE, OWNER),
+    (ALLOW, 0, SPECIAL_WHO, OWNER_MODIFY_DIR, OWNER),
+
+    # Explicit operator ACE: player-created out.md must be readable by the
+    # orchestrator even before the operator's shell has refreshed group
+    # memberships after provisioning.
+    (ALLOW, DIRECTORY_INHERIT | INHERIT_ONLY,
+     0, OWNER_MODIFY_DIR, operator_uid),
+    (ALLOW, FILE_INHERIT | DIRECTORY_INHERIT | INHERIT_ONLY,
+     0, OWNER_MODIFY_FILE, operator_uid),
+
+    # Owning group ACE: player users can write in turn dirs the operator
+    # creates, and nested turn artifacts keep the same access model.
+    (ALLOW, IDENTIFIER_GROUP | DIRECTORY_INHERIT | INHERIT_ONLY,
+     SPECIAL_WHO, GROUP_MODIFY_DIR, GROUP),
+    (ALLOW, IDENTIFIER_GROUP | FILE_INHERIT | DIRECTORY_INHERIT | INHERIT_ONLY,
+     SPECIAL_WHO, GROUP_MODIFY_FILE, GROUP),
+    (ALLOW, IDENTIFIER_GROUP, SPECIAL_WHO, GROUP_MODIFY_DIR, GROUP),
+    (ALLOW, 0, SPECIAL_WHO, EVERYONE_READ_ATTRS, EVERYONE),
+]
+
+words = [ACL_IS_DIR, len(aces)]
+for ace in aces:
+    words.extend(ace)
+
+os.setxattr(
+    path,
+    "system.nfs4_acl_xdr",
+    struct.pack("!" + "I" * len(words), *words),
+)
+PY
+}
+
 # --- subcommands ---
 
 cmd_campaign() {
@@ -124,10 +210,13 @@ cmd_campaign() {
         # turns/: operator owns so the orchestrator can always mkdir
         # per-turn subdirs without depending on group membership; group
         # is the player's primary group, setgid so files inherit it.
-        # Mode 2770 + orchestrator umask 002 -> child subdirs are 2775
-        # (group write), so the player can write their own out.md.
+        # Mode 2770 covers normal POSIX inheritance. On TrueNAS-style ZFS
+        # datasets mounted with nfs4acl, apply_nfs4_turns_acl adds explicit
+        # inheritable ACEs because chmod/setgid alone creates owner-only
+        # children.
         if [[ -d "$pdir/turns" ]]; then
             apply_perms_recursive "$OPERATOR" "$puser" 2770 0660 "$pdir/turns"
+            apply_nfs4_turns_acl "$pdir/turns"
         fi
 
         # Public subdir: owner = player, group = aog-agents, setgid so files

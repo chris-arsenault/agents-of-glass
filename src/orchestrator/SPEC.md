@@ -1,6 +1,6 @@
 # Orchestrator — Spec
 
-The Python loop that drives a scene: picks the next agent, builds their per-turn ephemeral CWD, spawns `claude -p --dangerously-skip-permissions`, and processes their output. Plus the campaign/arc/scene lifecycle that runs around scenes.
+The Python loop that drives a scene: picks the next agent, builds their per-turn context package, spawns `claude -p --dangerously-skip-permissions`, and processes their output. Plus the campaign/arc/scene lifecycle that runs around scenes.
 
 For the full role this plays in the system, see [`../../docs/design/architecture.md`](../../docs/design/architecture.md). For the turn shape it implements, see [`../../docs/design/turn-loop.md`](../../docs/design/turn-loop.md). For the context it builds per turn, see [`../../docs/design/context-packages.md`](../../docs/design/context-packages.md). For the campaign/arc/scene hierarchy this drives, see [`../../docs/design/game-start.md`](../../docs/design/game-start.md).
 
@@ -8,7 +8,7 @@ This started as a spec. The current implementation is a v0 bootstrap predating t
 
 - target shape: scene state at `campaigns/<id>/arcs/<arc>/scenes/<scene>/state.json`;
 - transcript, scene context, and audit files at `campaigns/<id>/arcs/<arc>/scenes/<scene>/`;
-- per-turn artifacts (TURN_START.md, TURN.md, agent stdout/stderr) at `sessions/<id>/turns/<NNNN>/`;
+- per-turn artifacts (TURN_START.md, TURN.md, agent stdout/stderr) under `dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`;
 - agents are spawned directly inside the campaign workspace (`cwd = campaigns/<id>/`); no per-turn ephemeral CWD;
 - agent stdout/stderr is streamed line-by-line to the operator's terminal with `[<agent-id>]` prefix, plus captured to disk;
 - real turns invoke `claude -p ...`; `--dry-run` commits synthetic turns for
@@ -63,10 +63,10 @@ Operator concerns only — no agent ever calls `aog`.
 ## What the orchestrator loop does, per turn (within an active scene)
 
 1. **Pick the next agent.** Mode-dependent (round-robin, initiative, DM-prompted, etc.). DM has override authority via the previous DM turn's prose (in v1, no structured next-speaker hint — DM's intent is read from prose).
-2. **Generate `TURN_START.md`** at `sessions/<id>/turns/<NNNN>/TURN_START.md`. Contains pointers (relative to the campaign workspace) to persona, methodology-for-mode, scene framing, campaign-level context, vocabulary, recent-turn snapshot, plus an absolute path to where the agent must write its prose (`TURN.md` in the same dir).
+2. **Generate `TURN_START.md`** under the spawning agent's campaign directory. Contains pointers (relative to the campaign workspace) to persona, methodology-for-mode, scene framing, campaign-level context, vocabulary, recent-turn snapshot, plus an absolute path to where the agent must write its prose (`TURN.md` in the same dir).
 3. **Apply Unix permissions** on the per-turn dir so the spawning user can read TURN_START and write TURN.md. (No-op if provisioning isn't set up.)
-4. **Spawn `claude -p --dangerously-skip-permissions`** with `cwd = campaigns/<id>/` (the actual campaign workspace; not a copy). Set env vars: `GLASS_ROLE`, `GLASS_SESSION_ID`, `GLASS_CONFIG`, `GLASS_TURN_ID`, `AOG_TURN_START`, `AOG_TURN_OUTPUT`. The prompt is short — it just says "Read $AOG_TURN_START and write to $AOG_TURN_OUTPUT".
-5. **Stream stdout/stderr** to the operator's terminal line-by-line, prefixed with `[<agent-id>]`. Full captures saved to `sessions/<id>/turns/<NNNN>/agent-{stdout,stderr}.txt`.
+4. **Spawn `claude -p --dangerously-skip-permissions`** with `cwd = campaigns/<id>/` (the actual campaign workspace; not a copy). Set env vars: `GLASS_ROLE`, `GLASS_CAMPAIGN_ID`, `GLASS_CONFIG`, `GLASS_TURN_ID`, `AOG_TURN_START`, `AOG_TURN_OUTPUT`, plus `GLASS_API_URL` and `GLASS_API_GRANT_FILE` for player users. The prompt is short — it just says "Read $AOG_TURN_START and write to $AOG_TURN_OUTPUT".
+5. **Stream stdout/stderr** to the operator's terminal line-by-line, prefixed with `[<agent-id>]`. Full captures saved beside the agent's TURN files.
 6. **Wait** for the subprocess to exit (with timeout from `claude.turn_timeout_seconds`, default 3600s).
 7. **Process the agent's prose.** v0 contract: the agent writes public turn prose to `TURN.md`. If that file is missing, the orchestrator uses captured stdout as a fallback. The orchestrator then calls `glass turn append`, which owns the transcript header, mechanical event inlining, and the glass state update.
 8. **Update orchestrator state** (turn number, mode budgets, last speaker). State persists to disk so resume works.
@@ -89,7 +89,7 @@ No automatic retries. No automatic recovery. See [`../../docs/design/architectur
 - Mode stack, turn number, last speaker, current speaker queue → all in Postgres.
 - Markdown content (transcript, framing, lore, journals) → all on disk, git-tracked.
 - Graph state → in FalkorDB.
-- Ephemeral state (current `.glass-cwd/*`) → discardable; rebuilt on resume.
+- Per-agent turn scratch (`dm/turns/*`, `players/<id>/turns/*`) → discardable after commit; rebuilt on resume as needed.
 
 `aog session resume <id>` should be idempotent — running it on a clean session is a no-op.
 

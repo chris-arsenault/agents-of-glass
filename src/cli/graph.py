@@ -123,7 +123,9 @@ def upsert_entity(
     `link_entities`) are preserved.
     """
     now = _now_iso()
+    entity_uid = _entity_uid(campaign_id, entity_id)
     props: dict[str, Any] = {
+        "uid": entity_uid,
         "id": entity_id,
         "campaign_id": campaign_id,
         "title": title,
@@ -135,16 +137,17 @@ def upsert_entity(
         props["tags"] = list(tags)
     if prominence is not None:
         props["prominence"] = prominence
-    if status is not None:
-        props["status"] = status
+    # Always write status so a previously-created shell node does not stay
+    # marked as shell after the real entity is upserted.
+    props["status"] = status
     if source is not None:
         props["source"] = source
 
     # Upsert the entity itself.
-    set_assignments = ", ".join(f"e.{k} = ${k}" for k in props if k != "id")
+    set_assignments = ", ".join(f"e.{k} = ${k}" for k in props if k != "uid")
     g.query(
         f"""
-        MERGE (e:Entity {{id: $id}})
+        MERGE (e:Entity {{uid: $uid}})
         ON CREATE SET e.created_at = $created_at
         SET {set_assignments}
         RETURN e
@@ -154,59 +157,76 @@ def upsert_entity(
 
     # Replace sections.
     g.query(
-        "MATCH (e:Entity {id: $id})-[r:HAS_SECTION]->(s:Section) DELETE r, s",
-        {"id": entity_id},
+        "MATCH (e:Entity {uid: $uid})-[r:HAS_SECTION]->(s:Section) DELETE r, s",
+        {"uid": entity_uid},
     )
     for section in sections or []:
         section_id = section.get("section_id") or section.get("id")
         if not section_id:
             continue
+        section_uid = _section_uid(campaign_id, section_id)
         s_props = {
+            "uid": section_uid,
             "id": section_id,
+            "campaign_id": campaign_id,
             "entity_id": entity_id,
+            "entity_uid": entity_uid,
             "title": section.get("title", ""),
             "heading": section.get("heading", section.get("title", "")),
             "text": section.get("text", ""),
         }
-        set_clause = ", ".join(f"s.{k} = ${k}" for k in s_props if k != "id")
+        set_clause = ", ".join(f"s.{k} = ${k}" for k in s_props if k != "uid")
         g.query(
             f"""
-            MATCH (e:Entity {{id: $entity_id}})
-            CREATE (e)-[:HAS_SECTION]->(s:Section {{id: $id}})
+            MATCH (e:Entity {{uid: $entity_uid}})
+            CREATE (e)-[:HAS_SECTION]->(s:Section {{uid: $uid}})
             SET {set_clause}
             """,
-            {**s_props, "entity_id": entity_id},
+            s_props,
         )
 
     # Refresh auto-detected MENTIONS edges.
     g.query(
-        "MATCH (a:Entity {id: $id})-[r:MENTIONS]->(:Entity) DELETE r",
-        {"id": entity_id},
+        "MATCH (a:Entity {uid: $uid})-[r:MENTIONS]->(:Entity) DELETE r",
+        {"uid": entity_uid},
     )
     for target_id in dict.fromkeys(mentions or []):
         if target_id == entity_id:
             continue
+        target_uid = _entity_uid(campaign_id, target_id)
         g.query(
             """
-            MATCH (a:Entity {id: $src})
-            MERGE (b:Entity {id: $dst})
-              ON CREATE SET b.title = $dst, b.status = 'shell'
+            MATCH (a:Entity {uid: $src_uid})
+            MERGE (b:Entity {uid: $dst_uid})
+              ON CREATE SET b.id = $dst, b.title = $dst, b.status = 'shell',
+                            b.campaign_id = $campaign_id
             MERGE (a)-[:MENTIONS]->(b)
             """,
-            {"src": entity_id, "dst": target_id},
+            {
+                "src_uid": entity_uid,
+                "dst_uid": target_uid,
+                "dst": target_id,
+                "campaign_id": campaign_id,
+            },
         )
 
 
-def remove_entity(g: Any, entity_id: str) -> int:
+def remove_entity(g: Any, entity_id: str, *, campaign_id: str | None = None) -> int:
     """Delete an entity, its sections, and any edges touching it. Returns number of nodes affected."""
+    match = "MATCH (e:Entity {uid: $uid})" if campaign_id else "MATCH (e:Entity {id: $id})"
+    params = (
+        {"uid": _entity_uid(campaign_id, entity_id)}
+        if campaign_id
+        else {"id": entity_id}
+    )
     res = g.query(
-        """
-        MATCH (e:Entity {id: $id})
+        f"""
+        {match}
         OPTIONAL MATCH (e)-[:HAS_SECTION]->(s:Section)
         DETACH DELETE e, s
         RETURN count(e) AS n
         """,
-        {"id": entity_id},
+        params,
     )
     if res.result_set:
         return int(res.result_set[0][0])
@@ -252,20 +272,28 @@ def delete_campaign_graph(g: Any, campaign_id: str) -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 
-def neighborhood(g: Any, entity_id: str) -> dict[str, Any]:
+def neighborhood(
+    g: Any, entity_id: str, *, campaign_id: str | None = None
+) -> dict[str, Any]:
     """Return entity + its outgoing edges + incoming edges + sections."""
+    match = "MATCH (e:Entity {uid: $uid})" if campaign_id else "MATCH (e:Entity {id: $id})"
+    params = (
+        {"uid": _entity_uid(campaign_id, entity_id)}
+        if campaign_id
+        else {"id": entity_id}
+    )
     res = g.query(
-        """
-        MATCH (e:Entity {id: $id})
+        f"""
+        {match}
         OPTIONAL MATCH (e)-[r_out]->(t:Entity)
         OPTIONAL MATCH (s:Entity)-[r_in]->(e)
         OPTIONAL MATCH (e)-[:HAS_SECTION]->(sec:Section)
         RETURN e,
-               collect(DISTINCT {type: type(r_out), target: t.id, target_title: t.title}) AS outgoing,
-               collect(DISTINCT {type: type(r_in), source: s.id, source_title: s.title}) AS incoming,
-               collect(DISTINCT {id: sec.id, heading: sec.heading}) AS sections
+               collect(DISTINCT {{type: type(r_out), target: t.id, target_title: t.title}}) AS outgoing,
+               collect(DISTINCT {{type: type(r_in), source: s.id, source_title: s.title}}) AS incoming,
+               collect(DISTINCT {{id: sec.id, heading: sec.heading}}) AS sections
         """,
-        {"id": entity_id},
+        params,
     )
     if not res.result_set:
         return {"found": False, "entity_id": entity_id}
@@ -313,6 +341,7 @@ def find_entities(
 def link_entities(
     g: Any,
     *,
+    campaign_id: str,
     src_id: str,
     edge_type: str,
     dst_id: str,
@@ -324,28 +353,47 @@ def link_entities(
             f"edge type must be UPPERCASE_SNAKE_CASE: {edge_type!r}"
         )
     properties = properties or {}
+    src_uid = _entity_uid(campaign_id, src_id)
+    dst_uid = _entity_uid(campaign_id, dst_id)
     cypher = f"""
-        MERGE (a:Entity {{id: $src}})
-          ON CREATE SET a.title = $src, a.status = 'shell'
-        MERGE (b:Entity {{id: $dst}})
-          ON CREATE SET b.title = $dst, b.status = 'shell'
+        MERGE (a:Entity {{uid: $src_uid}})
+          ON CREATE SET a.id = $src, a.title = $src, a.status = 'shell',
+                        a.campaign_id = $campaign_id
+        MERGE (b:Entity {{uid: $dst_uid}})
+          ON CREATE SET b.id = $dst, b.title = $dst, b.status = 'shell',
+                        b.campaign_id = $campaign_id
         MERGE (a)-[r:{edge_type}]->(b)
         SET r += $props
         RETURN r
     """
-    g.query(cypher, {"src": src_id, "dst": dst_id, "props": properties})
+    g.query(
+        cypher,
+        {
+            "campaign_id": campaign_id,
+            "src_uid": src_uid,
+            "dst_uid": dst_uid,
+            "src": src_id,
+            "dst": dst_id,
+            "props": properties,
+        },
+    )
 
 
-def unlink_entities(g: Any, *, src_id: str, edge_type: str, dst_id: str) -> int:
+def unlink_entities(
+    g: Any, *, campaign_id: str, src_id: str, edge_type: str, dst_id: str
+) -> int:
     if not _valid_edge_type(edge_type):
         raise ValueError(f"invalid edge type: {edge_type!r}")
     res = g.query(
         f"""
-        MATCH (:Entity {{id: $src}})-[r:{edge_type}]->(:Entity {{id: $dst}})
+        MATCH (:Entity {{uid: $src_uid}})-[r:{edge_type}]->(:Entity {{uid: $dst_uid}})
         DELETE r
         RETURN count(r) AS n
         """,
-        {"src": src_id, "dst": dst_id},
+        {
+            "src_uid": _entity_uid(campaign_id, src_id),
+            "dst_uid": _entity_uid(campaign_id, dst_id),
+        },
     )
     if res.result_set:
         return int(res.result_set[0][0])
@@ -414,6 +462,14 @@ def _slugify(value: str) -> str:
 
 def _valid_edge_type(name: str) -> bool:
     return bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", name))
+
+
+def _entity_uid(campaign_id: str, entity_id: str) -> str:
+    return f"{campaign_id}:{entity_id}"
+
+
+def _section_uid(campaign_id: str, section_id: str) -> str:
+    return f"{campaign_id}:{section_id}"
 
 
 def _now_iso() -> str:

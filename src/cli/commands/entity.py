@@ -106,15 +106,15 @@ def entity() -> None:
 def entity_upsert(ctx: click.Context, path_text: str, campaign_id: str | None) -> None:
     require_dm()
     paths = get_paths()
-    campaign_id = active_campaign_id()
-    state = load_state(paths, campaign_id)
+    target_campaign = campaign_id or active_campaign_id()
+    state = load_state(paths, target_campaign)
     path = resolve_content_path(paths, path_text)
     record = upsert_entity_from_path(paths, state, path)
 
     # Mirror the entity into FalkorDB. Best-effort: if the graph is
     # unreachable, the JSON state still has the data and the operation
     # remains useful — but we surface the error so the operator knows.
-    graph_status = _mirror_entity_to_graph(record, path, campaign_id)
+    graph_status = _mirror_entity_to_graph(record, path, target_campaign)
 
     result = {"entity": record, "graph": graph_status}
     commit(
@@ -131,7 +131,7 @@ def _mirror_entity_to_graph(
     record: dict[str, Any], path: Path, campaign_id_override: str | None
 ) -> dict[str, Any]:
     """Push an entity to FalkorDB. Returns a status dict describing the result."""
-    from . import graph as _graph
+    from .. import graph as _graph
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
@@ -189,7 +189,7 @@ def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
 
     Prefers FalkorDB; falls back to JSON state if the graph is unreachable.
     """
-    from . import graph as _graph
+    from .. import graph as _graph
 
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -199,7 +199,9 @@ def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
     if _graph.is_available(config):
         try:
             with _graph.connect(config) as g:
-                payload = _graph.neighborhood(g, entity_id)
+                payload = _graph.neighborhood(
+                    g, entity_id, campaign_id=campaign_id
+                )
         except Exception as exc:
             payload = {"found": False, "error": str(exc)}
         if payload.get("found"):
@@ -285,7 +287,7 @@ def entity_find(
     limit: int,
 ) -> None:
     """Search entities in the graph by substring + filters."""
-    from . import graph as _graph
+    from .. import graph as _graph
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
@@ -334,7 +336,7 @@ def entity_link(
     exist (so you can link to entities that haven't been ratified yet).
     """
     require_dm()
-    from . import graph as _graph
+    from .. import graph as _graph
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
@@ -350,7 +352,12 @@ def entity_link(
     try:
         with _graph.connect(config) as g:
             _graph.link_entities(
-                g, src_id=src_id, edge_type=edge_type, dst_id=dst_id, properties=properties
+                g,
+                campaign_id=active_campaign_id(),
+                src_id=src_id,
+                edge_type=edge_type,
+                dst_id=dst_id,
+                properties=properties,
             )
     except (ValueError, Exception) as exc:
         raise GlassError(f"falkordb link failed: {exc}") from exc
@@ -373,14 +380,20 @@ def entity_link(
 def entity_unlink(ctx: click.Context, src_id: str, edge_type: str, dst_id: str) -> None:
     """Remove a typed edge between two entities (DM-only)."""
     require_dm()
-    from . import graph as _graph
+    from .. import graph as _graph
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
         raise GlassError(f"falkordb is not reachable at {config.describe()}")
     try:
         with _graph.connect(config) as g:
-            removed = _graph.unlink_entities(g, src_id=src_id, edge_type=edge_type, dst_id=dst_id)
+            removed = _graph.unlink_entities(
+                g,
+                campaign_id=active_campaign_id(),
+                src_id=src_id,
+                edge_type=edge_type,
+                dst_id=dst_id,
+            )
     except Exception as exc:
         raise GlassError(f"falkordb unlink failed: {exc}") from exc
     emit({"src": src_id, "edge_type": edge_type, "dst": dst_id, "removed": removed})
@@ -402,7 +415,7 @@ def entity_query(ctx: click.Context, cypher: str, params: tuple[str, ...]) -> No
     edges get `_kind: 'edge'` and a `_relation` field.
     """
     require_dm()
-    from . import graph as _graph
+    from .. import graph as _graph
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
@@ -428,7 +441,7 @@ def entity_query(ctx: click.Context, cypher: str, params: tuple[str, ...]) -> No
 @click.pass_context
 def entity_stats(ctx: click.Context) -> None:
     """Show graph counts: entities, sections, edges, top edge types, top entity types."""
-    from . import graph as _graph
+    from .. import graph as _graph
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
@@ -439,5 +452,3 @@ def entity_stats(ctx: click.Context) -> None:
     except Exception as exc:
         raise GlassError(f"falkordb stats failed: {exc}") from exc
     emit({"target": config.describe(), **stats})
-
-

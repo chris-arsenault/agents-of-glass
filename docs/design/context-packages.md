@@ -164,7 +164,7 @@ The `inbox/` and `transcript-recent.md` etc. are orchestrator-maintained project
 
 ## Process Isolation
 
-Each agent runs as a separate `claude -p` subprocess **directly inside the campaign workspace** (`cwd = campaigns/<id>/`). No per-turn ephemeral CWD with file projections. Per-turn artifacts (TURN_START.md, TURN.md) live at `sessions/<session-id>/turns/<NNNN>/`, separate from the campaign workspace.
+Each agent runs as a separate `claude -p` subprocess **directly inside the campaign workspace** (`cwd = campaigns/<id>/`). No per-turn ephemeral CWD with file projections. Per-turn artifacts (TURN_START.md, TURN.md) live under that agent's campaign directory: `dm/turns/<NNNN>/` for the DM and `players/<id>/turns/<NNNN>/` for players.
 
 Filesystem isolation between agents is enforced by Unix users + group-based chmod. See [`architecture.md`](architecture.md#process-isolation) for the full setup. Quick summary:
 
@@ -180,7 +180,7 @@ The principle: **do not trust agents to honor "don't read X."** Agents are too g
 
 ## Streaming Output
 
-The orchestrator runs in the foreground. When it spawns each agent invocation, it streams the agent's stdout (and stderr) line-by-line to the operator's terminal, prefixed with the agent id (e.g. `[mara]`, `[tev]`). Full captures land at `sessions/<session-id>/turns/<NNNN>/agent-stdout.txt` and `agent-stderr.txt` for post-hoc inspection.
+The orchestrator runs in the foreground. When it spawns each agent invocation, it streams the agent's stdout (and stderr) line-by-line to the operator's terminal, prefixed with the agent id (e.g. `[mara]`, `[tev]`). Full captures land beside the agent's TURN files for post-hoc inspection.
 
 This is the operator's primary debugging tool during play — you can see the agent reading files, calling `glass` commands, doing web searches, and writing files in real time. The default per-turn timeout is 60 minutes (`claude.turn_timeout_seconds = 3600`), bumped from 5 minutes after the first inspection runs showed real DM work needs more breathing room.
 
@@ -222,13 +222,11 @@ This is the queryability layer that lets the always-on context stay small. An ag
 
 The orchestrator decides Sumi is up next during scene `keel-quarter-aftermath` in arc `reconnect-to-vantara`. It:
 
-1. Builds `.glass-cwd/<scene-id>/sumi-tNNNN/` (ephemeral) with: `persona.md`, `character.md`, `scratchpad.md` (her own), `campaign-context.md` (from `campaigns/<id>/context.md`), `arc-context.md` (from `arcs/reconnect-to-vantara/context.md`), `scene-context.md` (from `arcs/reconnect-to-vantara/scenes/keel-quarter-aftermath/context.md`), `transcript-recent.md` (built fresh from last 6 turns of this scene plus tail of prior scene), `inbox/` (her unread messages), `vocabulary/index.md` (symlinked), `notes/` (her own).
-2. Generates `TURN_START.md` in that CWD with pointers to all of the above.
-3. Spawns `claude -p --dangerously-skip-permissions "Read TURN_START.md and take your turn."` with CWD set to the ephemeral dir and the Sumi-role tool allowlist (via env var).
-4. Waits for the subprocess to exit.
-5. Reads the prose Sumi wrote to `TURN.md`; the audit log of any `glass` calls she made; appends to `arcs/reconnect-to-vantara/scenes/keel-quarter-aftermath/transcript.md` with header.
-6. Tears down the ephemeral CWD.
-7. Picks the next agent.
+1. Generates `players/sumi/turns/<NNNN>/TURN_START.md` with pointers to her readable campaign files: `persona.md`, `character.md`, `scratchpad.md`, campaign context, arc context, scene context, recent transcript, messages, vocabulary, and notes.
+2. Spawns `claude -p --dangerously-skip-permissions "Read <absolute TURN_START path> and take your turn."` with CWD set to `campaigns/<id>/` and the Sumi role grant installed for `glass`.
+3. Waits for the subprocess to exit.
+4. Reads the prose Sumi wrote to `players/sumi/turns/<NNNN>/TURN.md`; the audit log of any `glass` calls she made; appends to the campaign transcript with a header.
+5. Picks the next agent.
 
 ## What This Doc Does Not Cover
 

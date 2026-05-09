@@ -115,14 +115,13 @@ def db_migrate(ctx: click.Context) -> None:
     # Best-effort audit: skip if no active session, or if the active-session
     # pointer is stale (points to a cleared/deleted session).
     paths = get_paths()
-    if active_session_file(paths).exists():
-        try:
-            campaign_id = active_campaign_id()
-            state = load_state(paths, campaign_id)
-        except GlassError:
-            state = None
-        if state is not None:
-            append_audit(paths, state, ctx, "db.migrate", command_params(), result)
+    try:
+        campaign_id = active_campaign_id()
+        state = load_state(paths, campaign_id)
+    except GlassError:
+        state = None
+    if state is not None:
+        append_audit(paths, state, ctx, "db.migrate", command_params(), result)
     emit(result)
 
 
@@ -155,5 +154,4 @@ def _campaign_workspace() -> _workspace.CampaignWorkspace:
         return _workspace.resolve_active_campaign(paths.campaigns, env_id=env_id)
     except FileNotFoundError as exc:
         raise GlassError(str(exc)) from exc
-
 

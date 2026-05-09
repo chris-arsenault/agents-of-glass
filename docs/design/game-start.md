@@ -124,8 +124,8 @@ campaigns/<id>/                     # per-campaign runtime root
     persona.md, scratchpad.md, journal/, notes/, secret/, intake/, workspace/
     foundation.md                   # DM-only working framing for the campaign
   players/<id>/                     # copy of templates/players/<id>/, mutates
+  methodologies/                    # frozen snapshot of templates/methodologies/
   shared/                           # copy of templates/shared/, mutates
-    methodologies/                  # frozen snapshot of templates/methodologies/
     lore/                           # campaign-canon (DM-canonized)
     vocabulary/
     quest-log.md

@@ -2,7 +2,7 @@
 
 The instruction documents the agents read to know *how* a phase runs. **The real instructions** for each bootstrap phase plus regular play.
 
-These get copied into each campaign at creation as `campaigns/<name>/shared/methodologies/`, frozen against the campaign so editing the template here doesn't retroactively change a running campaign.
+These get copied into each campaign at creation as `campaigns/<name>/methodologies/`, frozen against the campaign so editing the template here doesn't retroactively change a running campaign.
 
 For when each methodology is invoked, see [`/docs/design/game-start.md`](../../docs/design/game-start.md).
 

@@ -8,14 +8,14 @@ The DM and players use these terms in their prose to flag what they're doing —
 - Cleaner corpus analysis (terms cluster meaningfully)
 - A shared reference that role prompts and people files can point at instead of re-explaining
 
-This doc describes the *theory*. The actual vocabulary lives at runtime under `sessions/shared/vocabulary/` and gets built up over time.
+This doc describes the *theory*. The actual vocabulary lives at runtime under `campaigns/<id>/shared/vocabulary/` and gets built up over time.
 
 ## Layout
 
 Same TOC + supporting-files pattern used in the lore repo:
 
 ```
-sessions/shared/vocabulary/
+campaigns/<id>/shared/vocabulary/
   index.md                  # TOC — all terms, brief entries, links to detail
   turn-verbs.md             # what kinds of turns players take
   combat-moves.md           # attack, prepare, hold, retreat, etc.

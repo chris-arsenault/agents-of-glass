@@ -74,4 +74,4 @@ When something is ready for the table, it lives here. Until then it's in `worksp
 
 ### Lore vs notes
 
-Notes are the DM's working reference. They are not automatically canonical for the players. When a note represents something canonical to the campaign that other agents should also know about, the DM uses `glass entity upsert` to push it into the FalkorDB graph and (typically) into `sessions/shared/lore/` as a published encyclopedia entry. **Player-facing canon goes to shared lore; DM-only canon stays here in notes/**.
+Notes are the DM's working reference. They are not automatically canonical for the players. When a note represents something canonical to the campaign that other agents should also know about, the DM uses `glass entity upsert` to push it into the FalkorDB graph and (typically) into `shared/lore/` as a published encyclopedia entry. **Player-facing canon goes to shared lore; DM-only canon stays here in notes/**.

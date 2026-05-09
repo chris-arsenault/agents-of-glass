@@ -23,6 +23,8 @@ ENV/
 # Project-specific
 # ephemeral per-turn agent CWDs
 .glass-cwd/
+# local pasted/debug context
+.sulion-paste/
 # local config overrides (e.g. agents-of-glass.local.toml)
 *.local.toml
 

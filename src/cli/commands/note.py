@@ -110,7 +110,7 @@ def note_write(
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    destination = resolve_note_write_path(paths, path_text)
+    destination = resolve_note_write_path(paths, path_text, campaign_id=campaign_id)
     text = read_body(body, from_file)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(text, encoding="utf-8")
@@ -285,5 +285,4 @@ def note_reject(ctx: click.Context, intake_id: str, reason: str) -> None:
         command_params(intake_id=intake_id, reason=reason),
         result,
     )
-
 

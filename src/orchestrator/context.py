@@ -51,14 +51,16 @@ class ContextBuilder:
         #   campaigns/<id>/dm/turns/<NNNN>/{in.md, out.md, stdout, stderr}
         #   campaigns/<id>/players/<id>/turns/<NNNN>/...
         # The parent `turns/` dir is provisioned at campaign creation with
-        # the right ownership/setgid; files here inherit. We do NOT chmod
-        # per-turn dirs at runtime, and we do NOT use any of these as the
-        # agent's cwd — the spawn_cwd is the campaign workspace.
-        turn_dir = _agent_turn_dir(self.config.campaigns_dir, state.campaign, agent) / f"{turn_number:04d}"
+        # the right ownership and inheritable ACLs; files here inherit.
+        turn_dir = (
+            _agent_turn_dir(self.config.campaigns_dir, state.campaign, agent)
+            / f"{turn_number:04d}"
+        )
         turn_dir.mkdir(parents=True, exist_ok=True)
 
         turn_start_path = turn_dir / "in.md"
         turn_output_path = turn_dir / "out.md"
+        _clear_stale_turn_artifacts(turn_dir)
 
         spawn_cwd = self.config.campaigns_dir / state.campaign
         if not spawn_cwd.exists():
@@ -98,8 +100,11 @@ class ContextBuilder:
     ) -> str:
         active = state.active_mode
         recent_turns = self._recent_turns(state, max_turns=6)
-        scene_framing_path = self.store.scene_framing_path(state.campaign)
-        transcript_path = self.store.transcript_path(state.campaign)
+        scene_framing_path = _agent_path(
+            self.store.scene_framing_path(state.campaign), spawn_cwd
+        )
+        transcript_path = _agent_path(self.store.transcript_path(state.campaign), spawn_cwd)
+        turn_output_ref = _agent_path(turn_output_path, spawn_cwd)
 
         if agent.role == "dm":
             persona_pointer = "dm/persona.md"
@@ -142,7 +147,7 @@ class ContextBuilder:
             f"{rapid_section}"
             f"{closing_section}"
             "## Output contract\n\n"
-            f"Write your final public turn prose to **`{turn_output_path}`** "
+            f"Write your final public turn prose to **`{turn_output_ref}`** "
             "and exit. Do not include YAML, JSON, analysis notes, or private "
             "planning there. The orchestrator reads only this file.\n\n"
             "## Message bus — drain on turn start\n\n"
@@ -175,18 +180,17 @@ class ContextBuilder:
             "standing instructions come from this file, your persona, and the "
             "active mode/scene framing.\n\n"
             "## Working directory\n\n"
-            f"Your `cwd` is `{spawn_cwd}` (the campaign workspace). "
-            "All paths below are relative to this directory unless they're "
-            "explicitly absolute.\n\n"
+            "Your `cwd` is the campaign workspace root. All campaign paths "
+            "below are relative to this directory.\n\n"
             "## Scene framing\n\n"
-            f"Scene framing is at `{scene_framing_path}` (absolute path).\n\n"
+            f"Scene framing is at `{scene_framing_path}`.\n\n"
             "## Campaign-level reference\n\n"
             "- `context.md` — player-facing campaign-level context (the DM keeps this updated)\n"
             "- `shared/campaign-framing.md` / `shared/quest-log.md` / `shared/party-knowledge.md`\n"
             "- `shared/lore/` — campaign canon (curated subset of the world bible)\n"
             "- `shared/vocabulary/` — shared dialect; start at `shared/vocabulary/index.md`\n\n"
             "## Recent turns\n\n"
-            f"Full transcript at `{transcript_path}` (absolute path). "
+            f"Full transcript at `{transcript_path}`. "
             "Last few turns embedded for convenience:\n\n"
             "```markdown\n"
             f"{recent_turns}"
@@ -296,8 +300,8 @@ class ContextBuilder:
             "3. `glass lore upsert <path>` — registers the entry in the graph and makes "
             "it player-visible.\n\n"
             "**Importing world-bible content** (curate; do not bulk-copy):\n"
-            "1. `glass lore search <query>` to find candidates from "
-            "`world-lore/` or `dm-world-lore/`.\n"
+            "1. `glass lore search <query>` to find candidates from the "
+            "configured world-bible repo.\n"
             "2. `glass lore import <path>` — copies the entry into `shared/lore/` and "
             "graph-upserts in one shot. `--as <name>` to override the destination filename.\n\n"
             "Edge types between entities (LOCATED_IN, MEMBER_OF, GOVERNS, etc.) are added "
@@ -363,6 +367,29 @@ def _agent_turn_dir(campaigns_dir: Path, campaign: str, agent: Agent) -> Path:
     if agent.role == "dm":
         return root / "dm" / "turns"
     return root / "players" / agent.id / "turns"
+
+
+def _agent_path(path: Path, spawn_cwd: Path) -> str:
+    try:
+        return str(path.relative_to(spawn_cwd))
+    except ValueError:
+        return str(path)
+
+
+def _clear_stale_turn_artifacts(turn_dir: Path) -> None:
+    for name in (
+        "out.md",
+        "COMMIT.md",
+        "agent-stdout.txt",
+        "agent-stderr.txt",
+        "agent-debug.json",
+        "claude-debug.log",
+    ):
+        path = turn_dir / name
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _dm_tools() -> list[str]:
