@@ -88,6 +88,21 @@ def apply_campaign_permissions(campaign_dir: Path) -> bool:
     return True
 
 
+def clean_workspace_via_helper(campaign_dir: Path) -> bool:
+    """rm -rf the campaign workspace via the root-privileged helper.
+
+    Needed because subdirs under `players/<id>/` are owned by aog-<player>
+    with restrictive perms; the orchestrator (running as the operator)
+    can't traverse or delete them without root. Returns True if removed
+    via the helper, False if provisioning isn't set up — caller should
+    fall back to plain shutil.rmtree.
+    """
+    if not has_provisioned_users():
+        return False
+    _run_helper(["clean-workspace", str(campaign_dir.resolve())])
+    return True
+
+
 def _run_helper(args: list[str]) -> None:
     """Invoke /usr/local/bin/aog-permset via sudo with the given args."""
     if shutil.which("sudo") is None:

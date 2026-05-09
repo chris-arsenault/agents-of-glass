@@ -7,7 +7,8 @@
 # Invoked via sudo by the orchestrator (sudoers entry permits NOPASSWD).
 #
 # Subcommands:
-#   campaign <campaign-dir>   apply campaign workspace permissions
+#   campaign <campaign-dir>         apply campaign workspace permissions
+#   clean-workspace <campaign-dir>  rm -rf the campaign workspace (root)
 #
 # All paths are validated to be under expected roots before any chown/chmod
 # fires.
@@ -27,6 +28,7 @@ PLAYER_IDS=(tev sumi renno kit)
 usage() {
     cat <<EOF
 Usage: $0 campaign <campaign-dir>
+       $0 clean-workspace <campaign-dir>
 EOF
     exit 1
 }
@@ -171,7 +173,26 @@ cmd_campaign() {
     chmod 2750 "$campaign_dir"
 }
 
+cmd_clean_workspace() {
+    local campaign_dir="${1:-}"
+    [[ -z "$campaign_dir" ]] && usage
+    assert_path_safe "$campaign_dir"
+
+    # Refuse to remove anything outside a `campaigns/` directory — be
+    # paranoid about misuse since this runs as root.
+    case "$campaign_dir" in
+        */campaigns/*) ;;
+        *) echo "aog-permset: clean-workspace path must contain '/campaigns/'; got $campaign_dir" >&2; exit 1 ;;
+    esac
+    if [[ ! -d "$campaign_dir" ]]; then
+        echo "aog-permset: not a directory: $campaign_dir" >&2
+        exit 1
+    fi
+    rm -rf -- "$campaign_dir"
+}
+
 case "${1:-}" in
-    campaign)  shift; cmd_campaign "$@" ;;
-    *)         usage ;;
+    campaign)         shift; cmd_campaign "$@" ;;
+    clean-workspace)  shift; cmd_clean_workspace "$@" ;;
+    *)                usage ;;
 esac

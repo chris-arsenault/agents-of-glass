@@ -112,7 +112,13 @@ class CampaignManager:
 
     def clear(self, campaign_id: str) -> None:
         space = CampaignSpace.from_config(self.config, campaign_id)
-        if space.exists():
+        if not space.exists():
+            return
+        # Subdirs under players/<id>/ are owned by aog-<player> with
+        # restrictive perms; the operator can't traverse or rmtree them
+        # directly. Delegate to the root-privileged helper when
+        # provisioning is set up.
+        if not permissions.clean_workspace_via_helper(space.campaign_dir):
             shutil.rmtree(space.campaign_dir)
 
     # --- state lifecycle ---
