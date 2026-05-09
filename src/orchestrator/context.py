@@ -211,17 +211,22 @@ class ContextBuilder:
     def _closing_section(self, state: SessionState, agent: Agent) -> str:
         """Render the scene-closing pressure section if a countdown is active.
 
-        - val > 0   → "## Scene closing — N turn(s) left", soft converge nudge
-        - val == 0  → "## Final round", strong nudge to one closing beat
-        - val < 0   → "## SCENE OVERRUN", hard backstop telling the DM to end now
+        Internally `state.scene_closing_turns` is in agent-commits. We display
+        in rounds (1 round = 5 agent commits), rounded up. The states:
+
+          val >  0  → "## Scene closing — N round(s) left" (soft converge nudge)
+          val == 0  → "## Final round" (strong nudge to one closing beat)
+          val <  0  → "## SCENE OVERRUN" (hard backstop telling DM to end now)
         """
         val = state.scene_closing_turns
         if val is None:
             return ""
         if val > 0:
-            label = "turn" if val == 1 else "turns"
+            agents_per_round = 5
+            rounds_left = (val + agents_per_round - 1) // agents_per_round
+            label = "round" if rounds_left == 1 else "rounds"
             return (
-                f"## Scene closing — {val} {label} left\n\n"
+                f"## Scene closing — ~{rounds_left} {label} left\n\n"
                 "The DM has declared this scene is wrapping up. **Converge "
                 "your loose threads.** Don't open new arcs of action. Don't "
                 "introduce new NPCs or plot threads. Move toward closure on "
@@ -237,9 +242,10 @@ class ContextBuilder:
                 "After this round the DM will close the scene.\n\n"
             )
         # Overrun
+        overrun_turns = -val
         if agent.role == "dm":
             return (
-                f"## SCENE OVERRUN ({-val} turn(s) past Final round)\n\n"
+                f"## SCENE OVERRUN ({overrun_turns} turn(s) past Final round)\n\n"
                 "**The closing countdown has expired.** The scene should "
                 "have ended already. **Call `glass scene end --summary "
                 "<text> --beats <bullets> --xp <awards>` now even if it "
@@ -247,7 +253,7 @@ class ContextBuilder:
                 "runs forever.\n\n"
             )
         return (
-            f"## SCENE OVERRUN ({-val} turn(s) past Final round)\n\n"
+            f"## SCENE OVERRUN ({overrun_turns} turn(s) past Final round)\n\n"
             "The scene closing countdown has expired. Keep your turn very "
             "brief — do not introduce new threads. The DM should be ending "
             "the scene any moment.\n\n"

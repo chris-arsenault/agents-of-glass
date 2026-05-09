@@ -2913,37 +2913,61 @@ def scene_end_cmd(
     )
 
 
+# A "round" is one full cycle through the speaker order. For all current
+# modes (character-creation, scene-play) the rotation is 5 agents long
+# (4 players + DM). Action modes will customize this when they exist.
+_AGENTS_PER_ROUND = 5
+
+
 @scene.command("closing-down")
-@click.option("--turns", "turn_budget", type=int, default=10, show_default=True,
-              help="How many turns of soft closing pressure (countdown ticks "
-                   "down each turn commit).")
+@click.option("--rounds", "round_budget", type=int, default=4, show_default=True,
+              help="How many rounds (full cycles through the table) of soft "
+                   "closing pressure.")
+@click.option("--turns", "turn_budget", type=int, default=None,
+              help="Escape hatch: raw agent-commit count (overrides --rounds).")
 @click.pass_context
-def scene_closing_down(ctx: click.Context, turn_budget: int) -> None:
+def scene_closing_down(
+    ctx: click.Context, round_budget: int, turn_budget: int | None,
+) -> None:
     """DM-only: declare the scene is closing down.
 
-    Sets a turn countdown that surfaces in every subsequent TURN_START.md
-    as a "Scene closing — N turns left" section. Players see it and
-    converge their threads. When the counter hits 0, agents see a "Final
-    round" section instead. The DM closes with `glass scene end`.
+    Sets a countdown that surfaces in every subsequent TURN_START.md as
+    "Scene closing — N rounds left" so players know to converge their
+    threads. When the counter hits 0, agents see a "Final round" section
+    instead. The DM closes with `glass scene end`.
 
     The countdown is informational pressure, not a hard cap — the DM is
     expected to actually call `glass scene end` when ready. The
     methodology says imperfect closure beats a forever-running scene.
+
+    Use `--rounds N` for the typical case (1 round = ~5 agent turns).
+    `--turns N` is an escape hatch for fine-grained control.
     """
     role = require_dm()
-    if turn_budget <= 0:
-        raise GlassError("--turns must be positive")
+    if turn_budget is not None:
+        if turn_budget <= 0:
+            raise GlassError("--turns must be positive")
+        commits = turn_budget
+        unit_label = f"{turn_budget} turn(s)"
+    else:
+        if round_budget <= 0:
+            raise GlassError("--rounds must be positive")
+        commits = round_budget * _AGENTS_PER_ROUND
+        unit_label = f"~{round_budget} round(s)"
     paths = get_paths()
     state = load_state(paths)
-    # Stored as N+1 because the orchestrator decrements once on the commit
-    # of the DM's setting turn. The first non-DM turn that follows sees the
-    # user-friendly N in TURN_START.
-    state["scene_closing_turns"] = turn_budget + 1
-    queue_event(state, role.actor, f"scene closing down ({turn_budget} turns left)")
-    result = {"scene_closing_turns": turn_budget}
+    # Stored as commits+1 because the orchestrator decrements once on the
+    # commit of the DM's setting turn. The first non-DM turn that follows
+    # sees the user-friendly value in TURN_START.
+    state["scene_closing_turns"] = commits + 1
+    queue_event(state, role.actor, f"scene closing down ({unit_label} left)")
+    result = {
+        "scene_closing_turns": commits,
+        "rounds": round_budget if turn_budget is None else None,
+    }
     commit(
         paths, state, ctx, "scene.closing-down",
-        command_params(turns=turn_budget), result,
+        command_params(rounds=round_budget, turns=turn_budget), result,
     )
 
 

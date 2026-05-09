@@ -123,24 +123,36 @@ Use rapid-rounds sparingly — they're for *moments*, not for replacing scene-pl
 
 Scenes don't end themselves. Without explicit closure, the DM will keep finding "one more thing" to add and the scene runs forever — this is a real failure mode of agentic play. The closure mechanism has multiple layers; the DM is responsible for using all of them.
 
-### Closure signals
+### Closure signals — concrete
 
 Every DM turn, look for at least one of these. When you see one, start closing:
 
 - The scene's stake is resolved (the question that opened the scene has an answer).
 - The party has clearly decided to leave (or to commit to an action that ends this scene's frame).
 - A clock has run out and the consequence has landed.
-- The scene has yielded everything it's going to — repeated turns are getting smaller and more procedural, not larger.
+- The scene has yielded everything it's going to.
 
-If you've gone three or more DM turns without any closure signal, the scene is probably already running too long. Force a signal — push a clock, have an NPC act, narrate a time-skip — and start closing.
+### When does it *feel* like the scene has gone on too long?
+
+There's no turn-count rule. Many scenes run 10-20 rounds or more — long scenes are good when they keep generating, bad when they stop. Trust your gut and watch for the soft tells:
+
+- **Diminishing returns.** Recent turns are getting smaller and more procedural — players are checking inventory, asking minor clarifications, having brief social niceties. The big beats stopped landing several turns back.
+- **Spinning on the same threads.** The party keeps revisiting the same questions or interactions without resolving them. New angles aren't appearing.
+- **You can't articulate what's still on the table.** If asked "what is this scene trying to surface that hasn't yet?", you'd struggle to answer specifically.
+- **The next interesting beat is a new scene.** What you actually want to do next requires a different setting, a time-skip, or a fresh frame. The current scene is the wrong vehicle.
+- **Players are repeating themselves.** Same character moves, same arguments, same vibes. They've shown what they have to show here.
+
+Once two or more of these tells fire, start closing. If a closure signal hasn't fired naturally yet, you can manufacture one — push a clock, have an NPC act, narrate a time-skip. Don't wait for the perfect moment that may never come.
 
 ### The two-phase close
 
-Once a closure signal fires, run the close in two phases:
+Once you've decided to close, run it in two phases:
 
-**Phase 1: closing-down.** Call `glass scene closing-down [--turns N]` (default 10 ≈ two rounds). Every subsequent TURN_START will show the players a "Scene closing — N turns left" countdown so they know to converge their loose threads. They'll stop opening new arcs of action and start moving toward closure on what's already on the table.
+**Phase 1: closing-down.** Call `glass scene closing-down [--rounds N]` (default 4 rounds, i.e. ~20 agent turns). Every subsequent TURN_START will show the players a "Scene closing — N rounds left" countdown so they know to converge their loose threads. They'll stop opening new arcs of action and start moving toward closure on what's already on the table.
 
 The DM continues normal turns during closing-down: respond, drive, plan. Use this window to surface any final beats that need to land — an NPC's last word, a clock tick, a piece of information the party needs before the scene closes.
+
+For short scenes that are already wound down, you can skip Phase 1 entirely and jump to Phase 2 + scene end. The countdown is pressure for longer scenes where the players need warning to converge; a 4-round scene doesn't need it.
 
 **Phase 2: final round.** When the countdown reaches 0 (or earlier if you're ready), fire a rapid-round prompting each PC for a closing beat:
 
