@@ -294,7 +294,7 @@ def transcript_path(paths: Paths, session_id: str) -> Path:
 def default_state(session_id: str, campaign: str) -> dict[str, Any]:
     ts = now_iso()
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "session": {
             "id": session_id,
             "campaign": campaign,
@@ -307,7 +307,6 @@ def default_state(session_id: str, campaign: str) -> dict[str, Any]:
         },
         "mode_stack": [],
         "pending_events": [],
-        "messages": [],
         "note_intake": [],
         "entities": {},
         "threads": {},
@@ -316,10 +315,9 @@ def default_state(session_id: str, campaign: str) -> dict[str, Any]:
 
 
 def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
-    state.setdefault("schema_version", 2)
+    state.setdefault("schema_version", 3)
     state.setdefault("mode_stack", [])
     state.setdefault("pending_events", [])
-    state.setdefault("messages", [])
     state.setdefault("note_intake", [])
     state.setdefault("entities", {})
     state.setdefault("threads", {})
@@ -328,7 +326,10 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
     state["session"].setdefault("turn_counter", len(state["turns"]))
     state["session"].setdefault("status", "active")
     # Drop any legacy keys silently — pre-v1 state may include them.
-    for legacy in ("characters", "dice_events", "mechanical_events", "uncommitted_event_ids"):
+    for legacy in (
+        "characters", "dice_events", "mechanical_events",
+        "uncommitted_event_ids", "messages",
+    ):
         state.pop(legacy, None)
     return state
 
@@ -715,7 +716,6 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "current_scene": current["scene_id"] if current else None,
         "mode_stack": state.get("mode_stack", []),
         "turn_count": len(state.get("turns", [])),
-        "message_count": len(state.get("messages", [])),
         "pending_events": len(state.get("pending_events", [])),
         "pending_notes": [
             item["intake_id"]
@@ -763,7 +763,11 @@ def message_visible_to(message: dict[str, Any], role: Role) -> bool:
     if role.kind != "player":
         return False
     recipient = message["recipient"]
-    return recipient == "party" or recipient == role.actor or message["sender"] == role.actor
+    return (
+        recipient == "party"
+        or recipient == role.actor
+        or message["sender"] == role.actor
+    )
 
 
 def parse_frontmatter(text: str) -> dict[str, str]:
@@ -2313,17 +2317,17 @@ def msg_send(
     require_recipient(paths, state, recipient)
     role = current_role()
     body = " ".join(body_parts)
-    message = {
-        "id": new_id("msg"),
-        "ts": now_iso(),
-        "session_id": state["session"]["id"],
-        "sender": role.actor,
-        "recipient": recipient,
-        "type": message_type,
-        "body": body,
-        "read_by": {},
-    }
-    state["messages"].append(message)
+    campaign_id = active_campaign_id()
+    with pg_connection() as conn:
+        message = _db.message_send(
+            conn,
+            campaign_id=campaign_id,
+            session_id=state["session"]["id"],
+            sender=role.actor,
+            recipient=recipient,
+            type_=message_type,
+            body=body,
+        )
     result = {"message": message}
     commit(
         paths,
@@ -2336,31 +2340,45 @@ def msg_send(
 
 
 @msg_group.command("read")
-@click.option("--since-checkpoint", is_flag=True)
+@click.option("--since-checkpoint", is_flag=True,
+              help="Show only messages this agent hasn't read yet (recommended at turn start).")
 @click.option("--from", "sender")
 @click.option("--type", "message_type")
+@click.option("--no-mark", is_flag=True,
+              help="Do not write read-checkpoints. Useful for spot-checking the bus.")
 @click.pass_context
 def msg_read(
     ctx: click.Context,
     since_checkpoint: bool,
     sender: str | None,
     message_type: str | None,
+    no_mark: bool,
 ) -> None:
     paths = get_paths()
     state = load_state(paths)
     if message_type:
         require_message_type(paths, message_type)
     role = current_role()
-    visible = [message for message in state["messages"] if message_visible_to(message, role)]
-    if since_checkpoint:
-        visible = [message for message in visible if role.actor not in message.get("read_by", {})]
-    if sender:
-        visible = [message for message in visible if message["sender"] == sender]
-    if message_type:
-        visible = [message for message in visible if message["type"] == message_type]
-    read_ts = now_iso()
-    for message in visible:
-        message.setdefault("read_by", {})[role.actor] = read_ts
+    campaign_id = active_campaign_id()
+    with pg_connection() as conn:
+        rows = _db.message_list(
+            conn,
+            campaign_id=campaign_id,
+            agent_id=role.actor,
+            only_unread=since_checkpoint,
+            sender=sender,
+            type_=message_type,
+            limit=500,
+        )
+        # Visibility filter at the app layer (DM sees all; players see
+        # party broadcasts, addressed-to-them, and self-sent).
+        visible = [m for m in rows if message_visible_to(m, role)]
+        if not no_mark and visible:
+            _db.message_mark_read(
+                conn,
+                agent_id=role.actor,
+                message_ids=[m["id"] for m in visible],
+            )
     result = {"messages": visible, "count": len(visible)}
     commit(
         paths,
@@ -2371,6 +2389,7 @@ def msg_read(
             since_checkpoint=since_checkpoint,
             sender=sender,
             message_type=message_type,
+            no_mark=no_mark,
         ),
         result,
     )

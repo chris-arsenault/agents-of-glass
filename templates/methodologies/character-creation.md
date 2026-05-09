@@ -188,6 +188,14 @@ If you're not sure where the line is, ask the DM via `glass msg secret dm <reaso
 
 ### 11. Write your files
 
+**First, announce to the party** so the others know what's being built (avoids two players accidentally building near-identical PCs):
+
+```bash
+glass msg table-talk party "I'm building <name>, a <species> <archetype>. <one-line concept>."
+```
+
+Then create the character row + inventory:
+
 ```bash
 # Create the character row in Postgres.
 glass character new <character-id> --player <your-agent-id> \
@@ -225,7 +233,7 @@ Once all four PCs are authored — visible at `players/*/public/intro.md` — ea
 1. **Read all four intros** at `players/*/public/intro.md`. You're now writing as someone who can see the others' characters.
 2. **Pick 1-2 relationship seeds** from the list below. Each seed must name a *specific other PC* — not a generic placeholder. You cannot point both at the same PC if you pick two; each seed must name a different other PC.
 3. **Write a paragraph for each seed** filling it in with specifics. Names, places, the particular thing that happened, the particular feeling that lingers. Use the same anti-sameness rigor you used for your backstory — this is shared canon, it should have texture.
-4. **Coordinate.** If two players pick a seed pointing at each other (e.g., A picks "we were lovers once" pointing at B, and B picks something different pointing at A), both versions become canon. If two players write contradictory specifics for the *same* shared event, the DM may flag it on their round-end turn — you may need to revise on a follow-up turn.
+4. **Coordinate via the message bus.** If you're picking a seed about a shared event with another PC (the Shear incident, the Reconnection split), fire a `glass msg banter <other-player> "..."` to nail down the basic facts before you write your paragraph. Both your account and theirs should reference the same names, place, and rough sequence of events. If two players write contradictory specifics, the DM may flag it on their round-end turn — you may need to revise on a follow-up turn.
 5. **Write the file** directly to `players/<your-id>/public/relationships.md`. Use frontmatter with `title:` (e.g., "<your character>'s relationships") and `type: relationships`.
 
 ### The seed list

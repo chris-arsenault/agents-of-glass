@@ -709,6 +709,118 @@ def _row_to_roll(row: tuple[Any, ...]) -> dict[str, Any]:
     }
 
 
+# --- message bus ---
+
+
+_MESSAGE_COLUMNS = (
+    "id, campaign_id, session_id, sender, recipient, type, body, created_at"
+)
+
+
+def _row_to_message(row: tuple[Any, ...]) -> dict[str, Any]:
+    msg_id, campaign_id, session_id, sender, recipient, type_, body, created_at = row
+    return {
+        "id": str(msg_id),
+        "campaign_id": campaign_id,
+        "session_id": session_id,
+        "sender": sender,
+        "recipient": recipient,
+        "type": type_,
+        "body": body,
+        "created_at": _iso(created_at),
+    }
+
+
+def message_send(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    session_id: str,
+    sender: str,
+    recipient: str,
+    type_: str,
+    body: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO messages (campaign_id, session_id, sender, recipient, type, body)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING {_MESSAGE_COLUMNS}
+            """,
+            (campaign_id, session_id, sender, recipient, type_, body),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_message(row)
+
+
+def message_list(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    agent_id: str | None = None,
+    only_unread: bool = False,
+    sender: str | None = None,
+    type_: str | None = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """List messages for a campaign, oldest-first.
+
+    `only_unread` requires `agent_id`: returns only messages not yet in
+    message_reads for that agent.
+    """
+    if only_unread and not agent_id:
+        raise ValueError("only_unread=True requires agent_id")
+
+    where = ["m.campaign_id = %s"]
+    params: list[Any] = [campaign_id]
+    if sender:
+        where.append("m.sender = %s")
+        params.append(sender)
+    if type_:
+        where.append("m.type = %s")
+        params.append(type_)
+
+    join = ""
+    if only_unread:
+        join = "LEFT JOIN message_reads r ON r.message_id = m.id AND r.agent_id = %s"
+        params.insert(0, agent_id)
+        where.append("r.message_id IS NULL")
+
+    sql = (
+        f"SELECT {_MESSAGE_COLUMNS} FROM messages m {join} "
+        f"WHERE {' AND '.join(where)} "
+        "ORDER BY m.created_at, m.id "
+        "LIMIT %s"
+    )
+    params.append(limit)
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+    return [_row_to_message(row) for row in rows]
+
+
+def message_mark_read(
+    conn: "psycopg.Connection[Any]",
+    *,
+    agent_id: str,
+    message_ids: list[str],
+) -> int:
+    """Insert read-checkpoints for a list of message ids. Idempotent (ON CONFLICT)."""
+    if not message_ids:
+        return 0
+    with conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO message_reads (agent_id, message_id) VALUES (%s, %s) "
+            "ON CONFLICT DO NOTHING",
+            [(agent_id, mid) for mid in message_ids],
+        )
+        marked = cur.rowcount
+    conn.commit()
+    return marked
+
+
 def roll_record(
     conn: "psycopg.Connection[Any]",
     *,
