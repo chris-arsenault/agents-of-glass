@@ -51,18 +51,21 @@ def campaign() -> None:
 @click.option(
     "--max-planning-turns",
     type=int,
-    default=5,
+    default=15,
     show_default=True,
-    help="Hard cap on DM invocations during campaign planning.",
+    help="Safety net only. The DM ends the planning mode when they're "
+         "done; this cap just stops runaway loops. Bump if a planning "
+         "session legitimately needs more.",
 )
 @click.option(
     "--max-creation-turns",
     type=int,
-    default=12,
+    default=30,
     show_default=True,
-    help="Hard cap on character_creation turns. The natural shape is "
-         "5 (4 players + DM) per round x 2 rounds = 10, with 2 turns of "
-         "slack for revisions.",
+    help="Safety net only. The DM ends the character_creation mode when "
+         "both rounds (build + relationships) are done; this cap just "
+         "stops runaway loops. Natural shape is ~10 turns; 30 leaves "
+         "plenty of room for revisions.",
 )
 @click.option(
     "--skip-character-creation",

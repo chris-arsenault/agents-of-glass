@@ -266,17 +266,8 @@ The character_creation phase ends. The DM signals phase-complete and the campaig
 
 ## What the DM does
 
-Two turns total during character creation — one at the end of each round. On each turn the DM:
+The orchestrator gives you a turn after each pass through the players. What you do with it is up to you. Read what's been authored. Push back on anything off-spec via `glass msg secret <player> "revise: ..."`. Write whatever campaign-level prose feels right (`shared/campaign-framing.md` updates, DM notes, secret messages).
 
-- Reads what the players authored that round.
-- Reads each player's `secrets/` subdir for any hidden-knowledge files dropped this round (the players will message you when they drop one).
-- Optionally writes a short campaign-intro update at `shared/campaign-framing.md` (after round 1) reflecting the actual party. After round 2, may add a "what the party knows about each other" passage.
-- If a player produced something off-spec (impossible species, broken attribute budget, generic-fantasy slop, contradictory shared events), pushes back via `glass msg secret <player> "revise: ..."` — the player can fix it on a follow-up turn.
+You're not pre-approving every character. You're reviewing the party as it forms.
 
-**Round-1 DM turn (your first one in this phase):** announce "relationships round begins" in your turn prose. **Do NOT end the mode yet** — the players still need round 2.
-
-**Round-2 DM turn (your second and final):** end the mode with `glass mode end`. That signals phase-complete and the orchestrator exits the loop.
-
-If you end the mode after round 1, players never get a chance to write their relationships and the phase finishes incomplete. Don't.
-
-The DM is not pre-approving every character. They are reviewing the party as a whole and only intervening when something concrete needs fixing.
+**Closure: end the mode (`glass mode end`) only when both rounds — character build *and* relationships — are genuinely done.** Until then, leave the mode open and the players will get more turns. The phase is over when you say it is.
