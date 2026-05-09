@@ -4,860 +4,110 @@ The CLI is the in-session tool surface for Agents of Glass. It intentionally
 keeps prose in markdown and records only coherence-critical state: sessions,
 mode labels, dice, character numbers, messages, note ratification state, and
 turn metadata.
+
+Helpers live in sibling modules (errors, constants, ids, yaml_io, config,
+role, paths_resolve, validation, state, campaign, messages, entities). This
+file holds only the click command tree; per-group extraction to `commands/`
+is the next refactor step.
 """
 
 from __future__ import annotations
 
-import difflib
 import json
 import os
 import random
-import re
 import shutil
 import sys
-import tomllib
-import uuid
-from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import click
 
 from . import db as _db
 from . import workspace as _workspace
-
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-RISK_THRESHOLDS = {
-    "controlled": 7,
-    "standard": 8,
-    "risky": 9,
-    "desperate": 10,
-}
-ATTRIBUTE_TIERS = {
-    "rudimentary": -2,
-    "standard": 0,
-    "advanced": 1,
-    "superior": 2,
-    "transcendent": 4,
-}
-SKILL_TIERS = {
-    "fool": -2,
-    "apprentice": 0,
-    "artisan": 1,
-    "virtuoso": 2,
-    "legend": 4,
-}
-ATTRIBUTES = (
-    "vitality",
-    "finesse",
-    "focus",
-    "resolve",
-    "attunement",
-    "ingenuity",
-    "presence",
+from .campaign import (
+    active_campaign_id,
+    active_campaign_root,
+    lookup_player_character_id,
+    pg_connection,
+    resolve_active_campaign_workspace,
 )
-STARTER_MESSAGE_TYPES = {
-    "table-talk",
-    "banter",
-    "instruction",
-    "plot-hint",
-    "secret",
-}
-
-
-class GlassError(click.ClickException):
-    """Agent-friendly CLI error."""
-
-
-@dataclass(frozen=True)
-class Role:
-    kind: str
-    actor: str
-    raw: str | None
-
-    @property
-    def can_do_anything(self) -> bool:
-        return self.kind == "operator"
-
-
-@dataclass(frozen=True)
-class Paths:
-    content: Path
-    sessions: Path
-    campaigns: Path | None = None
-    lore: Path | None = None
-
-
-def now_iso() -> str:
-    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def new_id(prefix: str) -> str:
-    return f"{prefix}_{uuid.uuid4().hex[:12]}"
-
-
-def slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return slug or "session"
-
-
-def load_config() -> dict[str, Any]:
-    config_path = os.environ.get("GLASS_CONFIG")
-    candidates = []
-    if config_path:
-        candidates.append(Path(config_path).expanduser())
-    else:
-        candidates.extend(
-            [
-                REPO_ROOT / "agents-of-glass.toml",
-                REPO_ROOT / "agents-of-glass.local.toml",
-            ]
-        )
-
-    for path in candidates:
-        if path.exists():
-            with path.open("rb") as handle:
-                return tomllib.load(handle)
-    return {}
-
-
-def resolve_config_path(value: str | None, default: Path) -> Path:
-    if not value:
-        return default
-    path = Path(value).expanduser()
-    if not path.is_absolute():
-        path = REPO_ROOT / path
-    return path.resolve()
-
-
-def get_paths() -> Paths:
-    config = load_config()
-    path_config = config.get("paths", {})
-    # `content` is the legacy alias; the modern key is `templates`.
-    content = resolve_config_path(
-        path_config.get("content") or path_config.get("templates"),
-        REPO_ROOT / "templates",
-    )
-    sessions = resolve_config_path(path_config.get("sessions"), content / "sessions")
-    campaigns = resolve_config_path(
-        path_config.get("campaigns"), REPO_ROOT / "campaigns"
-    )
-    lore_cfg = config.get("lore", {}).get("path") if isinstance(config.get("lore"), dict) else None
-    lore = resolve_config_path(lore_cfg, REPO_ROOT.parent / "the-glass-frontier-lore")
-    return Paths(content=content, sessions=sessions, campaigns=campaigns, lore=lore)
-
-
-def active_campaign_id() -> str:
-    """Return the campaign id for character/roll DB scope.
-
-    Resolves from GLASS_CAMPAIGN_ID, then the most-recently-modified campaign
-    workspace under paths.campaigns. Raises GlassError if neither is available.
-    """
-    explicit = os.environ.get("GLASS_CAMPAIGN_ID")
-    if explicit:
-        return explicit
-    paths = get_paths()
-    if paths.campaigns is None:
-        raise GlassError(
-            "active campaign required: set GLASS_CAMPAIGN_ID or configure paths.campaigns"
-        )
-    try:
-        return _workspace.resolve_active_campaign(paths.campaigns).campaign_id
-    except FileNotFoundError as exc:
-        raise GlassError(str(exc)) from exc
-
-
-def active_campaign_root() -> Path:
-    """Return the filesystem root of the active campaign workspace.
-
-    Falls back to paths.content (templates) when no campaign is active —
-    used for tests and dev where the runtime workspace doesn't exist.
-    """
-    explicit = os.environ.get("GLASS_CAMPAIGN_ID")
-    paths = get_paths()
-    if paths.campaigns is None:
-        return paths.content
-    try:
-        if explicit:
-            return _workspace.resolve_active_campaign(
-                paths.campaigns, env_id=explicit
-            ).root
-        return _workspace.resolve_active_campaign(paths.campaigns).root
-    except FileNotFoundError:
-        return paths.content
-
-
-def lookup_player_character_id(campaign_id: str, player_id: str) -> str | None:
-    """Look up the character id for a player in the active campaign. Returns
-    None if the player has no character or has multiple."""
-    try:
-        with pg_connection() as conn:
-            characters = _db.character_list(conn, campaign_id)
-    except GlassError:
-        return None
-    candidates = [c["character_id"] for c in characters if c.get("player_id") == player_id]
-    if len(candidates) == 1:
-        return candidates[0]
-    return None
-
-
-@contextmanager
-def pg_connection() -> Iterator[Any]:
-    """Open a Postgres connection from the resolved config."""
-    pg_config = _db.load_pg_config(load_config())
-    try:
-        with _db.connect(pg_config) as conn:
-            yield conn
-    except GlassError:
-        raise
-    except Exception as exc:
-        raise GlassError(f"postgres connection failed ({pg_config.describe()}): {exc}") from exc
-
-
-def current_role() -> Role:
-    raw = os.environ.get("GLASS_ROLE")
-    if raw is None or raw == "":
-        return Role(kind="operator", actor="operator", raw=raw)
-    if raw == "dm":
-        return Role(kind="dm", actor="dm", raw=raw)
-    if raw.startswith("player:"):
-        actor = raw.split(":", 1)[1].strip()
-        if actor:
-            return Role(kind="player", actor=actor, raw=raw)
-    if raw.startswith("player_"):
-        actor = raw.split("_", 1)[1].strip()
-        if actor:
-            return Role(kind="player", actor=actor, raw=raw)
-    raise GlassError(
-        "invalid GLASS_ROLE: expected unset/operator, 'dm', or 'player:<id>' "
-        f"(got {raw!r})"
-    )
-
-
-def require_dm() -> Role:
-    role = current_role()
-    if role.can_do_anything or role.kind == "dm":
-        return role
-    raise GlassError("permission denied: this command is DM-only")
-
-
-def require_player() -> Role:
-    role = current_role()
-    if role.can_do_anything or role.kind == "player":
-        return role
-    raise GlassError("permission denied: this command is player-only")
-
-
-def active_session_file(paths: Paths) -> Path:
-    return paths.sessions / ".active-session"
-
-
-def write_active_session(paths: Paths, session_id: str) -> None:
-    paths.sessions.mkdir(parents=True, exist_ok=True)
-    active_session_file(paths).write_text(f"{session_id}\n", encoding="utf-8")
-
-
-def active_session_id(paths: Paths, required: bool = True) -> str | None:
-    env_session = os.environ.get("GLASS_SESSION_ID")
-    if env_session:
-        return env_session
-    active = active_session_file(paths)
-    if active.exists():
-        value = active.read_text(encoding="utf-8").strip()
-        if value:
-            return value
-    if required:
-        raise GlassError("no active session: set GLASS_SESSION_ID or run 'glass session new'")
-    return None
-
-
-def session_dir(paths: Paths, session_id: str) -> Path:
-    return paths.sessions / session_id
-
-
-def state_path(paths: Paths, session_id: str) -> Path:
-    return session_dir(paths, session_id) / "state.json"
-
-
-def audit_path(paths: Paths, session_id: str) -> Path:
-    return session_dir(paths, session_id) / "audit.jsonl"
-
-
-def transcript_path(paths: Paths, session_id: str) -> Path:
-    return session_dir(paths, session_id) / "transcript.md"
-
-
-def default_state(session_id: str, campaign: str) -> dict[str, Any]:
-    ts = now_iso()
-    return {
-        "schema_version": 3,
-        "session": {
-            "id": session_id,
-            "campaign": campaign,
-            "status": "active",
-            "created_at": ts,
-            "updated_at": ts,
-            "wrapped_at": None,
-            "summary": "",
-            "turn_counter": 0,
-        },
-        "mode_stack": [],
-        "pending_events": [],
-        "note_intake": [],
-        "entities": {},
-        "threads": {},
-        "turns": [],
-        "next_speakers": [],
-        "scene_closing_turns": None,
-    }
-
-
-def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
-    state.setdefault("schema_version", 3)
-    state.setdefault("mode_stack", [])
-    state.setdefault("pending_events", [])
-    state.setdefault("note_intake", [])
-    state.setdefault("entities", {})
-    state.setdefault("threads", {})
-    state.setdefault("turns", [])
-    state.setdefault("session", {})
-    state.setdefault("next_speakers", [])
-    state.setdefault("scene_closing_turns", None)
-    # Migrate legacy `next_speaker` (single string) into the new queue.
-    legacy_next = state.pop("next_speaker", None)
-    if isinstance(legacy_next, str) and legacy_next:
-        state["next_speakers"].append({"agent": legacy_next})
-    state["session"].setdefault("turn_counter", len(state["turns"]))
-    state["session"].setdefault("status", "active")
-    # Drop any legacy keys silently — pre-v1 state may include them.
-    for legacy in (
-        "characters", "dice_events", "mechanical_events",
-        "uncommitted_event_ids", "messages",
-    ):
-        state.pop(legacy, None)
-    return state
-
-
-def load_state(paths: Paths, session_id: str | None = None) -> dict[str, Any]:
-    session = session_id or active_session_id(paths)
-    path = state_path(paths, session)
-    if not path.exists():
-        raise GlassError(f"unknown session: {session}")
-    return normalize_state(json.loads(path.read_text(encoding="utf-8")))
-
-
-def save_state(paths: Paths, state: dict[str, Any]) -> None:
-    state["session"]["updated_at"] = now_iso()
-    session = state["session"]["id"]
-    directory = session_dir(paths, session)
-    directory.mkdir(parents=True, exist_ok=True)
-    path = state_path(paths, session)
-    tmp_path = path.with_suffix(".json.tmp")
-    tmp_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp_path.replace(path)
-
-
-def append_audit(
-    paths: Paths,
-    state: dict[str, Any],
-    ctx: click.Context,
-    event: str,
-    params: dict[str, Any],
-    result: dict[str, Any],
-) -> None:
-    session_id = state["session"]["id"]
-    role = current_role()
-    record = {
-        "audit_id": new_id("audit"),
-        "ts": now_iso(),
-        "session_id": session_id,
-        "role": role.raw or "operator",
-        "actor": role.actor,
-        "command": ctx.command_path,
-        "event": event,
-        "params": make_jsonable(params),
-        "result": make_jsonable(result),
-    }
-    path = audit_path(paths, session_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, sort_keys=True) + "\n")
-
-
-def commit(
-    paths: Paths,
-    state: dict[str, Any],
-    ctx: click.Context,
-    event: str,
-    params: dict[str, Any],
-    result: dict[str, Any],
-    *,
-    save: bool = True,
-) -> None:
-    if save:
-        save_state(paths, state)
-    append_audit(paths, state, ctx, event, params, result)
-    emit(result)
-
-
-def make_jsonable(value: Any) -> Any:
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, tuple):
-        return [make_jsonable(item) for item in value]
-    if isinstance(value, list):
-        return [make_jsonable(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): make_jsonable(item) for key, item in value.items()}
-    return value
-
-
-def yaml_scalar(value: Any) -> str:
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return str(value)
-    text = str(value)
-    if text == "":
-        return '""'
-    simple = re.fullmatch(r"[A-Za-z0-9_./:+-]+", text)
-    lower = text.lower()
-    if simple and lower not in {"null", "true", "false", "yes", "no"}:
-        return text
-    return json.dumps(text)
-
-
-def to_yaml(value: Any, indent: int = 0) -> str:
-    pad = " " * indent
-    if isinstance(value, dict):
-        lines: list[str] = []
-        for key, item in value.items():
-            if isinstance(item, (dict, list)) and item:
-                lines.append(f"{pad}{key}:")
-                lines.append(to_yaml(item, indent + 2))
-            elif isinstance(item, dict):
-                lines.append(f"{pad}{key}: {{}}")
-            elif isinstance(item, list):
-                lines.append(f"{pad}{key}: []")
-            else:
-                lines.append(f"{pad}{key}: {yaml_scalar(item)}")
-        return "\n".join(lines)
-    if isinstance(value, list):
-        if not value:
-            return f"{pad}[]"
-        lines = []
-        for item in value:
-            if isinstance(item, dict):
-                lines.append(f"{pad}-")
-                lines.append(to_yaml(item, indent + 2))
-            elif isinstance(item, list):
-                lines.append(f"{pad}-")
-                lines.append(to_yaml(item, indent + 2))
-            else:
-                lines.append(f"{pad}- {yaml_scalar(item)}")
-        return "\n".join(lines)
-    return f"{pad}{yaml_scalar(value)}"
-
-
-def emit(value: dict[str, Any]) -> None:
-    click.echo(to_yaml(value))
-
-
-def read_body(body: str | None, from_file: str | None) -> str:
-    if body is not None:
-        return body
-    if from_file:
-        if from_file == "-":
-            return sys.stdin.read()
-        return Path(from_file).expanduser().read_text(encoding="utf-8")
-    if not sys.stdin.isatty():
-        return sys.stdin.read()
-    return ""
-
-
-def clean_relative_path(path_text: str) -> Path:
-    path = Path(path_text)
-    if path.is_absolute():
-        path = Path(*path.parts[1:])
-    if any(part == ".." for part in path.parts):
-        raise GlassError("invalid path: '..' is not allowed")
-    return path
-
-
-def ensure_under(path: Path, root: Path, message: str) -> Path:
-    resolved = path.resolve()
-    try:
-        resolved.relative_to(root.resolve())
-    except ValueError as exc:
-        raise GlassError(message) from exc
-    return resolved
-
-
-def ensure_under_any(path: Path, roots: list[Path], message: str) -> Path:
-    """Like ensure_under but accepts any of several allowed roots."""
-    resolved = path.resolve()
-    for root in roots:
-        try:
-            resolved.relative_to(root.resolve())
-            return resolved
-        except ValueError:
-            continue
-    raise GlassError(message)
-
-
-def display_path(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(REPO_ROOT))
-    except ValueError:
-        return str(path)
-
-
-def resolve_content_path(paths: Paths, path_text: str) -> Path:
-    """Resolve a path argument from a CLI command.
-
-    Absolute paths are accepted under templates/ or campaigns/ (or, when
-    invoked from inside a campaign workspace, are taken as-is). Relative
-    paths are resolved against the current working directory; if the cwd
-    is a campaign workspace, that becomes the root.
-    """
-    raw = Path(path_text).expanduser()
-    if raw.is_absolute():
-        allowed = [paths.content]
-        if paths.campaigns is not None:
-            allowed.append(paths.campaigns)
-        return ensure_under_any(
-            raw,
-            allowed,
-            f"invalid path: absolute paths must stay under templates/ or campaigns/; got {raw}",
-        )
-    rel = clean_relative_path(path_text)
-    # Strip a leading 'content' or 'templates' segment for backwards-compat.
-    if rel.parts and rel.parts[0] in {"content", "templates"}:
-        rel = Path(*rel.parts[1:])
-    # Try cwd-relative first if cwd is inside a campaign workspace.
-    cwd_candidate = (Path.cwd() / rel).resolve()
-    if paths.campaigns is not None:
-        try:
-            cwd_candidate.relative_to(paths.campaigns.resolve())
-            return cwd_candidate
-        except ValueError:
-            pass
-        try:
-            cwd_candidate.relative_to(paths.content.resolve())
-            return cwd_candidate
-        except ValueError:
-            pass
-    return paths.content / rel
-
-
-def resolve_note_write_path(paths: Paths, path_text: str) -> Path:
-    role = current_role()
-    rel = clean_relative_path(path_text)
-    if rel.parts and rel.parts[0] == "content":
-        rel = Path(*rel.parts[1:])
-
-    if role.kind == "player":
-        if rel.parts and rel.parts[0] in {"journal", "drafts"}:
-            rel = Path("players") / role.actor / rel
-        allowed_roots = [
-            Path("players") / role.actor / "journal",
-            Path("players") / role.actor / "drafts",
-        ]
-        if not any(rel == root or root in rel.parents for root in allowed_roots):
-            raise GlassError(
-                "permission denied: players may write only their own journal/ or drafts/"
-            )
-    elif role.kind == "dm":
-        if rel.parts and rel.parts[0] == "workspace":
-            rel = Path("dm") / "workspace" / Path(*rel.parts[1:])
-        elif rel.parts and rel.parts[0] == "lore":
-            rel = Path("shared") / "lore" / Path(*rel.parts[1:])
-        allowed_roots = [
-            Path("dm") / "workspace",
-            Path("dm") / "canonical-notes",
-            Path("dm") / "intake",
-            Path("shared") / "lore",
-            Path("sessions") / "shared" / "lore",
-        ]
-        if not any(rel == root or root in rel.parents for root in allowed_roots):
-            raise GlassError(
-                "permission denied: DM note writes must stay in workspace/, dm/intake/, "
-                "dm/canonical-notes/, or shared lore"
-            )
-
-    return paths.content / rel
-
-
-def player_dirs(paths: Paths) -> list[str]:
-    players_root = paths.content / "players"
-    if not players_root.exists():
-        return []
-    return sorted(path.name for path in players_root.iterdir() if path.is_dir())
-
-
-def roster(paths: Paths, state: dict[str, Any] | None = None) -> list[str]:
-    return sorted(set(player_dirs(paths)))
-
-
-def infer_player_from_path(paths: Paths, path: Path) -> str | None:
-    try:
-        rel = path.resolve().relative_to(paths.content.resolve())
-    except ValueError:
-        return None
-    parts = rel.parts
-    if len(parts) >= 3 and parts[0] == "players" and parts[2] == "drafts":
-        return parts[1]
-    return None
-
-
-def validate_key_values(
-    values: tuple[str, ...],
-    valid_values: dict[str, int],
-    label: str,
-) -> dict[str, str]:
-    parsed: dict[str, str] = {}
-    for value in values:
-        if "=" not in value:
-            raise GlassError(f"invalid {label}: expected name=tier, got {value!r}")
-        name, tier = value.split("=", 1)
-        name = name.strip()
-        tier = tier.strip()
-        if not name:
-            raise GlassError(f"invalid {label}: name cannot be empty")
-        if tier not in valid_values:
-            options = ", ".join(sorted(valid_values))
-            raise GlassError(f"invalid {label} tier {tier!r}; valid tiers: {options}")
-        parsed[name] = tier
-    return parsed
-
-
-def assert_attribute_name(attribute: str) -> None:
-    if attribute not in ATTRIBUTES:
-        raise GlassError(
-            f"unknown attribute {attribute!r}; valid attributes: {', '.join(ATTRIBUTES)}"
-        )
-
-
-def clamp(value: int, floor: int, ceiling: int) -> int:
-    return max(floor, min(ceiling, value))
-
-
-def outcome_for_margin(margin: int) -> tuple[str, int]:
-    if margin >= 2:
-        return "breakthrough", 2
-    if margin >= 0:
-        return "advance", 1
-    if margin == -1:
-        return "stall", 0
-    if margin >= -3:
-        return "regress", -1
-    return "collapse", -2
-
-
-def assert_character_writable(character: dict[str, Any]) -> Role:
-    role = current_role()
-    if role.can_do_anything or role.kind == "dm":
-        return role
-    if role.kind == "player" and character.get("player_id") == role.actor:
-        return role
-    raise GlassError(
-        "permission denied: players may mutate only their own character "
-        f"(owner: {character.get('player_id')})"
-    )
-
-
-def queue_event(state: dict[str, Any], actor: str, summary: str) -> dict[str, Any]:
-    """Queue a one-line summary to be inlined into the next turn's transcript."""
-    event = {
-        "event_id": new_id("event"),
-        "actor": actor,
-        "ts": now_iso(),
-        "summary": summary,
-    }
-    state["pending_events"].append(event)
-    return event
-
-
-def inline_event_lines(events: list[dict[str, Any]]) -> list[str]:
-    if not events:
-        return []
-    return [f"> {event['summary']}" for event in events]
-
-
-def current_mode_record(state: dict[str, Any]) -> dict[str, Any] | None:
-    stack = state.get("mode_stack", [])
-    return stack[-1] if stack else None
-
-
-def role_label_for_turn(role: Role, explicit_role: str | None) -> str:
-    if explicit_role:
-        return explicit_role
-    if role.kind == "dm":
-        return "dm"
-    if role.kind == "player":
-        return "player"
-    return "operator"
-
-
-def actor_for_turn(role: Role, speaker: str | None) -> str:
-    if speaker:
-        return speaker
-    return role.actor
-
-
-def state_summary(state: dict[str, Any]) -> dict[str, Any]:
-    current = current_mode_record(state)
-    return {
-        "session_id": state["session"]["id"],
-        "campaign": state["session"]["campaign"],
-        "status": state["session"]["status"],
-        "created_at": state["session"]["created_at"],
-        "updated_at": state["session"]["updated_at"],
-        "wrapped_at": state["session"].get("wrapped_at"),
-        "current_mode": current["mode"] if current else None,
-        "current_scene": current["scene_id"] if current else None,
-        "mode_stack": state.get("mode_stack", []),
-        "turn_count": len(state.get("turns", [])),
-        "pending_events": len(state.get("pending_events", [])),
-        "pending_notes": [
-            item["intake_id"]
-            for item in state.get("note_intake", [])
-            if item.get("status") == "pending"
-        ],
-    }
-
-
-def load_message_types(paths: Paths) -> set[str]:
-    vocab_path = paths.content / "shared" / "vocabulary" / "message-types.md"
-    if not vocab_path.exists():
-        return set(STARTER_MESSAGE_TYPES)
-    text = vocab_path.read_text(encoding="utf-8")
-    found = set(re.findall(r"`([a-z][a-z0-9-]*)`", text))
-    for line in text.splitlines():
-        match = re.match(r"\s*[-*]\s+([a-z][a-z0-9-]*)(?:\s*[-:;.]|\s*$)", line)
-        if match and match.group(1) not in {"stub"}:
-            found.add(match.group(1))
-    return found or set(STARTER_MESSAGE_TYPES)
-
-
-def require_message_type(paths: Paths, message_type: str) -> None:
-    valid = load_message_types(paths)
-    if message_type in valid:
-        return
-    suggestion = difflib.get_close_matches(message_type, sorted(valid), n=1)
-    suffix = f" Did you mean {suggestion[0]!r}?" if suggestion else ""
-    raise GlassError(
-        f"unknown message type {message_type!r}; valid types: {', '.join(sorted(valid))}.{suffix}"
-    )
-
-
-def require_recipient(paths: Paths, state: dict[str, Any], recipient: str) -> None:
-    valid = {"dm", "party", *roster(paths, state)}
-    if recipient in valid:
-        return
-    options = ", ".join(sorted(valid))
-    raise GlassError(f"unknown recipient {recipient!r}; valid recipients: {options}")
-
-
-def message_visible_to(message: dict[str, Any], role: Role) -> bool:
-    if role.can_do_anything or role.kind == "dm":
-        return True
-    if role.kind != "player":
-        return False
-    recipient = message["recipient"]
-    return (
-        recipient == "party"
-        or recipient == role.actor
-        or message["sender"] == role.actor
-    )
-
-
-def parse_frontmatter(text: str) -> dict[str, str]:
-    if not text.startswith("---\n"):
-        return {}
-    end = text.find("\n---", 4)
-    if end == -1:
-        return {}
-    raw = text[4:end]
-    data: dict[str, str] = {}
-    for line in raw.splitlines():
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        data[key.strip()] = value.strip().strip('"')
-    return data
-
-
-def markdown_title(text: str, fallback: str) -> str:
-    for line in text.splitlines():
-        if line.startswith("# "):
-            return line[2:].strip()
-    return fallback
-
-
-def parse_sections(text: str, entity_id: str) -> list[dict[str, Any]]:
-    sections: list[dict[str, Any]] = []
-    current_title = "body"
-    current_lines: list[str] = []
-
-    def flush() -> None:
-        body = "\n".join(current_lines).strip()
-        if body:
-            section_id = f"{entity_id}:{slugify(current_title)}"
-            sections.append(
-                {
-                    "section_id": section_id,
-                    "title": current_title,
-                    "text": body,
-                }
-            )
-
-    for line in text.splitlines():
-        if line.startswith("## "):
-            flush()
-            current_title = line[3:].strip() or "section"
-            current_lines = []
-        else:
-            current_lines.append(line)
-    flush()
-    return sections
-
-
-def upsert_entity_from_path(paths: Paths, state: dict[str, Any], path: Path) -> dict[str, Any]:
-    allowed_roots = [paths.content]
-    if paths.campaigns is not None:
-        allowed_roots.append(paths.campaigns)
-    path = ensure_under_any(
-        path,
-        allowed_roots,
-        f"entity paths must stay under templates/ or campaigns/; got {path}",
-    )
-    if not path.exists():
-        raise GlassError(f"entity source not found: {display_path(path)}")
-    text = path.read_text(encoding="utf-8")
-    frontmatter = parse_frontmatter(text)
-    entity_id = frontmatter.get("id") or slugify(path.stem)
-    record = {
-        "entity_id": entity_id,
-        "title": frontmatter.get("title") or markdown_title(text, path.stem),
-        "path": display_path(path),
-        "updated_at": now_iso(),
-        "sections": parse_sections(text, entity_id),
-        "frontmatter": frontmatter,
-        "edges": [],
-    }
-    state["entities"][entity_id] = record
-    return record
-
-
-def command_params(**kwargs: Any) -> dict[str, Any]:
-    return make_jsonable(kwargs)
+from .config import REPO_ROOT, Paths, get_paths, load_config
+from .constants import (
+    ATTRIBUTE_TIERS,
+    ATTRIBUTES,
+    RISK_THRESHOLDS,
+    SKILL_TIERS,
+    STARTER_MESSAGE_TYPES,
+)
+from .entities import (
+    markdown_title,
+    parse_frontmatter,
+    parse_sections,
+    upsert_entity_from_path,
+)
+from .errors import GlassError
+from .ids import new_id, now_iso, slugify
+from .messages import (
+    infer_player_from_path,
+    load_message_types,
+    message_visible_to,
+    player_dirs,
+    require_message_type,
+    require_recipient,
+    roster,
+)
+from .paths_resolve import (
+    clean_relative_path,
+    display_path,
+    ensure_under,
+    ensure_under_any,
+    resolve_content_path,
+    resolve_note_write_path,
+)
+from .role import (
+    Role,
+    actor_for_turn,
+    assert_character_writable,
+    current_role,
+    require_dm,
+    require_player,
+    role_label_for_turn,
+)
+from .state import (
+    active_session_file,
+    active_session_id,
+    append_audit,
+    audit_path,
+    commit,
+    current_mode_record,
+    default_state,
+    inline_event_lines,
+    load_state,
+    normalize_state,
+    queue_event,
+    save_state,
+    session_dir,
+    state_path,
+    state_summary,
+    transcript_path,
+    write_active_session,
+)
+from .validation import (
+    assert_attribute_name,
+    clamp,
+    outcome_for_margin,
+    validate_key_values,
+)
+from .yaml_io import (
+    command_params,
+    emit,
+    make_jsonable,
+    read_body,
+    to_yaml,
+    yaml_scalar,
+)
 
 
 @click.group()
