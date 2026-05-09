@@ -311,6 +311,7 @@ def default_state(session_id: str, campaign: str) -> dict[str, Any]:
         "entities": {},
         "threads": {},
         "turns": [],
+        "next_speaker": None,
     }
 
 
@@ -323,6 +324,7 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
     state.setdefault("threads", {})
     state.setdefault("turns", [])
     state.setdefault("session", {})
+    state.setdefault("next_speaker", None)
     state["session"].setdefault("turn_counter", len(state["turns"]))
     state["session"].setdefault("status", "active")
     # Drop any legacy keys silently — pre-v1 state may include them.
@@ -2482,6 +2484,55 @@ def turn_append(
         command_params(markdown_file=markdown_file, speaker=speaker_id),
         result,
     )
+
+
+_HANDOFF_AGENT_IDS = ("dm", "tev", "sumi", "renno", "kit")
+
+
+@turn.command("handoff")
+@click.argument("agent_id")
+@click.pass_context
+def turn_handoff(ctx: click.Context, agent_id: str) -> None:
+    """Hand off the next turn to a specific agent.
+
+    Sets state["next_speaker"]; the orchestrator consumes the override on
+    the next turn-start (one-shot, falls back to round-robin if unset).
+    Use this to call the DM with a question, pass focus to a specific PC,
+    or bend the table order when the situation demands it. Don't use it
+    casually — the default round-robin should handle most flow.
+    """
+    if agent_id not in _HANDOFF_AGENT_IDS:
+        raise GlassError(
+            f"unknown agent id {agent_id!r}; valid: {', '.join(_HANDOFF_AGENT_IDS)}"
+        )
+    paths = get_paths()
+    state = load_state(paths)
+    role = current_role()
+    state["next_speaker"] = agent_id
+    queue_event(state, role.actor, f"handoff -> {agent_id}")
+    result = {"next_speaker": agent_id}
+    commit(
+        paths,
+        state,
+        ctx,
+        "turn.handoff",
+        command_params(agent_id=agent_id),
+        result,
+    )
+
+
+@turn.command("clear-handoff")
+@click.pass_context
+def turn_clear_handoff(ctx: click.Context) -> None:
+    """Clear any pending handoff (operator/DM only). Rare — usually the
+    orchestrator consumes it automatically on the next turn."""
+    require_dm()
+    paths = get_paths()
+    state = load_state(paths)
+    previous = state.get("next_speaker")
+    state["next_speaker"] = None
+    result = {"cleared": previous}
+    commit(paths, state, ctx, "turn.clear-handoff", {}, result)
 
 
 @main.group()

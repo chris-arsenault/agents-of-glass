@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import json
 import os
 import subprocess
 import sys
@@ -14,7 +15,7 @@ from .config import AogConfig, config_env_value
 from .context import ContextBuilder, ContextPackage
 from .glass_bridge import GlassBridgeError
 from . import permissions
-from .state import Agent, SessionState, next_agent_for, utc_now
+from .state import AGENTS_BY_ID, Agent, SessionState, next_agent_for, utc_now
 from .store import SessionStore
 
 
@@ -41,8 +42,37 @@ class Orchestrator:
         self.context_builder = ContextBuilder(config, store)
 
     def prepare_turn(self, state: SessionState) -> ContextPackage:
-        agent = next_agent_for(state)
+        agent = self._resolve_next_agent(state)
         return self.context_builder.build(state, agent)
+
+    def _resolve_next_agent(self, state: SessionState) -> Agent:
+        """Pick the next agent, consuming a `next_speaker` override if set.
+
+        Override is one-shot: read it, clear it, then return the override
+        agent. Falls back to the round-robin order from `next_agent_for` if
+        no override is pending or the override id is invalid.
+        """
+        override = self._consume_handoff_override(state.session_id)
+        if override and override in AGENTS_BY_ID:
+            return AGENTS_BY_ID[override]
+        return next_agent_for(state)
+
+    def _consume_handoff_override(self, session_id: str) -> str | None:
+        path = self.store.glass_state_path(session_id)
+        if not path.exists():
+            return None
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        override = raw.get("next_speaker")
+        if not override:
+            return None
+        raw["next_speaker"] = None
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(path)
+        return override
 
     def run_loop(
         self,
@@ -87,7 +117,7 @@ class Orchestrator:
             raise
 
     def run_one_turn(self, state: SessionState, *, dry_run: bool) -> TurnResult:
-        agent = next_agent_for(state)
+        agent = self._resolve_next_agent(state)
         package = self.context_builder.build(state, agent)
         if dry_run:
             prose = (

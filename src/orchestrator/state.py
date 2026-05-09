@@ -195,6 +195,12 @@ def speaker_order_for(mode: str) -> tuple[str, ...]:
         # 1 (build) and round 2 (relationships); ending the mode signals
         # phase complete.
         return PLAYER_IDS + ("dm",)
+    if normalized == "scene-play":
+        # Free-form scene play. Default order is round-the-table players,
+        # then the DM. Agents can override the next speaker via
+        # `glass turn handoff <agent>` (one-shot) — used to call the DM
+        # with a question, pass focus, or hand back to the round-robin.
+        return PLAYER_IDS + ("dm",)
     return tuple(agent.id for agent in AGENTS)
 
 

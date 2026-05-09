@@ -337,4 +337,5 @@ def _methodology_for_mode(mode: str) -> str | None:
         "character-creation": "character-creation.md",
         "arc-creation": "arc-creation.md",
         "scene-prep": "scene-prep.md",
+        "scene-play": "scene-play.md",
     }.get(normalized)
