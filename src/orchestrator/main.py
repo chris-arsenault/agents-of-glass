@@ -91,57 +91,94 @@ def campaign_bootstrap(
 ) -> None:
     """Bootstrap a campaign end-to-end.
 
+    Idempotent: if the workspace already exists, resume from the current
+    phase. Phases that have already completed (have a completed_at in
+    phase_history) are skipped. Phases that started but didn't finish
+    are picked up where they left off (the orchestrator's create_session
+    is idempotent w.r.t. mode-stack pushes).
+
     Steps:
-      1. Create campaigns/<id>/ from templates/.
+      1. Create or resume campaigns/<id>/.
       2. Invoke DM in campaign-planning mode.
       3. Character creation (skip with --skip-character-creation).
       4. [STUB] Active scene play.
     """
-    click.secho(f"[1/4] Creating campaign workspace: {campaign_id}", fg="cyan")
-    try:
-        space = cli.campaign_manager.create(campaign_id)
-    except (FileExistsError, FileNotFoundError) as exc:
-        raise click.ClickException(str(exc))
+    from .campaign import CampaignSpace
+
+    space = CampaignSpace.from_config(cli.config, campaign_id)
+    if space.exists():
+        click.secho(f"[1/4] Resuming existing campaign: {campaign_id}", fg="cyan")
+        try:
+            cm_state = cli.campaign_manager.load_state(campaign_id)
+        except FileNotFoundError as exc:
+            raise click.ClickException(str(exc))
+        # Re-apply permissions on resume in case the perms helper has
+        # been updated since this workspace was provisioned.
+        from . import permissions as _permissions
+        _permissions.apply_campaign_permissions(space.campaign_dir)
+    else:
+        click.secho(f"[1/4] Creating campaign workspace: {campaign_id}", fg="cyan")
+        try:
+            space = cli.campaign_manager.create(campaign_id)
+            cm_state = cli.campaign_manager.load_state(campaign_id)
+        except (FileExistsError, FileNotFoundError) as exc:
+            raise click.ClickException(str(exc))
     click.echo(f"      workspace: {space.campaign_dir}")
     click.echo(f"      state:     {space.state_path}")
 
-    click.secho(
-        f"[2/4] Invoking DM for campaign planning (max {max_planning_turns} turns)",
-        fg="cyan",
-    )
-    cli.campaign_manager.advance_phase(campaign_id, PHASE_PLANNING)
-    state = cli.store.create_session(
-        campaign=campaign_id,
-        initial_mode="campaign-planning",
-        initial_scene="planning",
-    )
-    click.echo(f"      campaign: {state.campaign}")
-    try:
-        turns_run = cli.orchestrator.run_loop(
-            state,
-            max_turns=max_planning_turns,
-            dry_run=dry_run,
-            resume_failed=False,
+    # Phase 2: campaign planning
+    if _phase_completed(cm_state, PHASE_PLANNING):
+        click.secho(
+            f"[2/4] Campaign planning already complete; skipping.", fg="yellow"
         )
-    except TurnFailure as exc:
-        detail = json.dumps(exc.failure, indent=2, sort_keys=True)
-        raise click.ClickException(f"campaign planning failed: {exc}\n{detail}") from exc
+    else:
+        click.secho(
+            f"[2/4] Invoking DM for campaign planning (max {max_planning_turns} turns)",
+            fg="cyan",
+        )
+        if cm_state["phase"] != PHASE_PLANNING:
+            cli.campaign_manager.advance_phase(campaign_id, PHASE_PLANNING)
+        state = cli.store.create_session(
+            campaign=campaign_id,
+            initial_mode="campaign-planning",
+            initial_scene="planning",
+        )
+        click.echo(f"      campaign: {state.campaign}")
+        try:
+            turns_run = cli.orchestrator.run_loop(
+                state,
+                max_turns=max_planning_turns,
+                dry_run=dry_run,
+                resume_failed=False,
+            )
+        except TurnFailure as exc:
+            detail = json.dumps(exc.failure, indent=2, sort_keys=True)
+            raise click.ClickException(
+                f"campaign planning failed: {exc}\n{detail}"
+            ) from exc
+        click.echo(f"      DM produced {turns_run} planning turn(s)")
+        click.echo(f"      transcript: {cli.store.transcript_path(state.campaign)}")
+        click.echo(f"      DM workspace: {space.campaign_dir / 'dm'}")
+        cm_state = cli.campaign_manager.load_state(campaign_id)  # refresh
 
-    click.echo(f"      DM produced {turns_run} planning turn(s)")
-    click.echo(f"      transcript: {cli.store.transcript_path(state.campaign)}")
-    click.echo(f"      DM workspace: {space.campaign_dir / 'dm'}")
-
+    # Phase 3: character creation
     if skip_character_creation:
-        cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
+        if cm_state["phase"] != PHASE_CHARACTER_CREATION:
+            cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
         click.secho("[3/4] Character creation skipped (--skip-character-creation).",
                     fg="yellow")
+    elif _phase_completed(cm_state, PHASE_CHARACTER_CREATION):
+        click.secho(
+            f"[3/4] Character creation already complete; skipping.", fg="yellow"
+        )
     else:
-        cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
         click.secho(
             f"[3/4] Invoking players + DM for character creation "
             f"(max {max_creation_turns} turns)",
             fg="cyan",
         )
+        if cm_state["phase"] != PHASE_CHARACTER_CREATION:
+            cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
         creation_state = cli.store.create_session(
             campaign=campaign_id,
             initial_mode="character-creation",
@@ -161,8 +198,11 @@ def campaign_bootstrap(
             ) from exc
         click.echo(f"      ran {creation_turns} character-creation turn(s)")
         click.echo(f"      transcript: {cli.store.transcript_path(creation_state.campaign)}")
+        cm_state = cli.campaign_manager.load_state(campaign_id)
 
-    cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
+    # Phase 4: STUB
+    if cm_state["phase"] != PHASE_ACTIVE:
+        cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
     click.secho("[4/4] [STUB] Active scene play", fg="yellow")
     click.echo("              (DM creates scenes via glass scene create;")
     click.echo("               operator drives via aog campaign run)")
@@ -174,6 +214,14 @@ def campaign_bootstrap(
         fg="green",
     )
     click.echo(f"State file: {space.state_path}")
+
+
+def _phase_completed(cm_state: dict, phase_name: str) -> bool:
+    """True if any phase_history entry for this phase has a completed_at."""
+    for entry in cm_state.get("phase_history", []):
+        if entry.get("phase") == phase_name and "completed_at" in entry:
+            return True
+    return False
 
 
 @campaign.command("list")

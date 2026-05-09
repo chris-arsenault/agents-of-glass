@@ -144,13 +144,18 @@ cmd_campaign() {
             fi
         done
 
-        # Player root dir: owner = player, group = aog-agents, mode 0750
-        # (NO setgid). Group-traversable so other agents can cd into
-        # public/. Top-level files written here at runtime get the player's
-        # primary group (aog-<player>) and stay private by default.
-        # NOTE: explicit `g-s` is needed before the numeric chmod because on
-        # ZFS+nfs4acl filesystems chmod 0750 does not clear the setgid bit.
-        chown "$puser:$SHARED_GROUP" "$pdir"
+        # Player root dir: owner = OPERATOR, group = aog-agents, mode 0750
+        # (NO setgid). Operator-owned so the orchestrator (running as the
+        # operator) can always traverse it, even from a shell that hasn't
+        # picked up aog-agents in its effective groups yet (group lag from
+        # not having logged out + back in after provisioning). Group rx for
+        # other agents (all in aog-agents) so they can cd into public/.
+        # The player's own write access lives inside the provisioned
+        # subdirs (drafts/, journal/, notes/, inbox/, secrets/, public/,
+        # turns/), which are explicitly chowned to the player above.
+        # NOTE: explicit `g-s` because on ZFS+nfs4acl filesystems chmod
+        # 0750 does not clear the setgid bit.
+        chown "$OPERATOR:$SHARED_GROUP" "$pdir"
         chmod g-s "$pdir"
         chmod 0750 "$pdir"
     done

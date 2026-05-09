@@ -54,7 +54,12 @@ class SessionStore:
     # --- lifecycle ---
 
     def create_session(self, campaign: str, initial_mode: str, initial_scene: str) -> SessionState:
-        """Initialize the campaign's runtime state via glass + push the first mode."""
+        """Initialize / resume the campaign's runtime state.
+
+        Idempotent: if the requested mode is already at the top of the
+        mode stack (e.g. on resume from a failed phase), do nothing
+        beyond loading. Otherwise push the new mode.
+        """
         if not self.campaign_dir(campaign).exists():
             raise FileNotFoundError(
                 f"Campaign workspace does not exist at {self.campaign_dir(campaign)}; "
@@ -63,22 +68,36 @@ class SessionStore:
         try:
             if not self.glass_state_path(campaign).exists():
                 self.glass.invoke(["session", "new", "--campaign", campaign])
-            self.glass.invoke(
-                ["mode", "start", initial_mode, initial_scene],
-                role="dm",
-                campaign=campaign,
-            )
         except GlassBridgeError as exc:
-            raise RuntimeError(f"glass bootstrap for {campaign!r} failed: {exc}") from exc
+            raise RuntimeError(f"glass init for {campaign!r} failed: {exc}") from exc
+
+        # Check if the requested mode is already active (resume case).
+        existing = self._state_from_glass(campaign)
+        already_active = (
+            existing.mode_stack
+            and existing.mode_stack[-1].mode == initial_mode
+            and existing.mode_stack[-1].scene_id == initial_scene
+        )
+        if not already_active:
+            try:
+                self.glass.invoke(
+                    ["mode", "start", initial_mode, initial_scene],
+                    role="dm",
+                    campaign=campaign,
+                )
+            except GlassBridgeError as exc:
+                raise RuntimeError(
+                    f"glass mode start for {campaign!r} failed: {exc}"
+                ) from exc
 
         state = self._state_from_glass(campaign)
-        state.run_metadata["initial_mode"] = initial_mode
-        state.run_metadata["initial_scene"] = initial_scene
+        state.run_metadata.setdefault("initial_mode", initial_mode)
+        state.run_metadata.setdefault("initial_scene", initial_scene)
         self.save(state)
         self.append_audit(
             campaign,
             {
-                "event": "campaign.start",
+                "event": "campaign.resume" if already_active else "campaign.start",
                 "campaign": campaign,
                 "mode": initial_mode,
                 "scene_id": initial_scene,
