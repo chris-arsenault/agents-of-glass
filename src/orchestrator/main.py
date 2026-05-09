@@ -282,34 +282,100 @@ def campaign_resume(
     click.echo(f"resumed and ran {turns} turn(s)")
 
 
-@campaign.command("clear")
+@campaign.command("clean")
 @click.argument("campaign_id")
 @click.option("--state-only", is_flag=True,
-              help="Only delete the runtime state files (state.json, transcript.md, "
+              help="Only delete runtime state files (state.json, transcript.md, "
                    "audit.jsonl, scene-framing.md, per-agent turns/). Keeps the "
-                   "campaign workspace, DM/player content, arcs, lore.")
+                   "campaign workspace, DM/player content, arcs, lore, AND all "
+                   "DB rows + graph nodes.")
+@click.option("--keep-workspace", is_flag=True,
+              help="Drop DB rows + graph nodes but leave the filesystem campaign "
+                   "workspace intact. For when you want to wipe persistence but "
+                   "keep authored content for re-import.")
 @click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
 @click.pass_obj
-def campaign_clear(cli: CliState, campaign_id: str, state_only: bool, yes: bool) -> None:
-    """Delete a campaign workspace, or just its runtime state with --state-only."""
+def campaign_clean(
+    cli: CliState,
+    campaign_id: str,
+    state_only: bool,
+    keep_workspace: bool,
+    yes: bool,
+) -> None:
+    """Remove a campaign: filesystem + Postgres rows + FalkorDB graph.
+
+    Default: drop EVERYTHING (workspace dir, DB rows for the campaign,
+    graph entities for the campaign). Use --state-only to wipe just the
+    runtime state files (no DB/graph touch). Use --keep-workspace to
+    drop DB+graph but keep the filesystem.
+    """
+    if state_only and keep_workspace:
+        raise click.ClickException("--state-only and --keep-workspace are mutually exclusive")
+
     space = CampaignSpace.from_config(cli.config, campaign_id)
-    if not space.exists():
+    workspace_exists = space.exists()
+    if state_only and not workspace_exists:
         raise click.ClickException(f"Campaign {campaign_id!r} does not exist")
+
     if state_only:
         if not yes and not click.confirm(
             f"Clear runtime state for campaign {campaign_id!r}? "
-            "(workspace, DM/player content, arcs, lore will remain)"
+            "(workspace, DM/player content, arcs, lore, DB, graph all remain)"
         ):
             raise click.Abort()
         cli.store.clear_state(campaign_id)
         click.echo(f"cleared runtime state for {campaign_id}")
-    else:
-        if not yes and not click.confirm(
-            f"Delete entire campaign workspace {campaign_id!r} at {space.campaign_dir}?"
-        ):
-            raise click.Abort()
+        return
+
+    actions = ["DB rows", "graph nodes"]
+    if not keep_workspace:
+        actions.append("filesystem workspace")
+    if not yes and not click.confirm(
+        f"Delete {', '.join(actions)} for campaign {campaign_id!r}?"
+    ):
+        raise click.Abort()
+
+    # 1. Postgres
+    try:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+
+        toml_data = _load_glass_config()
+        pg_config = _glass_db.load_pg_config(toml_data)
+        with _glass_db.connect(pg_config) as conn:
+            deleted_db = _glass_db.delete_campaign_data(conn, campaign_id)
+        nonzero = {k: v for k, v in deleted_db.items() if v}
+        click.echo(f"  db: {nonzero or 'no rows'}")
+    except Exception as exc:
+        click.secho(f"  db cleanup failed: {exc}", fg="yellow")
+
+    # 2. FalkorDB
+    try:
+        from cli import graph as _glass_graph
+        from cli.config import load_config as _load_glass_config
+
+        toml_data = _load_glass_config()
+        falkor_config = _glass_graph.load_falkor_config(toml_data)
+        if _glass_graph.is_available(falkor_config):
+            with _glass_graph.connect(falkor_config) as g:
+                deleted_graph = _glass_graph.delete_campaign_graph(g, campaign_id)
+            click.echo(f"  graph: {deleted_graph}")
+        else:
+            click.secho(
+                f"  graph: skipped (FalkorDB not reachable at {falkor_config.describe()})",
+                fg="yellow",
+            )
+    except Exception as exc:
+        click.secho(f"  graph cleanup failed: {exc}", fg="yellow")
+
+    # 3. Filesystem
+    if keep_workspace:
+        click.echo("  workspace: kept (--keep-workspace)")
+    elif workspace_exists:
         cli.campaign_manager.clear(campaign_id)
-        click.echo(f"cleared campaign {campaign_id}")
+        click.echo(f"  workspace: removed ({space.campaign_dir})")
+    else:
+        click.echo("  workspace: not present")
 
 
 @campaign.command("clear-scene")

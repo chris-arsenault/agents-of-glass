@@ -213,6 +213,40 @@ def remove_entity(g: Any, entity_id: str) -> int:
     return 0
 
 
+def delete_campaign_graph(g: Any, campaign_id: str) -> dict[str, int]:
+    """Drop every node + edge that belongs to this campaign.
+
+    All entities (and their sections) tagged with `campaign_id` are
+    DETACH DELETEd, which also removes any edges touching them. Returns
+    counts so the caller can report them.
+    """
+    deleted: dict[str, int] = {"sections": 0, "entities": 0}
+
+    sec = g.query(
+        """
+        MATCH (e:Entity {campaign_id: $campaign})-[:HAS_SECTION]->(s:Section)
+        DETACH DELETE s
+        RETURN count(s) AS n
+        """,
+        {"campaign": campaign_id},
+    )
+    if sec.result_set:
+        deleted["sections"] = int(sec.result_set[0][0])
+
+    ent = g.query(
+        """
+        MATCH (e:Entity {campaign_id: $campaign})
+        DETACH DELETE e
+        RETURN count(e) AS n
+        """,
+        {"campaign": campaign_id},
+    )
+    if ent.result_set:
+        deleted["entities"] = int(ent.result_set[0][0])
+
+    return deleted
+
+
 # ---------------------------------------------------------------------------
 # Queries
 # ---------------------------------------------------------------------------

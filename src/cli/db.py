@@ -886,3 +886,39 @@ def roll_record(
         row = cur.fetchone()
     conn.commit()
     return _row_to_roll(row)
+
+
+# --- campaign-wide deletion ---
+
+
+def delete_campaign_data(
+    conn: "psycopg.Connection[Any]", campaign_id: str
+) -> dict[str, int]:
+    """Remove every row tied to the campaign across all tables.
+
+    Order matters because of FK constraints: rolls / xp_awards / level_ups
+    reference characters via (campaign_id, character_id), so they go first.
+    message_reads cascades from messages on delete, so deleting messages is
+    enough. Returns a dict of {table: rows_deleted}.
+    """
+    deleted: dict[str, int] = {}
+    with conn.cursor() as cur:
+        for table in ("rolls", "xp_awards", "level_ups"):
+            cur.execute(f"DELETE FROM {table} WHERE campaign_id = %s", (campaign_id,))
+            deleted[table] = cur.rowcount
+        cur.execute("DELETE FROM messages WHERE campaign_id = %s", (campaign_id,))
+        deleted["messages"] = cur.rowcount
+        # message_reads: cascaded via FK, but defensively count by joining.
+        cur.execute(
+            "SELECT COUNT(*) FROM message_reads r "
+            "WHERE NOT EXISTS (SELECT 1 FROM messages m WHERE m.id = r.message_id)"
+        )
+        # The cascade has already happened by this point; we're only
+        # reporting that the table is consistent.
+        deleted["message_reads_orphans"] = int(cur.fetchone()[0])
+        cur.execute(
+            "DELETE FROM characters WHERE campaign_id = %s", (campaign_id,)
+        )
+        deleted["characters"] = cur.rowcount
+    conn.commit()
+    return deleted
