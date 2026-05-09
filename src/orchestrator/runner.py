@@ -7,9 +7,15 @@ from pathlib import Path
 from typing import Any
 import json
 import os
+import grp
+import pwd
+import shutil
 import subprocess
 import sys
 import threading
+
+from cli.api_grants import DEFAULT_API_URL, mint_grant
+from cli.api_server import ensure_background_server
 
 from .config import AogConfig, config_env_value
 from .context import ContextBuilder, ContextPackage
@@ -232,29 +238,65 @@ class Orchestrator:
     ) -> TurnResult:
         # The prompt is intentionally short — the heavy lifting is in
         # TURN_START.md, which the agent reads as its first action.
+        turn_start_ref = _agent_path(package.turn_start_path, package.spawn_cwd)
+        turn_output_ref = _agent_path(package.turn_output_path, package.spawn_cwd)
         prompt = (
-            f"Read {package.turn_start_path} and follow its instructions. "
-            f"Write your final public prose to {package.turn_output_path} and exit."
+            f"Read {turn_start_ref} and follow its instructions. "
+            f"Write your final public prose to {turn_output_ref} and exit."
         )
 
         # If the agent has a dedicated Unix user (provisioning is set up),
         # sudo into that user. The DM runs as the operator (None).
         target_user = permissions.player_user_for(agent.id)
+        glass_api_url: str | None = None
+        glass_api_grant: str | None = None
+        glass_api_grant_file: Path | None = None
+        if target_user is not None:
+            glass_api_url = ensure_background_server(
+                url=os.environ.get("GLASS_API_URL", DEFAULT_API_URL),
+                config_path=config_env_value(self.config),
+            )
+            glass_api_grant = mint_grant(
+                self.config.campaigns_dir,
+                campaign_id=state.campaign,
+                role=agent.role,
+                actor=agent.id,
+                glass_role=agent.glass_role,
+                turn_id=package.turn_id,
+                ttl_seconds=max(self.config.claude.turn_timeout_seconds + 600, 3600),
+            )
+            glass_api_grant_file = _write_player_glass_api_file(
+                target_user=target_user,
+                api_url=glass_api_url,
+                grant=glass_api_grant,
+                campaign_id=state.campaign,
+                turn_id=package.turn_id,
+            )
 
         command: list[str] = []
+        preserved_env: list[str] = []
         if target_user is not None:
             command.extend([
                 "sudo",
                 "-n",
                 "-u", target_user,
-                "--preserve-env=ANTHROPIC_API_KEY,ANTHROPIC_BASE_URL,CLAUDE_API_KEY,GLASS_ROLE,GLASS_CAMPAIGN_ID,GLASS_CONFIG,GLASS_TURN_ID,AOG_TURN_START,AOG_TURN_OUTPUT,AOG_PG_PASSWORD,PGPASSWORD,PGHOST,PGPORT,PGDATABASE,PGUSER,AOG_FALKOR_PASSWORD,REDIS_PASSWORD,AOG_FALKOR_HOST,AOG_FALKOR_PORT,AOG_FALKOR_GRAPH,PATH",
                 "--",
+                "env",
+                f"PATH={_player_path()}",
             ])
 
         command.append("claude")
         if self.config.claude.model:
             command.extend(["--model", self.config.claude.model])
-        command.extend(["-p", prompt, "--dangerously-skip-permissions"])
+        claude_debug_path = package.turn_dir / "claude-debug.log"
+        claude_debug_ref = _agent_path(claude_debug_path, package.spawn_cwd)
+        command.extend([
+            "-p",
+            prompt,
+            "--dangerously-skip-permissions",
+            "--debug-file",
+            claude_debug_ref,
+        ])
 
         env = os.environ.copy()
         env.update(
@@ -267,6 +309,11 @@ class Orchestrator:
                 "AOG_TURN_OUTPUT": str(package.turn_output_path),
             }
         )
+        if target_user is not None:
+            env["PATH"] = _player_path()
+            env["GLASS_API_URL"] = glass_api_url or DEFAULT_API_URL
+            if glass_api_grant_file is not None:
+                env["GLASS_API_GRANT_FILE"] = str(glass_api_grant_file)
 
         prefix = f"[{agent.id}] "
         print(
@@ -274,6 +321,21 @@ class Orchestrator:
             f"turn {package.turn_number}, timeout {self.config.claude.turn_timeout_seconds}s) ---",
             flush=True,
         )
+
+        debug_path = package.turn_dir / "agent-debug.json"
+        debug_payload = _agent_debug_payload(
+            state=state,
+            agent=agent,
+            package=package,
+            command=command,
+            env=env,
+            target_user=target_user,
+            preserved_env=preserved_env,
+            timeout_seconds=self.config.claude.turn_timeout_seconds,
+            phase="before_spawn",
+            claude_debug_path=claude_debug_path,
+        )
+        _write_json(debug_path, debug_payload)
 
         try:
             stdout_text, stderr_text, returncode, timed_out = _stream_subprocess(
@@ -285,6 +347,11 @@ class Orchestrator:
                 stderr_prefix=prefix + "(err) ",
             )
         except FileNotFoundError as exc:
+            debug_payload["phase"] = "spawn_failed"
+            debug_payload["exception"] = repr(exc)
+            debug_payload["resolved_executable"] = shutil.which(command[0])
+            debug_payload["paths_after"] = _turn_path_debug(package)
+            _write_json(debug_path, debug_payload)
             raise TurnFailure(
                 "Claude CLI was not found on PATH.",
                 {
@@ -292,10 +359,24 @@ class Orchestrator:
                     "turn_id": package.turn_id,
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
+                    "debug_path": str(debug_path),
                 },
             ) from exc
 
         _write_process_capture(package.turn_dir, stdout_text, stderr_text)
+        debug_payload.update(
+            {
+                "phase": "after_subprocess",
+                "returncode": returncode,
+                "timed_out": timed_out,
+                "stdout_bytes": len(stdout_text.encode("utf-8")),
+                "stderr_bytes": len(stderr_text.encode("utf-8")),
+                "stdout_preview": _preview(stdout_text),
+                "stderr_preview": _preview(stderr_text),
+                "paths_after": _turn_path_debug(package),
+            }
+        )
+        _write_json(debug_path, debug_payload)
 
         if timed_out:
             raise TurnFailure(
@@ -306,6 +387,9 @@ class Orchestrator:
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
                     "timeout_seconds": self.config.claude.turn_timeout_seconds,
+                    "debug_path": str(debug_path),
+                    "stdout_bytes": debug_payload["stdout_bytes"],
+                    "stderr_bytes": debug_payload["stderr_bytes"],
                 },
             )
 
@@ -318,11 +402,16 @@ class Orchestrator:
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
                     "exit_code": returncode,
+                    "debug_path": str(debug_path),
+                    "stdout_bytes": debug_payload["stdout_bytes"],
+                    "stderr_bytes": debug_payload["stderr_bytes"],
+                    "stderr_preview": debug_payload["stderr_preview"],
                 },
             )
 
         prose = _collect_prose(package.turn_output_path, stdout_text)
         if not prose:
+            output_debug = _path_debug(package.turn_output_path)
             raise TurnFailure(
                 f"Turn {package.turn_id} produced no prose.",
                 {
@@ -330,6 +419,14 @@ class Orchestrator:
                     "turn_id": package.turn_id,
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
+                    "debug_path": str(debug_path),
+                    "exit_code": returncode,
+                    "stdout_bytes": debug_payload["stdout_bytes"],
+                    "stderr_bytes": debug_payload["stderr_bytes"],
+                    "stdout_preview": debug_payload["stdout_preview"],
+                    "stderr_preview": debug_payload["stderr_preview"],
+                    "turn_output_path": str(package.turn_output_path),
+                    "turn_output": output_debug,
                 },
             )
         return TurnResult(
@@ -445,6 +542,226 @@ def _stream_subprocess(
         proc.returncode if proc.returncode is not None else -1,
         timed_out,
     )
+
+
+def _agent_debug_payload(
+    *,
+    state: SessionState,
+    agent: Agent,
+    package: ContextPackage,
+    command: list[str],
+    env: dict[str, str],
+    target_user: str | None,
+    preserved_env: list[str],
+    timeout_seconds: int,
+    phase: str,
+    claude_debug_path: Path,
+) -> dict[str, Any]:
+    return {
+        "phase": phase,
+        "turn_id": package.turn_id,
+        "turn_number": package.turn_number,
+        "campaign": state.campaign,
+        "mode": state.active_mode.mode,
+        "scene_id": state.active_mode.scene_id,
+        "agent": {
+            "id": agent.id,
+            "role": agent.role,
+            "display_name": agent.display_name,
+            "glass_role": agent.glass_role,
+            "target_user": target_user,
+        },
+        "process": {
+            "cwd": str(package.spawn_cwd),
+            "timeout_seconds": timeout_seconds,
+            "command": command,
+            "resolved_executable": shutil.which(command[0]),
+            "resolved_claude": shutil.which("claude", path=env.get("PATH")),
+            "operator_uid": os.getuid(),
+            "operator_euid": os.geteuid(),
+            "target_home": _home_for_user(target_user) if target_user else None,
+            "claude_debug_path": str(claude_debug_path),
+        },
+        "env": _env_debug(env, preserved_env),
+        "paths_before": _turn_path_debug(package),
+    }
+
+
+def _env_debug(env: dict[str, str], preserved_env: list[str]) -> dict[str, Any]:
+    keys = sorted(
+        set(preserved_env)
+        | {
+            "HOME",
+            "PATH",
+            "USER",
+            "LOGNAME",
+            "SHELL",
+            "TERM",
+            "GLASS_ROLE",
+            "GLASS_CAMPAIGN_ID",
+            "GLASS_CONFIG",
+            "GLASS_TURN_ID",
+            "GLASS_API_URL",
+            "GLASS_API_GRANT",
+            "GLASS_API_GRANT_FILE",
+            "AOG_TURN_START",
+            "AOG_TURN_OUTPUT",
+        }
+    )
+    return {
+        "preserve_env": preserved_env,
+        "values": {key: _env_value_debug(key, env.get(key)) for key in keys},
+    }
+
+
+def _env_value_debug(key: str, value: str | None) -> str | None:
+    if value is None:
+        return None
+    secret_markers = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "GRANT")
+    if any(marker in key.upper() for marker in secret_markers):
+        return "<set>" if value else "<empty>"
+    return value
+
+
+def _turn_path_debug(package: ContextPackage) -> dict[str, Any]:
+    return {
+        "spawn_cwd": _path_debug(package.spawn_cwd),
+        "turn_dir": _path_debug(package.turn_dir),
+        "turn_start_path": _path_debug(package.turn_start_path),
+        "turn_output_path": _path_debug(package.turn_output_path),
+        "agent_stdout_path": _path_debug(package.turn_dir / "agent-stdout.txt"),
+        "agent_stderr_path": _path_debug(package.turn_dir / "agent-stderr.txt"),
+        "claude_debug_path": _path_debug(package.turn_dir / "claude-debug.log"),
+    }
+
+
+def _path_debug(path: Path) -> dict[str, Any]:
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return {"path": str(path), "exists": False}
+    except OSError as exc:
+        return {"path": str(path), "exists": None, "error": repr(exc)}
+
+    return {
+        "path": str(path),
+        "exists": True,
+        "is_dir": path.is_dir(),
+        "is_file": path.is_file(),
+        "size": st.st_size,
+        "mode": oct(st.st_mode & 0o7777),
+        "uid": st.st_uid,
+        "user": _name_for_uid(st.st_uid),
+        "gid": st.st_gid,
+        "group": _name_for_gid(st.st_gid),
+    }
+
+
+def _name_for_uid(uid: int) -> str | None:
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return None
+
+
+def _name_for_gid(gid: int) -> str | None:
+    try:
+        return grp.getgrgid(gid).gr_name
+    except KeyError:
+        return None
+
+
+def _home_for_user(user: str) -> str | None:
+    try:
+        return pwd.getpwnam(user).pw_dir
+    except KeyError:
+        return None
+
+
+def _player_path() -> str:
+    return "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+
+
+def _write_player_glass_api_file(
+    *,
+    target_user: str,
+    api_url: str,
+    grant: str,
+    campaign_id: str,
+    turn_id: str,
+) -> Path:
+    runtime_dir = Path("/tmp/agents-of-glass/glass-api")
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(runtime_dir, 0o755)
+    target = runtime_dir / f"{target_user}.json"
+    tmp = runtime_dir / f".{target_user}.{os.getpid()}.tmp"
+    payload = {
+        "api_url": api_url,
+        "grant": grant,
+        "campaign_id": campaign_id,
+        "turn_id": turn_id,
+    }
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    try:
+        user_record = pwd.getpwnam(target_user)
+        group_name = _name_for_gid(user_record.pw_gid) or target_user
+        subprocess.run(
+            [
+                "sudo",
+                "-n",
+                "install",
+                "-o",
+                target_user,
+                "-g",
+                group_name,
+                "-m",
+                "0600",
+                str(tmp),
+                str(target),
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except (KeyError, subprocess.CalledProcessError, OSError) as exc:
+        raise TurnFailure(
+            "failed to install player glass API grant file.",
+            {
+                "reason": "glass_api_grant_file_failed",
+                "turn_id": turn_id,
+                "target_user": target_user,
+                "grant_file": str(target),
+                "error": repr(exc),
+            },
+        ) from exc
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+    return target
+
+
+def _preview(text: str, *, limit: int = 2000) -> str:
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f"\n... <truncated {len(text) - limit} chars>"
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _agent_path(path: Path, spawn_cwd: Path) -> str:
+    try:
+        return str(path.relative_to(spawn_cwd))
+    except ValueError:
+        return str(path)
 
 
 def _collect_prose(turn_output_path: Path, stdout: str | None) -> str:

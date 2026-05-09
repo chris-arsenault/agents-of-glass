@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Standalone player-facing glass client.
+
+This wrapper intentionally has no repo imports. Player Unix users only need a
+localhost API URL and an opaque grant; the API process owns the real CLI and
+database credentials.
+"""
+
+from __future__ import annotations
+
+import getpass
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+
+def main(argv: list[str]) -> int:
+    api_url, grant = _api_credentials()
+    if not api_url or not grant:
+        sys.stderr.write(
+            "glass is available, but this process has no API grant for the local glass server.\n"
+        )
+        return 78
+
+    payload = json.dumps({"grant": grant, "args": argv}).encode("utf-8")
+    request = urllib.request.Request(
+        api_url.rstrip("/") + "/v1/command",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            body = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+    except OSError as exc:
+        sys.stderr.write(f"glass API request failed: {exc}\n")
+        return 69
+
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError:
+        sys.stderr.write(f"glass API returned invalid JSON: {body}\n")
+        return 70
+
+    output = data.get("output")
+    if isinstance(output, str) and output:
+        sys.stdout.write(output)
+        if not output.endswith("\n"):
+            sys.stdout.write("\n")
+    return int(data.get("exit_code", 1))
+
+
+def _api_credentials() -> tuple[str | None, str | None]:
+    api_url = os.environ.get("GLASS_API_URL")
+    grant = os.environ.get("GLASS_API_GRANT")
+    if api_url and grant:
+        return api_url, grant
+
+    for path in _candidate_credential_files():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        except (OSError, json.JSONDecodeError):
+            continue
+        file_url = payload.get("api_url")
+        file_grant = payload.get("grant")
+        if isinstance(file_url, str) and isinstance(file_grant, str):
+            return file_url, file_grant
+    return None, None
+
+
+def _candidate_credential_files() -> list[Path]:
+    configured = os.environ.get("GLASS_API_GRANT_FILE")
+    paths: list[Path] = [Path(configured)] if configured else []
+    try:
+        user = getpass.getuser()
+    except Exception:
+        user = ""
+    if user:
+        paths.append(Path("/tmp/agents-of-glass/glass-api") / f"{user}.json")
+    return paths
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

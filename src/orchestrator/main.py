@@ -23,7 +23,7 @@ from .campaign import (
     PHASE_CHARACTER_CREATION,
     PHASE_PLANNING,
 )
-from .config import load_config
+from .config import config_env_value, load_config
 from .runner import Orchestrator, TurnFailure
 from .store import SessionStore, summarize_states
 
@@ -47,6 +47,53 @@ class CliState:
 def main(ctx: click.Context, config_path: Path | None) -> None:
     """Operate Agents of Glass campaigns."""
     ctx.obj = CliState(str(config_path) if config_path else None)
+
+
+@main.group()
+def api() -> None:
+    """Manage the local glass API daemon."""
+
+
+@api.command("start")
+@click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+@click.pass_obj
+def api_start(cli: CliState, url: str | None) -> None:
+    """Start the detached local glass API daemon."""
+    from cli.api_daemon import start_daemon
+
+    _echo_api_daemon(
+        start_daemon(url=_api_url(url), config_path=config_env_value(cli.config))
+    )
+
+
+@api.command("restart")
+@click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+@click.pass_obj
+def api_restart(cli: CliState, url: str | None) -> None:
+    """Restart the detached local glass API daemon with current code/config."""
+    from cli.api_daemon import restart_daemon
+
+    _echo_api_daemon(
+        restart_daemon(url=_api_url(url), config_path=config_env_value(cli.config))
+    )
+
+
+@api.command("stop")
+@click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+def api_stop(url: str | None) -> None:
+    """Stop the detached local glass API daemon."""
+    from cli.api_daemon import stop_daemon
+
+    _echo_api_daemon(stop_daemon(url=_api_url(url)))
+
+
+@api.command("status")
+@click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+def api_status(url: str | None) -> None:
+    """Show local glass API daemon status."""
+    from cli.api_daemon import status_daemon
+
+    _echo_api_daemon(status_daemon(url=_api_url(url)))
 
 
 @main.group()
@@ -104,6 +151,8 @@ def campaign_bootstrap(
       4. [STUB] Active scene play.
     """
     from .campaign import CampaignSpace
+
+    _restart_api_daemon_for_run(cli)
 
     space = CampaignSpace.from_config(cli.config, campaign_id)
     if space.exists():
@@ -224,6 +273,36 @@ def _phase_completed(cm_state: dict, phase_name: str) -> bool:
     return False
 
 
+def _restart_api_daemon_for_run(cli: CliState) -> None:
+    from cli.api_daemon import restart_daemon
+
+    try:
+        info = restart_daemon(
+            url=_api_url(None),
+            config_path=config_env_value(cli.config),
+        )
+    except Exception as exc:
+        raise click.ClickException(f"failed to restart glass API daemon: {exc}") from exc
+    click.echo(
+        f"      glass API: restarted {info.url} pid={info.pid or '-'} "
+        f"(log: {info.log_path})"
+    )
+
+
+def _api_url(value: str | None) -> str:
+    from cli.api_grants import DEFAULT_API_URL
+
+    return value or os.environ.get("GLASS_API_URL", DEFAULT_API_URL)
+
+
+def _echo_api_daemon(info) -> None:
+    click.echo(
+        f"glass API {info.message}: url={info.url} "
+        f"pid={info.pid or '-'} running={str(info.running).lower()}"
+    )
+    click.echo(f"log: {info.log_path}")
+
+
 @campaign.command("list")
 @click.pass_obj
 def campaign_list(cli: CliState) -> None:
@@ -308,6 +387,7 @@ def campaign_run(
     dry_run: bool,
 ) -> None:
     """Run the orchestration loop for a campaign."""
+    _restart_api_daemon_for_run(cli)
     state = cli.store.load(campaign_id)
     turns = _run_or_raise(cli, state, max_turns=max_turns, dry_run=dry_run, resume_failed=False)
     click.echo(f"ran {turns} turn(s)")
@@ -325,6 +405,7 @@ def campaign_resume(
     dry_run: bool,
 ) -> None:
     """Resume a failed/paused/interrupted campaign."""
+    _restart_api_daemon_for_run(cli)
     state = cli.store.load(campaign_id)
     turns = _run_or_raise(cli, state, max_turns=max_turns, dry_run=dry_run, resume_failed=True)
     click.echo(f"resumed and ran {turns} turn(s)")

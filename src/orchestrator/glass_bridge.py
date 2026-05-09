@@ -41,6 +41,7 @@ class GlassBridge:
     ) -> GlassResult:
         env = os.environ.copy()
         env["GLASS_CONFIG"] = config_env_value(self.config)
+        env["GLASS_API_INTERNAL"] = "1"
         if role is not None:
             env["GLASS_ROLE"] = role
         if campaign is not None:
@@ -48,7 +49,7 @@ class GlassBridge:
         if extra_env:
             env.update(extra_env)
 
-        raw_result = self.runner.invoke(glass_main, args, env=env)
+        raw_result = self.runner.invoke(glass_main, args, env=env, prog_name="glass")
         result = GlassResult(
             args=args,
             exit_code=raw_result.exit_code,

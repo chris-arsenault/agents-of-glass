@@ -12,6 +12,8 @@ config, role, paths_resolve, validation, state, campaign, messages, entities).
 
 from __future__ import annotations
 
+import sys
+
 import click
 
 from .commands.arc import arc
@@ -31,9 +33,112 @@ from .commands.turn import turn
 from .commands.turns import turns
 
 
-@click.group()
+class GlassGroup(click.Group):
+    def main(
+        self,
+        args=None,
+        prog_name=None,
+        complete_var=None,
+        standalone_mode=True,
+        **extra,
+    ):
+        resolved_args = list(sys.argv[1:] if args is None else args)
+        from .api_client import proxy_args, should_proxy
+
+        if should_proxy(resolved_args):
+            exit_code = proxy_args(resolved_args)
+            if standalone_mode:
+                raise SystemExit(exit_code)
+            return exit_code
+        return super().main(
+            args=resolved_args,
+            prog_name=prog_name,
+            complete_var=complete_var,
+            standalone_mode=standalone_mode,
+            **extra,
+        )
+
+
+@click.group(cls=GlassGroup)
 def main() -> None:
     """In-session state CLI for Agents of Glass."""
+
+
+@click.group()
+def api() -> None:
+    """Local API server commands."""
+
+
+@api.command("serve")
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", default=8765, show_default=True, type=int)
+@click.option("--config", "config_path", type=click.Path())
+def api_serve(host: str, port: int, config_path: str | None) -> None:
+    """Run the local glass API in the foreground."""
+    from .api_server import serve_forever
+
+    serve_forever(host=host, port=port, config_path=config_path)
+
+
+@api.group("daemon")
+def api_daemon_group() -> None:
+    """Manage the detached local glass API daemon."""
+
+
+@api_daemon_group.command("start")
+@click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+@click.option("--config", "config_path", type=click.Path())
+def api_daemon_start(url: str | None, config_path: str | None) -> None:
+    from .api_daemon import start_daemon
+    from .api_grants import DEFAULT_API_URL
+
+    _echo_api_daemon(
+        start_daemon(url=url or _api_url_default(DEFAULT_API_URL), config_path=config_path)
+    )
+
+
+@api_daemon_group.command("restart")
+@click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+@click.option("--config", "config_path", type=click.Path())
+def api_daemon_restart(url: str | None, config_path: str | None) -> None:
+    from .api_daemon import restart_daemon
+    from .api_grants import DEFAULT_API_URL
+
+    _echo_api_daemon(
+        restart_daemon(url=url or _api_url_default(DEFAULT_API_URL), config_path=config_path)
+    )
+
+
+@api_daemon_group.command("stop")
+@click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+def api_daemon_stop(url: str | None) -> None:
+    from .api_daemon import stop_daemon
+    from .api_grants import DEFAULT_API_URL
+
+    _echo_api_daemon(stop_daemon(url=url or _api_url_default(DEFAULT_API_URL)))
+
+
+@api_daemon_group.command("status")
+@click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+def api_daemon_status(url: str | None) -> None:
+    from .api_daemon import status_daemon
+    from .api_grants import DEFAULT_API_URL
+
+    _echo_api_daemon(status_daemon(url=url or _api_url_default(DEFAULT_API_URL)))
+
+
+def _api_url_default(default: str) -> str:
+    import os
+
+    return os.environ.get("GLASS_API_URL", default)
+
+
+def _echo_api_daemon(info) -> None:
+    click.echo(
+        f"glass API {info.message}: url={info.url} "
+        f"pid={info.pid or '-'} running={str(info.running).lower()}"
+    )
+    click.echo(f"log: {info.log_path}")
 
 
 main.add_command(session)
@@ -51,6 +156,7 @@ main.add_command(arc)
 main.add_command(scene)
 main.add_command(quest)
 main.add_command(lore)
+main.add_command(api)
 
 
 if __name__ == "__main__":
