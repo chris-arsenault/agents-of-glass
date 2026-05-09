@@ -8,7 +8,9 @@ This started as a spec. The current implementation is a v0 bootstrap predating t
 
 - target shape: scene state at `campaigns/<id>/arcs/<arc>/scenes/<scene>/state.json`;
 - transcript, scene context, and audit files at `campaigns/<id>/arcs/<arc>/scenes/<scene>/`;
-- per-turn context packages under `.glass-cwd/<scene-id>/`;
+- per-turn artifacts (TURN_START.md, TURN.md, agent stdout/stderr) at `sessions/<id>/turns/<NNNN>/`;
+- agents are spawned directly inside the campaign workspace (`cwd = campaigns/<id>/`); no per-turn ephemeral CWD;
+- agent stdout/stderr is streamed line-by-line to the operator's terminal with `[<agent-id>]` prefix, plus captured to disk;
 - real turns invoke `claude -p ...`; `--dry-run` commits synthetic turns for
   wiring checks without spending model time.
 
@@ -26,14 +28,20 @@ The orchestrator package exposes two scripts:
 Campaign management (see [`/docs/design/game-start.md`](../../docs/design/game-start.md) for the bootstrap flow):
 
 ```
-aog campaign new <name>                     # init: copy templates, write state.json, advance to campaign_planning
-aog campaign show [<name>]                  # show phase, sessions, progress
-aog campaign list                           # list all campaigns
-aog campaign plan [<name>]                  # run the campaign_planning phase
-aog campaign character-create [<name>]      # run the character_creation phase
-aog campaign run [<name>]                   # advance from current phase, doing whatever's next
-aog campaign resume [<name>]                # alias for `run`, framed for failure recovery
-aog campaign clear <name> --back-to <phase> # roll back state to before <phase>
+aog campaign bootstrap <id>                 # IMPLEMENTED — full bootstrap end-to-end:
+                                            #   1. create campaigns/<id>/ from templates/
+                                            #   2. invoke DM in campaign-planning mode (foundation + opening arc)
+                                            #   3. [STUB] character creation
+                                            #   4. [STUB] active scene play
+                                            # flags: --max-planning-turns N, --dry-run, --keep-cwd
+aog campaign show <id>                      # IMPLEMENTED — print state.json
+aog campaign list                           # IMPLEMENTED — list all campaigns with phase
+aog campaign clear <id> [--yes]             # IMPLEMENTED — wipe campaign workspace
+
+aog campaign plan [<id>]                    # planned — run the campaign_planning phase only
+aog campaign character-create [<id>]        # planned — run the character_creation phase only
+aog campaign run [<id>]                     # planned — advance from current phase
+aog campaign resume [<id>]                  # planned — alias for `run`, failure recovery
 ```
 
 Scenes (regular play, after bootstrap):
@@ -55,16 +63,13 @@ Operator concerns only — no agent ever calls `aog`.
 ## What the orchestrator loop does, per turn (within an active scene)
 
 1. **Pick the next agent.** Mode-dependent (round-robin, initiative, DM-prompted, etc.). DM has override authority via the previous DM turn's prose (in v1, no structured next-speaker hint — DM's intent is read from prose).
-2. **Build the ephemeral CWD.** A per-turn working directory at `.glass-cwd/<scene-id>/<agent-id>-<turn-number>/` containing only the files the agent's role is allowed to see, populated via symlinks/bind-mounts from the canonical state. Includes the three projected context files: `campaign-context.md`, `arc-context.md`, `scene-context.md`.
-3. **Generate `TURN_START.md`** in that CWD — pointers to persona, character, the three context levels, recent transcript, unread messages, vocabulary index, tool allowlist.
-4. **Spawn `claude -p --dangerously-skip-permissions`** with CWD set to the ephemeral dir. Set env vars: `GLASS_ROLE`, `GLASS_CAMPAIGN_ID`, `GLASS_ARC_ID`, `GLASS_SCENE_ID`, `GLASS_CONFIG`.
-5. **Wait** for the subprocess to exit. Capture exit code and any output.
-6. **Process the agent's prose.** v0 contract: the agent writes public turn prose
-   to `TURN.md`. If that file is missing, the orchestrator uses stdout as a
-   fallback. The orchestrator then calls `glass turn append`, which owns the
-   transcript header, mechanical event inlining, and the glass state update.
-7. **Update orchestrator state** (turn number, mode budgets, last speaker). State persists to Postgres so resume works.
-8. **Tear down** the ephemeral CWD.
+2. **Generate `TURN_START.md`** at `sessions/<id>/turns/<NNNN>/TURN_START.md`. Contains pointers (relative to the campaign workspace) to persona, methodology-for-mode, scene framing, campaign-level context, vocabulary, recent-turn snapshot, plus an absolute path to where the agent must write its prose (`TURN.md` in the same dir).
+3. **Apply Unix permissions** on the per-turn dir so the spawning user can read TURN_START and write TURN.md. (No-op if provisioning isn't set up.)
+4. **Spawn `claude -p --dangerously-skip-permissions`** with `cwd = campaigns/<id>/` (the actual campaign workspace; not a copy). Set env vars: `GLASS_ROLE`, `GLASS_SESSION_ID`, `GLASS_CONFIG`, `GLASS_TURN_ID`, `AOG_TURN_START`, `AOG_TURN_OUTPUT`. The prompt is short — it just says "Read $AOG_TURN_START and write to $AOG_TURN_OUTPUT".
+5. **Stream stdout/stderr** to the operator's terminal line-by-line, prefixed with `[<agent-id>]`. Full captures saved to `sessions/<id>/turns/<NNNN>/agent-{stdout,stderr}.txt`.
+6. **Wait** for the subprocess to exit (with timeout from `claude.turn_timeout_seconds`, default 3600s).
+7. **Process the agent's prose.** v0 contract: the agent writes public turn prose to `TURN.md`. If that file is missing, the orchestrator uses captured stdout as a fallback. The orchestrator then calls `glass turn append`, which owns the transcript header, mechanical event inlining, and the glass state update.
+8. **Update orchestrator state** (turn number, mode budgets, last speaker). State persists to disk so resume works.
 9. **Evaluate scene-end** conditions. Hard turn caps + DM voluntary `glass scene end` for v1.
 10. **Loop.**
 

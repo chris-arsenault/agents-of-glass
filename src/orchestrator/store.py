@@ -187,7 +187,12 @@ class SessionStore:
         session_id = str(session["id"])
         campaign = str(session.get("campaign", session_id))
         turns = list(glass_state.get("turns", []))
-        glass_stack = list(glass_state.get("mode_stack", []))
+        # Distinguish "glass omitted the key" from "glass explicitly returned []".
+        # An explicit empty list is the legitimate post-`mode end` state; we
+        # must not mask it by falling back to the existing stack.
+        glass_stack_raw = glass_state.get("mode_stack")
+        glass_stack_explicit = glass_stack_raw is not None
+        glass_stack = list(glass_stack_raw) if glass_stack_explicit else []
         created_at = str(
             session.get("created_at") or (existing.created_at if existing else utc_now())
         )
@@ -216,9 +221,11 @@ class SessionStore:
                 )
             )
 
-        if not frames and existing and existing.mode_stack:
+        if not frames and not glass_stack_explicit and existing and existing.mode_stack:
+            # glass didn't report a mode_stack at all; reuse the prior view.
             frames = existing.mode_stack
-        if not frames:
+        if not frames and not glass_stack_explicit:
+            # No glass info and nothing to inherit — synthesize a placeholder.
             frames = [
                 ModeFrame(
                     mode="none",

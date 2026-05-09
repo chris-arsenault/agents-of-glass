@@ -80,6 +80,20 @@ glass entity neighborhood <id>      # read — show typed edges
 glass entity similar <section-id>   # read — vector search
 ```
 
+### Lore curation
+
+The world bible at `../the-glass-frontier-lore/` is the DM's reference. It is not bulk-copied into the campaign. The DM imports specific entries on demand. See [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md#curate-dont-copy).
+
+```
+glass lore import <world-bible-path> [--as <new-name>]   # DM only
+                                       # copies world-bible entry into campaigns/<id>/shared/lore/,
+                                       # preserves directory structure (or renames via --as),
+                                       # tags frontmatter with `source: world-bible/<path>`,
+                                       # calls glass entity upsert on the result
+glass lore list                        # read — list imported entries (campaign canon)
+glass lore search <query>              # DM only — search the world bible without importing
+```
+
 ### Threads (DM scaffolding)
 
 ```

@@ -22,6 +22,67 @@ If the answer is no, the prep is too narrow. Re-shape it.
 4. Any starter framing the operator dropped in `shared/campaign-framing.md`.
 5. The companion methodology — [`arc-creation.md`](arc-creation.md). You'll use this for the opening arc(s) below.
 
+## Anti-sameness pulls (do this — it is not optional)
+
+Generic LLM output collapses to a small number of attractors. Without intervention you will write the same campaign every other LLM-DM writes — the same factions, the same NPC archetypes, the same beats. **Saying "be unique" doesn't work.** The attractor wins by gradient, not by intention.
+
+Two specific external pulls protect against this. Both are *required* — they are built into this methodology because they are the only thing that works. (See [`/docs/principles/resist-generic-drift.md`](../../../docs/principles/resist-generic-drift.md) for the principle.)
+
+### 1. Lore pull
+
+Before each major output (the Question, each faction, each named NPC, each arc's stakes question), do a directed read of **something in the world bible you weren't planning to use**.
+
+- Open a category you don't have on your heading: a creature you weren't going to feature, an artifact from a region the party isn't in, a culture's naming conventions you haven't been thinking about. `glass entity similar` and `glass entity neighborhood` help, but a directory list and a random read also work.
+- Pick one specific concrete detail — a name, a behavioral tell, a sensory fact, a piece of history.
+- Let it inform the thing you're about to write. Not as plot import — as **texture**.
+
+Example: you're about to write a faction. You read `world-lore/player/concepts/ringglass.md` (which you weren't going to use) and notice the specific detail that *kite-cord prices doubled after the Conclave seizure*. That fact lands in your faction's hold — they control a kite-cord cache nobody else has access to. The faction is now grounded in a specific lore-shaped fact that wasn't on the local-maximum gradient.
+
+### 2. Creative web pull
+
+Once per major output (so 4-6 total across this methodology), do a short web search on something **unrelated to TTRPGs and unrelated to fantasy**. Current events, a specific architectural detail, a recent music release, an obituary, a science article, a recipe, an old engineering paper — anything from the actual non-fictional world.
+
+- Pull *one specific texture* from what you find: a sensory detail, a piece of human-scale truth, a fragment of language.
+- Let it inform something concrete in your output.
+- **Import texture, not content.** Don't lift plot. Don't lift worldview. Don't search "cyberpunk dystopia ideas" — that's sliding to a different attractor. Search broadly; take the smallest specific thing.
+
+Example: you search "small towns losing bus routes" and find a piece about a Welsh village where the last bus stopped running in 2024. You don't write "the buses stopped." You take *the specific feeling of infrastructure quietly retreating* and write a faction whose territory used to extend further than it does — and the people there still act like it does.
+
+This is what real DMs do unconsciously: a thing they read on the bus, a song stuck in their head, the way the light fell in a coffee shop. The agent has none of that. The pull is how we make it explicit.
+
+### How often
+
+- 4-6 lore pulls + 3-4 web pulls across this whole methodology.
+- Roughly one of each per major output (the Question, factions block, NPCs block, opening arc).
+- Diminishing returns past those counts. Don't do twenty. The point is that *something not on the gradient* is in the output; that doesn't require many pulls.
+
+### What this is *not*
+
+- Not "search 'good campaign ideas.'" That's the attractor in disguise.
+- Not "import a real-world conflict wholesale." Texture, not content.
+- Not "do a pull, then think generically anyway." If after a pull you write something you would've written without it, do it again.
+
+## Curate, don't copy
+
+You **do not copy the world bible** into the campaign. The world bible is huge; most of it isn't relevant to this specific campaign. Bulk-copying poisons every agent's context with detail that doesn't matter. Instead, you **curate**: you read the world bible (it's your reference throughout planning and play), and you selectively pull entries into `shared/lore/` when they become load-bearing for *this* campaign.
+
+The mechanism:
+
+```
+glass lore import <world-bible-path> [--as <new-name>]
+```
+
+This copies the world-bible entry into `campaigns/<id>/shared/lore/`, preserves its directory structure, registers it in the graph, and flags it with `source:` in frontmatter so we know where it came from. You can edit the imported entry afterward — your edits are local to this campaign.
+
+**Aim for 8-15 imported entries by the end of campaign planning.** That's enough to ground the players' starting state without drowning anyone's context. More entries get imported on demand later — when an arc surfaces a faction the players hadn't heard of, when a scene reaches a locale not yet in canon, when a player asks about a creature the DM didn't seed. Use `glass lore import` whenever this happens.
+
+Two layers of lore from now on:
+
+- **World bible** (`world-lore/`, `dm-world-lore/`) — your reference, always available, never bulk-imported. Players never see it directly.
+- **Campaign lore** (`campaigns/<id>/shared/lore/`) — the curated subset that *is* canon for this campaign. Players see this. The graph knows about this.
+
+Each output below names where to import from when relevant.
+
 ## Outputs, in order
 
 You produce the following, roughly in this order. Each item names where it goes and what shape (encyclopedia entry with frontmatter + sections, or free-form prose).
@@ -47,9 +108,39 @@ Plus the campaign's **fundamental scarcity** (Apocalypse World): one word naming
 
 For the player-facing `context.md`: two short paragraphs naming the Question, the Scarcity, and one sentence on how they connect. Plus what the players' party knows about where they are in the world right now.
 
-### 2. Factions
+### 2. The party's organization
+
+The party doesn't just travel together — they belong to something. A crew, a guild, a cell, a unit, a household, an order, a network. Authoring this gives the campaign an identity beyond "adventurers who happen to be in the same room," and gives the players a frame to pick characters that fit a real shape.
+
+You produce **two related documents:**
+
+- **`dm/notes/organization.md`** (DM-only) — full state: founding context, internal politics, secrets, advancement track with notes on what each stage really means.
+- **`shared/lore/organization.md`** (player-facing) — what the party itself knows about the org they're in. Public reputation, named members the players have heard of, current standing. Use `glass lore upsert` after writing.
+
+#### What the DM authors
+
+- **Identity.** What kind of org. The founding moment. Where the org sits in the world (legally, politically, geographically). One specific detail that makes it *this* org rather than a generic version.
+- **Goals.** Near-term (what they're trying to do this season) and long-term (what the org is *for*).
+- **Constraints.** What the org can't do. Who they can't cross. Resources at start — limited, specific, named. Any obligations they owe to outside parties.
+- **Existing members the players inherit.** A leader (who's not a PC), a fixer, an absent founder, whoever the org needs to function. Two to four NPCs woven through `dm/notes/npcs/`.
+- **Capabilities the org typically needs.** A loose list — *not* a role roster. Things like "someone who can move between hab tiers," "someone the Conclave will return calls from," "someone who reads what nobody else does." Players will invent characters that come at these from unexpected angles; you're naming the *kinds of leverage* the org operates by, not slotting people into boxes.
+- **Advancement track.** Three to five stages the org could move through over a campaign. Each stage names what advancing *broadly* unlocks — capacity, recognition, territory, intel reach, gear, contacts. Don't pre-specify mechanical numbers; the DM resolves bonuses at the moment of advance based on what the table cares about.
+- **Trigger conditions.** What the org needs to do (or have done to it) to advance a stage. Tied to arc resolutions and named threats neutralised.
+- **Secrets and agendas (encouraged).** The org can absolutely keep things from the party — a hidden funder, a leader's compromise, a long-game the rank-and-file isn't briefed on. These belong in `dm/notes/organization.md`, not in `shared/lore/organization.md`. They surface through play.
+
+#### What the players will do (later)
+
+Character creation hooks each PC into the org. They invent their own reason for being there — see [`character-creation.md`](character-creation.md). Your job is to give them a coherent thing to be part of, not a role chart they have to slot into.
+
+#### Constraint
+
+The org is the *party's home base.* It can have secrets, agendas, internal politics, and long-term goals the players don't know about — those are good. What it can't be is **outright hostile** to the party from day one: it shouldn't be actively trying to harm them, betray them, or use them as disposable. Friction yes; predator no. Don't put the party in two competing orgs at the start unless that tension *is* the campaign. One org, with the players as members.
+
+### 3. Factions
 
 **Path:** `dm/notes/factions/<slug>.md`. Encyclopedia-shaped. **Two to four factions** for an opening campaign — no more.
+
+**Lore curation:** if a faction overlaps with a world-bible faction (the Conclave, the Tempered Accord, the Lattice Proxy Synod, etc.), `glass lore import` the world-bible entry first. Then your `dm/notes/factions/<slug>.md` adds *campaign-specific* layers (current goal, current clock, who they're at odds with this campaign).
 
 Each faction is a **story engine**, not a description (Blades, PbtA). The entry includes:
 
@@ -63,7 +154,7 @@ Each faction is a **story engine**, not a description (Blades, PbtA). The entry 
 
 A faction without a goal is wallpaper. A faction with only a goal and no clock is a goal that never advances. Write both.
 
-### 3. Named NPCs (and antagonists)
+### 4. Named NPCs (and antagonists)
 
 **Path:** `dm/notes/npcs/<slug>.md`. Encyclopedia-shaped. **Three to six NPCs** for the opening — the people the party is most likely to meet first, plus one or two on the edges. **At least one of these is an antagonist** with recurring weight.
 
@@ -84,7 +175,7 @@ Engine NPC, not stat block. Each:
 
 A static NPC has no wants. An engine NPC has wants, fears, and a next move. An antagonist has all of that plus *they push back*.
 
-### 4. Recurring monsters / creatures
+### 5. Recurring monsters / creatures
 
 **Path:** `dm/notes/creatures/<slug>.md`. Encyclopedia-shaped. **Two to four** recurring creatures.
 
@@ -101,7 +192,7 @@ Each:
 
 Don't pre-write encounters. Just have the creatures on hand for arc and scene prep to draw from.
 
-### 5. Named things
+### 6. Named things
 
 **Path:** `dm/notes/artifacts/<slug>.md`, `dm/notes/ships/<slug>.md`, etc. Encyclopedia-shaped. **Three to five** named things at the start.
 
@@ -124,9 +215,11 @@ Each:
 
 Curate, don't catalogue. Three to five at the start; add as the campaign generates more.
 
-### 6. Locations (fantastic, undercooked)
+### 7. Locations (fantastic, undercooked)
 
 **Path:** `dm/notes/locales/<slug>.md`. Encyclopedia-shaped. **Three to five locations**.
+
+**Lore curation:** if a location overlaps with a world-bible locale (a named ring hab, a region, a landmark like the Span), `glass lore import` first. Your `dm/notes/locales/<slug>.md` is the *campaign-specific layer* — what's true about it for this campaign, who's there now, what the players will find.
 
 Sly Flourish's "fantastic locations": evocative one-line names + a few details. Deliberately under-specified — the DM fills in at the table. What's worth writing:
 
@@ -137,7 +230,7 @@ Sly Flourish's "fantastic locations": evocative one-line names + a few details. 
 
 Don't write maps. Don't write room-by-room descriptions. Don't pre-decide what the players find inside.
 
-### 7. Secrets and Clues
+### 8. Secrets and Clues
 
 **Path:** `dm/notes/secrets.md`. Free-form prose, **ten short facts**.
 
@@ -149,7 +242,7 @@ Sly Flourish's atomic-secrets technique. Write ten short bullet-point facts the 
 
 Per the **Three Clue Rule** (Alexandrian): for any secret the players *must* reach for the campaign to function, plant three independent clues. For others, fewer is fine. Most secrets here will be *interesting if discovered*, not *required to be discovered*.
 
-### 8. Hooks
+### 9. Hooks
 
 **Path:** `dm/notes/hooks/<slug>.md`. Encyclopedia-shaped. **Three to five hooks**.
 
@@ -162,13 +255,13 @@ A hook is a small specific situation a PC could choose to engage with. Each hook
 
 These are what character creation will hang from — players will pick a hook to be tied to. Make them concrete enough to grab and small enough to not predetermine where the campaign goes.
 
-### 9. Philosophy
+### 10. Philosophy
 
 **Path:** `dm/notes/philosophy/<slug>.md`. Free-form prose, one or two short entries.
 
 What kinds of stories is this campaign *about*? Which themes from the lore repo (`dm-world-lore/themes/`) pull on this campaign specifically? "Builders gone." "Who remembers." "How strangers learn to share a world." Write one or two short entries that name the thematic territory in your own words. This is for *you* — to keep your prep and adjudication coherent across scenes and arcs.
 
-### 10. Opening arcs
+### 11. Opening arcs
 
 **Scaffold via the CLI.** Call `glass arc create <slug>` to scaffold an arc directory. The CLI creates `arcs/<slug>/` with a `context.md` stub (player-facing) and a `plan.md` stub (DM-only) and an empty `scenes/` directory.
 
@@ -195,9 +288,11 @@ If you find yourself authoring any of these, stop and rewrite as a situation tha
 Two to four DM invocations. When you've produced the items above, write a short summary turn that:
 
 1. Names the Question and Scarcity.
-2. Lists the factions, NPCs (flagging antagonists), creatures, named things, locations, hooks, and the opening arc by name.
-3. Confirms the foundation is coherent — that the factions have reasons to fight, the NPCs have reasons to act, the hooks tie back to factions and locations, the named things and creatures sit on stories worth pulling on.
-4. Calls `glass mode end` to advance the phase.
+2. Lists the party's organization, factions, NPCs (flagging antagonists), creatures, named things, locations, hooks, and the opening arc by name.
+3. Lists the imported world-bible entries (8-15 expected — fewer means the campaign is under-grounded; more means you're bulk-copying, stop and prune).
+4. Confirms the foundation is coherent — that the factions have reasons to fight, the NPCs have reasons to act, the hooks tie back to factions and locations, the named things and creatures sit on stories worth pulling on, the imported lore actually serves the campaign rather than padding it.
+5. Confirms you did the lore pulls and web pulls. If you didn't, you produced a generic campaign and should restart this methodology.
+6. Calls `glass mode end` to advance the phase.
 
 If after three invocations you don't feel ready to advance, stop and ask the operator to clear back and restart — usually it means the Question is wrong and everything downstream is reaching.
 

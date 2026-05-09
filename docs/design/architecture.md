@@ -33,8 +33,8 @@ The orchestrator is dumb. The CLI is the only path to state. The agents have age
 
 All prose lives in markdown, in three layers:
 
-- **World bible** — `../the-glass-frontier-lore/player/`. Read-only at play time. The canonical world: cosmology, history, named entities that pre-exist the campaign. The DM additionally has read access to `../the-glass-frontier-lore/dm/` (themes, threads, loops, secret truths). The orchestrator surfaces relevant lore in each agent's CWD via symlinks.
-- **Campaign lore** — `campaigns/<id>/shared/lore/`. Writable. The campaign-specific canonical layer that evolves scene by scene: NPCs the party has met, locations they've discovered, events they've caused, faction reputations they've earned. **Encyclopedia-shaped, not notes-shaped** — same frontmatter + prose + sections pattern as the world bible, FalkorDB-mirrored. Players draft entries into a pending area; the DM ratifies (canonize) or rejects via `glass note`. Ratified entries land here.
+- **World bible** — `../the-glass-frontier-lore/`. Read-only. The full pre-existing canon. **DM-only** — players never see it directly, and it is *not* bulk-copied into the campaign (that would poison every agent's context with detail that doesn't matter to *this* campaign). The DM consults it as reference, and explicitly imports relevant entries into the campaign via `glass lore import`. See [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md#curate-dont-copy).
+- **Campaign lore** — `campaigns/<id>/shared/lore/`. Writable. The curated subset of world-bible entries (imported during campaign planning, 8-15 to start; more on demand during play) plus campaign-emergent entries: NPCs the party has met, locations they've discovered, events they've caused, faction reputations they've earned. **Encyclopedia-shaped, not notes-shaped** — same frontmatter + prose + sections pattern as the world bible, FalkorDB-mirrored. Players see this. Players also draft new entries into their `drafts/`; the DM ratifies (canonize) or rejects via `glass note`. Ratified entries land here.
 - **Player-facing context** — three levels: `campaigns/<id>/context.md`, `arcs/<arc>/context.md`, `arcs/<arc>/scenes/<scene>/context.md`. Each authored by the DM, projected into player CWDs as `campaign-context.md`, `arc-context.md`, `scene-context.md`. See [`game-start.md`](game-start.md) and [`context-packages.md`](context-packages.md).
 - **Personal notes** — agent-private. Player journals (free-form, may have subdirectories) and the DM workspace (planning drafts, in-progress NPCs). **Journal-shaped, not encyclopedia-shaped.** For thinking; not the canonical record.
 
@@ -159,11 +159,26 @@ Note: agents do not emit structured delta blocks. Whose turn is next, what mode 
 
 ## Process Isolation
 
-Each agent runs as a separate `claude -p` subprocess in a per-turn ephemeral working directory built by the orchestrator. The CWD contains only the files that role is allowed to see. Agents are *too good* at finding things they shouldn't have if those things are accessible from CWD; we enforce at the filesystem level, not by asking nicely.
+Each agent runs as a separate `claude -p` subprocess **directly inside the campaign workspace** (`cwd = campaigns/<id>/`). There is no per-turn ephemeral CWD with file projections. Filesystem isolation between agents is enforced at the OS level via Unix users + group-based chmod on the campaign workspace itself — agents are *too good* at finding things they shouldn't have, so we don't rely on "don't read X" instructions in prompts.
 
-For v1: ephemeral CWD with selective symlinks/bind-mounts. Easy to inspect, easy to reset between turns.
+**The model:**
 
-Possible upgrade: per-player Unix users with file-system group permissions. More durable against half-killed subprocesses leaving scaffolding around. Defer unless we observe leakage. See [`context-packages.md`](context-packages.md) for details.
+- The DM runs as the current operator user (`dev`) — full access to the campaign workspace.
+- Each player agent has a dedicated Unix user: `aog-tev`, `aog-sumi`, `aog-renno`, `aog-kit`.
+- A shared group `aog-agents` contains all agents. Each player has their own primary group (`aog-tev`, etc.) that includes `dev` so the DM can read player private content via group membership.
+- Campaign workspace files are owned by the appropriate user/group with mode bits that enforce per-agent isolation. DM-only files: `dev:dev` mode `0700/0600`. Shared content: `dev:aog-agents` mode `2750/0640`. Per-player private: `aog-<player>:aog-<player>` mode `2750/0640` (player rw, dev r via group, others none).
+- Per-turn artifacts (TURN_START.md the agent reads, TURN.md the agent writes) live at `sessions/<session-id>/turns/<NNNN>/`, separate from the campaign workspace. Permissions on this dir are set so the spawning user can read/write inside.
+- Player invocations spawn via `sudo -u aog-<player>` (NOPASSWD per a sudoers entry installed at provisioning time).
+
+**Operator setup (run once):**
+
+```
+sudo bash scripts/provision-agents.sh
+```
+
+This creates the Unix users + groups, adds the operator (`SUDO_USER`) to all relevant groups, installs `/usr/local/bin/aog-permset` (the privileged helper that the orchestrator calls via sudo to chown/chmod new campaign workspaces), and writes a sudoers rule at `/etc/sudoers.d/agents-of-glass`.
+
+**Graceful fallback:** if provisioning hasn't been run, the orchestrator detects this (`permissions.has_provisioned_users()`) and falls through silently — no chowns happen, all agents run as the operator, the system behaves as it did before. This is the path used during early development and in CI.
 
 ## What Lives Where (Quick Reference)
 

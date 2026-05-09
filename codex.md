@@ -36,12 +36,19 @@ Four principles govern every decision. **Read these first:**
 
 ```
 # Once the project is set up:
-pip install -e .                    # install the local packages
-glass --help                        # in-session CLI
-aog --help                          # operator CLI (sessions, clear, list)
+pip install -e .                              # install the local packages
+glass --help                                  # in-play tool surface
+aog --help                                    # operator CLI
+
+# One-time security setup (creates Unix users for player agents, sudoers rule):
+sudo bash scripts/provision-agents.sh
 ```
 
 (More commands populate as the build progresses. See [`src/cli/SPEC.md`](src/cli/SPEC.md) and [`src/orchestrator/SPEC.md`](src/orchestrator/SPEC.md) for what's planned.)
+
+## Security model
+
+Each player agent runs as a dedicated Unix user; the DM runs as the operator. Filesystem isolation is enforced via group-based chmod on the campaign workspace. See [`docs/design/architecture.md`](docs/design/architecture.md#process-isolation). Without provisioning, the orchestrator falls through to running everyone as the operator (intended for dev/CI).
 
 ## Key reading order for new agents
 

@@ -4,6 +4,13 @@ A working list of decisions we're holding off until they come up naturally durin
 
 ## Held for organic resolution (decide as the build hits them)
 
+- **Curate-don't-copy enforcement in `context.py`.** The orchestrator's
+  `_copy_shared_context` still bulk-copies the entire world bible
+  (`../the-glass-frontier-lore/player/`) into every agent CWD. Per the curation
+  principle, players should only see `campaigns/<id>/shared/lore/` (the curated
+  subset). Update when the campaigns/ layout becomes the canonical orchestrator
+  read-from path.
+
 - **Glass CLI surface in detail.** Flags, return formats, error codes — decided as we add subcommands.
 - **Postgres schema.** Tables and columns — decided as the orchestrator and CLI need them.
 - **FalkorDB graph schema.** Node/edge taxonomy for Campaign/Arc/Scene/Turn/Beat/NPC/Faction/etc. — decided as we upsert real entities.
@@ -51,6 +58,12 @@ A working list of decisions we're holding off until they come up naturally durin
   (`glass arc create`, `glass scene create`) manages the directory hierarchy.
 - Templates vs runtime split: authored content lives in `templates/`; runtime
   state lives in `sessions/<id>/` (and the future per-campaign live root).
+- Unix security model: each player agent runs as a dedicated Unix user
+  (`aog-tev`, `aog-sumi`, `aog-renno`, `aog-kit`); the DM runs as the operator.
+  Filesystem access enforced via group-based chmod on the campaign workspace
+  and per-turn CWDs. Provisioned via `sudo bash scripts/provision-agents.sh`
+  (creates users + groups + sudoers + permset helper). Falls through silently
+  when not provisioned (orchestrator runs everyone as operator).
 - Bootstrap flow: 2 agent-driven phases (campaign-planning, character-creation)
   before regular sessions start. Each phase = its own session running a
   phase-specific mode. After character-creation, the campaign is `active` and

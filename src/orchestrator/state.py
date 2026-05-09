@@ -143,6 +143,13 @@ class SessionState:
             raise ValueError("Session has no active mode")
         return self.mode_stack[-1]
 
+    @property
+    def has_active_mode(self) -> bool:
+        """True iff there's a real mode on the stack (not empty, not 'none')."""
+        if not self.mode_stack:
+            return False
+        return self.mode_stack[-1].mode != "none"
+
     def mark_running(self) -> None:
         self.status = "running"
         self.updated_at = utc_now()
@@ -176,7 +183,7 @@ class SessionState:
 
 def speaker_order_for(mode: str) -> tuple[str, ...]:
     normalized = mode.lower()
-    if normalized == "wrap":
+    if normalized in {"wrap", "campaign-planning"}:
         return ("dm",)
     if normalized in {"travel", "travel/montage", "montage"}:
         return PLAYER_IDS

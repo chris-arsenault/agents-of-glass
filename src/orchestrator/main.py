@@ -7,6 +7,13 @@ import json
 
 import click
 
+from .campaign import (
+    CampaignManager,
+    CampaignSpace,
+    PHASE_ACTIVE,
+    PHASE_CHARACTER_CREATION,
+    PHASE_PLANNING,
+)
 from .config import load_config
 from .runner import Orchestrator, TurnFailure
 from .store import SessionStore, summarize_states
@@ -17,6 +24,7 @@ class CliState:
         self.config = load_config(config_path)
         self.store = SessionStore(self.config)
         self.orchestrator = Orchestrator(self.config, self.store)
+        self.campaign_manager = CampaignManager(self.config)
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -31,6 +39,156 @@ def main(ctx: click.Context, config_path: Path | None) -> None:
     """Operate Agents of Glass sessions."""
 
     ctx.obj = CliState(str(config_path) if config_path else None)
+
+
+@main.group()
+def campaign() -> None:
+    """Manage campaigns: bootstrap, list, clear."""
+
+
+@campaign.command("bootstrap")
+@click.argument("campaign_id")
+@click.option(
+    "--max-planning-turns",
+    type=int,
+    default=5,
+    show_default=True,
+    help="Hard cap on DM invocations during campaign planning.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Build context packages and commit synthetic turns without invoking Claude.",
+)
+@click.option(
+    "--keep-cwd",
+    is_flag=True,
+    help="Keep successful per-turn ephemeral CWDs for inspection.",
+)
+@click.pass_obj
+def campaign_bootstrap(
+    cli: CliState,
+    campaign_id: str,
+    max_planning_turns: int,
+    dry_run: bool,
+    keep_cwd: bool,
+) -> None:
+    """Bootstrap a campaign end-to-end.
+
+    Steps:
+      1. Create campaigns/<id>/ from templates/.
+      2. Invoke DM in campaign-planning mode (foundation + opening arc).
+      3. [STUB] Character creation.
+      4. [STUB] Active scene play.
+    """
+
+    # 1. Create campaign workspace
+    click.secho(f"[1/4] Creating campaign workspace: {campaign_id}", fg="cyan")
+    try:
+        space = cli.campaign_manager.create(campaign_id)
+    except FileExistsError as exc:
+        raise click.ClickException(str(exc))
+    except FileNotFoundError as exc:
+        raise click.ClickException(str(exc))
+    click.echo(f"      workspace: {space.campaign_dir}")
+    click.echo(f"      state:     {space.state_path}")
+
+    # 2. Invoke DM for campaign planning
+    click.secho(
+        f"[2/4] Invoking DM for campaign planning (max {max_planning_turns} turns)",
+        fg="cyan",
+    )
+    cli.campaign_manager.advance_phase(campaign_id, PHASE_PLANNING)
+
+    state = cli.store.create_session(
+        campaign=campaign_id,
+        initial_mode="campaign-planning",
+        initial_scene="planning",
+    )
+    click.echo(f"      session: {state.session_id}")
+
+    try:
+        turns_run = cli.orchestrator.run_loop(
+            state,
+            max_turns=max_planning_turns,
+            dry_run=dry_run,
+            keep_cwd=keep_cwd,
+            resume_failed=False,
+        )
+    except TurnFailure as exc:
+        detail = json.dumps(exc.failure, indent=2, sort_keys=True)
+        raise click.ClickException(
+            f"campaign planning failed: {exc}\n{detail}"
+        ) from exc
+
+    click.echo(f"      DM produced {turns_run} planning turn(s)")
+    click.echo(f"      transcript: {cli.store.transcript_path(state.session_id)}")
+    click.echo(f"      DM workspace: {space.campaign_dir / 'dm'}")
+
+    # 3. STUB — character creation
+    cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
+    click.secho("[3/4] [STUB] Character creation", fg="yellow")
+    click.echo("              this is where the PCs are created")
+    click.echo("              (DM writes campaign-intro; each player authors")
+    click.echo("               character.md + intro entry; DM ratifies)")
+
+    # 4. STUB — active scene play
+    cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
+    click.secho("[4/4] [STUB] Active scene play", fg="yellow")
+    click.echo("              this is where regular scene play would begin")
+    click.echo("              (DM creates scenes via glass scene create;")
+    click.echo("               orchestrator runs scene loops)")
+
+    click.echo()
+    click.secho(
+        f"Campaign '{campaign_id}' bootstrapped through campaign_planning.",
+        fg="green",
+    )
+    click.echo(f"State file: {space.state_path}")
+
+
+@campaign.command("list")
+@click.pass_obj
+def campaign_list(cli: CliState) -> None:
+    campaigns = cli.campaign_manager.list_campaigns()
+    if not campaigns:
+        click.echo("no campaigns")
+        return
+    for campaign_id in campaigns:
+        try:
+            state = cli.campaign_manager.load_state(campaign_id)
+            phase = state.get("phase", "?")
+        except Exception:
+            phase = "?"
+        click.echo(f"{campaign_id:<32} phase: {phase}")
+
+
+@campaign.command("show")
+@click.argument("campaign_id")
+@click.pass_obj
+def campaign_show(cli: CliState, campaign_id: str) -> None:
+    space = CampaignSpace.from_config(cli.config, campaign_id)
+    if not space.exists():
+        raise click.ClickException(f"Campaign {campaign_id!r} does not exist")
+    state = cli.campaign_manager.load_state(campaign_id)
+    click.echo(json.dumps(state, indent=2, sort_keys=True))
+    click.echo(f"\nworkspace: {space.campaign_dir}")
+
+
+@campaign.command("clear")
+@click.argument("campaign_id")
+@click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
+@click.pass_obj
+def campaign_clear(cli: CliState, campaign_id: str, yes: bool) -> None:
+    space = CampaignSpace.from_config(cli.config, campaign_id)
+    if not space.exists():
+        raise click.ClickException(f"Campaign {campaign_id!r} does not exist")
+    if not yes and not click.confirm(
+        f"Delete campaign {campaign_id!r} at {space.campaign_dir}?"
+    ):
+        raise click.Abort()
+    cli.campaign_manager.clear(campaign_id)
+    click.echo(f"cleared campaign {campaign_id}")
 
 
 @main.group()

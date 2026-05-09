@@ -84,6 +84,8 @@ class Role:
 class Paths:
     content: Path
     sessions: Path
+    campaigns: Path | None = None
+    lore: Path | None = None
 
 
 def now_iso() -> str:
@@ -131,9 +133,18 @@ def resolve_config_path(value: str | None, default: Path) -> Path:
 def get_paths() -> Paths:
     config = load_config()
     path_config = config.get("paths", {})
-    content = resolve_config_path(path_config.get("content"), REPO_ROOT / "content")
+    # `content` is the legacy alias; the modern key is `templates`.
+    content = resolve_config_path(
+        path_config.get("content") or path_config.get("templates"),
+        REPO_ROOT / "templates",
+    )
     sessions = resolve_config_path(path_config.get("sessions"), content / "sessions")
-    return Paths(content=content, sessions=sessions)
+    campaigns = resolve_config_path(
+        path_config.get("campaigns"), REPO_ROOT / "campaigns"
+    )
+    lore_cfg = config.get("lore", {}).get("path") if isinstance(config.get("lore"), dict) else None
+    lore = resolve_config_path(lore_cfg, REPO_ROOT.parent / "the-glass-frontier-lore")
+    return Paths(content=content, sessions=sessions, campaigns=campaigns, lore=lore)
 
 
 def current_role() -> Role:
@@ -411,6 +422,18 @@ def ensure_under(path: Path, root: Path, message: str) -> Path:
     return resolved
 
 
+def ensure_under_any(path: Path, roots: list[Path], message: str) -> Path:
+    """Like ensure_under but accepts any of several allowed roots."""
+    resolved = path.resolve()
+    for root in roots:
+        try:
+            resolved.relative_to(root.resolve())
+            return resolved
+        except ValueError:
+            continue
+    raise GlassError(message)
+
+
 def display_path(path: Path) -> str:
     try:
         return str(path.resolve().relative_to(REPO_ROOT))
@@ -419,16 +442,40 @@ def display_path(path: Path) -> str:
 
 
 def resolve_content_path(paths: Paths, path_text: str) -> Path:
+    """Resolve a path argument from a CLI command.
+
+    Absolute paths are accepted under templates/ or campaigns/ (or, when
+    invoked from inside a campaign workspace, are taken as-is). Relative
+    paths are resolved against the current working directory; if the cwd
+    is a campaign workspace, that becomes the root.
+    """
     raw = Path(path_text).expanduser()
     if raw.is_absolute():
-        return ensure_under(
+        allowed = [paths.content]
+        if paths.campaigns is not None:
+            allowed.append(paths.campaigns)
+        return ensure_under_any(
             raw,
-            paths.content,
-            "invalid path: absolute paths must stay under content/",
+            allowed,
+            f"invalid path: absolute paths must stay under templates/ or campaigns/; got {raw}",
         )
     rel = clean_relative_path(path_text)
-    if rel.parts and rel.parts[0] == "content":
+    # Strip a leading 'content' or 'templates' segment for backwards-compat.
+    if rel.parts and rel.parts[0] in {"content", "templates"}:
         rel = Path(*rel.parts[1:])
+    # Try cwd-relative first if cwd is inside a campaign workspace.
+    cwd_candidate = (Path.cwd() / rel).resolve()
+    if paths.campaigns is not None:
+        try:
+            cwd_candidate.relative_to(paths.campaigns.resolve())
+            return cwd_candidate
+        except ValueError:
+            pass
+        try:
+            cwd_candidate.relative_to(paths.content.resolve())
+            return cwd_candidate
+        except ValueError:
+            pass
     return paths.content / rel
 
 
@@ -726,7 +773,14 @@ def parse_sections(text: str, entity_id: str) -> list[dict[str, Any]]:
 
 
 def upsert_entity_from_path(paths: Paths, state: dict[str, Any], path: Path) -> dict[str, Any]:
-    path = ensure_under(path, paths.content, "entity paths must stay under content/")
+    allowed_roots = [paths.content]
+    if paths.campaigns is not None:
+        allowed_roots.append(paths.campaigns)
+    path = ensure_under_any(
+        path,
+        allowed_roots,
+        f"entity paths must stay under templates/ or campaigns/; got {path}",
+    )
     if not path.exists():
         raise GlassError(f"entity source not found: {display_path(path)}")
     text = path.read_text(encoding="utf-8")
@@ -1449,14 +1503,21 @@ def entity() -> None:
 
 @entity.command("upsert")
 @click.argument("path_text")
+@click.option("--campaign-id", default=None, help="Override campaign id (default: GLASS_CAMPAIGN_ID).")
 @click.pass_context
-def entity_upsert(ctx: click.Context, path_text: str) -> None:
+def entity_upsert(ctx: click.Context, path_text: str, campaign_id: str | None) -> None:
     require_dm()
     paths = get_paths()
     state = load_state(paths)
     path = resolve_content_path(paths, path_text)
     record = upsert_entity_from_path(paths, state, path)
-    result = {"entity": record}
+
+    # Mirror the entity into FalkorDB. Best-effort: if the graph is
+    # unreachable, the JSON state still has the data and the operation
+    # remains useful — but we surface the error so the operator knows.
+    graph_status = _mirror_entity_to_graph(record, path, campaign_id)
+
+    result = {"entity": record, "graph": graph_status}
     commit(
         paths,
         state,
@@ -1467,12 +1528,90 @@ def entity_upsert(ctx: click.Context, path_text: str) -> None:
     )
 
 
+def _mirror_entity_to_graph(
+    record: dict[str, Any], path: Path, campaign_id_override: str | None
+) -> dict[str, Any]:
+    """Push an entity to FalkorDB. Returns a status dict describing the result."""
+    from . import graph as _graph
+
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        return {"status": "unavailable", "target": config.describe()}
+
+    text = path.read_text(encoding="utf-8")
+    mentions = _graph.extract_mentions(text)
+    fm = record.get("frontmatter", {}) or {}
+    campaign_id = (
+        campaign_id_override
+        or os.environ.get("GLASS_CAMPAIGN_ID")
+        or fm.get("campaign_id")
+        or "<unknown>"
+    )
+    entity_type = fm.get("type") or "entity"
+    tags_raw = fm.get("tags")
+    if isinstance(tags_raw, str):
+        tags = [t.strip() for t in tags_raw.strip("[]").split(",") if t.strip()]
+    elif isinstance(tags_raw, list):
+        tags = [str(t) for t in tags_raw]
+    else:
+        tags = []
+
+    try:
+        with _graph.connect(config) as g:
+            _graph.upsert_entity(
+                g,
+                entity_id=record["entity_id"],
+                campaign_id=campaign_id,
+                title=record.get("title", record["entity_id"]),
+                entity_type=entity_type,
+                file_path=record.get("path", str(path)),
+                tags=tags,
+                prominence=fm.get("prominence"),
+                status=fm.get("status"),
+                source=fm.get("source"),
+                sections=record.get("sections", []),
+                mentions=mentions,
+            )
+    except Exception as exc:
+        return {"status": "error", "target": config.describe(), "message": str(exc)}
+    return {
+        "status": "upserted",
+        "target": config.describe(),
+        "campaign_id": campaign_id,
+        "mentions": mentions,
+    }
+
+
 @entity.command("neighborhood")
 @click.argument("entity_id")
 @click.pass_context
 def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
+    """Show an entity's outgoing edges, incoming edges, and sections.
+
+    Prefers FalkorDB; falls back to JSON state if the graph is unreachable.
+    """
+    from . import graph as _graph
+
     paths = get_paths()
     state = load_state(paths)
+
+    config = _graph.load_falkor_config(load_config())
+    if _graph.is_available(config):
+        try:
+            with _graph.connect(config) as g:
+                payload = _graph.neighborhood(g, entity_id)
+        except Exception as exc:
+            payload = {"found": False, "error": str(exc)}
+        if payload.get("found"):
+            result = {**payload, "source": "falkordb", "target": config.describe()}
+            append_audit(
+                paths, state, ctx, "entity.neighborhood",
+                command_params(entity_id=entity_id), result,
+            )
+            emit(result)
+            return
+
+    # Fallback: JSON state.
     entity_record = state.get("entities", {}).get(entity_id)
     if not entity_record:
         known = ", ".join(sorted(state.get("entities", {}))) or "none"
@@ -1482,14 +1621,11 @@ def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
         "entity": entity_record,
         "outgoing": entity_record.get("edges", []),
         "incoming": [],
+        "source": "json-fallback",
     }
     append_audit(
-        paths,
-        state,
-        ctx,
-        "entity.neighborhood",
-        command_params(entity_id=entity_id),
-        result,
+        paths, state, ctx, "entity.neighborhood",
+        command_params(entity_id=entity_id), result,
     )
     emit(result)
 
@@ -1532,6 +1668,176 @@ def entity_similar(ctx: click.Context, section_id: str, limit: int) -> None:
         result,
     )
     emit(result)
+
+
+@entity.command("find")
+@click.option("--query", "-q", default=None, help="Substring search on id/title.")
+@click.option("--type", "type_filter", default=None, help="Filter by entity type.")
+@click.option("--campaign-id", default=None, help="Filter by campaign.")
+@click.option("--limit", type=int, default=25, show_default=True)
+@click.pass_context
+def entity_find(
+    ctx: click.Context,
+    query: str | None,
+    type_filter: str | None,
+    campaign_id: str | None,
+    limit: int,
+) -> None:
+    """Search entities in the graph by substring + filters."""
+    from . import graph as _graph
+
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+
+    campaign = campaign_id or os.environ.get("GLASS_CAMPAIGN_ID")
+    try:
+        with _graph.connect(config) as g:
+            matches = _graph.find_entities(
+                g,
+                query=query,
+                type_filter=type_filter,
+                campaign_id=campaign,
+                limit=limit,
+            )
+    except Exception as exc:
+        raise GlassError(f"falkordb find failed: {exc}") from exc
+
+    emit({
+        "target": config.describe(),
+        "query": query,
+        "type": type_filter,
+        "campaign_id": campaign,
+        "matches": matches,
+        "count": len(matches),
+    })
+
+
+@entity.command("link")
+@click.argument("src_id")
+@click.argument("edge_type")
+@click.argument("dst_id")
+@click.option("--prop", "props", multiple=True, help="key=value edge property; repeatable.")
+@click.pass_context
+def entity_link(
+    ctx: click.Context,
+    src_id: str,
+    edge_type: str,
+    dst_id: str,
+    props: tuple[str, ...],
+) -> None:
+    """Add a typed edge between two entities (DM-only).
+
+    Edge types are UPPERCASE_SNAKE_CASE — e.g. LOCATED_IN, MEMBER_OF,
+    ADVANCES_BEAT. Creates either entity as a `shell` if it does not yet
+    exist (so you can link to entities that haven't been ratified yet).
+    """
+    require_dm()
+    from . import graph as _graph
+
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+
+    properties: dict[str, Any] = {}
+    for raw in props:
+        if "=" not in raw:
+            raise GlassError(f"--prop must be key=value: {raw!r}")
+        k, v = raw.split("=", 1)
+        properties[k.strip()] = v.strip()
+
+    try:
+        with _graph.connect(config) as g:
+            _graph.link_entities(
+                g, src_id=src_id, edge_type=edge_type, dst_id=dst_id, properties=properties
+            )
+    except (ValueError, Exception) as exc:
+        raise GlassError(f"falkordb link failed: {exc}") from exc
+
+    emit({
+        "target": config.describe(),
+        "src": src_id,
+        "edge_type": edge_type,
+        "dst": dst_id,
+        "properties": properties,
+        "status": "linked",
+    })
+
+
+@entity.command("unlink")
+@click.argument("src_id")
+@click.argument("edge_type")
+@click.argument("dst_id")
+@click.pass_context
+def entity_unlink(ctx: click.Context, src_id: str, edge_type: str, dst_id: str) -> None:
+    """Remove a typed edge between two entities (DM-only)."""
+    require_dm()
+    from . import graph as _graph
+
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+    try:
+        with _graph.connect(config) as g:
+            removed = _graph.unlink_entities(g, src_id=src_id, edge_type=edge_type, dst_id=dst_id)
+    except Exception as exc:
+        raise GlassError(f"falkordb unlink failed: {exc}") from exc
+    emit({"src": src_id, "edge_type": edge_type, "dst": dst_id, "removed": removed})
+
+
+@entity.command("query")
+@click.argument("cypher")
+@click.option("--param", "params", multiple=True, help="key=value query param; repeatable.")
+@click.pass_context
+def entity_query(ctx: click.Context, cypher: str, params: tuple[str, ...]) -> None:
+    """Run an arbitrary Cypher query against the campaign graph (DM-only).
+
+    Use for ad-hoc analysis the other commands don't cover. Examples:
+
+        glass entity query "MATCH (e:Entity {type: 'faction'}) RETURN e.id, e.title"
+        glass entity query "MATCH (a:Entity)-[:GOVERNS]->(b) RETURN a.id, b.id"
+
+    Properties are returned as plain dicts; nodes get a `_kind` of 'node',
+    edges get `_kind: 'edge'` and a `_relation` field.
+    """
+    require_dm()
+    from . import graph as _graph
+
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+
+    parameters: dict[str, Any] = {}
+    for raw in params:
+        if "=" not in raw:
+            raise GlassError(f"--param must be key=value: {raw!r}")
+        k, v = raw.split("=", 1)
+        parameters[k.strip()] = v.strip()
+
+    try:
+        with _graph.connect(config) as g:
+            payload = _graph.run_query(g, cypher, parameters)
+    except Exception as exc:
+        raise GlassError(f"falkordb query failed: {exc}") from exc
+
+    emit({"target": config.describe(), "cypher": cypher, "params": parameters, **payload})
+
+
+@entity.command("stats")
+@click.pass_context
+def entity_stats(ctx: click.Context) -> None:
+    """Show graph counts: entities, sections, edges, top edge types, top entity types."""
+    from . import graph as _graph
+
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+    try:
+        with _graph.connect(config) as g:
+            stats = _graph.graph_stats(g)
+    except Exception as exc:
+        raise GlassError(f"falkordb stats failed: {exc}") from exc
+    emit({"target": config.describe(), **stats})
 
 
 @main.group()
@@ -1839,6 +2145,398 @@ def turns_find(
         result,
     )
     emit(result)
+
+
+# ============================================================================
+# Postgres / migrations
+# ============================================================================
+
+from . import db as _db  # noqa: E402  (intentional bottom-of-file import)
+from . import workspace as _workspace  # noqa: E402
+
+
+@main.group()
+def db() -> None:  # noqa: F811 — the `db` import is rebound to this group; we don't reference it elsewhere
+    """Postgres connection + migration runner."""
+
+
+@db.command("migrate")
+@click.pass_context
+def db_migrate(ctx: click.Context) -> None:
+    """Apply pending SQL migrations from the repo's migrations/ directory."""
+    config = load_config()
+    pg_config = _db.load_pg_config(config)
+    try:
+        with _db.connect(pg_config) as conn:
+            actions = _db.migrate(conn)
+    except Exception as exc:
+        raise GlassError(f"db migrate failed against {pg_config.describe()}: {exc}") from exc
+
+    result = {"target": pg_config.describe(), "actions": actions}
+    # Best-effort audit: skip if no active session, or if the active-session
+    # pointer is stale (points to a cleared/deleted session).
+    paths = get_paths()
+    if active_session_file(paths).exists():
+        try:
+            state = load_state(paths)
+        except GlassError:
+            state = None
+        if state is not None:
+            append_audit(paths, state, ctx, "db.migrate", command_params(), result)
+    emit(result)
+
+
+@db.command("status")
+@click.pass_context
+def db_status(ctx: click.Context) -> None:
+    """Show applied + pending migrations and any checksum mismatches."""
+    config = load_config()
+    pg_config = _db.load_pg_config(config)
+    try:
+        with _db.connect(pg_config) as conn:
+            report = _db.status(conn)
+    except Exception as exc:
+        raise GlassError(f"db status failed against {pg_config.describe()}: {exc}") from exc
+    report["target"] = pg_config.describe()
+    emit(report)
+
+
+# ============================================================================
+# Campaign workspace: arc / scene / lore
+# ============================================================================
+
+
+def _campaign_workspace() -> _workspace.CampaignWorkspace:
+    paths = get_paths()
+    if paths.campaigns is None:
+        raise GlassError("paths.campaigns is not configured")
+    env_id = os.environ.get("GLASS_CAMPAIGN_ID")
+    try:
+        return _workspace.resolve_active_campaign(paths.campaigns, env_id=env_id)
+    except FileNotFoundError as exc:
+        raise GlassError(str(exc)) from exc
+
+
+@main.group()
+def arc() -> None:
+    """Arc lifecycle (DM-only): create, list, current."""
+
+
+@arc.command("create")
+@click.argument("arc_id")
+@click.pass_context
+def arc_create(ctx: click.Context, arc_id: str) -> None:
+    require_dm()
+    workspace = _campaign_workspace()
+    try:
+        arc_dir = _workspace.create_arc(workspace, arc_id)
+    except (FileExistsError, ValueError) as exc:
+        raise GlassError(str(exc)) from exc
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "arc_id": arc_id,
+        "path": str(arc_dir),
+        "files": ["plan.md", "context.md", "scenes/"],
+    }
+    emit(result)
+
+
+@arc.command("list")
+@click.pass_context
+def arc_list(ctx: click.Context) -> None:
+    workspace = _campaign_workspace()
+    arcs = _workspace.list_arcs(workspace)
+    emit({"campaign_id": workspace.campaign_id, "arcs": arcs})
+
+
+@arc.command("current")
+@click.pass_context
+def arc_current(ctx: click.Context) -> None:
+    workspace = _campaign_workspace()
+    current = _workspace.current_arc(workspace)
+    emit({"campaign_id": workspace.campaign_id, "active_arc": current})
+
+
+@main.group()
+def scene() -> None:
+    """Scene lifecycle (DM-only): create, end, current, list."""
+
+
+@scene.command("create")
+@click.argument("scene_id")
+@click.option(
+    "--type",
+    "scene_type",
+    required=True,
+    help="Scene type / mode: town, social, exploration, investigation, combat, travel, montage, wrap.",
+)
+@click.option("--arc", "arc_id", default=None, help="Override active arc.")
+@click.pass_context
+def scene_create(
+    ctx: click.Context, scene_id: str, scene_type: str, arc_id: str | None
+) -> None:
+    require_dm()
+    workspace = _campaign_workspace()
+    try:
+        scene_dir = _workspace.create_scene(workspace, scene_id, scene_type, arc_id=arc_id)
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+        raise GlassError(str(exc)) from exc
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "scene_id": scene_id,
+        "scene_type": scene_type,
+        "arc_id": arc_id or _workspace.load_campaign_state(workspace).get("active_scene_arc"),
+        "path": str(scene_dir),
+        "files": ["prep.md", "context.md", "transcript.md", "audit.jsonl"],
+    }
+    emit(result)
+
+
+@scene.command("end")
+@click.pass_context
+def scene_end_cmd(ctx: click.Context) -> None:
+    require_dm()
+    workspace = _campaign_workspace()
+    try:
+        ended = _workspace.end_scene(workspace)
+    except ValueError as exc:
+        raise GlassError(str(exc)) from exc
+    emit({"campaign_id": workspace.campaign_id, "ended_scene": ended})
+
+
+@scene.command("current")
+@click.pass_context
+def scene_current(ctx: click.Context) -> None:
+    workspace = _campaign_workspace()
+    emit({
+        "campaign_id": workspace.campaign_id,
+        "active_scene": _workspace.current_scene(workspace),
+    })
+
+
+@scene.command("list")
+@click.option("--arc", "arc_id", default=None, help="List scenes in a specific arc (default: active).")
+@click.pass_context
+def scene_list(ctx: click.Context, arc_id: str | None) -> None:
+    workspace = _campaign_workspace()
+    scenes = _workspace.list_scenes(workspace, arc_id=arc_id)
+    emit({"campaign_id": workspace.campaign_id, "arc_id": arc_id, "scenes": scenes})
+
+
+@main.group()
+def lore() -> None:
+    """Lore curation: import / list / search."""
+
+
+@lore.command("import")
+@click.argument("source_path")
+@click.option("--as", "alias", default=None, help="Override destination filename.")
+@click.pass_context
+def lore_import(ctx: click.Context, source_path: str, alias: str | None) -> None:
+    """Import an entry from the world bible into the campaign's curated lore.
+
+    SOURCE_PATH is interpreted relative to the lore root (`lore.path` in config),
+    or as an absolute path. Examples:
+      glass lore import player/concepts/ringglass.md
+      glass lore import dm/themes/builders-gone.md
+    """
+    require_dm()
+    workspace = _campaign_workspace()
+    paths = get_paths()
+    if paths.lore is None:
+        raise GlassError("lore.path is not configured")
+
+    source = Path(source_path)
+    if not source.is_absolute():
+        source = (paths.lore / source).resolve()
+    try:
+        dest = _workspace.import_lore(workspace, source, paths.lore, alias=alias)
+    except (FileExistsError, FileNotFoundError) as exc:
+        raise GlassError(str(exc)) from exc
+
+    # Mirror the imported entry into the graph (best-effort).
+    state = load_state(paths) if active_session_file(paths).exists() else {"entities": {}}
+    record = upsert_entity_from_path(paths, state, dest) if False else _record_for_lore_import(dest)
+    graph_status = _mirror_entity_to_graph(record, dest, workspace.campaign_id)
+
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "source": str(source),
+        "destination": str(dest),
+        "graph": graph_status,
+    }
+    emit(result)
+
+
+def _record_for_lore_import(path: Path) -> dict[str, Any]:
+    """Build the same record shape as upsert_entity_from_path, but without the
+    paths-must-be-under-content guard (lore lands in campaigns/<id>/shared/lore/).
+    """
+    text = path.read_text(encoding="utf-8")
+    fm = parse_frontmatter(text)
+    entity_id = fm.get("id") or slugify(path.stem)
+    return {
+        "entity_id": entity_id,
+        "title": fm.get("title") or markdown_title(text, path.stem),
+        "path": str(path),
+        "updated_at": now_iso(),
+        "sections": parse_sections(text, entity_id),
+        "frontmatter": fm,
+        "edges": [],
+    }
+
+
+@lore.command("list")
+@click.pass_context
+def lore_list(ctx: click.Context) -> None:
+    workspace = _campaign_workspace()
+    entries = _workspace.list_lore(workspace)
+    emit({"campaign_id": workspace.campaign_id, "lore": entries, "count": len(entries)})
+
+
+@lore.command("search")
+@click.argument("query")
+@click.option("--limit", type=int, default=20, show_default=True)
+@click.pass_context
+def lore_search(ctx: click.Context, query: str, limit: int) -> None:
+    """Search the world bible (DM only) — for finding candidates to import."""
+    require_dm()
+    paths = get_paths()
+    if paths.lore is None:
+        raise GlassError("lore.path is not configured")
+    matches = _workspace.search_lore(paths.lore, query, limit=limit)
+    emit({"query": query, "lore_root": str(paths.lore), "matches": matches, "count": len(matches)})
+
+
+@lore.command("new")
+@click.argument("entity_type")
+@click.argument("slug")
+@click.option("--title", default=None, help="Entry title (defaults to slug, title-cased).")
+@click.option("--tags", default="", help="Comma-separated tag list.")
+@click.option(
+    "--prominence",
+    type=click.Choice(["forgotten", "marginal", "recognized", "renowned", "mythic"]),
+    default=None,
+)
+@click.option(
+    "--category",
+    default=None,
+    help="Subdirectory under shared/lore/ (e.g. 'npcs', 'factions', 'locales'). "
+    "Defaults to the plural of <entity_type> when sensible.",
+)
+@click.pass_context
+def lore_new(
+    ctx: click.Context,
+    entity_type: str,
+    slug: str,
+    title: str | None,
+    tags: str,
+    prominence: str | None,
+    category: str | None,
+) -> None:
+    """Scaffold a new lore entry under campaigns/<id>/shared/lore/.
+
+    Creates a file with valid frontmatter, ready for the DM to fill in. Does
+    NOT upsert to the graph — the DM edits the body, then runs `glass lore
+    upsert <path>` once the entry is real. Run with empty body, fill in
+    afterward.
+
+    Example:
+      glass lore new npc patrol-leader-verra --title "Patrol Leader Verra" \\
+                     --tags "patrol,accord" --prominence marginal
+    """
+    require_dm()
+    workspace = _campaign_workspace()
+    slug_clean = _workspace.slugify(slug)
+    cat = category or _default_category_for(entity_type)
+    dest_dir = workspace.lore_dir / cat
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / f"{slug_clean}.md"
+    if dest.exists():
+        raise GlassError(f"lore entry already exists: {dest}")
+
+    title_value = title or slug_clean.replace("-", " ").title()
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+
+    fm_lines = [
+        "---",
+        f"title: {title_value}",
+        f"type: {entity_type}",
+        f"id: {slug_clean}",
+    ]
+    if tag_list:
+        fm_lines.append("tags: [" + ", ".join(tag_list) + "]")
+    if prominence:
+        fm_lines.append(f"prominence: {prominence}")
+    fm_lines.extend(["status: draft", "---", "", f"# {title_value}", "", "_Body to be authored._", ""])
+    dest.write_text("\n".join(fm_lines), encoding="utf-8")
+
+    emit({
+        "campaign_id": workspace.campaign_id,
+        "id": slug_clean,
+        "type": entity_type,
+        "title": title_value,
+        "path": str(dest),
+        "next": [
+            f"edit {dest} to fill in the body",
+            f"glass lore upsert {dest.relative_to(workspace.root)} to register in the graph",
+        ],
+    })
+
+
+def _default_category_for(entity_type: str) -> str:
+    plurals = {
+        "npc": "npcs",
+        "faction": "factions",
+        "location": "locales",
+        "locale": "locales",
+        "creature": "creatures",
+        "artifact": "artifacts",
+        "ship": "ships",
+        "transport": "ships",
+        "event": "events",
+        "occurrence": "events",
+        "concept": "concepts",
+        "thread": "threads",
+        "loop": "loops",
+        "theme": "themes",
+        "hook": "hooks",
+        "secret": "secrets",
+    }
+    return plurals.get(entity_type.lower(), entity_type.lower() + "s")
+
+
+@lore.command("upsert")
+@click.argument("path_text")
+@click.pass_context
+def lore_upsert(ctx: click.Context, path_text: str) -> None:
+    """Register an authored lore entry in the FalkorDB graph.
+
+    Use this after writing a lore file (either with `glass lore new` then
+    your editor, or directly with the agent's Write tool). The path can be
+    relative to the campaign workspace or absolute.
+
+    Example:
+      glass lore upsert shared/lore/npcs/patrol-leader-verra.md
+    """
+    require_dm()
+    paths = get_paths()
+    state = load_state(paths)
+
+    raw = Path(path_text).expanduser()
+    if not raw.is_absolute():
+        # Resolve relative to cwd (typically the campaign workspace).
+        raw = (Path.cwd() / raw).resolve()
+
+    if not raw.exists():
+        raise GlassError(f"file not found: {raw}")
+
+    record = upsert_entity_from_path(paths, state, raw)
+    graph_status = _mirror_entity_to_graph(
+        record, raw, os.environ.get("GLASS_CAMPAIGN_ID")
+    )
+    result = {"entity": record, "graph": graph_status}
+    commit(paths, state, ctx, "lore.upsert", command_params(path=path_text), result)
 
 
 if __name__ == "__main__":

@@ -71,14 +71,16 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - Pointer to DM workspace (for the planning half of the dual-purpose turn)
 
 ### Queryable by everyone
-- **World bible** (read-only) — `../the-glass-frontier-lore/player/`. The pre-existing canonical world.
-- **Campaign lore** (read-only for players, write-via-ratification) — `campaigns/<id>/shared/lore/`. The encyclopedia that's grown across this campaign. Players draft entries that become campaign lore once the DM ratifies.
+- **Campaign lore** — `campaigns/<id>/shared/lore/`. The curated subset of world canon that matters to *this* campaign. Players see this. Read-only for players (write-via-ratification). The DM seeds this during planning (8-15 entries, imported from the world bible via `glass lore import`) and adds more on demand during play.
 - Quest log (`campaigns/<id>/shared/quest-log.md` — DM-writable, all-readable)
 - Party knowledge (`campaigns/<id>/shared/party-knowledge.md` — party-writable, all-readable)
 - Vocabulary detail files (`campaigns/<id>/shared/vocabulary/*.md`)
 - Past turns from prior scenes (via `glass turns find ...`)
 - Their own journal directory
 - Entity graph (read-only via `glass entity ...`)
+
+### Queryable by DM only
+- **World bible** — `../the-glass-frontier-lore/player/` and `../the-glass-frontier-lore/dm/`. The full canon. The DM consults it as reference at any time. **Players never see it directly.** Bulk-copying it would poison every agent's context. See [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md#curate-dont-copy) for the curation principle.
 
 ### Queryable by DM only
 - DM canonical notes (NPCs, locales, etc.)
@@ -162,13 +164,25 @@ The `inbox/` and `transcript-recent.md` etc. are orchestrator-maintained project
 
 ## Process Isolation
 
-Each agent runs as a separate `claude -p` subprocess in a per-turn ephemeral working directory. The directory is built by the orchestrator with bind-mounts (or a per-turn copy/symlink fan-out, depending on what works) so the agent can only see the files in their permitted view.
+Each agent runs as a separate `claude -p` subprocess **directly inside the campaign workspace** (`cwd = campaigns/<id>/`). No per-turn ephemeral CWD with file projections. Per-turn artifacts (TURN_START.md, TURN.md) live at `sessions/<session-id>/turns/<NNNN>/`, separate from the campaign workspace.
 
-For v1: ephemeral CWD with selective symlinks/bind-mounts. Light-weight, easy to inspect, easy to reset between turns.
+Filesystem isolation between agents is enforced by Unix users + group-based chmod. See [`architecture.md`](architecture.md#process-isolation) for the full setup. Quick summary:
 
-Possible upgrade path: per-player Unix users with file-system group permissions. More durable against half-killed subprocesses leaving scaffolding around. Defer unless we observe leakage in v1 — but it's a real upgrade we may want.
+- DM = the operator user (`dev`); full access.
+- Players = dedicated users (`aog-tev`, `aog-sumi`, `aog-renno`, `aog-kit`); each runs via `sudo -u`.
+- Shared content owned by `dev:aog-agents` mode `2750/0640` — all agents read, only the operator writes.
+- Player private (`journal`, `drafts`, `notes`, `inbox`, `scratchpad`, `persona`): owned by the player user + their primary group (which includes `dev` so the DM can read), mode `2750/0640`. Other players cannot see.
+- DM-only (`dm/foundation.md`, `dm/secret/`, etc.): `dev:dev` mode `0700/0600`. Players cannot see.
+
+Operator setup is one command: `sudo bash scripts/provision-agents.sh`. Without it, the orchestrator falls through to running all agents as the operator (no isolation; documented as the dev/CI path).
 
 The principle: **do not trust agents to honor "don't read X."** Agents are too good at finding things they shouldn't have. Enforce at the OS level, not via instructions in the prompt.
+
+## Streaming Output
+
+The orchestrator runs in the foreground. When it spawns each agent invocation, it streams the agent's stdout (and stderr) line-by-line to the operator's terminal, prefixed with the agent id (e.g. `[mara]`, `[tev]`). Full captures land at `sessions/<session-id>/turns/<NNNN>/agent-stdout.txt` and `agent-stderr.txt` for post-hoc inspection.
+
+This is the operator's primary debugging tool during play — you can see the agent reading files, calling `glass` commands, doing web searches, and writing files in real time. The default per-turn timeout is 60 minutes (`claude.turn_timeout_seconds = 3600`), bumped from 5 minutes after the first inspection runs showed real DM work needs more breathing room.
 
 ## Recent-Turns Window Policy
 

@@ -21,8 +21,10 @@ ENV/
 *.swo
 
 # Project-specific
-.glass-cwd/                 # ephemeral per-turn agent CWDs
-*.local.toml                # local config overrides (e.g. agents-of-glass.local.toml)
+# ephemeral per-turn agent CWDs
+.glass-cwd/
+# local config overrides (e.g. agents-of-glass.local.toml)
+*.local.toml
 
 # OS
 .DS_Store

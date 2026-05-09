@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# aog-permset — root-privileged helper used by the orchestrator to set
+# ownership and modes on a freshly-created campaign workspace or a per-turn
+# ephemeral CWD.
+#
+# Installed by scripts/provision-agents.sh to /usr/local/bin/aog-permset.
+# Invoked via sudo by the orchestrator (sudoers entry permits NOPASSWD).
+#
+# Subcommands:
+#   campaign <campaign-dir>                apply campaign workspace permissions
+#   turn-dir-player <player> <turn-dir>    prepare a player's per-turn artifact dir
+#   turn-dir-dm <turn-dir>                 prepare DM's per-turn artifact dir
+#
+# All paths are validated to be under expected roots before any chown/chmod
+# fires.
+
+set -euo pipefail
+
+OPERATOR="${SUDO_USER:-}"
+if [[ -z "$OPERATOR" ]]; then
+    echo "aog-permset: SUDO_USER not set; refusing to run." >&2
+    exit 1
+fi
+OPERATOR_GROUP="$(id -gn "$OPERATOR")"
+
+SHARED_GROUP="aog-agents"
+PLAYER_IDS=(tev sumi renno kit)
+
+usage() {
+    cat <<EOF
+Usage: $0 campaign <campaign-dir>
+       $0 turn-dir-player <player> <turn-dir>
+       $0 turn-dir-dm <turn-dir>
+EOF
+    exit 1
+}
+
+# --- helpers ---
+
+assert_path_safe() {
+    # Forbid ".." and require the path to be absolute and exist.
+    local path="$1"
+    case "$path" in
+        */../*|*/..) echo "aog-permset: path contains '..': $path" >&2; exit 1 ;;
+        /*) ;;
+        *) echo "aog-permset: path must be absolute: $path" >&2; exit 1 ;;
+    esac
+    if [[ ! -e "$path" ]]; then
+        echo "aog-permset: path does not exist: $path" >&2
+        exit 1
+    fi
+}
+
+assert_player_id() {
+    local id="$1"
+    for known in "${PLAYER_IDS[@]}"; do
+        if [[ "$id" == "$known" ]]; then return 0; fi
+    done
+    echo "aog-permset: unknown player id: $id" >&2
+    exit 1
+}
+
+# Apply ownership + mode to a path, treating dirs and files appropriately.
+# Args: owner group dir-mode file-mode path [path ...]
+apply_perms() {
+    local owner="$1" group="$2" dirmode="$3" filemode="$4"
+    shift 4
+    for target in "$@"; do
+        if [[ ! -e "$target" ]]; then continue; fi
+        chown "$owner:$group" "$target"
+        if [[ -d "$target" ]]; then
+            chmod "$dirmode" "$target"
+        else
+            chmod "$filemode" "$target"
+        fi
+    done
+}
+
+apply_perms_recursive() {
+    local owner="$1" group="$2" dirmode="$3" filemode="$4"
+    shift 4
+    for target in "$@"; do
+        if [[ ! -e "$target" ]]; then continue; fi
+        chown -R "$owner:$group" "$target"
+        find "$target" -type d -exec chmod "$dirmode" {} +
+        find "$target" -type f -exec chmod "$filemode" {} +
+    done
+}
+
+# --- subcommands ---
+
+cmd_campaign() {
+    local campaign_dir="${1:-}"
+    [[ -z "$campaign_dir" ]] && usage
+    assert_path_safe "$campaign_dir"
+
+    # Top-level state.json and context.md
+    apply_perms "$OPERATOR" "$SHARED_GROUP" 0750 0640 \
+        "$campaign_dir/state.json" \
+        "$campaign_dir/context.md"
+
+    # DM-only tree
+    apply_perms_recursive "$OPERATOR" "$OPERATOR_GROUP" 0700 0600 \
+        "$campaign_dir/dm"
+
+    # Shared content — all agents read, operator writes
+    apply_perms_recursive "$OPERATOR" "$SHARED_GROUP" 2750 0640 \
+        "$campaign_dir/shared" \
+        "$campaign_dir/methodologies"
+
+    # Per-player private dirs and files
+    for pid in "${PLAYER_IDS[@]}"; do
+        local pdir="$campaign_dir/players/$pid"
+        local puser="aog-$pid"
+        if [[ ! -d "$pdir" ]]; then continue; fi
+
+        # The player dir itself: owner = player, group = player's group, setgid
+        apply_perms_recursive "$puser" "$puser" 2750 0640 \
+            "$pdir/journal" \
+            "$pdir/drafts" \
+            "$pdir/notes" \
+            "$pdir/inbox"
+
+        for f in persona.md scratchpad.md; do
+            if [[ -f "$pdir/$f" ]]; then
+                apply_perms "$puser" "$puser" 0640 0640 "$pdir/$f"
+            fi
+        done
+
+        # character.md is all-readable, player-writable
+        if [[ -f "$pdir/character.md" ]]; then
+            apply_perms "$puser" "$SHARED_GROUP" 0640 0640 "$pdir/character.md"
+        fi
+
+        # Player root dir: owner = player, mode setgid + group rx so dev (in
+        # the player's group) can list it.
+        chown "$puser:$puser" "$pdir"
+        chmod 2750 "$pdir"
+    done
+
+    # The players/ container itself: dev:aog-agents 2750 (all agents can
+    # traverse, only operator can change the player roster)
+    if [[ -d "$campaign_dir/players" ]]; then
+        chown "$OPERATOR:$SHARED_GROUP" "$campaign_dir/players"
+        chmod 2750 "$campaign_dir/players"
+    fi
+
+    # arcs/ — populated lazily; default ownership for now
+    if [[ -d "$campaign_dir/arcs" ]]; then
+        chown "$OPERATOR:$SHARED_GROUP" "$campaign_dir/arcs"
+        chmod 2750 "$campaign_dir/arcs"
+    fi
+
+    # The campaign root itself
+    chown "$OPERATOR:$SHARED_GROUP" "$campaign_dir"
+    chmod 2750 "$campaign_dir"
+}
+
+cmd_turn_dir_player() {
+    local player_id="${1:-}" turn_dir="${2:-}"
+    [[ -z "$player_id" || -z "$turn_dir" ]] && usage
+    assert_player_id "$player_id"
+    assert_path_safe "$turn_dir"
+
+    # Per-turn artifact dir readable+writable by the player (via group), inheritable.
+    apply_perms_recursive "$OPERATOR" "aog-$player_id" 2770 0660 "$turn_dir"
+}
+
+cmd_turn_dir_dm() {
+    local turn_dir="${1:-}"
+    [[ -z "$turn_dir" ]] && usage
+    assert_path_safe "$turn_dir"
+
+    # DM per-turn dir: operator-owned, no group sharing.
+    apply_perms_recursive "$OPERATOR" "$OPERATOR_GROUP" 0700 0600 "$turn_dir"
+}
+
+case "${1:-}" in
+    campaign)         shift; cmd_campaign "$@" ;;
+    turn-dir-player)  shift; cmd_turn_dir_player "$@" ;;
+    turn-dir-dm)      shift; cmd_turn_dir_dm "$@" ;;
+    *)                usage ;;
+esac

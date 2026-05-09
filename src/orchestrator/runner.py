@@ -1,4 +1,4 @@
-"""Foreground orchestration loop for `aog session run`."""
+"""Foreground orchestration loop for `aog campaign bootstrap` / `aog session run`."""
 
 from __future__ import annotations
 
@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 import os
-import shutil
 import subprocess
+import sys
+import threading
 
 from .config import AogConfig, config_env_value
 from .context import ContextBuilder, ContextPackage
 from .glass_bridge import GlassBridgeError
+from . import permissions
 from .state import Agent, SessionState, next_agent_for, utc_now
 from .store import SessionStore
 
@@ -26,7 +28,8 @@ class TurnFailure(RuntimeError):
 class TurnResult:
     turn_id: str
     agent: Agent
-    cwd: Path
+    turn_dir: Path
+    spawn_cwd: Path
     prose: str
     dry_run: bool
 
@@ -47,7 +50,7 @@ class Orchestrator:
         *,
         max_turns: int | None,
         dry_run: bool,
-        keep_cwd: bool,
+        keep_cwd: bool = True,  # legacy flag name; per-turn dirs always preserved now
         resume_failed: bool = False,
     ) -> int:
         if state.status == "failed" and not resume_failed:
@@ -68,8 +71,6 @@ class Orchestrator:
                 result = self.run_one_turn(state, dry_run=dry_run)
                 self.commit_turn(state, result)
                 turns_run += 1
-                if not keep_cwd and not dry_run:
-                    shutil.rmtree(result.cwd, ignore_errors=True)
             if state.status == "running":
                 state.mark_ready()
                 self.store.save(state)
@@ -91,15 +92,25 @@ class Orchestrator:
         if dry_run:
             prose = (
                 f"_Dry run: prepared turn `{package.turn_id}` for {agent.display_name}. "
-                f"Context package: `{package.cwd}`._"
+                f"TURN_START at `{package.turn_start_path}`._"
             )
-            return TurnResult(package.turn_id, agent, package.cwd, prose, dry_run=True)
+            return TurnResult(
+                turn_id=package.turn_id,
+                agent=agent,
+                turn_dir=package.turn_dir,
+                spawn_cwd=package.spawn_cwd,
+                prose=prose,
+                dry_run=True,
+            )
 
         return self._invoke_agent(state, agent, package)
 
     def commit_turn(self, state: SessionState, result: TurnResult) -> None:
         active = state.active_mode
-        commit_file = result.cwd / "COMMIT.md"
+        # The agent's TURN.md (or the dry-run synthetic prose) is what we
+        # commit. glass turn append owns the transcript header; we just hand
+        # it the markdown file.
+        commit_file = result.turn_dir / "COMMIT.md"
         commit_file.write_text(result.prose.rstrip() + "\n", encoding="utf-8")
         try:
             self.store.glass.invoke(
@@ -126,7 +137,7 @@ class Orchestrator:
                     "reason": "glass_turn_append_failed",
                     "turn_id": result.turn_id,
                     "speaker": result.agent.id,
-                    "cwd": str(result.cwd),
+                    "turn_dir": str(result.turn_dir),
                     "glass_output": exc.result.output,
                 },
             ) from exc
@@ -150,8 +161,28 @@ class Orchestrator:
     def _invoke_agent(
         self, state: SessionState, agent: Agent, package: ContextPackage
     ) -> TurnResult:
-        prompt = "Read TURN_START.md and take your turn. Write final public prose to TURN.md."
-        command = ["claude"]
+        # The prompt is intentionally short — the heavy lifting is in
+        # TURN_START.md, which the agent reads as its first action.
+        prompt = (
+            f"Read {package.turn_start_path} and follow its instructions. "
+            f"Write your final public prose to {package.turn_output_path} and exit."
+        )
+
+        # If the agent has a dedicated Unix user (provisioning is set up),
+        # sudo into that user. The DM runs as the operator (None).
+        target_user = permissions.player_user_for(agent.id)
+
+        command: list[str] = []
+        if target_user is not None:
+            command.extend([
+                "sudo",
+                "-n",
+                "-u", target_user,
+                "--preserve-env=ANTHROPIC_API_KEY,ANTHROPIC_BASE_URL,CLAUDE_API_KEY,GLASS_ROLE,GLASS_SESSION_ID,GLASS_CAMPAIGN_ID,GLASS_CONFIG,GLASS_TURN_ID,AOG_SESSION_DIR,AOG_TURN_START,AOG_TURN_OUTPUT,AOG_PG_PASSWORD,PGPASSWORD,PGHOST,PGPORT,PGDATABASE,PGUSER,AOG_FALKOR_PASSWORD,REDIS_PASSWORD,AOG_FALKOR_HOST,AOG_FALKOR_PORT,AOG_FALKOR_GRAPH,PATH",
+                "--",
+            ])
+
+        command.append("claude")
         if self.config.claude.model:
             command.extend(["--model", self.config.claude.model])
         command.extend(["-p", prompt, "--dangerously-skip-permissions"])
@@ -161,21 +192,30 @@ class Orchestrator:
             {
                 "GLASS_ROLE": agent.glass_role,
                 "GLASS_SESSION_ID": state.session_id,
+                "GLASS_CAMPAIGN_ID": state.campaign,
                 "GLASS_CONFIG": config_env_value(self.config),
                 "GLASS_TURN_ID": package.turn_id,
                 "AOG_SESSION_DIR": str(self.store.session_dir(state.session_id)),
+                "AOG_TURN_START": str(package.turn_start_path),
+                "AOG_TURN_OUTPUT": str(package.turn_output_path),
             }
         )
 
+        prefix = f"[{agent.id}] "
+        print(
+            f"\n--- {agent.display_name} (mode: {state.active_mode.mode}, "
+            f"turn {package.turn_number}, timeout {self.config.claude.turn_timeout_seconds}s) ---",
+            flush=True,
+        )
+
         try:
-            completed = subprocess.run(
+            stdout_text, stderr_text, returncode, timed_out = _stream_subprocess(
                 command,
-                cwd=package.cwd,
+                cwd=package.spawn_cwd,
                 env=env,
                 timeout=self.config.claude.turn_timeout_seconds,
-                capture_output=True,
-                text=True,
-                check=False,
+                stdout_prefix=prefix,
+                stderr_prefix=prefix + "(err) ",
             )
         except FileNotFoundError as exc:
             raise TurnFailure(
@@ -184,36 +224,37 @@ class Orchestrator:
                     "reason": "claude_not_found",
                     "turn_id": package.turn_id,
                     "speaker": agent.id,
-                    "cwd": str(package.cwd),
+                    "turn_dir": str(package.turn_dir),
                 },
             ) from exc
-        except subprocess.TimeoutExpired as exc:
-            _write_process_capture(package.cwd, exc.stdout, exc.stderr)
+
+        _write_process_capture(package.turn_dir, stdout_text, stderr_text)
+
+        if timed_out:
             raise TurnFailure(
                 f"Turn {package.turn_id} timed out.",
                 {
                     "reason": "timeout",
                     "turn_id": package.turn_id,
                     "speaker": agent.id,
-                    "cwd": str(package.cwd),
+                    "turn_dir": str(package.turn_dir),
                     "timeout_seconds": self.config.claude.turn_timeout_seconds,
                 },
-            ) from exc
+            )
 
-        _write_process_capture(package.cwd, completed.stdout, completed.stderr)
-        if completed.returncode != 0:
+        if returncode != 0:
             raise TurnFailure(
-                f"Turn {package.turn_id} exited with {completed.returncode}.",
+                f"Turn {package.turn_id} exited with {returncode}.",
                 {
                     "reason": "nonzero_exit",
                     "turn_id": package.turn_id,
                     "speaker": agent.id,
-                    "cwd": str(package.cwd),
-                    "exit_code": completed.returncode,
+                    "turn_dir": str(package.turn_dir),
+                    "exit_code": returncode,
                 },
             )
 
-        prose = _collect_prose(package.cwd, completed.stdout)
+        prose = _collect_prose(package.turn_output_path, stdout_text)
         if not prose:
             raise TurnFailure(
                 f"Turn {package.turn_id} produced no prose.",
@@ -221,10 +262,17 @@ class Orchestrator:
                     "reason": "empty_turn",
                     "turn_id": package.turn_id,
                     "speaker": agent.id,
-                    "cwd": str(package.cwd),
+                    "turn_dir": str(package.turn_dir),
                 },
             )
-        return TurnResult(package.turn_id, agent, package.cwd, prose, dry_run=False)
+        return TurnResult(
+            turn_id=package.turn_id,
+            agent=agent,
+            turn_dir=package.turn_dir,
+            spawn_cwd=package.spawn_cwd,
+            prose=prose,
+            dry_run=False,
+        )
 
     def _should_continue(
         self, state: SessionState, turns_run: int, max_turns: int | None
@@ -234,6 +282,13 @@ class Orchestrator:
             self.store.save(state)
             return False
         if max_turns is not None and turns_run >= max_turns:
+            return False
+        if not state.has_active_mode:
+            # The DM (or the previous turn) ended the active mode and didn't
+            # push a new one — the agents are signaling "we're done." Stop.
+            state.status = "complete"
+            state.updated_at = utc_now()
+            self.store.save(state)
             return False
         return True
 
@@ -252,23 +307,96 @@ class Orchestrator:
             )
 
 
-def _collect_prose(cwd: Path, stdout: str | None) -> str:
-    turn_file = cwd / "TURN.md"
-    if turn_file.exists():
-        text = turn_file.read_text(encoding="utf-8").strip()
+def _stream_subprocess(
+    command: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    timeout: int,
+    stdout_prefix: str,
+    stderr_prefix: str,
+) -> tuple[str, str, int, bool]:
+    """Run a subprocess, streaming stdout/stderr to the operator's terminal
+    line-by-line (with a prefix per agent), while also capturing the full
+    text for audit. Enforces a wall-clock timeout.
+
+    Returns (stdout_text, stderr_text, returncode, timed_out).
+    """
+    proc = subprocess.Popen(  # noqa: S603 — command is built deliberately above
+        command,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+
+    def pump(stream, sink, prefix, target_io):
+        try:
+            for line in iter(stream.readline, ""):
+                sink.append(line)
+                target_io.write(prefix + line)
+                target_io.flush()
+        finally:
+            stream.close()
+
+    out_thread = threading.Thread(
+        target=pump,
+        args=(proc.stdout, stdout_chunks, stdout_prefix, sys.stdout),
+        daemon=True,
+    )
+    err_thread = threading.Thread(
+        target=pump,
+        args=(proc.stderr, stderr_chunks, stderr_prefix, sys.stderr),
+        daemon=True,
+    )
+    out_thread.start()
+    err_thread.start()
+
+    timed_out = False
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        proc.kill()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+
+    # Drain reader threads (they exit when streams close on process death).
+    out_thread.join(timeout=5)
+    err_thread.join(timeout=5)
+
+    return (
+        "".join(stdout_chunks),
+        "".join(stderr_chunks),
+        proc.returncode if proc.returncode is not None else -1,
+        timed_out,
+    )
+
+
+def _collect_prose(turn_output_path: Path, stdout: str | None) -> str:
+    """Read the agent's TURN.md (preferred) or fall back to stdout."""
+    if turn_output_path.exists():
+        text = turn_output_path.read_text(encoding="utf-8").strip()
         if text:
             return text
     return (stdout or "").strip()
 
 
 def _write_process_capture(
-    cwd: Path,
+    turn_dir: Path,
     stdout: str | bytes | None,
     stderr: str | bytes | None,
 ) -> None:
-    cwd.mkdir(parents=True, exist_ok=True)
-    _write_capture_file(cwd / "agent-stdout.txt", stdout)
-    _write_capture_file(cwd / "agent-stderr.txt", stderr)
+    turn_dir.mkdir(parents=True, exist_ok=True)
+    _write_capture_file(turn_dir / "agent-stdout.txt", stdout)
+    _write_capture_file(turn_dir / "agent-stderr.txt", stderr)
 
 
 def _write_capture_file(path: Path, value: str | bytes | None) -> None:

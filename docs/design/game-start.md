@@ -98,7 +98,7 @@ The DM populates the contents using the relevant methodology. The CLI ensures th
 
 | Phase | Methodology | Agents | Mode | Reads | Writes |
 |-------|-------------|--------|------|-------|--------|
-| **campaign_planning** | `campaign-planning.md` | DM only | `campaign-planning` | methodology, persona, world bible (player + dm) | `campaigns/<id>/context.md`, `dm/foundation.md`, `dm/notes/**`, opening arc dir via `glass arc create` |
+| **campaign_planning** | `campaign-planning.md` | DM only | `campaign-planning` | methodology, persona, world bible (player + dm) | `campaigns/<id>/context.md`, `dm/foundation.md`, `dm/notes/**`, **8-15 curated entries in `shared/lore/`** (imported from world bible via `glass lore import`), opening arc dir via `glass arc create` |
 | **character_creation** | `character-creation.md` | DM + players | `character-creation` | methodology, persona, campaign context, world bible | DM: `campaign-intro.md` (where TBD — likely campaign root or shared/), ratifications. Players: `players/<id>/character.md`, public intro entries. After ratification: `lore/characters/<id>.md`. Messages: DM↔player negotiation. |
 
 Once `character_creation` completes, the campaign is `active`. The DM uses [`scene-prep.md`](../../templates/methodologies/scene-prep.md) before each scene; new arcs get authored via [`arc-creation.md`](../../templates/methodologies/arc-creation.md) when they emerge from play.
