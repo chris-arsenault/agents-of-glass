@@ -247,7 +247,7 @@ class Orchestrator:
                 "sudo",
                 "-n",
                 "-u", target_user,
-                "--preserve-env=ANTHROPIC_API_KEY,ANTHROPIC_BASE_URL,CLAUDE_API_KEY,GLASS_ROLE,GLASS_SESSION_ID,GLASS_CAMPAIGN_ID,GLASS_CONFIG,GLASS_TURN_ID,AOG_SESSION_DIR,AOG_TURN_START,AOG_TURN_OUTPUT,AOG_PG_PASSWORD,PGPASSWORD,PGHOST,PGPORT,PGDATABASE,PGUSER,AOG_FALKOR_PASSWORD,REDIS_PASSWORD,AOG_FALKOR_HOST,AOG_FALKOR_PORT,AOG_FALKOR_GRAPH,PATH",
+                "--preserve-env=ANTHROPIC_API_KEY,ANTHROPIC_BASE_URL,CLAUDE_API_KEY,GLASS_ROLE,GLASS_CAMPAIGN_ID,GLASS_CONFIG,GLASS_TURN_ID,AOG_TURN_START,AOG_TURN_OUTPUT,AOG_PG_PASSWORD,PGPASSWORD,PGHOST,PGPORT,PGDATABASE,PGUSER,AOG_FALKOR_PASSWORD,REDIS_PASSWORD,AOG_FALKOR_HOST,AOG_FALKOR_PORT,AOG_FALKOR_GRAPH,PATH",
                 "--",
             ])
 
@@ -260,11 +260,9 @@ class Orchestrator:
         env.update(
             {
                 "GLASS_ROLE": agent.glass_role,
-                "GLASS_SESSION_ID": state.campaign,
                 "GLASS_CAMPAIGN_ID": state.campaign,
                 "GLASS_CONFIG": config_env_value(self.config),
                 "GLASS_TURN_ID": package.turn_id,
-                "AOG_SESSION_DIR": str(self.store.session_dir(state.campaign)),
                 "AOG_TURN_START": str(package.turn_start_path),
                 "AOG_TURN_OUTPUT": str(package.turn_output_path),
             }
