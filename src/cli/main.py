@@ -17,12 +17,16 @@ import shutil
 import sys
 import tomllib
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import click
+
+from . import db as _db
+from . import workspace as _workspace
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -147,6 +151,39 @@ def get_paths() -> Paths:
     return Paths(content=content, sessions=sessions, campaigns=campaigns, lore=lore)
 
 
+def active_campaign_id() -> str:
+    """Return the campaign id for character/roll DB scope.
+
+    Resolves from GLASS_CAMPAIGN_ID, then the most-recently-modified campaign
+    workspace under paths.campaigns. Raises GlassError if neither is available.
+    """
+    explicit = os.environ.get("GLASS_CAMPAIGN_ID")
+    if explicit:
+        return explicit
+    paths = get_paths()
+    if paths.campaigns is None:
+        raise GlassError(
+            "active campaign required: set GLASS_CAMPAIGN_ID or configure paths.campaigns"
+        )
+    try:
+        return _workspace.resolve_active_campaign(paths.campaigns).campaign_id
+    except FileNotFoundError as exc:
+        raise GlassError(str(exc)) from exc
+
+
+@contextmanager
+def pg_connection() -> Iterator[Any]:
+    """Open a Postgres connection from the resolved config."""
+    pg_config = _db.load_pg_config(load_config())
+    try:
+        with _db.connect(pg_config) as conn:
+            yield conn
+    except GlassError:
+        raise
+    except Exception as exc:
+        raise GlassError(f"postgres connection failed ({pg_config.describe()}): {exc}") from exc
+
+
 def current_role() -> Role:
     raw = os.environ.get("GLASS_ROLE")
     if raw is None or raw == "":
@@ -223,7 +260,7 @@ def transcript_path(paths: Paths, session_id: str) -> Path:
 def default_state(session_id: str, campaign: str) -> dict[str, Any]:
     ts = now_iso()
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "session": {
             "id": session_id,
             "campaign": campaign,
@@ -235,10 +272,7 @@ def default_state(session_id: str, campaign: str) -> dict[str, Any]:
             "turn_counter": 0,
         },
         "mode_stack": [],
-        "characters": {},
-        "dice_events": [],
-        "mechanical_events": [],
-        "uncommitted_event_ids": [],
+        "pending_events": [],
         "messages": [],
         "note_intake": [],
         "entities": {},
@@ -248,12 +282,9 @@ def default_state(session_id: str, campaign: str) -> dict[str, Any]:
 
 
 def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
-    state.setdefault("schema_version", 1)
+    state.setdefault("schema_version", 2)
     state.setdefault("mode_stack", [])
-    state.setdefault("characters", {})
-    state.setdefault("dice_events", [])
-    state.setdefault("mechanical_events", [])
-    state.setdefault("uncommitted_event_ids", [])
+    state.setdefault("pending_events", [])
     state.setdefault("messages", [])
     state.setdefault("note_intake", [])
     state.setdefault("entities", {})
@@ -262,6 +293,9 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
     state.setdefault("session", {})
     state["session"].setdefault("turn_counter", len(state["turns"]))
     state["session"].setdefault("status", "active")
+    # Drop any legacy keys silently — pre-v1 state may include them.
+    for legacy in ("characters", "dice_events", "mechanical_events", "uncommitted_event_ids"):
+        state.pop(legacy, None)
     return state
 
 
@@ -525,13 +559,7 @@ def player_dirs(paths: Paths) -> list[str]:
 
 
 def roster(paths: Paths, state: dict[str, Any] | None = None) -> list[str]:
-    players = set(player_dirs(paths))
-    if state:
-        for character in state.get("characters", {}).values():
-            player_id = character.get("player_id")
-            if player_id:
-                players.add(player_id)
-    return sorted(players)
+    return sorted(set(player_dirs(paths)))
 
 
 def infer_player_from_path(paths: Paths, path: Path) -> str | None:
@@ -589,15 +617,7 @@ def outcome_for_margin(margin: int) -> tuple[str, int]:
     return "collapse", -2
 
 
-def require_character(state: dict[str, Any], character_id: str) -> dict[str, Any]:
-    character = state["characters"].get(character_id)
-    if not character:
-        valid = ", ".join(sorted(state["characters"])) or "none"
-        raise GlassError(f"unknown character {character_id!r}; known characters: {valid}")
-    return character
-
-
-def require_character_write(character: dict[str, Any]) -> Role:
+def assert_character_writable(character: dict[str, Any]) -> Role:
     role = current_role()
     if role.can_do_anything or role.kind == "dm":
         return role
@@ -609,24 +629,15 @@ def require_character_write(character: dict[str, Any]) -> Role:
     )
 
 
-def record_mechanical_event(
-    state: dict[str, Any],
-    kind: str,
-    actor: str,
-    summary: str,
-    payload: dict[str, Any],
-) -> dict[str, Any]:
+def queue_event(state: dict[str, Any], actor: str, summary: str) -> dict[str, Any]:
+    """Queue a one-line summary to be inlined into the next turn's transcript."""
     event = {
         "event_id": new_id("event"),
-        "kind": kind,
         "actor": actor,
         "ts": now_iso(),
         "summary": summary,
-        "payload": make_jsonable(payload),
-        "committed_turn_id": None,
     }
-    state["mechanical_events"].append(event)
-    state["uncommitted_event_ids"].append(event["event_id"])
+    state["pending_events"].append(event)
     return event
 
 
@@ -669,9 +680,9 @@ def state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "current_mode": current["mode"] if current else None,
         "current_scene": current["scene_id"] if current else None,
         "mode_stack": state.get("mode_stack", []),
-        "characters": sorted(state.get("characters", {})),
         "turn_count": len(state.get("turns", [])),
         "message_count": len(state.get("messages", [])),
+        "pending_events": len(state.get("pending_events", [])),
         "pending_notes": [
             item["intake_id"]
             for item in state.get("note_intake", [])
@@ -929,18 +940,15 @@ def mode_start(ctx: click.Context, mode_name: str, scene_id: str) -> None:
         "started_by": role.actor,
     }
     state["mode_stack"].append(record)
-    event = record_mechanical_event(
+    queue_event(
         state,
-        "mode.start",
         role.actor,
         f"mode start {record['mode']} @ {record['scene_id']}",
-        record,
     )
     result = {
         "current_mode": record["mode"],
         "current_scene": record["scene_id"],
         "mode_stack": state["mode_stack"],
-        "event_id": event["event_id"],
     }
     commit(
         paths,
@@ -963,19 +971,16 @@ def mode_end(ctx: click.Context) -> None:
     ended = state["mode_stack"].pop()
     ended["ended_at"] = now_iso()
     current = current_mode_record(state)
-    event = record_mechanical_event(
+    queue_event(
         state,
-        "mode.end",
         role.actor,
         f"mode end {ended['mode']} @ {ended['scene_id']}",
-        ended,
     )
     result = {
         "ended": ended,
         "current_mode": current["mode"] if current else None,
         "current_scene": current["scene_id"] if current else None,
         "mode_stack": state["mode_stack"],
-        "event_id": event["event_id"],
     }
     commit(paths, state, ctx, "mode.end", {}, result)
 
@@ -1013,62 +1018,78 @@ def roll(
     assert_attribute_name(attribute)
     paths = get_paths()
     state = load_state(paths)
-    character = require_character(state, character_id)
     role = current_role()
-    if role.kind == "player" and character.get("player_id") != role.actor:
-        raise GlassError(
-            "permission denied: players may roll only their own character "
-            f"(owner: {character.get('player_id')})"
+    campaign_id = active_campaign_id()
+
+    with pg_connection() as conn:
+        character = _db.character_get(conn, campaign_id, character_id)
+        if character is None:
+            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+        if role.kind == "player" and character.get("player_id") != role.actor:
+            raise GlassError(
+                "permission denied: players may roll only their own character "
+                f"(owner: {character.get('player_id')})"
+            )
+
+        skill_tier = character["skills"].get(skill, "fool")
+        attribute_tier = character["attributes"].get(attribute, "standard")
+        skill_modifier = SKILL_TIERS[skill_tier]
+        attribute_modifier = ATTRIBUTE_TIERS[attribute_tier]
+        momentum_in = int(character["momentum"]["current"])
+        floor = int(character["momentum"]["floor"])
+        ceiling = int(character["momentum"]["ceiling"])
+
+        dice = [random.SystemRandom().randint(1, 6), random.SystemRandom().randint(1, 6)]
+        target = RISK_THRESHOLDS[risk]
+        total = sum(dice) + skill_modifier + attribute_modifier + momentum_in
+        margin = total - target
+        outcome, momentum_delta = outcome_for_margin(margin)
+        momentum_out = clamp(momentum_in + momentum_delta, floor, ceiling)
+
+        scene_id: str | None = None
+        current = current_mode_record(state)
+        if current and current.get("scene_id") and current["scene_id"] != "none":
+            scene_id = current["scene_id"]
+
+        roll_row = _db.roll_record(
+            conn,
+            campaign_id=campaign_id,
+            session_id=state["session"]["id"],
+            scene_id=scene_id,
+            character_id=character_id,
+            actor=role.actor,
+            skill=skill,
+            attribute=attribute,
+            risk=risk,
+            dice=dice,
+            skill_tier=skill_tier,
+            skill_modifier=skill_modifier,
+            attribute_tier=attribute_tier,
+            attribute_modifier=attribute_modifier,
+            momentum_in=momentum_in,
+            total=total,
+            target=target,
+            margin=margin,
+            outcome=outcome,
+            momentum_delta=momentum_delta,
+            momentum_out=momentum_out,
+            target_id=target_id,
         )
+        # Persist new momentum back to the character row.
+        _db.character_set_momentum_internal(
+            conn,
+            campaign_id=campaign_id,
+            character_id=character_id,
+            value=momentum_out,
+        )
+        conn.commit()
 
-    dice = [random.SystemRandom().randint(1, 6), random.SystemRandom().randint(1, 6)]
-    skill_tier = character.get("skills", {}).get(skill, "fool")
-    attribute_tier = character.get("attributes", {}).get(attribute, "standard")
-    skill_modifier = SKILL_TIERS[skill_tier]
-    attribute_modifier = ATTRIBUTE_TIERS[attribute_tier]
-    momentum_in = int(character.get("momentum", {}).get("current", 0))
-    target = RISK_THRESHOLDS[risk]
-    total = sum(dice) + skill_modifier + attribute_modifier + momentum_in
-    margin = total - target
-    outcome, momentum_delta = outcome_for_margin(margin)
-    momentum = character.setdefault("momentum", {"current": 0, "floor": -2, "ceiling": 3})
-    momentum_out = clamp(
-        momentum_in + momentum_delta,
-        int(momentum.get("floor", -2)),
-        int(momentum.get("ceiling", 3)),
-    )
-    momentum["current"] = momentum_out
-
-    roll_id = new_id("roll")
-    result = {
-        "roll_id": roll_id,
-        "session_id": state["session"]["id"],
-        "character_id": character_id,
-        "skill": skill,
-        "attribute": attribute,
-        "risk": risk,
-        "dice": dice,
-        "skill_tier": skill_tier,
-        "skill_modifier": skill_modifier,
-        "attribute_tier": attribute_tier,
-        "attribute_modifier": attribute_modifier,
-        "momentum_in": momentum_in,
-        "total": total,
-        "target": target,
-        "target_id": target_id,
-        "margin": margin,
-        "outcome": outcome,
-        "momentum_delta": momentum_delta,
-        "momentum_out": momentum_out,
-    }
-    state["dice_events"].append({**result, "ts": now_iso(), "actor": role.actor})
     target_suffix = f" -> {target_id}" if target_id else ""
     summary = (
         f"roll {skill} ({attribute}) @ {risk}: {total} vs {target} -> "
         f"{outcome} ({momentum_in:+d} to {momentum_out:+d} momentum){target_suffix}"
     )
-    event = record_mechanical_event(state, "roll", role.actor, summary, result)
-    result["event_id"] = event["event_id"]
+    queue_event(state, role.actor, summary)
     commit(
         paths,
         state,
@@ -1081,7 +1102,7 @@ def roll(
             character_id=character_id,
             target_id=target_id,
         ),
-        result,
+        roll_row,
     )
 
 
@@ -1120,37 +1141,45 @@ def character_new(
         raise GlassError("--hp must be greater than zero")
     paths = get_paths()
     state = load_state(paths)
-    if character_id in state["characters"]:
-        raise GlassError(f"character already exists: {character_id}")
+    campaign_id = active_campaign_id()
+
     attributes = {attribute: "standard" for attribute in ATTRIBUTES}
     attributes.update(validate_key_values(attribute_values, ATTRIBUTE_TIERS, "attribute"))
     for attribute_name in attributes:
         assert_attribute_name(attribute_name)
     skills = validate_key_values(skill_values, SKILL_TIERS, "skill")
-    record = {
-        "character_id": character_id,
-        "player_id": player_id,
-        "name": name or character_id,
-        "archetype": archetype,
-        "pronouns": pronouns,
-        "attributes": attributes,
-        "skills": skills,
-        "momentum": {"current": 0, "floor": -2, "ceiling": 3},
-        "hp": {"current": hp_max, "max": hp_max},
-        "inventory": [],
-        "tags": list(tags),
-        "created_at": now_iso(),
-        "updated_at": now_iso(),
-    }
-    state["characters"][character_id] = record
-    result = {"character": record}
+
+    with pg_connection() as conn:
+        if _db.character_exists(conn, campaign_id, character_id):
+            raise GlassError(
+                f"character already exists in campaign {campaign_id!r}: {character_id}"
+            )
+        record = _db.character_create(
+            conn,
+            campaign_id=campaign_id,
+            character_id=character_id,
+            player_id=player_id,
+            name=name or character_id,
+            archetype=archetype,
+            pronouns=pronouns,
+            attributes=attributes,
+            skills=skills,
+            hp_max=hp_max,
+            tags=list(tags),
+        )
+
+    queue_event(
+        state,
+        role.actor,
+        f"character new {character_id} ({record['name']}, {player_id})",
+    )
     commit(
         paths,
         state,
         ctx,
         "character.new",
         command_params(character_id=character_id, player_id=player_id),
-        result,
+        {"character": record},
     )
 
 
@@ -1160,7 +1189,11 @@ def character_new(
 def character_get(ctx: click.Context, character_id: str) -> None:
     paths = get_paths()
     state = load_state(paths)
-    character = require_character(state, character_id)
+    campaign_id = active_campaign_id()
+    with pg_connection() as conn:
+        character = _db.character_get(conn, campaign_id, character_id)
+    if character is None:
+        raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
     result = {"character": character}
     append_audit(
         paths,
@@ -1173,6 +1206,32 @@ def character_get(ctx: click.Context, character_id: str) -> None:
     emit(result)
 
 
+@character.command("list")
+@click.pass_context
+def character_list(ctx: click.Context) -> None:
+    paths = get_paths()
+    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    with pg_connection() as conn:
+        characters = _db.character_list(conn, campaign_id)
+    result = {
+        "campaign_id": campaign_id,
+        "characters": [
+            {
+                "character_id": c["character_id"],
+                "player_id": c["player_id"],
+                "name": c["name"],
+                "archetype": c["archetype"],
+                "hp": c["hp"],
+                "momentum": c["momentum"],
+            }
+            for c in characters
+        ],
+    }
+    append_audit(paths, state, ctx, "character.list", {}, result)
+    emit(result)
+
+
 @character.command("set-hp", context_settings={"ignore_unknown_options": True})
 @click.argument("character_id")
 @click.argument("delta", type=int)
@@ -1180,25 +1239,34 @@ def character_get(ctx: click.Context, character_id: str) -> None:
 def character_set_hp(ctx: click.Context, character_id: str, delta: int) -> None:
     paths = get_paths()
     state = load_state(paths)
-    character = require_character(state, character_id)
-    role = require_character_write(character)
-    hp = character.setdefault("hp", {"current": 10, "max": 10})
-    before = int(hp.get("current", 0))
-    after = clamp(before + delta, 0, int(hp.get("max", before + delta)))
-    hp["current"] = after
-    character["updated_at"] = now_iso()
+    campaign_id = active_campaign_id()
+
+    with pg_connection() as conn:
+        existing = _db.character_get(conn, campaign_id, character_id)
+        if existing is None:
+            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+        role = assert_character_writable(existing)
+        try:
+            updated, before, after = _db.character_update_hp(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                delta=delta,
+            )
+        except LookupError:
+            raise GlassError(f"unknown character {character_id!r}") from None
+
+    sign = f"{delta:+d}"
+    summary = f"{character_id} hp {sign} ({before} -> {after})"
+    queue_event(state, role.actor, summary)
     result = {
         "character_id": character_id,
         "hp_before": before,
         "delta": delta,
         "applied_delta": after - before,
         "hp_after": after,
-        "hp_max": hp["max"],
+        "hp_max": updated["hp"]["max"],
     }
-    sign = f"{delta:+d}"
-    summary = f"{character_id} hp {sign} ({before} -> {after})"
-    event = record_mechanical_event(state, "character.hp", role.actor, summary, result)
-    result["event_id"] = event["event_id"]
     commit(
         paths,
         state,
@@ -1216,24 +1284,33 @@ def character_set_hp(ctx: click.Context, character_id: str, delta: int) -> None:
 def character_set_momentum(ctx: click.Context, character_id: str, value: int) -> None:
     paths = get_paths()
     state = load_state(paths)
-    character = require_character(state, character_id)
-    role = require_character_write(character)
-    momentum = character.setdefault("momentum", {"current": 0, "floor": -2, "ceiling": 3})
-    before = int(momentum.get("current", 0))
-    after = clamp(value, int(momentum.get("floor", -2)), int(momentum.get("ceiling", 3)))
-    momentum["current"] = after
-    character["updated_at"] = now_iso()
+    campaign_id = active_campaign_id()
+
+    with pg_connection() as conn:
+        existing = _db.character_get(conn, campaign_id, character_id)
+        if existing is None:
+            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+        role = assert_character_writable(existing)
+        try:
+            updated, before, after = _db.character_update_momentum(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                value=value,
+            )
+        except LookupError:
+            raise GlassError(f"unknown character {character_id!r}") from None
+
+    summary = f"{character_id} momentum {before:+d} -> {after:+d}"
+    queue_event(state, role.actor, summary)
     result = {
         "character_id": character_id,
         "momentum_before": before,
         "requested": value,
         "momentum_after": after,
-        "floor": momentum["floor"],
-        "ceiling": momentum["ceiling"],
+        "floor": updated["momentum"]["floor"],
+        "ceiling": updated["momentum"]["ceiling"],
     }
-    summary = f"{character_id} momentum {before:+d} -> {after:+d}"
-    event = record_mechanical_event(state, "character.momentum", role.actor, summary, result)
-    result["event_id"] = event["event_id"]
     commit(
         paths,
         state,
@@ -1256,33 +1333,41 @@ def character_inventory_add(
         raise GlassError("--qty must be greater than zero")
     paths = get_paths()
     state = load_state(paths)
-    character = require_character(state, character_id)
-    role = require_character_write(character)
-    inventory = character.setdefault("inventory", [])
-    item = next((entry for entry in inventory if entry["id"] == item_id), None)
-    before = int(item["qty"]) if item else 0
-    if item:
-        item["qty"] = before + qty
-    else:
-        inventory.append({"id": item_id, "qty": qty})
-    after = before + qty
-    character["updated_at"] = now_iso()
+    campaign_id = active_campaign_id()
+
+    with pg_connection() as conn:
+        existing = _db.character_get(conn, campaign_id, character_id)
+        if existing is None:
+            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+        role = assert_character_writable(existing)
+        inventory = list(existing["inventory"])
+        item = next((entry for entry in inventory if entry.get("id") == item_id), None)
+        before = int(item["qty"]) if item else 0
+        if item:
+            item["qty"] = before + qty
+        else:
+            inventory.append({"id": item_id, "qty": qty})
+        after = before + qty
+        updated = _db.character_set_inventory(
+            conn,
+            campaign_id=campaign_id,
+            character_id=character_id,
+            inventory=inventory,
+        )
+
+    queue_event(
+        state,
+        role.actor,
+        f"{character_id} inventory +{qty} {item_id} ({before} -> {after})",
+    )
     result = {
         "character_id": character_id,
         "item_id": item_id,
         "qty_before": before,
         "delta": qty,
         "qty_after": after,
-        "inventory": inventory,
+        "inventory": updated["inventory"],
     }
-    event = record_mechanical_event(
-        state,
-        "character.inventory-add",
-        role.actor,
-        f"{character_id} inventory +{qty} {item_id} ({before} -> {after})",
-        result,
-    )
-    result["event_id"] = event["event_id"]
     commit(
         paths,
         state,
@@ -1305,16 +1390,32 @@ def character_inventory_rm(
         raise GlassError("--qty must be greater than zero")
     paths = get_paths()
     state = load_state(paths)
-    character = require_character(state, character_id)
-    role = require_character_write(character)
-    inventory = character.setdefault("inventory", [])
-    item = next((entry for entry in inventory if entry["id"] == item_id), None)
-    before = int(item["qty"]) if item else 0
-    after = max(0, before - qty)
-    if item:
-        item["qty"] = after
-    inventory[:] = [entry for entry in inventory if int(entry["qty"]) > 0]
-    character["updated_at"] = now_iso()
+    campaign_id = active_campaign_id()
+
+    with pg_connection() as conn:
+        existing = _db.character_get(conn, campaign_id, character_id)
+        if existing is None:
+            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+        role = assert_character_writable(existing)
+        inventory = list(existing["inventory"])
+        item = next((entry for entry in inventory if entry.get("id") == item_id), None)
+        before = int(item["qty"]) if item else 0
+        after = max(0, before - qty)
+        if item:
+            item["qty"] = after
+        inventory = [entry for entry in inventory if int(entry.get("qty", 0)) > 0]
+        updated = _db.character_set_inventory(
+            conn,
+            campaign_id=campaign_id,
+            character_id=character_id,
+            inventory=inventory,
+        )
+
+    queue_event(
+        state,
+        role.actor,
+        f"{character_id} inventory -{qty} {item_id} ({before} -> {after})",
+    )
     result = {
         "character_id": character_id,
         "item_id": item_id,
@@ -1322,16 +1423,8 @@ def character_inventory_rm(
         "delta": -qty,
         "applied_delta": after - before,
         "qty_after": after,
-        "inventory": inventory,
+        "inventory": updated["inventory"],
     }
-    event = record_mechanical_event(
-        state,
-        "character.inventory-rm",
-        role.actor,
-        f"{character_id} inventory -{qty} {item_id} ({before} -> {after})",
-        result,
-    )
-    result["event_id"] = event["event_id"]
     commit(
         paths,
         state,
@@ -2040,28 +2133,21 @@ def turn_append(
     state["session"]["turn_counter"] = int(state["session"].get("turn_counter", 0)) + 1
     turn_id = state["session"]["turn_counter"]
 
-    event_lookup = {
-        event["event_id"]: event for event in state.get("mechanical_events", [])
-    }
-    uncommitted = []
-    remaining_ids = []
-    for event_id in state.get("uncommitted_event_ids", []):
-        event = event_lookup.get(event_id)
-        if not event:
-            continue
+    flushed: list[dict[str, Any]] = []
+    remaining: list[dict[str, Any]] = []
+    for event in state.get("pending_events", []):
         if event.get("actor") == speaker_id or role.can_do_anything:
-            event["committed_turn_id"] = turn_id
-            uncommitted.append(event)
+            flushed.append(event)
         else:
-            remaining_ids.append(event_id)
-    state["uncommitted_event_ids"] = remaining_ids
+            remaining.append(event)
+    state["pending_events"] = remaining
 
     header = (
         f"## Turn {turn_id} - {speaker_id} ({resolved_role}) - "
         f"{resolved_mode}, {resolved_scene}"
     )
     parts = [header, "", body]
-    event_lines = inline_event_lines(uncommitted)
+    event_lines = inline_event_lines(flushed)
     if event_lines:
         parts.extend(["", *event_lines])
     turn_markdown = "\n".join(parts).rstrip() + "\n\n"
@@ -2078,13 +2164,13 @@ def turn_append(
         "character_id": character_id,
         "ts": now_iso(),
         "source_path": str(source),
-        "mechanical_event_ids": [event["event_id"] for event in uncommitted],
+        "event_summaries": [event["summary"] for event in flushed],
         "markdown": turn_markdown,
     }
     state["turns"].append(record)
     result = {
         "turn": {key: value for key, value in record.items() if key != "markdown"},
-        "mechanical_events": uncommitted,
+        "events_flushed": flushed,
         "transcript_path": display_path(transcript_path(paths, state["session"]["id"])),
     }
     commit(
@@ -2151,12 +2237,9 @@ def turns_find(
 # Postgres / migrations
 # ============================================================================
 
-from . import db as _db  # noqa: E402  (intentional bottom-of-file import)
-from . import workspace as _workspace  # noqa: E402
-
 
 @main.group()
-def db() -> None:  # noqa: F811 — the `db` import is rebound to this group; we don't reference it elsewhere
+def db() -> None:
     """Postgres connection + migration runner."""
 
 

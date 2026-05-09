@@ -5,19 +5,18 @@
 -- Schema follows docs/design/mechanics.md.
 
 CREATE TABLE IF NOT EXISTS characters (
-    id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     campaign_id         text NOT NULL,
-    player_id           text NOT NULL,                 -- agent id (e.g. 'tev')
+    character_id        text NOT NULL,
+    player_id           text NOT NULL,
     name                text NOT NULL,
-    archetype           text NOT NULL,                 -- free-form string ("Lapsed Tuner")
-    pronouns            text,
-    bio                 text,
-    -- Attribute tier per attribute name. Validated by the CLI against the
-    -- AttributeTier enum (rudimentary/standard/advanced/superior/transcendent).
-    attributes          jsonb NOT NULL,
-    -- Free-form skill names mapped to {tier, xp}. Tier values from the
-    -- SkillTier enum (fool/apprentice/artisan/virtuoso/legend).
-    skills              jsonb NOT NULL,
+    archetype           text NOT NULL DEFAULT '',
+    pronouns            text NOT NULL DEFAULT '',
+    bio                 text NOT NULL DEFAULT '',
+    -- Attribute tier per attribute name. Tier strings validated by the CLI
+    -- against the AttributeTier enum (rudimentary/standard/advanced/superior/transcendent).
+    attributes          jsonb NOT NULL DEFAULT '{}'::jsonb,
+    -- Free-form skill names mapped to tier strings (fool/apprentice/artisan/virtuoso/legend).
+    skills              jsonb NOT NULL DEFAULT '{}'::jsonb,
     momentum_current    int NOT NULL DEFAULT 0,
     momentum_floor      int NOT NULL DEFAULT -2,
     momentum_ceiling    int NOT NULL DEFAULT 3,
@@ -28,10 +27,9 @@ CREATE TABLE IF NOT EXISTS characters (
     tags                text[] NOT NULL DEFAULT '{}',
     created_at          timestamptz NOT NULL DEFAULT now(),
     updated_at          timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (campaign_id, name)
+    PRIMARY KEY (campaign_id, character_id)
 );
 
-CREATE INDEX IF NOT EXISTS characters_campaign_idx ON characters (campaign_id);
 CREATE INDEX IF NOT EXISTS characters_player_idx ON characters (campaign_id, player_id);
 
 -- Auto-bump updated_at on row changes.

@@ -16,9 +16,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 import hashlib
+import json
 import logging
 import os
 
@@ -184,3 +186,381 @@ def status(conn: "psycopg.Connection[Any]") -> dict[str, Any]:
         if p.name not in applied
     ]
     return {"applied": applied_list, "pending": pending_list}
+
+
+# --- character queries ---
+
+
+def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        campaign_id,
+        character_id,
+        player_id,
+        name,
+        archetype,
+        pronouns,
+        bio,
+        attributes,
+        skills,
+        momentum_current,
+        momentum_floor,
+        momentum_ceiling,
+        hp_current,
+        hp_max,
+        inventory,
+        tags,
+        created_at,
+        updated_at,
+    ) = row
+    return {
+        "campaign_id": campaign_id,
+        "character_id": character_id,
+        "player_id": player_id,
+        "name": name,
+        "archetype": archetype,
+        "pronouns": pronouns,
+        "bio": bio,
+        "attributes": attributes or {},
+        "skills": skills or {},
+        "momentum": {
+            "current": int(momentum_current),
+            "floor": int(momentum_floor),
+            "ceiling": int(momentum_ceiling),
+        },
+        "hp": {"current": int(hp_current), "max": int(hp_max)},
+        "inventory": list(inventory or []),
+        "tags": list(tags or []),
+        "created_at": _iso(created_at),
+        "updated_at": _iso(updated_at),
+    }
+
+
+_CHARACTER_COLUMNS = (
+    "campaign_id, character_id, player_id, name, archetype, pronouns, bio, "
+    "attributes, skills, momentum_current, momentum_floor, momentum_ceiling, "
+    "hp_current, hp_max, inventory, tags, created_at, updated_at"
+)
+
+
+def _iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
+
+
+def character_get(
+    conn: "psycopg.Connection[Any]",
+    campaign_id: str,
+    character_id: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT {_CHARACTER_COLUMNS} FROM characters "
+            "WHERE campaign_id = %s AND character_id = %s",
+            (campaign_id, character_id),
+        )
+        row = cur.fetchone()
+    return _row_to_character(row) if row else None
+
+
+def character_exists(
+    conn: "psycopg.Connection[Any]",
+    campaign_id: str,
+    character_id: str,
+) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM characters WHERE campaign_id = %s AND character_id = %s",
+            (campaign_id, character_id),
+        )
+        return cur.fetchone() is not None
+
+
+def character_list(
+    conn: "psycopg.Connection[Any]",
+    campaign_id: str,
+) -> list[dict[str, Any]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT {_CHARACTER_COLUMNS} FROM characters "
+            "WHERE campaign_id = %s ORDER BY character_id",
+            (campaign_id,),
+        )
+        return [_row_to_character(row) for row in cur.fetchall()]
+
+
+def character_create(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    player_id: str,
+    name: str,
+    archetype: str,
+    pronouns: str,
+    attributes: dict[str, str],
+    skills: dict[str, str],
+    hp_max: int,
+    tags: list[str],
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO characters (
+                campaign_id, character_id, player_id, name, archetype, pronouns,
+                attributes, skills, hp_current, hp_max, tags
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING {_CHARACTER_COLUMNS}
+            """,
+            (
+                campaign_id,
+                character_id,
+                player_id,
+                name,
+                archetype,
+                pronouns,
+                json.dumps(attributes),
+                json.dumps(skills),
+                hp_max,
+                hp_max,
+                tags,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_character(row)
+
+
+def character_update_hp(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    delta: int,
+) -> tuple[dict[str, Any], int, int]:
+    """Apply a clamped delta to hp_current. Returns (character, before, after)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT hp_current, hp_max FROM characters "
+            "WHERE campaign_id = %s AND character_id = %s FOR UPDATE",
+            (campaign_id, character_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(character_id)
+        before = int(row[0])
+        hp_max = int(row[1])
+        after = max(0, min(hp_max, before + delta))
+        cur.execute(
+            f"UPDATE characters SET hp_current = %s "
+            f"WHERE campaign_id = %s AND character_id = %s "
+            f"RETURNING {_CHARACTER_COLUMNS}",
+            (after, campaign_id, character_id),
+        )
+        updated = cur.fetchone()
+    conn.commit()
+    return _row_to_character(updated), before, after
+
+
+def character_update_momentum(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    value: int,
+) -> tuple[dict[str, Any], int, int]:
+    """Set momentum_current, clamped to [floor, ceiling]. Returns (character, before, after)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT momentum_current, momentum_floor, momentum_ceiling "
+            "FROM characters WHERE campaign_id = %s AND character_id = %s FOR UPDATE",
+            (campaign_id, character_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(character_id)
+        before = int(row[0])
+        floor = int(row[1])
+        ceiling = int(row[2])
+        after = max(floor, min(ceiling, value))
+        cur.execute(
+            f"UPDATE characters SET momentum_current = %s "
+            f"WHERE campaign_id = %s AND character_id = %s "
+            f"RETURNING {_CHARACTER_COLUMNS}",
+            (after, campaign_id, character_id),
+        )
+        updated = cur.fetchone()
+    conn.commit()
+    return _row_to_character(updated), before, after
+
+
+def character_set_momentum_internal(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    value: int,
+) -> None:
+    """Set momentum without clamping or returning a row. Used by roll."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE characters SET momentum_current = %s "
+            "WHERE campaign_id = %s AND character_id = %s",
+            (value, campaign_id, character_id),
+        )
+
+
+def character_set_inventory(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    inventory: list[dict[str, Any]],
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE characters SET inventory = %s "
+            f"WHERE campaign_id = %s AND character_id = %s "
+            f"RETURNING {_CHARACTER_COLUMNS}",
+            (json.dumps(inventory), campaign_id, character_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise LookupError(character_id)
+    conn.commit()
+    return _row_to_character(row)
+
+
+# --- roll queries ---
+
+
+_ROLL_COLUMNS = (
+    "id, campaign_id, session_id, scene_id, character_id, actor, skill, attribute, "
+    "risk, dice, skill_tier, skill_modifier, attribute_tier, attribute_modifier, "
+    "momentum_in, total, target, margin, outcome, momentum_delta, momentum_out, "
+    "target_id, metadata, created_at"
+)
+
+
+def _row_to_roll(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        roll_id,
+        campaign_id,
+        session_id,
+        scene_id,
+        character_id,
+        actor,
+        skill,
+        attribute,
+        risk,
+        dice,
+        skill_tier,
+        skill_modifier,
+        attribute_tier,
+        attribute_modifier,
+        momentum_in,
+        total,
+        target,
+        margin,
+        outcome,
+        momentum_delta,
+        momentum_out,
+        target_id,
+        metadata,
+        created_at,
+    ) = row
+    return {
+        "roll_id": str(roll_id),
+        "campaign_id": campaign_id,
+        "session_id": session_id,
+        "scene_id": scene_id,
+        "character_id": character_id,
+        "actor": actor,
+        "skill": skill,
+        "attribute": attribute,
+        "risk": risk,
+        "dice": list(dice),
+        "skill_tier": skill_tier,
+        "skill_modifier": int(skill_modifier),
+        "attribute_tier": attribute_tier,
+        "attribute_modifier": int(attribute_modifier),
+        "momentum_in": int(momentum_in),
+        "total": int(total),
+        "target": int(target),
+        "margin": int(margin),
+        "outcome": outcome,
+        "momentum_delta": int(momentum_delta),
+        "momentum_out": int(momentum_out),
+        "target_id": target_id,
+        "metadata": metadata or {},
+        "created_at": _iso(created_at),
+    }
+
+
+def roll_record(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    session_id: str,
+    scene_id: str | None,
+    character_id: str,
+    actor: str,
+    skill: str,
+    attribute: str,
+    risk: str,
+    dice: list[int],
+    skill_tier: str,
+    skill_modifier: int,
+    attribute_tier: str,
+    attribute_modifier: int,
+    momentum_in: int,
+    total: int,
+    target: int,
+    margin: int,
+    outcome: str,
+    momentum_delta: int,
+    momentum_out: int,
+    target_id: str | None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO rolls (
+                campaign_id, session_id, scene_id, character_id, actor, skill, attribute,
+                risk, dice, skill_tier, skill_modifier, attribute_tier, attribute_modifier,
+                momentum_in, total, target, margin, outcome, momentum_delta, momentum_out,
+                target_id, metadata
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING {_ROLL_COLUMNS}
+            """,
+            (
+                campaign_id,
+                session_id,
+                scene_id,
+                character_id,
+                actor,
+                skill,
+                attribute,
+                risk,
+                list(dice),
+                skill_tier,
+                skill_modifier,
+                attribute_tier,
+                attribute_modifier,
+                momentum_in,
+                total,
+                target,
+                margin,
+                outcome,
+                momentum_delta,
+                momentum_out,
+                target_id,
+                json.dumps(metadata or {}),
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_roll(row)

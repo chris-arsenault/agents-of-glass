@@ -8,14 +8,15 @@ CREATE TABLE IF NOT EXISTS rolls (
     campaign_id         text NOT NULL,
     session_id          text NOT NULL,
     scene_id            text,
-    -- Soft FK; SET NULL on character delete so historical rolls survive
-    -- character cleanup.
-    character_id        uuid REFERENCES characters(id) ON DELETE SET NULL,
+    character_id        text NOT NULL,
+    actor               text NOT NULL,                 -- agent id that invoked the roll
     skill               text NOT NULL,
     attribute           text NOT NULL,
     risk                text NOT NULL CHECK (risk IN ('controlled','standard','risky','desperate')),
     dice                int[] NOT NULL,
+    skill_tier          text NOT NULL,
     skill_modifier      int NOT NULL,
+    attribute_tier      text NOT NULL,
     attribute_modifier  int NOT NULL,
     momentum_in         int NOT NULL,
     total               int NOT NULL,
@@ -24,15 +25,18 @@ CREATE TABLE IF NOT EXISTS rolls (
     outcome             text NOT NULL CHECK (outcome IN ('breakthrough','advance','stall','regress','collapse')),
     momentum_delta      int NOT NULL,
     momentum_out        int NOT NULL,
-    -- Optional combat target (NPC id, character id, etc.). String to keep
-    -- it open across reference types.
     target_id           text,
     -- Free-form for narrative tags, weapon used, etc. Not validated.
     metadata            jsonb NOT NULL DEFAULT '{}'::jsonb,
-    created_at          timestamptz NOT NULL DEFAULT now()
+    created_at          timestamptz NOT NULL DEFAULT now(),
+    -- Soft FK by composite key. ON DELETE NO ACTION; we expect characters
+    -- to outlive the rolls that reference them within a campaign.
+    FOREIGN KEY (campaign_id, character_id)
+        REFERENCES characters (campaign_id, character_id)
+        ON DELETE NO ACTION ON UPDATE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS rolls_campaign_idx ON rolls (campaign_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS rolls_character_idx ON rolls (character_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS rolls_character_idx ON rolls (campaign_id, character_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS rolls_session_idx ON rolls (session_id, created_at);
 CREATE INDEX IF NOT EXISTS rolls_scene_idx ON rolls (campaign_id, scene_id, created_at);
