@@ -1,24 +1,34 @@
-"""Session state IO + audit + events.
+"""Runtime state IO + audit + events.
 
-Layout under sessions/<id>/:
-  state.json       — persisted session JSON (this module owns it)
-  audit.jsonl      — append-only command audit log
-  transcript.md    — public transcript (managed by glass turn append)
-  turns/<NNNN>/    — per-turn artifacts (managed by orchestrator)
+One state file per campaign. Layout under campaigns/<id>/:
 
-Session JSON schema (v3):
-  schema_version: 3
-  session: {id, campaign, status, created_at, updated_at, wrapped_at,
-            summary, turn_counter}
-  mode_stack: list[ModeFrame]
-  pending_events: list[{event_id, actor, ts, summary}] — flushed into
-    next transcript turn as `> {summary}` lines
-  note_intake: list — DM intake queue (propose/ratify)
-  entities: dict — graph mirror cache (graph is canonical)
-  threads: dict — DM thread tracker
-  turns: list — turn metadata
-  next_speakers: list[{agent, rapid_prompt?}] — handoff queue
-  scene_closing_turns: int | None — closing-down countdown
+  state.json          — runtime state (this module owns it)
+  transcript.md       — append-only public transcript
+  audit.jsonl         — append-only command audit log
+  scene-framing.md    — current scene framing (rewritten on scene start)
+  dm/turns/<NNNN>/    — DM's per-turn artifacts (in.md, out.md, stdout, stderr)
+  players/<id>/turns/<NNNN>/ — that player's per-turn artifacts
+
+There is no `session` concept. The campaign id is the only identifier;
+the campaign workspace is the runtime root. There is no central
+`turns/<NNNN>/` directory — turn artifacts always live inside the
+specific agent's directory under the campaign workspace.
+
+Schema (v4):
+
+  schema_version:       4
+  campaign:             text — same id as the campaign workspace dirname
+  status:               'active' | 'wrapped'
+  created_at, updated_at, wrapped_at, summary
+  turn_counter:         int (global, increments across modes)
+  mode_stack:           list[ModeFrame]
+  pending_events:       list[{event_id, actor, ts, summary}]
+  note_intake:          list — DM intake queue
+  entities:             dict — graph mirror cache
+  threads:              dict — DM thread tracker
+  turns:                list — turn metadata
+  next_speakers:        list[{agent, rapid_prompt?}] — handoff queue
+  scene_closing_turns:  int | None — closing-down countdown (in agent commits)
 """
 
 from __future__ import annotations
@@ -37,65 +47,78 @@ from .role import current_role
 from .yaml_io import emit, make_jsonable
 
 
-# --- session paths ---
+# --- runtime paths (all rooted at campaigns/<id>/) ---
 
 
-def active_session_file(paths: Paths) -> Path:
-    return paths.sessions / ".active-session"
+def campaign_runtime_dir(paths: Paths, campaign_id: str) -> Path:
+    return paths.campaigns / campaign_id
 
 
-def write_active_session(paths: Paths, session_id: str) -> None:
-    paths.sessions.mkdir(parents=True, exist_ok=True)
-    active_session_file(paths).write_text(f"{session_id}\n", encoding="utf-8")
+def state_path(paths: Paths, campaign_id: str) -> Path:
+    return campaign_runtime_dir(paths, campaign_id) / "state.json"
 
 
-def active_session_id(paths: Paths, required: bool = True) -> str | None:
-    env_session = os.environ.get("GLASS_SESSION_ID")
-    if env_session:
-        return env_session
-    active = active_session_file(paths)
-    if active.exists():
-        value = active.read_text(encoding="utf-8").strip()
-        if value:
-            return value
-    if required:
-        raise GlassError("no active session: set GLASS_SESSION_ID or run 'glass session new'")
-    return None
+def audit_path(paths: Paths, campaign_id: str) -> Path:
+    return campaign_runtime_dir(paths, campaign_id) / "audit.jsonl"
 
 
-def session_dir(paths: Paths, session_id: str) -> Path:
-    return paths.sessions / session_id
+def transcript_path(paths: Paths, campaign_id: str) -> Path:
+    return campaign_runtime_dir(paths, campaign_id) / "transcript.md"
 
 
-def state_path(paths: Paths, session_id: str) -> Path:
-    return session_dir(paths, session_id) / "state.json"
+def scene_framing_path(paths: Paths, campaign_id: str) -> Path:
+    return campaign_runtime_dir(paths, campaign_id) / "scene-framing.md"
 
 
-def audit_path(paths: Paths, session_id: str) -> Path:
-    return session_dir(paths, session_id) / "audit.jsonl"
+def agent_turns_dir(
+    paths: Paths,
+    campaign_id: str,
+    *,
+    role_kind: str,
+    agent_id: str,
+) -> Path:
+    """Directory containing this agent's per-turn artifact subdirectories.
+
+    DM    -> campaigns/<id>/dm/turns/
+    player -> campaigns/<id>/players/<player>/turns/
+    """
+    root = campaign_runtime_dir(paths, campaign_id)
+    if role_kind == "dm":
+        return root / "dm" / "turns"
+    return root / "players" / agent_id / "turns"
 
 
-def transcript_path(paths: Paths, session_id: str) -> Path:
-    return session_dir(paths, session_id) / "transcript.md"
+def agent_turn_dir(
+    paths: Paths,
+    campaign_id: str,
+    *,
+    role_kind: str,
+    agent_id: str,
+    turn_number: int,
+) -> Path:
+    """A specific per-turn artifact directory.
+
+    Contains in.md (TURN_START), out.md (TURN), stdout.txt, stderr.txt.
+    """
+    return agent_turns_dir(
+        paths, campaign_id, role_kind=role_kind, agent_id=agent_id
+    ) / f"{turn_number:04d}"
 
 
 # --- state load / save / shape ---
 
 
-def default_state(session_id: str, campaign: str) -> dict[str, Any]:
+def default_state(campaign_id: str) -> dict[str, Any]:
     ts = now_iso()
     return {
-        "schema_version": 3,
-        "session": {
-            "id": session_id,
-            "campaign": campaign,
-            "status": "active",
-            "created_at": ts,
-            "updated_at": ts,
-            "wrapped_at": None,
-            "summary": "",
-            "turn_counter": 0,
-        },
+        "schema_version": 4,
+        "campaign": campaign_id,
+        "status": "active",
+        "created_at": ts,
+        "updated_at": ts,
+        "wrapped_at": None,
+        "summary": "",
+        "turn_counter": 0,
         "mode_stack": [],
         "pending_events": [],
         "note_intake": [],
@@ -108,21 +131,33 @@ def default_state(session_id: str, campaign: str) -> dict[str, Any]:
 
 
 def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
-    state.setdefault("schema_version", 3)
+    # Migrate v3 (nested session{}) to v4 (flat) on load.
+    if "session" in state and isinstance(state["session"], dict):
+        legacy = state.pop("session")
+        state.setdefault("campaign", legacy.get("campaign") or legacy.get("id", ""))
+        state.setdefault("status", legacy.get("status", "active"))
+        state.setdefault("created_at", legacy.get("created_at"))
+        state.setdefault("updated_at", legacy.get("updated_at"))
+        state.setdefault("wrapped_at", legacy.get("wrapped_at"))
+        state.setdefault("summary", legacy.get("summary", ""))
+        state.setdefault("turn_counter", legacy.get("turn_counter", 0))
+
+    state.setdefault("schema_version", 4)
+    state.setdefault("status", "active")
+    state.setdefault("turn_counter", len(state.get("turns", [])))
     state.setdefault("mode_stack", [])
     state.setdefault("pending_events", [])
     state.setdefault("note_intake", [])
     state.setdefault("entities", {})
     state.setdefault("threads", {})
     state.setdefault("turns", [])
-    state.setdefault("session", {})
     state.setdefault("next_speakers", [])
     state.setdefault("scene_closing_turns", None)
+
     legacy_next = state.pop("next_speaker", None)
     if isinstance(legacy_next, str) and legacy_next:
         state["next_speakers"].append({"agent": legacy_next})
-    state["session"].setdefault("turn_counter", len(state["turns"]))
-    state["session"].setdefault("status", "active")
+
     for legacy in (
         "characters", "dice_events", "mechanical_events",
         "uncommitted_event_ids", "messages",
@@ -131,20 +166,19 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
     return state
 
 
-def load_state(paths: Paths, session_id: str | None = None) -> dict[str, Any]:
-    session = session_id or active_session_id(paths)
-    path = state_path(paths, session)
+def load_state(paths: Paths, campaign_id: str) -> dict[str, Any]:
+    path = state_path(paths, campaign_id)
     if not path.exists():
-        raise GlassError(f"unknown session: {session}")
+        raise GlassError(f"no state for campaign {campaign_id!r} at {path}")
     return normalize_state(json.loads(path.read_text(encoding="utf-8")))
 
 
 def save_state(paths: Paths, state: dict[str, Any]) -> None:
-    state["session"]["updated_at"] = now_iso()
-    session = state["session"]["id"]
-    directory = session_dir(paths, session)
+    state["updated_at"] = now_iso()
+    campaign_id = state["campaign"]
+    directory = campaign_runtime_dir(paths, campaign_id)
     directory.mkdir(parents=True, exist_ok=True)
-    path = state_path(paths, session)
+    path = state_path(paths, campaign_id)
     tmp_path = path.with_suffix(".json.tmp")
     tmp_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     tmp_path.replace(path)
@@ -161,12 +195,12 @@ def append_audit(
     params: dict[str, Any],
     result: dict[str, Any],
 ) -> None:
-    session_id = state["session"]["id"]
+    campaign_id = state["campaign"]
     role = current_role()
     record = {
         "audit_id": new_id("audit"),
         "ts": now_iso(),
-        "session_id": session_id,
+        "campaign": campaign_id,
         "role": role.raw or "operator",
         "actor": role.actor,
         "command": ctx.command_path,
@@ -174,7 +208,7 @@ def append_audit(
         "params": make_jsonable(params),
         "result": make_jsonable(result),
     }
-    path = audit_path(paths, session_id)
+    path = audit_path(paths, campaign_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True) + "\n")
@@ -222,12 +256,11 @@ def current_mode_record(state: dict[str, Any]) -> dict[str, Any] | None:
 def state_summary(state: dict[str, Any]) -> dict[str, Any]:
     current = current_mode_record(state)
     return {
-        "session_id": state["session"]["id"],
-        "campaign": state["session"]["campaign"],
-        "status": state["session"]["status"],
-        "created_at": state["session"]["created_at"],
-        "updated_at": state["session"]["updated_at"],
-        "wrapped_at": state["session"].get("wrapped_at"),
+        "campaign": state["campaign"],
+        "status": state["status"],
+        "created_at": state["created_at"],
+        "updated_at": state["updated_at"],
+        "wrapped_at": state.get("wrapped_at"),
         "current_mode": current["mode"] if current else None,
         "current_scene": current["scene_id"] if current else None,
         "mode_stack": state.get("mode_stack", []),

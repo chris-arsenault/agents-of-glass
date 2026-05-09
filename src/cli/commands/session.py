@@ -1,202 +1,125 @@
-"""Session commands."""
+"""Campaign-state lifecycle commands.
+
+Historically named "session" — kept for backward compat with the
+orchestrator's GlassBridge invocation. Each campaign now has exactly
+one runtime state file at `campaigns/<id>/state.json`. The "session"
+concept is gone; what these commands manage is the campaign's runtime
+state.
+"""
 
 from __future__ import annotations
 
-import json
-import os
-import random
-import shutil
-import sys
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
-
 import click
 
-from .. import db as _db
-from .. import workspace as _workspace
-from ..campaign import (
-    active_campaign_id,
-    active_campaign_root,
-    lookup_player_character_id,
-    pg_connection,
-    resolve_active_campaign_workspace,
-)
-from ..config import REPO_ROOT, Paths, get_paths, load_config
-from ..constants import (
-    ATTRIBUTE_TIERS,
-    ATTRIBUTES,
-    RISK_THRESHOLDS,
-    SKILL_TIERS,
-    STARTER_MESSAGE_TYPES,
-)
-from ..entities import (
-    markdown_title,
-    parse_frontmatter,
-    parse_sections,
-    upsert_entity_from_path,
-)
+from ..campaign import resolve_active_campaign_workspace
+from ..config import get_paths
 from ..errors import GlassError
-from ..ids import new_id, now_iso, slugify
-from ..messages import (
-    infer_player_from_path,
-    load_message_types,
-    message_visible_to,
-    player_dirs,
-    require_message_type,
-    require_recipient,
-    roster,
-)
-from ..paths_resolve import (
-    clean_relative_path,
-    display_path,
-    ensure_under,
-    ensure_under_any,
-    resolve_content_path,
-    resolve_note_write_path,
-)
-from ..role import (
-    Role,
-    actor_for_turn,
-    assert_character_writable,
-    current_role,
-    require_dm,
-    require_player,
-    role_label_for_turn,
-)
+from ..paths_resolve import display_path
+from ..role import require_dm
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
-    audit_path,
+    campaign_runtime_dir,
     commit,
-    current_mode_record,
     default_state,
-    inline_event_lines,
     load_state,
-    normalize_state,
-    queue_event,
     save_state,
-    session_dir,
+    scene_framing_path,
     state_path,
     state_summary,
     transcript_path,
-    write_active_session,
 )
-from ..validation import (
-    assert_attribute_name,
-    clamp,
-    outcome_for_margin,
-    validate_key_values,
-)
-from ..yaml_io import (
-    command_params,
-    emit,
-    make_jsonable,
-    read_body,
-    to_yaml,
-    yaml_scalar,
-)
+from ..yaml_io import command_params, emit, read_body
 
 
 @click.group()
 def session() -> None:
-    """Session lifecycle commands."""
+    """Campaign runtime state lifecycle (legacy name; manages state.json)."""
 
 
 @session.command("new")
-@click.option("--campaign", required=True, help="Human-readable campaign name.")
-@click.option("--session-id", help="Explicit session id. Defaults to campaign slug + timestamp.")
+@click.option("--campaign", required=True, help="Campaign id (must match the campaigns/<id>/ workspace).")
+@click.option("--session-id", "session_id_unused", default=None, hidden=True,
+              help="Ignored; kept for backward compat with the orchestrator's invocation.")
 @click.pass_context
-def session_new(ctx: click.Context, campaign: str, session_id: str | None) -> None:
-    paths = get_paths()
-    paths.sessions.mkdir(parents=True, exist_ok=True)
-    if not session_id:
-        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-        session_id = f"{slugify(campaign)}-{stamp}"
-    session_id = slugify(session_id)
-    directory = session_dir(paths, session_id)
-    if directory.exists():
-        raise GlassError(f"session already exists: {session_id}")
+def session_new(ctx: click.Context, campaign: str, session_id_unused: str | None) -> None:
+    """Initialize the campaign's runtime state.
 
-    state = default_state(session_id, campaign)
-    directory.mkdir(parents=True, exist_ok=False)
-    transcript_path(paths, session_id).write_text(
-        f"# {campaign}\n\nSession: `{session_id}`\n\n", encoding="utf-8"
-    )
-    (directory / "scene-framing.md").write_text("# Scene Framing\n\n", encoding="utf-8")
+    Writes campaigns/<campaign>/state.json (default state), transcript.md
+    header, and an empty scene-framing.md. Errors if the workspace doesn't
+    exist (use `aog campaign bootstrap` first).
+    """
+    paths = get_paths()
+    runtime_dir = campaign_runtime_dir(paths, campaign)
+    if not runtime_dir.exists():
+        raise GlassError(
+            f"campaign workspace does not exist at {runtime_dir}; "
+            "run `aog campaign bootstrap <id>` first"
+        )
+
+    state_file = state_path(paths, campaign)
+    if state_file.exists():
+        raise GlassError(
+            f"state already exists at {state_file}; "
+            "delete it manually if you want to reinitialize"
+        )
+
+    state = default_state(campaign)
     save_state(paths, state)
-    write_active_session(paths, session_id)
+
+    transcript_file = transcript_path(paths, campaign)
+    if not transcript_file.exists():
+        transcript_file.write_text(
+            f"# {campaign}\n\n", encoding="utf-8"
+        )
+    framing_file = scene_framing_path(paths, campaign)
+    if not framing_file.exists():
+        framing_file.write_text("# Scene Framing\n\n", encoding="utf-8")
+
     result = {
-        "session_id": session_id,
         "campaign": campaign,
         "status": "active",
-        "path": display_path(directory),
-        "active": True,
+        "path": display_path(runtime_dir),
     }
     append_audit(paths, state, ctx, "session.new", command_params(campaign=campaign), result)
     emit(result)
 
 
 @session.command("show")
-@click.option("--session-id", help="Session id to show. Defaults to GLASS_SESSION_ID or active.")
+@click.option("--campaign", "campaign_id", default=None,
+              help="Campaign id. Defaults to GLASS_CAMPAIGN_ID or the active campaign.")
 @click.pass_context
-def session_show(ctx: click.Context, session_id: str | None) -> None:
+def session_show(ctx: click.Context, campaign_id: str | None) -> None:
+    """Show summary of the campaign's current runtime state."""
     paths = get_paths()
-    state = load_state(paths, session_id)
+    if not campaign_id:
+        campaign_id = resolve_active_campaign_workspace().campaign_id
+    state = load_state(paths, campaign_id)
     result = state_summary(state)
-    append_audit(paths, state, ctx, "session.show", command_params(session_id=session_id), result)
-    emit(result)
-
-
-@session.command("list")
-@click.pass_context
-def session_list(ctx: click.Context) -> None:
-    paths = get_paths()
-    paths.sessions.mkdir(parents=True, exist_ok=True)
-    active = active_session_id(paths, required=False)
-    records = []
-    for path in sorted(paths.sessions.iterdir()):
-        if not path.is_dir():
-            continue
-        state_file = path / "state.json"
-        if not state_file.exists():
-            continue
-        state = normalize_state(json.loads(state_file.read_text(encoding="utf-8")))
-        records.append(
-            {
-                "session_id": state["session"]["id"],
-                "campaign": state["session"]["campaign"],
-                "status": state["session"]["status"],
-                "updated_at": state["session"]["updated_at"],
-                "active": state["session"]["id"] == active,
-            }
-        )
-    result = {"sessions": records}
-    if active:
-        state = load_state(paths, active)
-        append_audit(paths, state, ctx, "session.list", {}, result)
+    append_audit(paths, state, ctx, "session.show", command_params(campaign=campaign_id), result)
     emit(result)
 
 
 @session.command("wrap")
-@click.option("--summary", help="Session summary text.")
+@click.option("--summary", help="Wrap-up summary text.")
 @click.option("--from", "from_file", help="Read summary from this file, or '-' for stdin.")
 @click.pass_context
 def session_wrap(ctx: click.Context, summary: str | None, from_file: str | None) -> None:
+    """Mark the campaign's runtime state as wrapped (DM-only)."""
+    from ..ids import now_iso
+    from ..campaign import active_campaign_id
+
     require_dm()
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     body = read_body(summary, from_file).strip()
-    state["session"]["status"] = "wrapped"
-    state["session"]["wrapped_at"] = now_iso()
-    state["session"]["summary"] = body
+    state["status"] = "wrapped"
+    state["wrapped_at"] = now_iso()
+    state["summary"] = body
     result = {
-        "session_id": state["session"]["id"],
+        "campaign": state["campaign"],
         "status": "wrapped",
-        "wrapped_at": state["session"]["wrapped_at"],
+        "wrapped_at": state["wrapped_at"],
         "summary": body,
     }
     commit(paths, state, ctx, "session.wrap", command_params(summary=body), result)
-
-

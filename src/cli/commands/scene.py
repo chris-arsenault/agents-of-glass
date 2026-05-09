@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -161,7 +156,7 @@ def scene_end_cmd(
     state = load_state(get_paths())
     paths = get_paths()
     campaign_id = active_campaign_id()
-    session_id = state["session"]["id"]
+    session_id = state["campaign"]
 
     current = _workspace.current_scene(workspace)
     if not current:
@@ -280,7 +275,8 @@ def scene_closing_down(
         commits = round_budget * _AGENTS_PER_ROUND
         unit_label = f"~{round_budget} round(s)"
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     # Stored as commits+1 because the orchestrator decrements once on the
     # commit of the DM's setting turn. The first non-DM turn that follows
     # sees the user-friendly value in TURN_START.

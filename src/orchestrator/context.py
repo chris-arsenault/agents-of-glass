@@ -1,9 +1,10 @@
 """Per-turn context generation.
 
 The agent is spawned with cwd = campaigns/<id>/. The orchestrator does NOT
-build a separate CWD with file projections. Instead, a single TURN_START.md
-file is rendered per turn at sessions/<session-id>/turns/<NNNN>/TURN_START.md;
-the agent reads it and writes its turn prose to TURN.md in the same dir.
+build a separate CWD with file projections. Instead, a single in.md file is
+rendered per turn at campaigns/<id>/<agent>/turns/<NNNN>/in.md (where
+<agent> is `dm` or `players/<id>`); the agent reads it and writes its turn
+prose to out.md in the same dir.
 
 File-system isolation between agents is enforced via Unix permissions on the
 campaign workspace itself (see permissions.py), not by limiting what's in
@@ -17,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 from .config import AogConfig
-from . import permissions
 from .state import Agent, SessionState
 from .store import SessionStore
 
@@ -27,9 +27,9 @@ class ContextPackage:
     turn_id: str
     turn_number: int
     spawn_cwd: Path             # the campaign workspace; agent's cwd
-    turn_dir: Path              # sessions/<id>/turns/<NNNN>/
-    turn_start_path: Path       # TURN_START.md (read by agent)
-    turn_output_path: Path      # TURN.md (written by agent)
+    turn_dir: Path              # campaigns/<id>/<agent>/turns/<NNNN>/
+    turn_start_path: Path       # in.md (read by agent)
+    turn_output_path: Path      # out.md (written by agent)
 
 
 class ContextBuilder:
@@ -45,18 +45,27 @@ class ContextBuilder:
         turn_meta: dict[str, Any] | None = None,
     ) -> ContextPackage:
         turn_number = state.turn_number + 1
-        turn_id = f"{state.session_id}-t{turn_number:04d}"
+        turn_id = f"{state.campaign}-t{turn_number:04d}"
 
-        # Per-turn artifact dir lives under the session, NOT under the
-        # campaign workspace. Holds only TURN_START.md and TURN.md (plus
-        # any agent stdout/stderr captures from runner.py).
-        turn_dir = self.store.session_dir(state.session_id) / "turns" / f"{turn_number:04d}"
+        # Per-turn subdir under the agent's `turns/` for historical record:
+        #   campaigns/<id>/dm/turns/<NNNN>/{in.md, out.md, stdout, stderr}
+        #   campaigns/<id>/players/<id>/turns/<NNNN>/...
+        # The parent `turns/` dir is provisioned at campaign creation with
+        # the right ownership/setgid; files here inherit. We do NOT chmod
+        # per-turn dirs at runtime, and we do NOT use any of these as the
+        # agent's cwd — the spawn_cwd is the campaign workspace.
+        turn_dir = _agent_turn_dir(self.config.campaigns_dir, state.campaign, agent) / f"{turn_number:04d}"
         turn_dir.mkdir(parents=True, exist_ok=True)
 
-        turn_start_path = turn_dir / "TURN_START.md"
-        turn_output_path = turn_dir / "TURN.md"
+        turn_start_path = turn_dir / "in.md"
+        turn_output_path = turn_dir / "out.md"
 
-        spawn_cwd = self._resolve_spawn_cwd(state)
+        spawn_cwd = self.config.campaigns_dir / state.campaign
+        if not spawn_cwd.exists():
+            raise FileNotFoundError(
+                f"Campaign workspace does not exist at {spawn_cwd}; "
+                "run `aog campaign bootstrap <id>` first."
+            )
 
         turn_start_path.write_text(
             self._render_turn_start(
@@ -66,14 +75,6 @@ class ContextBuilder:
             encoding="utf-8",
         )
 
-        # Apply Unix permissions to the per-turn dir so the spawning user
-        # (player Unix user, or operator for DM) can read TURN_START.md
-        # and write TURN.md. No-op if provisioning hasn't been run.
-        if agent.role == "dm":
-            permissions.apply_dm_turn_dir_permissions(turn_dir)
-        else:
-            permissions.apply_player_turn_dir_permissions(agent.id, turn_dir)
-
         return ContextPackage(
             turn_id=turn_id,
             turn_number=turn_number,
@@ -82,18 +83,6 @@ class ContextBuilder:
             turn_start_path=turn_start_path,
             turn_output_path=turn_output_path,
         )
-
-    def _resolve_spawn_cwd(self, state: SessionState) -> Path:
-        """Where the agent's claude -p will be spawned.
-
-        Prefer campaigns/<id>/ if it exists. Falls back to templates/ for
-        the legacy/no-bootstrap path so old session-based commands still
-        work.
-        """
-        candidate = self.config.campaigns_dir / state.campaign
-        if candidate.exists():
-            return candidate
-        return self.config.templates_dir
 
     # --- TURN_START.md rendering ---
 
@@ -109,8 +98,8 @@ class ContextBuilder:
     ) -> str:
         active = state.active_mode
         recent_turns = self._recent_turns(state, max_turns=6)
-        scene_framing_path = self.store.scene_framing_path(state.session_id)
-        transcript_path = self.store.transcript_path(state.session_id)
+        scene_framing_path = self.store.scene_framing_path(state.campaign)
+        transcript_path = self.store.transcript_path(state.campaign)
 
         if agent.role == "dm":
             persona_pointer = "dm/persona.md"
@@ -146,7 +135,7 @@ class ContextBuilder:
             f"You are **{agent.display_name}**. "
             f"Your persona is at [`{persona_pointer}`]({persona_pointer}) "
             f"(relative to your working directory).\n\n"
-            f"- Session: `{state.session_id}`\n"
+            f"- Session: `{state.campaign}`\n"
             f"- Turn id: `{turn_id}`\n"
             f"- Mode: **{active.mode}**\n"
             f"- Scene: **{active.scene_id}**\n\n"
@@ -260,7 +249,7 @@ class ContextBuilder:
         )
 
     def _recent_turns(self, state: SessionState, max_turns: int) -> str:
-        path = self.store.transcript_path(state.session_id)
+        path = self.store.transcript_path(state.campaign)
         if not path.exists():
             return "No transcript exists yet.\n"
         return _last_turns(path.read_text(encoding="utf-8"), max_turns)
@@ -361,6 +350,19 @@ class ContextBuilder:
             "this campaign, use `glass lore import` to bring it into "
             "`shared/lore/` rather than referencing from afar.\n\n"
         )
+
+
+def _agent_turn_dir(campaigns_dir: Path, campaign: str, agent: Agent) -> Path:
+    """The single per-agent turns directory.
+
+    No per-turn numbered subdirs — the directory's contents (in.md,
+    out.md, stdout.txt, stderr.txt) are overwritten each turn the agent
+    takes. The transcript and audit log are the historical record.
+    """
+    root = campaigns_dir / campaign
+    if agent.role == "dm":
+        return root / "dm" / "turns"
+    return root / "players" / agent.id / "turns"
 
 
 def _dm_tools() -> list[str]:

@@ -15,8 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 @dataclass(frozen=True)
 class Paths:
     content: Path
-    sessions: Path
-    campaigns: Path | None = None
+    campaigns: Path
     lore: Path | None = None
 
 
@@ -57,10 +56,9 @@ def get_paths() -> Paths:
         path_config.get("content") or path_config.get("templates"),
         REPO_ROOT / "templates",
     )
-    sessions = resolve_config_path(path_config.get("sessions"), content / "sessions")
     campaigns = resolve_config_path(
         path_config.get("campaigns"), REPO_ROOT / "campaigns"
     )
     lore_cfg = config.get("lore", {}).get("path") if isinstance(config.get("lore"), dict) else None
     lore = resolve_config_path(lore_cfg, REPO_ROOT.parent / "the-glass-frontier-lore")
-    return Paths(content=content, sessions=sessions, campaigns=campaigns, lore=lore)
+    return Paths(content=content, campaigns=campaigns, lore=lore)

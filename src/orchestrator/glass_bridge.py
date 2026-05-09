@@ -36,15 +36,15 @@ class GlassBridge:
         args: list[str],
         *,
         role: str | None = None,
-        session_id: str | None = None,
+        campaign: str | None = None,
         extra_env: Mapping[str, str] | None = None,
     ) -> GlassResult:
         env = os.environ.copy()
         env["GLASS_CONFIG"] = config_env_value(self.config)
         if role is not None:
             env["GLASS_ROLE"] = role
-        if session_id is not None:
-            env["GLASS_SESSION_ID"] = session_id
+        if campaign is not None:
+            env["GLASS_CAMPAIGN_ID"] = campaign
         if extra_env:
             env.update(extra_env)
 

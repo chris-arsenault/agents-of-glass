@@ -7,9 +7,7 @@
 # Invoked via sudo by the orchestrator (sudoers entry permits NOPASSWD).
 #
 # Subcommands:
-#   campaign <campaign-dir>                apply campaign workspace permissions
-#   turn-dir-player <player> <turn-dir>    prepare a player's per-turn artifact dir
-#   turn-dir-dm <turn-dir>                 prepare DM's per-turn artifact dir
+#   campaign <campaign-dir>   apply campaign workspace permissions
 #
 # All paths are validated to be under expected roots before any chown/chmod
 # fires.
@@ -29,8 +27,6 @@ PLAYER_IDS=(tev sumi renno kit)
 usage() {
     cat <<EOF
 Usage: $0 campaign <campaign-dir>
-       $0 turn-dir-player <player> <turn-dir>
-       $0 turn-dir-dm <turn-dir>
 EOF
     exit 1
 }
@@ -123,6 +119,15 @@ cmd_campaign() {
             "$pdir/inbox" \
             "$pdir/secrets"
 
+        # turns/: operator owns so the orchestrator can always mkdir
+        # per-turn subdirs without depending on group membership; group
+        # is the player's primary group, setgid so files inherit it.
+        # Mode 2770 + orchestrator umask 002 -> child subdirs are 2775
+        # (group write), so the player can write their own out.md.
+        if [[ -d "$pdir/turns" ]]; then
+            apply_perms_recursive "$OPERATOR" "$puser" 2770 0660 "$pdir/turns"
+        fi
+
         # Public subdir: owner = player, group = aog-agents, setgid so files
         # created inside inherit the shared group and become party-readable.
         # This is where intro.md, relationships.md, the cached character.md
@@ -166,28 +171,7 @@ cmd_campaign() {
     chmod 2750 "$campaign_dir"
 }
 
-cmd_turn_dir_player() {
-    local player_id="${1:-}" turn_dir="${2:-}"
-    [[ -z "$player_id" || -z "$turn_dir" ]] && usage
-    assert_player_id "$player_id"
-    assert_path_safe "$turn_dir"
-
-    # Per-turn artifact dir readable+writable by the player (via group), inheritable.
-    apply_perms_recursive "$OPERATOR" "aog-$player_id" 2770 0660 "$turn_dir"
-}
-
-cmd_turn_dir_dm() {
-    local turn_dir="${1:-}"
-    [[ -z "$turn_dir" ]] && usage
-    assert_path_safe "$turn_dir"
-
-    # DM per-turn dir: operator-owned, no group sharing.
-    apply_perms_recursive "$OPERATOR" "$OPERATOR_GROUP" 0700 0600 "$turn_dir"
-}
-
 case "${1:-}" in
-    campaign)         shift; cmd_campaign "$@" ;;
-    turn-dir-player)  shift; cmd_turn_dir_player "$@" ;;
-    turn-dir-dm)      shift; cmd_turn_dir_dm "$@" ;;
-    *)                usage ;;
+    campaign)  shift; cmd_campaign "$@" ;;
+    *)         usage ;;
 esac

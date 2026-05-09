@@ -118,7 +118,6 @@ def resolve_note_write_path(paths: Paths, path_text: str) -> Path:
             Path("dm") / "canonical-notes",
             Path("dm") / "intake",
             Path("shared") / "lore",
-            Path("sessions") / "shared" / "lore",
         ]
         if not any(rel == root or root in rel.parents for root in allowed_roots):
             raise GlassError(

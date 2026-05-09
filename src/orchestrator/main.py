@@ -4,8 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
+import os
 
 import click
+
+
+# umask 002 so subdirs the orchestrator creates inside the campaign
+# workspace (notably per-turn artifact dirs under <agent>/turns/) are
+# group-writable. Combined with setgid + group=aog-<player> on the
+# parent turns/, this lets the player Unix user write their out.md
+# into a subdir the orchestrator (running as operator) created.
+os.umask(0o002)
 
 from .campaign import (
     CampaignManager,
@@ -36,14 +45,13 @@ class CliState:
 )
 @click.pass_context
 def main(ctx: click.Context, config_path: Path | None) -> None:
-    """Operate Agents of Glass sessions."""
-
+    """Operate Agents of Glass campaigns."""
     ctx.obj = CliState(str(config_path) if config_path else None)
 
 
 @main.group()
 def campaign() -> None:
-    """Manage campaigns: bootstrap, list, clear."""
+    """Manage campaigns: bootstrap, list, show, run, resume, clear."""
 
 
 @campaign.command("bootstrap")
@@ -53,35 +61,24 @@ def campaign() -> None:
     type=int,
     default=15,
     show_default=True,
-    help="Safety net only. The DM ends the planning mode when they're "
-         "done; this cap just stops runaway loops. Bump if a planning "
-         "session legitimately needs more.",
+    help="Safety net only. The DM ends the planning mode when they're done.",
 )
 @click.option(
     "--max-creation-turns",
     type=int,
     default=30,
     show_default=True,
-    help="Safety net only. The DM ends the character_creation mode when "
-         "both rounds (build + relationships) are done; this cap just "
-         "stops runaway loops. Natural shape is ~10 turns; 30 leaves "
-         "plenty of room for revisions.",
+    help="Safety net only. The DM ends character_creation when both rounds are done.",
 )
 @click.option(
     "--skip-character-creation",
     is_flag=True,
-    help="Stop after campaign planning (the previous default). Useful when "
-         "you want to inspect the planning output before letting players in.",
+    help="Stop after campaign planning. Useful when you want to inspect the planning output.",
 )
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="Build context packages and commit synthetic turns without invoking Claude.",
-)
-@click.option(
-    "--keep-cwd",
-    is_flag=True,
-    help="Keep successful per-turn ephemeral CWDs for inspection.",
+    help="Build context and commit synthetic turns without invoking Claude.",
 )
 @click.pass_obj
 def campaign_bootstrap(
@@ -91,63 +88,49 @@ def campaign_bootstrap(
     max_creation_turns: int,
     skip_character_creation: bool,
     dry_run: bool,
-    keep_cwd: bool,
 ) -> None:
     """Bootstrap a campaign end-to-end.
 
     Steps:
       1. Create campaigns/<id>/ from templates/.
-      2. Invoke DM in campaign-planning mode (foundation + opening arc).
-      3. Character creation: interleaved player + DM turns covering round 1
-         (build) and round 2 (relationships). Skipped with
-         --skip-character-creation.
+      2. Invoke DM in campaign-planning mode.
+      3. Character creation (skip with --skip-character-creation).
       4. [STUB] Active scene play.
     """
-
-    # 1. Create campaign workspace
     click.secho(f"[1/4] Creating campaign workspace: {campaign_id}", fg="cyan")
     try:
         space = cli.campaign_manager.create(campaign_id)
-    except FileExistsError as exc:
-        raise click.ClickException(str(exc))
-    except FileNotFoundError as exc:
+    except (FileExistsError, FileNotFoundError) as exc:
         raise click.ClickException(str(exc))
     click.echo(f"      workspace: {space.campaign_dir}")
     click.echo(f"      state:     {space.state_path}")
 
-    # 2. Invoke DM for campaign planning
     click.secho(
         f"[2/4] Invoking DM for campaign planning (max {max_planning_turns} turns)",
         fg="cyan",
     )
     cli.campaign_manager.advance_phase(campaign_id, PHASE_PLANNING)
-
-    planning_state = cli.store.create_session(
+    state = cli.store.create_session(
         campaign=campaign_id,
         initial_mode="campaign-planning",
         initial_scene="planning",
     )
-    click.echo(f"      session: {planning_state.session_id}")
-
+    click.echo(f"      campaign: {state.campaign}")
     try:
         turns_run = cli.orchestrator.run_loop(
-            planning_state,
+            state,
             max_turns=max_planning_turns,
             dry_run=dry_run,
-            keep_cwd=keep_cwd,
             resume_failed=False,
         )
     except TurnFailure as exc:
         detail = json.dumps(exc.failure, indent=2, sort_keys=True)
-        raise click.ClickException(
-            f"campaign planning failed: {exc}\n{detail}"
-        ) from exc
+        raise click.ClickException(f"campaign planning failed: {exc}\n{detail}") from exc
 
     click.echo(f"      DM produced {turns_run} planning turn(s)")
-    click.echo(f"      transcript: {cli.store.transcript_path(planning_state.session_id)}")
+    click.echo(f"      transcript: {cli.store.transcript_path(state.campaign)}")
     click.echo(f"      DM workspace: {space.campaign_dir / 'dm'}")
 
-    # 3. Character creation
     if skip_character_creation:
         cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
         click.secho("[3/4] Character creation skipped (--skip-character-creation).",
@@ -164,13 +147,11 @@ def campaign_bootstrap(
             initial_mode="character-creation",
             initial_scene="character-creation",
         )
-        click.echo(f"      session: {creation_state.session_id}")
         try:
             creation_turns = cli.orchestrator.run_loop(
                 creation_state,
                 max_turns=max_creation_turns,
                 dry_run=dry_run,
-                keep_cwd=keep_cwd,
                 resume_failed=False,
             )
         except TurnFailure as exc:
@@ -179,16 +160,12 @@ def campaign_bootstrap(
                 f"character creation failed: {exc}\n{detail}"
             ) from exc
         click.echo(f"      ran {creation_turns} character-creation turn(s)")
-        click.echo(
-            f"      transcript: {cli.store.transcript_path(creation_state.session_id)}"
-        )
+        click.echo(f"      transcript: {cli.store.transcript_path(creation_state.campaign)}")
 
-    # 4. STUB — active scene play
     cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
     click.secho("[4/4] [STUB] Active scene play", fg="yellow")
-    click.echo("              this is where regular scene play would begin")
     click.echo("              (DM creates scenes via glass scene create;")
-    click.echo("               orchestrator runs scene loops)")
+    click.echo("               operator drives via aog campaign run)")
 
     click.echo()
     click.secho(
@@ -202,209 +179,158 @@ def campaign_bootstrap(
 @campaign.command("list")
 @click.pass_obj
 def campaign_list(cli: CliState) -> None:
-    campaigns = cli.campaign_manager.list_campaigns()
-    if not campaigns:
+    """List campaigns and their phase + runtime status."""
+    workspace_ids = set(cli.campaign_manager.list_campaigns())
+    states = {state.campaign: state for state in cli.store.list_campaigns()}
+    if not workspace_ids and not states:
         click.echo("no campaigns")
         return
-    for campaign_id in campaigns:
+    for campaign_id in sorted(workspace_ids | set(states)):
         try:
-            state = cli.campaign_manager.load_state(campaign_id)
-            phase = state.get("phase", "?")
+            phase_state = cli.campaign_manager.load_state(campaign_id)
+            phase = phase_state.get("phase", "?")
         except Exception:
             phase = "?"
-        click.echo(f"{campaign_id:<32} phase: {phase}")
+        runtime = states.get(campaign_id)
+        if runtime is not None:
+            try:
+                active = runtime.active_mode
+                mode_str = f"{active.mode}:{active.scene_id}"
+            except ValueError:
+                mode_str = "(no mode)"
+            click.echo(
+                f"{campaign_id:<32}  phase: {phase:<22}  "
+                f"status: {runtime.status:<10}  turn={runtime.turn_number}  {mode_str}"
+            )
+        else:
+            click.echo(f"{campaign_id:<32}  phase: {phase:<22}  (no runtime state)")
 
 
 @campaign.command("show")
-@click.argument("campaign_id")
+@click.argument("campaign_id", required=False)
+@click.option("--json", "as_json", is_flag=True, help="Print raw runtime state JSON.")
 @click.pass_obj
-def campaign_show(cli: CliState, campaign_id: str) -> None:
-    space = CampaignSpace.from_config(cli.config, campaign_id)
-    if not space.exists():
-        raise click.ClickException(f"Campaign {campaign_id!r} does not exist")
-    state = cli.campaign_manager.load_state(campaign_id)
-    click.echo(json.dumps(state, indent=2, sort_keys=True))
-    click.echo(f"\nworkspace: {space.campaign_dir}")
-
-
-@campaign.command("clear")
-@click.argument("campaign_id")
-@click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
-@click.pass_obj
-def campaign_clear(cli: CliState, campaign_id: str, yes: bool) -> None:
-    space = CampaignSpace.from_config(cli.config, campaign_id)
-    if not space.exists():
-        raise click.ClickException(f"Campaign {campaign_id!r} does not exist")
-    if not yes and not click.confirm(
-        f"Delete campaign {campaign_id!r} at {space.campaign_dir}?"
-    ):
-        raise click.Abort()
-    cli.campaign_manager.clear(campaign_id)
-    click.echo(f"cleared campaign {campaign_id}")
-
-
-@main.group()
-def session() -> None:
-    """Create, inspect, and run sessions."""
-
-
-@session.command("new")
-@click.option("--campaign", required=True, help="Campaign name.")
-@click.option("--mode", default="worldbuilding", show_default=True, help="Initial mode.")
-@click.option("--scene", default="session-zero", show_default=True, help="Initial scene id.")
-@click.pass_obj
-def session_new(cli: CliState, campaign: str, mode: str, scene: str) -> None:
-    state = cli.store.create_session(campaign, mode, scene)
-    click.echo(f"created session {state.session_id}")
-    click.echo(f"path: {cli.store.session_dir(state.session_id)}")
-
-
-@session.command("list")
-@click.pass_obj
-def session_list(cli: CliState) -> None:
-    states = cli.store.list_sessions()
-    if not states:
-        click.echo("no sessions")
-        return
-    click.echo(summarize_states(states))
-
-
-@session.command("show")
-@click.argument("session_id", required=False)
-@click.option("--json", "as_json", is_flag=True, help="Print raw state JSON.")
-@click.pass_obj
-def session_show(cli: CliState, session_id: str | None, as_json: bool) -> None:
-    state = cli.store.load(session_id)
+def campaign_show(cli: CliState, campaign_id: str | None, as_json: bool) -> None:
+    """Show a campaign's runtime state. Defaults to the latest campaign."""
+    state = cli.store.load(campaign_id)
     if as_json:
         click.echo(json.dumps(state.to_dict(), indent=2, sort_keys=True))
         return
-    active = state.active_mode
-    click.echo(f"session: {state.session_id}")
+    try:
+        active = state.active_mode
+    except ValueError:
+        active = None
     click.echo(f"campaign: {state.campaign}")
     click.echo(f"status: {state.status}")
     click.echo(f"turn: {state.turn_number}")
-    click.echo(f"active mode: {active.mode}")
-    click.echo(f"scene: {active.scene_id}")
-    click.echo(f"mode budget remaining: {active.turn_budget_remaining}")
+    if active is not None:
+        click.echo(f"active mode: {active.mode}")
+        click.echo(f"scene: {active.scene_id}")
+        click.echo(f"mode budget remaining: {active.turn_budget_remaining}")
+    else:
+        click.echo("active mode: (none)")
     click.echo(f"last speaker: {state.last_speaker or '-'}")
     if state.failure:
         click.echo("failure:")
         click.echo(json.dumps(state.failure, indent=2, sort_keys=True))
 
 
-@session.command("prepare-turn")
-@click.argument("session_id", required=False)
+@campaign.command("prepare-turn")
+@click.argument("campaign_id", required=False)
 @click.pass_obj
-def session_prepare_turn(cli: CliState, session_id: str | None) -> None:
-    state = cli.store.load(session_id)
+def campaign_prepare_turn(cli: CliState, campaign_id: str | None) -> None:
+    """Build the next turn's TURN_START context without invoking the agent."""
+    state = cli.store.load(campaign_id)
     package = cli.orchestrator.prepare_turn(state)
     click.echo(f"prepared {package.turn_id}")
-    click.echo(f"cwd: {package.cwd}")
+    click.echo(f"cwd: {package.spawn_cwd}")
+    click.echo(f"in:  {package.turn_start_path}")
+    click.echo(f"out: {package.turn_output_path}")
 
 
-@session.command("run")
-@click.argument("session_id", required=False)
+@campaign.command("run")
+@click.argument("campaign_id", required=False)
 @click.option("--max-turns", type=int, default=None, help="Turns to run in this invocation.")
-@click.option("--dry-run", is_flag=True, help="Build and commit synthetic turns without Claude.")
-@click.option("--keep-cwd", is_flag=True, help="Keep successful per-turn CWDs for inspection.")
+@click.option("--dry-run", is_flag=True, help="Synthetic turns without Claude.")
 @click.pass_obj
-def session_run(
+def campaign_run(
     cli: CliState,
-    session_id: str | None,
+    campaign_id: str | None,
     max_turns: int | None,
     dry_run: bool,
-    keep_cwd: bool,
 ) -> None:
-    state = cli.store.load(session_id)
-    turns = _run_or_raise(
-        cli,
-        state,
-        max_turns=max_turns,
-        dry_run=dry_run,
-        keep_cwd=keep_cwd,
-        resume_failed=False,
-    )
+    """Run the orchestration loop for a campaign."""
+    state = cli.store.load(campaign_id)
+    turns = _run_or_raise(cli, state, max_turns=max_turns, dry_run=dry_run, resume_failed=False)
     click.echo(f"ran {turns} turn(s)")
 
 
-@session.command("resume")
-@click.argument("session_id", required=False)
+@campaign.command("resume")
+@click.argument("campaign_id", required=False)
 @click.option("--max-turns", type=int, default=None, help="Turns to run in this invocation.")
-@click.option("--dry-run", is_flag=True, help="Build and commit synthetic turns without Claude.")
-@click.option("--keep-cwd", is_flag=True, help="Keep successful per-turn CWDs for inspection.")
+@click.option("--dry-run", is_flag=True, help="Synthetic turns without Claude.")
 @click.pass_obj
-def session_resume(
+def campaign_resume(
     cli: CliState,
-    session_id: str | None,
+    campaign_id: str | None,
     max_turns: int | None,
     dry_run: bool,
-    keep_cwd: bool,
 ) -> None:
-    state = cli.store.load(session_id)
-    turns = _run_or_raise(
-        cli,
-        state,
-        max_turns=max_turns,
-        dry_run=dry_run,
-        keep_cwd=keep_cwd,
-        resume_failed=True,
-    )
+    """Resume a failed/paused/interrupted campaign."""
+    state = cli.store.load(campaign_id)
+    turns = _run_or_raise(cli, state, max_turns=max_turns, dry_run=dry_run, resume_failed=True)
     click.echo(f"resumed and ran {turns} turn(s)")
 
 
-@main.group()
-def clear() -> None:
-    """Clear operator-managed session state."""
-
-
-@clear.command("session")
-@click.argument("session_id", required=False)
+@campaign.command("clear")
+@click.argument("campaign_id")
+@click.option("--state-only", is_flag=True,
+              help="Only delete the runtime state files (state.json, transcript.md, "
+                   "audit.jsonl, scene-framing.md, per-agent turns/). Keeps the "
+                   "campaign workspace, DM/player content, arcs, lore.")
 @click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
 @click.pass_obj
-def clear_session(cli: CliState, session_id: str | None, yes: bool) -> None:
-    state = cli.store.load(session_id)
-    if not yes and not click.confirm(f"Delete session {state.session_id}?"):
-        raise click.Abort()
-    cli.store.clear_session(state.session_id)
-    click.echo(f"cleared session {state.session_id}")
+def campaign_clear(cli: CliState, campaign_id: str, state_only: bool, yes: bool) -> None:
+    """Delete a campaign workspace, or just its runtime state with --state-only."""
+    space = CampaignSpace.from_config(cli.config, campaign_id)
+    if not space.exists():
+        raise click.ClickException(f"Campaign {campaign_id!r} does not exist")
+    if state_only:
+        if not yes and not click.confirm(
+            f"Clear runtime state for campaign {campaign_id!r}? "
+            "(workspace, DM/player content, arcs, lore will remain)"
+        ):
+            raise click.Abort()
+        cli.store.clear_state(campaign_id)
+        click.echo(f"cleared runtime state for {campaign_id}")
+    else:
+        if not yes and not click.confirm(
+            f"Delete entire campaign workspace {campaign_id!r} at {space.campaign_dir}?"
+        ):
+            raise click.Abort()
+        cli.campaign_manager.clear(campaign_id)
+        click.echo(f"cleared campaign {campaign_id}")
 
 
-@clear.command("campaign")
-@click.argument("campaign")
-@click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
-@click.pass_obj
-def clear_campaign(cli: CliState, campaign: str, yes: bool) -> None:
-    matching = [
-        state.session_id
-        for state in cli.store.list_sessions()
-        if state.campaign == campaign
-    ]
-    if not matching:
-        click.echo(f"no sessions found for campaign {campaign!r}")
-        return
-    if not yes and not click.confirm(f"Delete {len(matching)} session(s) for {campaign!r}?"):
-        raise click.Abort()
-    removed = cli.store.clear_campaign(campaign)
-    click.echo(f"cleared {len(removed)} session(s)")
-
-
-@clear.command("scene")
+@campaign.command("clear-scene")
 @click.argument("scene_id", required=False)
-@click.option("--session-id", default=None, help="Session id. Defaults to latest session.")
+@click.option("--campaign", "campaign_id", default=None,
+              help="Campaign id. Defaults to the latest.")
 @click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
 @click.pass_obj
-def clear_scene(
+def campaign_clear_scene(
     cli: CliState,
     scene_id: str | None,
-    session_id: str | None,
+    campaign_id: str | None,
     yes: bool,
 ) -> None:
-    state = cli.store.load(session_id)
+    """Reset scene-framing.md so the DM has to reframe."""
+    state = cli.store.load(campaign_id)
     target = scene_id or state.active_mode.scene_id
-    if not yes and not click.confirm(f"Clear scene state for {state.session_id}:{target}?"):
+    if not yes and not click.confirm(f"Clear scene state for {state.campaign}:{target}?"):
         raise click.Abort()
-    cleared = cli.store.clear_scene(state.session_id, target)
-    click.echo(f"cleared scene state for {state.session_id}:{cleared}")
+    cleared = cli.store.clear_scene(state.campaign, target)
+    click.echo(f"cleared scene state for {state.campaign}:{cleared}")
 
 
 def _run_or_raise(
@@ -413,7 +339,6 @@ def _run_or_raise(
     *,
     max_turns: int | None,
     dry_run: bool,
-    keep_cwd: bool,
     resume_failed: bool,
 ) -> int:
     try:
@@ -421,7 +346,6 @@ def _run_or_raise(
             state,
             max_turns=max_turns,
             dry_run=dry_run,
-            keep_cwd=keep_cwd,
             resume_failed=resume_failed,
         )
     except TurnFailure as exc:

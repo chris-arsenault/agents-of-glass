@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -113,7 +108,8 @@ def note_write(
     ctx: click.Context, path_text: str, body: str | None, from_file: str | None
 ) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     destination = resolve_note_write_path(paths, path_text)
     text = read_body(body, from_file)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -138,7 +134,8 @@ def note_write(
 def note_propose(ctx: click.Context, path_text: str) -> None:
     role = require_player()
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     source = resolve_content_path(paths, path_text)
     workspace_root = active_campaign_root()
 
@@ -228,7 +225,8 @@ def note_ratify(
     """
     require_dm()
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     item = require_intake(state, intake_id)
     if item["status"] != "pending":
         raise GlassError(f"intake {intake_id} is already {item['status']}")
@@ -270,7 +268,8 @@ def note_ratify(
 def note_reject(ctx: click.Context, intake_id: str, reason: str) -> None:
     require_dm()
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     item = require_intake(state, intake_id)
     if item["status"] != "pending":
         raise GlassError(f"intake {intake_id} is already {item['status']}")

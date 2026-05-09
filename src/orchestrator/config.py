@@ -41,8 +41,6 @@ class AogConfig:
     config_path: Path | None
     templates_dir: Path
     campaigns_dir: Path
-    sessions_dir: Path
-    ephemeral_cwd_dir: Path
     lore_path: Path
     claude: ClaudeConfig
     caps: CapsConfig
@@ -52,8 +50,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "paths": {
         "templates": "templates",
         "campaigns": "campaigns",
-        "sessions": "sessions",
-        "ephemeral_cwd": ".glass-cwd",
     },
     "lore": {
         "path": "../the-glass-frontier-lore",
@@ -124,11 +120,6 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
             base_dir,
             paths.get("campaigns", "campaigns"),
         ),
-        sessions_dir=_resolve_path(
-            base_dir,
-            paths.get("sessions", "sessions"),
-        ),
-        ephemeral_cwd_dir=_resolve_path(base_dir, paths.get("ephemeral_cwd", ".glass-cwd")),
         lore_path=_resolve_path(base_dir, lore.get("path", "../the-glass-frontier-lore")),
         claude=ClaudeConfig(
             model=_optional_string(claude.get("model")),

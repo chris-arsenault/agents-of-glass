@@ -1,13 +1,25 @@
-"""Filesystem-backed session store used by the first orchestrator build."""
+"""Per-campaign runtime state store for the orchestrator.
+
+There is no `session` concept. Each campaign has exactly one runtime state
+at `campaigns/<id>/`. This module owns:
+
+  campaigns/<id>/aog-state.json   — orchestrator's mirror of session state
+  campaigns/<id>/state.json       — glass's runtime state (read via sync)
+  campaigns/<id>/transcript.md    — public transcript (managed by glass turn append)
+  campaigns/<id>/audit.jsonl      — append-only audit log
+  campaigns/<id>/scene-framing.md — current scene framing
+  campaigns/<id>/<agent>/turns/<NNNN>/ — per-turn artifacts
+
+The class is named `SessionStore` only to limit churn in the orchestrator
+module; it operates on campaigns now.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Iterable
 import json
-import re
 import shutil
+from pathlib import Path
+from typing import Any
 
 from .config import AogConfig
 from .glass_bridge import GlassBridge, GlassBridgeError
@@ -19,51 +31,54 @@ class SessionStore:
         self.config = config
         self.glass = GlassBridge(config)
 
-    def ensure_layout(self) -> None:
-        self.config.sessions_dir.mkdir(parents=True, exist_ok=True)
-        self.config.ephemeral_cwd_dir.mkdir(parents=True, exist_ok=True)
+    # --- paths (campaign-rooted) ---
 
-    def session_dir(self, session_id: str) -> Path:
-        return self.config.sessions_dir / session_id
+    def campaign_dir(self, campaign: str) -> Path:
+        return self.config.campaigns_dir / campaign
 
-    def state_path(self, session_id: str) -> Path:
-        return self.session_dir(session_id) / "aog-state.json"
+    def state_path(self, campaign: str) -> Path:
+        return self.campaign_dir(campaign) / "aog-state.json"
 
-    def glass_state_path(self, session_id: str) -> Path:
-        return self.session_dir(session_id) / "state.json"
+    def glass_state_path(self, campaign: str) -> Path:
+        return self.campaign_dir(campaign) / "state.json"
 
-    def transcript_path(self, session_id: str) -> Path:
-        return self.session_dir(session_id) / "transcript.md"
+    def transcript_path(self, campaign: str) -> Path:
+        return self.campaign_dir(campaign) / "transcript.md"
 
-    def audit_path(self, session_id: str) -> Path:
-        return self.session_dir(session_id) / "audit.jsonl"
+    def audit_path(self, campaign: str) -> Path:
+        return self.campaign_dir(campaign) / "audit.jsonl"
 
-    def scene_framing_path(self, session_id: str) -> Path:
-        return self.session_dir(session_id) / "scene-framing.md"
+    def scene_framing_path(self, campaign: str) -> Path:
+        return self.campaign_dir(campaign) / "scene-framing.md"
+
+    # --- lifecycle ---
 
     def create_session(self, campaign: str, initial_mode: str, initial_scene: str) -> SessionState:
-        self.ensure_layout()
-        session_id = self._unique_session_id(campaign)
-        try:
-            self.glass.invoke(
-                ["session", "new", "--campaign", campaign, "--session-id", session_id]
+        """Initialize the campaign's runtime state via glass + push the first mode."""
+        if not self.campaign_dir(campaign).exists():
+            raise FileNotFoundError(
+                f"Campaign workspace does not exist at {self.campaign_dir(campaign)}; "
+                "run `aog campaign bootstrap <id>` first."
             )
+        try:
+            if not self.glass_state_path(campaign).exists():
+                self.glass.invoke(["session", "new", "--campaign", campaign])
             self.glass.invoke(
                 ["mode", "start", initial_mode, initial_scene],
                 role="dm",
-                session_id=session_id,
+                campaign=campaign,
             )
         except GlassBridgeError as exc:
-            raise RuntimeError(f"glass session bootstrap failed: {exc}") from exc
+            raise RuntimeError(f"glass bootstrap for {campaign!r} failed: {exc}") from exc
 
-        state = self._state_from_glass(session_id)
+        state = self._state_from_glass(campaign)
         state.run_metadata["initial_mode"] = initial_mode
         state.run_metadata["initial_scene"] = initial_scene
         self.save(state)
         self.append_audit(
-            state.session_id,
+            campaign,
             {
-                "event": "session.new",
+                "event": "campaign.start",
                 "campaign": campaign,
                 "mode": initial_mode,
                 "scene_id": initial_scene,
@@ -71,10 +86,10 @@ class SessionStore:
         )
         return state
 
-    def load(self, session_id: str | None = None) -> SessionState:
-        resolved = session_id or self.latest_session_id()
+    def load(self, campaign: str | None = None) -> SessionState:
+        resolved = campaign or self.latest_campaign()
         if not resolved:
-            raise FileNotFoundError("No sessions exist yet")
+            raise FileNotFoundError("No campaigns exist yet")
         path = self.state_path(resolved)
         if path.exists():
             state = SessionState.from_dict(json.loads(path.read_text(encoding="utf-8")))
@@ -83,72 +98,74 @@ class SessionStore:
             state = self._state_from_glass(resolved)
             self.save(state)
             return state
-        raise FileNotFoundError(f"No state found for session {resolved!r}")
+        raise FileNotFoundError(f"No state found for campaign {resolved!r}")
 
     def save(self, state: SessionState) -> None:
         state.updated_at = utc_now()
-        path = self.state_path(state.session_id)
+        path = self.state_path(state.campaign)
         path.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write(path, json.dumps(state.to_dict(), indent=2, sort_keys=True) + "\n")
 
-    def list_sessions(self) -> list[SessionState]:
-        if not self.config.sessions_dir.exists():
+    def list_campaigns(self) -> list[SessionState]:
+        if not self.config.campaigns_dir.exists():
             return []
         states: list[SessionState] = []
-        state_paths = {
-            path.parent.name: path for path in self.config.sessions_dir.glob("*/state.json")
-        }
-        state_paths.update(
-            {
-                path.parent.name: path
-                for path in self.config.sessions_dir.glob("*/aog-state.json")
-            }
-        )
-        for session_id in sorted(state_paths):
+        for d in sorted(self.config.campaigns_dir.iterdir()):
+            if not d.is_dir():
+                continue
+            campaign = d.name
+            if not (self.state_path(campaign).exists() or self.glass_state_path(campaign).exists()):
+                continue
             try:
-                states.append(self.load(session_id))
-            except (json.JSONDecodeError, KeyError, ValueError):
+                states.append(self.load(campaign))
+            except (json.JSONDecodeError, KeyError, ValueError, FileNotFoundError):
                 continue
         return sorted(states, key=lambda item: item.created_at)
 
-    def latest_session_id(self) -> str | None:
-        states = self.list_sessions()
+    def latest_campaign(self) -> str | None:
+        states = self.list_campaigns()
         if not states:
             return None
-        return max(states, key=lambda item: item.created_at).session_id
+        return max(states, key=lambda item: item.created_at).campaign
 
-    def append_transcript(self, session_id: str, markdown: str) -> None:
-        with self.transcript_path(session_id).open("a", encoding="utf-8") as handle:
+    def append_transcript(self, campaign: str, markdown: str) -> None:
+        with self.transcript_path(campaign).open("a", encoding="utf-8") as handle:
             handle.write(markdown)
 
-    def append_audit(self, session_id: str, event: dict[str, Any]) -> None:
+    def append_audit(self, campaign: str, event: dict[str, Any]) -> None:
         payload = {"ts": utc_now(), **event}
-        with self.audit_path(session_id).open("a", encoding="utf-8") as handle:
+        path = self.audit_path(campaign)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
-    def clear_session(self, session_id: str) -> None:
-        shutil.rmtree(self.session_dir(session_id))
-        cwd_dir = self.config.ephemeral_cwd_dir / session_id
-        if cwd_dir.exists():
-            shutil.rmtree(cwd_dir)
+    def clear_state(self, campaign: str) -> None:
+        """Delete the runtime state files (state.json, aog-state.json,
+        transcript.md, audit.jsonl, scene-framing.md, per-agent turns/).
 
-    def clear_campaign(self, campaign: str) -> list[str]:
-        removed: list[str] = []
-        for state in self.list_sessions():
-            if state.campaign == campaign:
-                self.clear_session(state.session_id)
-                removed.append(state.session_id)
-        return removed
+        Does NOT delete the campaign workspace itself or any DM/player-
+        authored content. Operator escape hatch.
+        """
+        for filename in (
+            "state.json", "aog-state.json", "transcript.md",
+            "audit.jsonl", "scene-framing.md",
+        ):
+            target = self.campaign_dir(campaign) / filename
+            if target.exists():
+                target.unlink()
+        # Per-agent turns/ subdirs.
+        campaign_root = self.campaign_dir(campaign)
+        for agent_root in [campaign_root / "dm"] + list((campaign_root / "players").glob("*")):
+            turns_dir = agent_root / "turns"
+            if turns_dir.exists():
+                shutil.rmtree(turns_dir)
 
-    def clear_scene(self, session_id: str, scene_id: str | None = None) -> str:
-        state = self.load(session_id)
+    def clear_scene(self, campaign: str, scene_id: str | None = None) -> str:
+        state = self.load(campaign)
         target_scene = scene_id or state.active_mode.scene_id
-        cwd_dir = self.config.ephemeral_cwd_dir / state.session_id
-        if cwd_dir.exists():
-            shutil.rmtree(cwd_dir)
         if target_scene == state.active_mode.scene_id:
             _atomic_write(
-                self.scene_framing_path(state.session_id),
+                self.scene_framing_path(state.campaign),
                 (
                     "---\n"
                     "status: cleared\n"
@@ -162,19 +179,19 @@ class SessionStore:
         return target_scene
 
     def sync_from_glass(self, state: SessionState) -> SessionState:
-        glass_state = self._load_glass_state(state.session_id)
+        glass_state = self._load_glass_state(state.campaign)
         synced = self._state_from_glass_state(glass_state, existing=state)
         self.save(synced)
         return synced
 
-    def _state_from_glass(self, session_id: str) -> SessionState:
-        glass_state = self._load_glass_state(session_id)
+    def _state_from_glass(self, campaign: str) -> SessionState:
+        glass_state = self._load_glass_state(campaign)
         return self._state_from_glass_state(glass_state, existing=None)
 
-    def _load_glass_state(self, session_id: str) -> dict[str, Any]:
-        path = self.glass_state_path(session_id)
+    def _load_glass_state(self, campaign: str) -> dict[str, Any]:
+        path = self.glass_state_path(campaign)
         if not path.exists():
-            raise FileNotFoundError(f"No glass state found for session {session_id!r}")
+            raise FileNotFoundError(f"No glass state found for campaign {campaign!r}")
         return json.loads(path.read_text(encoding="utf-8"))
 
     def _state_from_glass_state(
@@ -183,34 +200,43 @@ class SessionStore:
         *,
         existing: SessionState | None,
     ) -> SessionState:
-        session = glass_state.get("session", {})
-        session_id = str(session["id"])
-        campaign = str(session.get("campaign", session_id))
+        # v4 (flat): top-level fields. v3 (nested): glass_state["session"] dict.
+        legacy_session = glass_state.get("session")
+        if isinstance(legacy_session, dict):
+            campaign = str(legacy_session.get("campaign") or legacy_session.get("id", ""))
+            status_raw = str(legacy_session.get("status", "active"))
+            created_at = str(legacy_session.get("created_at") or utc_now())
+            updated_at = str(legacy_session.get("updated_at") or utc_now())
+            turn_counter = int(legacy_session.get("turn_counter", 0))
+        else:
+            campaign = str(glass_state.get("campaign", existing.campaign if existing else ""))
+            status_raw = str(glass_state.get("status", "active"))
+            created_at = str(
+                glass_state.get("created_at")
+                or (existing.created_at if existing else utc_now())
+            )
+            updated_at = str(glass_state.get("updated_at") or utc_now())
+            turn_counter = int(glass_state.get("turn_counter", 0))
+
         turns = list(glass_state.get("turns", []))
-        # Distinguish "glass omitted the key" from "glass explicitly returned []".
-        # An explicit empty list is the legitimate post-`mode end` state; we
-        # must not mask it by falling back to the existing stack.
         glass_stack_raw = glass_state.get("mode_stack")
         glass_stack_explicit = glass_stack_raw is not None
         glass_stack = list(glass_stack_raw) if glass_stack_explicit else []
-        created_at = str(
-            session.get("created_at") or (existing.created_at if existing else utc_now())
-        )
-        updated_at = str(session.get("updated_at") or utc_now())
+
         if existing and existing.status in {"failed", "interrupted", "paused", "running"}:
             status = existing.status
         else:
-            status = _aog_status_from_glass(str(session.get("status", "active")))
+            status = _aog_status_from_glass(status_raw)
 
-        frames = []
+        frames: list[ModeFrame] = []
         for frame in glass_stack:
             mode = str(frame["mode"])
             scene_id = str(frame["scene_id"])
             initial_budget = self.config.caps.budget_for(mode)
             turns_taken = _turns_taken_for_frame(turns, mode, scene_id)
-            remaining = None
-            if initial_budget is not None:
-                remaining = max(initial_budget - turns_taken, 0)
+            remaining = (
+                None if initial_budget is None else max(initial_budget - turns_taken, 0)
+            )
             frames.append(
                 ModeFrame(
                     mode=mode,
@@ -222,10 +248,8 @@ class SessionStore:
             )
 
         if not frames and not glass_stack_explicit and existing and existing.mode_stack:
-            # glass didn't report a mode_stack at all; reuse the prior view.
             frames = existing.mode_stack
         if not frames and not glass_stack_explicit:
-            # No glass info and nothing to inherit — synthesize a placeholder.
             frames = [
                 ModeFrame(
                     mode="none",
@@ -238,18 +262,17 @@ class SessionStore:
 
         last_speaker = turns[-1].get("speaker") if turns else None
         run_metadata = dict(existing.run_metadata) if existing else {}
-        run_metadata["glass_state"] = "sessions/<id>/state.json"
+        run_metadata["glass_state"] = "campaigns/<id>/state.json"
 
         closing_raw = glass_state.get("scene_closing_turns")
         scene_closing_turns = int(closing_raw) if closing_raw is not None else None
 
         return SessionState(
-            session_id=session_id,
             campaign=campaign,
             created_at=created_at,
             updated_at=updated_at,
             status=status,
-            turn_number=int(session.get("turn_counter", len(turns))),
+            turn_number=turn_counter,
             mode_stack=frames,
             last_speaker=last_speaker,
             failure=existing.failure if existing else None,
@@ -257,54 +280,43 @@ class SessionStore:
             scene_closing_turns=scene_closing_turns,
         )
 
-    def _unique_session_id(self, campaign: str) -> str:
-        slug = _slugify(campaign)
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        candidate = f"{slug}-{stamp}"
-        suffix = 2
-        while self.session_dir(candidate).exists():
-            candidate = f"{slug}-{stamp}-{suffix}"
-            suffix += 1
-        return candidate
 
-    @staticmethod
-    def _write_if_missing(path: Path, text: str) -> None:
-        if not path.exists():
-            path.write_text(text, encoding="utf-8")
-
-
-def summarize_states(states: Iterable[SessionState]) -> str:
-    rows = ["SESSION ID                         STATUS     TURN  MODE           CAMPAIGN"]
-    for state in states:
-        active = state.active_mode
-        rows.append(
-            f"{state.session_id:<34} {state.status:<10} "
-            f"{state.turn_number:<5} {active.mode:<14} {state.campaign}"
-        )
-    return "\n".join(rows)
-
-
-def _slugify(value: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return slug or "campaign"
-
-
-def _atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _atomic_write(path: Path, body: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
+    tmp.write_text(body, encoding="utf-8")
     tmp.replace(path)
-
-
-def _aog_status_from_glass(status: str) -> str:
-    if status == "wrapped":
-        return "complete"
-    return "ready"
 
 
 def _turns_taken_for_frame(turns: list[dict[str, Any]], mode: str, scene_id: str) -> int:
     return sum(
-        1
-        for turn in turns
+        1 for turn in turns
         if turn.get("mode") == mode and turn.get("scene_id") == scene_id
     )
+
+
+def _aog_status_from_glass(value: str) -> str:
+    mapping = {
+        "active": "ready",
+        "wrapped": "complete",
+        "complete": "complete",
+        "ready": "ready",
+        "running": "running",
+        "paused": "paused",
+        "failed": "failed",
+        "interrupted": "interrupted",
+    }
+    return mapping.get(value, "ready")
+
+
+def summarize_states(states: list[SessionState]) -> str:
+    """Render a short, human-readable summary of multiple campaign states."""
+    if not states:
+        return "(no campaigns)"
+    lines = []
+    for state in states:
+        active = state.active_mode if state.mode_stack else None
+        mode_str = f"{active.mode}:{active.scene_id}" if active else "(no mode)"
+        lines.append(
+            f"  {state.campaign:32s}  {state.status:10s}  turn={state.turn_number:>3}  {mode_str}"
+        )
+    return "\n".join(lines)

@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -120,7 +115,8 @@ def turns_find(
     limit: int,
 ) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     records = list(state.get("turns", []))
     if scene:
         records = [record for record in records if record["scene_id"] == scene]

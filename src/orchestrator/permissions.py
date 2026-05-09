@@ -1,9 +1,11 @@
 """Unix security model for the orchestrator.
 
 Each player agent runs as a dedicated Unix user (`aog-tev`, `aog-sumi`,
-`aog-renno`, `aog-kit`); the DM runs as the current operator user. Filesystem
-access is gated by group-based chmod on campaign workspaces and per-turn
-ephemeral CWDs.
+`aog-renno`, `aog-kit`); the DM runs as the current operator user.
+Filesystem access is gated by group-based chmod on the campaign workspace,
+applied once at campaign creation. There is NO per-turn permission ritual
+— per-turn artifact directories inherit perms from their parent (`turns/`)
+via setgid.
 
 The chown/chmod operations that require root are delegated to a small
 helper script (`aog-permset`) installed by `scripts/provision-agents.sh`
@@ -83,24 +85,6 @@ def apply_campaign_permissions(campaign_dir: Path) -> bool:
         )
         return False
     _run_helper(["campaign", str(campaign_dir.resolve())])
-    return True
-
-
-def apply_player_turn_dir_permissions(player_id: str, turn_dir: Path) -> bool:
-    """Prepare a per-turn artifact dir (under sessions/<id>/turns/) so the
-    player Unix user can read TURN_START.md and write TURN.md.
-    """
-    if not has_provisioned_users():
-        return False
-    _run_helper(["turn-dir-player", player_id, str(turn_dir.resolve())])
-    return True
-
-
-def apply_dm_turn_dir_permissions(turn_dir: Path) -> bool:
-    """Prepare a per-turn artifact dir for the DM (operator)."""
-    if not has_provisioned_users():
-        return False
-    _run_helper(["turn-dir-dm", str(turn_dir.resolve())])
     return True
 
 

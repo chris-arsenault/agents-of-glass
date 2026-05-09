@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -133,7 +128,8 @@ def character_new(
     if hp_max <= 0:
         raise GlassError("--hp must be greater than zero")
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     campaign_id = active_campaign_id()
 
     attributes = {attribute: "standard" for attribute in ATTRIBUTES}
@@ -181,7 +177,8 @@ def character_new(
 @click.pass_context
 def character_get(ctx: click.Context, character_id: str) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     campaign_id = active_campaign_id()
     with pg_connection() as conn:
         character = _db.character_get(conn, campaign_id, character_id)
@@ -203,7 +200,8 @@ def character_get(ctx: click.Context, character_id: str) -> None:
 @click.pass_context
 def character_list(ctx: click.Context) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     campaign_id = active_campaign_id()
     with pg_connection() as conn:
         characters = _db.character_list(conn, campaign_id)
@@ -231,7 +229,8 @@ def character_list(ctx: click.Context) -> None:
 @click.pass_context
 def character_set_hp(ctx: click.Context, character_id: str, delta: int) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     campaign_id = active_campaign_id()
 
     with pg_connection() as conn:
@@ -284,9 +283,10 @@ def character_award_xp(
     """
     role = require_dm()
     paths = get_paths()
-    state = load_state(paths)
     campaign_id = active_campaign_id()
-    session_id = state["session"]["id"]
+    state = load_state(paths, campaign_id)
+    campaign_id = active_campaign_id()
+    session_id = state["campaign"]
     scene_id = None
     current = current_mode_record(state)
     if current and current.get("scene_id") and current["scene_id"] != "none":
@@ -350,9 +350,10 @@ def character_level_up(
       - new_level % 5 == 0: momentum_ceiling += 1 (automatic)
     """
     paths = get_paths()
-    state = load_state(paths)
     campaign_id = active_campaign_id()
-    session_id = state["session"]["id"]
+    state = load_state(paths, campaign_id)
+    campaign_id = active_campaign_id()
+    session_id = state["campaign"]
     scene_id = None
     current = current_mode_record(state)
     if current and current.get("scene_id") and current["scene_id"] != "none":
@@ -457,7 +458,8 @@ def character_level_up(
 @click.pass_context
 def character_set_momentum(ctx: click.Context, character_id: str, value: int) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     campaign_id = active_campaign_id()
 
     with pg_connection() as conn:
@@ -506,7 +508,8 @@ def character_inventory_add(
     if qty <= 0:
         raise GlassError("--qty must be greater than zero")
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     campaign_id = active_campaign_id()
 
     with pg_connection() as conn:
@@ -563,7 +566,8 @@ def character_inventory_rm(
     if qty <= 0:
         raise GlassError("--qty must be greater than zero")
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     campaign_id = active_campaign_id()
 
     with pg_connection() as conn:

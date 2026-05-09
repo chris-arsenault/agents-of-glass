@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -111,7 +106,8 @@ def mode() -> None:
 def mode_start(ctx: click.Context, mode_name: str, scene_id: str) -> None:
     role = require_dm()
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     record = {
         "mode": slugify(mode_name),
         "scene_id": slugify(scene_id),
@@ -144,7 +140,8 @@ def mode_start(ctx: click.Context, mode_name: str, scene_id: str) -> None:
 def mode_end(ctx: click.Context) -> None:
     role = require_dm()
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     if not state["mode_stack"]:
         raise GlassError("cannot end mode: mode stack is empty")
     ended = state["mode_stack"].pop()
@@ -168,7 +165,8 @@ def mode_end(ctx: click.Context) -> None:
 @click.pass_context
 def mode_current(ctx: click.Context) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     current = current_mode_record(state)
     result = {
         "current_mode": current["mode"] if current else None,

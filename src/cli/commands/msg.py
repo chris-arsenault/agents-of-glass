@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -128,7 +123,8 @@ def msg_send(
     ctx: click.Context, message_type: str, recipient: str, body_parts: tuple[str, ...]
 ) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     require_message_type(paths, message_type)
     require_recipient(paths, state, recipient)
     role = current_role()
@@ -138,7 +134,7 @@ def msg_send(
         message = _db.message_send(
             conn,
             campaign_id=campaign_id,
-            session_id=state["session"]["id"],
+            session_id=state["campaign"],
             sender=role.actor,
             recipient=recipient,
             type_=message_type,
@@ -171,7 +167,8 @@ def msg_read(
     no_mark: bool,
 ) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     if message_type:
         require_message_type(paths, message_type)
     role = current_role()

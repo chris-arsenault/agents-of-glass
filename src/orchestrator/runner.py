@@ -1,4 +1,4 @@
-"""Foreground orchestration loop for `aog campaign bootstrap` / `aog session run`."""
+"""Foreground orchestration loop for `aog campaign bootstrap` / `aog campaign run`."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ class Orchestrator:
         rapid-response turns. Falls back to round-robin if the queue is empty
         or the popped agent id is unrecognized.
         """
-        entry = self._consume_next_speaker_entry(state.session_id)
+        entry = self._consume_next_speaker_entry(state.campaign)
         if entry:
             agent_id = entry.get("agent")
             if agent_id in AGENTS_BY_ID:
@@ -64,9 +64,9 @@ class Orchestrator:
         return next_agent_for(state), {}
 
     def _consume_next_speaker_entry(
-        self, session_id: str
+        self, campaign: str
     ) -> dict[str, Any] | None:
-        path = self.store.glass_state_path(session_id)
+        path = self.store.glass_state_path(campaign)
         if not path.exists():
             return None
         try:
@@ -93,12 +93,11 @@ class Orchestrator:
         *,
         max_turns: int | None,
         dry_run: bool,
-        keep_cwd: bool = True,  # legacy flag name; per-turn dirs always preserved now
         resume_failed: bool = False,
     ) -> int:
         if state.status == "failed" and not resume_failed:
             raise TurnFailure(
-                f"Session {state.session_id} is failed; use `aog session resume`.",
+                f"Campaign {state.campaign} is failed; use `aog campaign resume`.",
                 state.failure or {"reason": "failed"},
             )
         if state.status in {"failed", "interrupted", "running", "paused"} and resume_failed:
@@ -126,7 +125,7 @@ class Orchestrator:
         except TurnFailure as exc:
             state.mark_failed(exc.failure)
             self.store.save(state)
-            self.store.append_audit(state.session_id, {"event": "turn.failed", **exc.failure})
+            self.store.append_audit(state.campaign, {"event": "turn.failed", **exc.failure})
             raise
 
     def run_one_turn(self, state: SessionState, *, dry_run: bool) -> TurnResult:
@@ -171,7 +170,7 @@ class Orchestrator:
                     active.scene_id,
                 ],
                 role=result.agent.glass_role,
-                session_id=state.session_id,
+                campaign=state.campaign,
             )
         except GlassBridgeError as exc:
             raise TurnFailure(
@@ -186,7 +185,7 @@ class Orchestrator:
             ) from exc
 
         self.store.append_audit(
-            state.session_id,
+            state.campaign,
             {
                 "event": "turn.committed",
                 "turn_id": result.turn_id,
@@ -198,11 +197,11 @@ class Orchestrator:
                 "dry_run": result.dry_run,
             },
         )
-        self._tick_closing_countdown(state.session_id)
+        self._tick_closing_countdown(state.campaign)
         synced = self.store.sync_from_glass(state)
         state.__dict__.update(synced.__dict__)
 
-    def _tick_closing_countdown(self, session_id: str) -> None:
+    def _tick_closing_countdown(self, campaign: str) -> None:
         """Decrement state["scene_closing_turns"] by 1 if set, after a turn.
 
         The closing countdown is set by `glass scene closing-down --turns N`
@@ -211,7 +210,7 @@ class Orchestrator:
         below 0 indicates an overrun that the methodology flags as a hard
         backstop ("end the scene now even if it feels unfinished").
         """
-        path = self.store.glass_state_path(session_id)
+        path = self.store.glass_state_path(campaign)
         if not path.exists():
             return
         try:
@@ -261,11 +260,11 @@ class Orchestrator:
         env.update(
             {
                 "GLASS_ROLE": agent.glass_role,
-                "GLASS_SESSION_ID": state.session_id,
+                "GLASS_SESSION_ID": state.campaign,
                 "GLASS_CAMPAIGN_ID": state.campaign,
                 "GLASS_CONFIG": config_env_value(self.config),
                 "GLASS_TURN_ID": package.turn_id,
-                "AOG_SESSION_DIR": str(self.store.session_dir(state.session_id)),
+                "AOG_SESSION_DIR": str(self.store.session_dir(state.campaign)),
                 "AOG_TURN_START": str(package.turn_start_path),
                 "AOG_TURN_OUTPUT": str(package.turn_output_path),
             }

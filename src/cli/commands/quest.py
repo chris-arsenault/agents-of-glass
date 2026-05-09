@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -134,7 +129,8 @@ def quest_beat(
     arc = arc_id or current.get("arc_id")
     log_path = _append_quest_beat(workspace, text, scene_id=scene, arc_id=arc)
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     queue_event(state, role.actor, f"beat: {text[:60]}")
     result = {
         "log_path": display_path(log_path),

@@ -1,4 +1,10 @@
-"""Session and turn state for the bootstrap orchestrator."""
+"""Campaign and turn state for the orchestrator.
+
+There is no `session` concept. Each campaign has exactly one runtime
+state at `campaigns/<id>/state.json`. The orchestrator's mirror of that
+state is `SessionState` below — name kept only to limit churn elsewhere
+in the codebase. The runtime identity is the `campaign` field.
+"""
 
 from __future__ import annotations
 
@@ -67,7 +73,6 @@ class ModeFrame:
 
 @dataclass
 class SessionState:
-    session_id: str
     campaign: str
     created_at: str
     updated_at: str
@@ -83,7 +88,6 @@ class SessionState:
     def new(
         cls,
         *,
-        session_id: str,
         campaign: str,
         initial_mode: str,
         initial_scene: str,
@@ -91,7 +95,6 @@ class SessionState:
     ) -> "SessionState":
         now = utc_now()
         return cls(
-            session_id=session_id,
             campaign=campaign,
             created_at=now,
             updated_at=now,
@@ -110,13 +113,26 @@ class SessionState:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SessionState":
         closing_raw = data.get("scene_closing_turns")
+        # Accept either v4 (flat) or legacy v3 (nested session{}).
+        if "campaign" in data and "session" not in data:
+            campaign = str(data["campaign"])
+            created_at = str(data.get("created_at", utc_now()))
+            updated_at = str(data.get("updated_at", utc_now()))
+            status = str(data.get("status", "ready"))
+            turn_number = int(data.get("turn_number", 0))
+        else:
+            session = data.get("session", {})
+            campaign = str(session.get("campaign") or data.get("campaign", ""))
+            created_at = str(session.get("created_at") or data.get("created_at", utc_now()))
+            updated_at = str(session.get("updated_at") or data.get("updated_at", utc_now()))
+            status = str(session.get("status") or data.get("status", "ready"))
+            turn_number = int(session.get("turn_counter") or data.get("turn_number", 0))
         return cls(
-            session_id=str(data["session_id"]),
-            campaign=str(data["campaign"]),
-            created_at=str(data["created_at"]),
-            updated_at=str(data["updated_at"]),
-            status=str(data.get("status", "ready")),
-            turn_number=int(data.get("turn_number", 0)),
+            campaign=campaign,
+            created_at=created_at,
+            updated_at=updated_at,
+            status=status,
+            turn_number=turn_number,
             mode_stack=[
                 ModeFrame.from_dict(frame) for frame in data.get("mode_stack", [])
             ],
@@ -128,7 +144,6 @@ class SessionState:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "session_id": self.session_id,
             "campaign": self.campaign,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -144,7 +159,7 @@ class SessionState:
     @property
     def active_mode(self) -> ModeFrame:
         if not self.mode_stack:
-            raise ValueError("Session has no active mode")
+            raise ValueError("Campaign has no active mode")
         return self.mode_stack[-1]
 
     @property
@@ -192,18 +207,8 @@ def speaker_order_for(mode: str) -> tuple[str, ...]:
     if normalized in {"travel", "travel/montage", "montage"}:
         return PLAYER_IDS
     if normalized == "character-creation":
-        # Round-robin players, then the DM at the end of each round. Players
-        # write their character + intro + relationships directly to their own
-        # dirs — no per-player propose/ratify. The DM's once-per-round turn is
-        # for review, campaign-intro updates, and transitioning between round
-        # 1 (build) and round 2 (relationships); ending the mode signals
-        # phase complete.
         return PLAYER_IDS + ("dm",)
     if normalized == "scene-play":
-        # Free-form scene play. Default order is round-the-table players,
-        # then the DM. Agents can override the next speaker via
-        # `glass turn handoff <agent>` (one-shot) — used to call the DM
-        # with a question, pass focus, or hand back to the round-robin.
         return PLAYER_IDS + ("dm",)
     return tuple(agent.id for agent in AGENTS)
 

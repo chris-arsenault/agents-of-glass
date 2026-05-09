@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -122,7 +117,8 @@ def turn_append(
     character_id: str | None,
 ) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     source = Path(markdown_file).expanduser()
     if not source.is_absolute():
         source = Path.cwd() / source
@@ -135,8 +131,8 @@ def turn_append(
     current = current_mode_record(state)
     resolved_mode = mode_name or (current["mode"] if current else "none")
     resolved_scene = scene_id or (current["scene_id"] if current else "none")
-    state["session"]["turn_counter"] = int(state["session"].get("turn_counter", 0)) + 1
-    turn_id = state["session"]["turn_counter"]
+    state["turn_counter"] = int(state.get("turn_counter", 0)) + 1
+    turn_id = state["turn_counter"]
 
     flushed: list[dict[str, Any]] = []
     remaining: list[dict[str, Any]] = []
@@ -156,12 +152,12 @@ def turn_append(
     if event_lines:
         parts.extend(["", *event_lines])
     turn_markdown = "\n".join(parts).rstrip() + "\n\n"
-    with transcript_path(paths, state["session"]["id"]).open("a", encoding="utf-8") as handle:
+    with transcript_path(paths, state["campaign"]).open("a", encoding="utf-8") as handle:
         handle.write(turn_markdown)
 
     record = {
         "turn_id": turn_id,
-        "session_id": state["session"]["id"],
+        "session_id": state["campaign"],
         "scene_id": resolved_scene,
         "mode": resolved_mode,
         "speaker": speaker_id,
@@ -176,7 +172,7 @@ def turn_append(
     result = {
         "turn": {key: value for key, value in record.items() if key != "markdown"},
         "events_flushed": flushed,
-        "transcript_path": display_path(transcript_path(paths, state["session"]["id"])),
+        "transcript_path": display_path(transcript_path(paths, state["campaign"])),
     }
     commit(
         paths,
@@ -212,7 +208,8 @@ def turn_handoff(ctx: click.Context, agent_id: str) -> None:
             f"unknown agent id {agent_id!r}; valid: {', '.join(_HANDOFF_AGENT_IDS)}"
         )
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     role = current_role()
     state["next_speakers"].append({"agent": agent_id})
     queue_event(state, role.actor, f"handoff -> {agent_id}")
@@ -250,7 +247,8 @@ def turn_rapid_round(
                 f"unknown player {player!r}; valid: {', '.join(_PLAYER_AGENT_IDS)}"
             )
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     role = current_role()
     prompt = " ".join(prompt_parts).strip()
     if not prompt:
@@ -287,7 +285,8 @@ def turn_restart_order(ctx: click.Context, agent_id: str) -> None:
             f"unknown agent id {agent_id!r}; valid: {', '.join(_HANDOFF_AGENT_IDS)}"
         )
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     role = current_role()
     cleared = list(state["next_speakers"])
     state["next_speakers"] = [{"agent": agent_id}]
@@ -306,7 +305,8 @@ def turn_clear_handoff(ctx: click.Context) -> None:
     orchestrator consumes entries automatically on each turn)."""
     require_dm()
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     previous = list(state.get("next_speakers", []))
     state["next_speakers"] = []
     result = {"cleared": previous}

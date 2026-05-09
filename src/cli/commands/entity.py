@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -111,7 +106,8 @@ def entity() -> None:
 def entity_upsert(ctx: click.Context, path_text: str, campaign_id: str | None) -> None:
     require_dm()
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     path = resolve_content_path(paths, path_text)
     record = upsert_entity_from_path(paths, state, path)
 
@@ -196,7 +192,8 @@ def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
     from . import graph as _graph
 
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
 
     config = _graph.load_falkor_config(load_config())
     if _graph.is_available(config):
@@ -239,7 +236,8 @@ def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
 @click.pass_context
 def entity_similar(ctx: click.Context, section_id: str, limit: int) -> None:
     paths = get_paths()
-    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     sections = []
     target: dict[str, Any] | None = None
     for entity_record in state.get("entities", {}).values():

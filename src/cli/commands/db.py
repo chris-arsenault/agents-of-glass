@@ -65,8 +65,6 @@ from ..role import (
     role_label_for_turn,
 )
 from ..state import (
-    active_session_file,
-    active_session_id,
     append_audit,
     audit_path,
     commit,
@@ -77,12 +75,9 @@ from ..state import (
     normalize_state,
     queue_event,
     save_state,
-    session_dir,
     state_path,
     state_summary,
-    transcript_path,
-    write_active_session,
-)
+    transcript_path,)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -122,7 +117,8 @@ def db_migrate(ctx: click.Context) -> None:
     paths = get_paths()
     if active_session_file(paths).exists():
         try:
-            state = load_state(paths)
+            campaign_id = active_campaign_id()
+            state = load_state(paths, campaign_id)
         except GlassError:
             state = None
         if state is not None:
