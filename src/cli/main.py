@@ -311,7 +311,7 @@ def default_state(session_id: str, campaign: str) -> dict[str, Any]:
         "entities": {},
         "threads": {},
         "turns": [],
-        "next_speaker": None,
+        "next_speakers": [],
     }
 
 
@@ -324,7 +324,11 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
     state.setdefault("threads", {})
     state.setdefault("turns", [])
     state.setdefault("session", {})
-    state.setdefault("next_speaker", None)
+    state.setdefault("next_speakers", [])
+    # Migrate legacy `next_speaker` (single string) into the new queue.
+    legacy_next = state.pop("next_speaker", None)
+    if isinstance(legacy_next, str) and legacy_next:
+        state["next_speakers"].append({"agent": legacy_next})
     state["session"].setdefault("turn_counter", len(state["turns"]))
     state["session"].setdefault("status", "active")
     # Drop any legacy keys silently — pre-v1 state may include them.
@@ -2487,19 +2491,23 @@ def turn_append(
 
 
 _HANDOFF_AGENT_IDS = ("dm", "tev", "sumi", "renno", "kit")
+_PLAYER_AGENT_IDS = ("tev", "sumi", "renno", "kit")
 
 
 @turn.command("handoff")
 @click.argument("agent_id")
 @click.pass_context
 def turn_handoff(ctx: click.Context, agent_id: str) -> None:
-    """Hand off the next turn to a specific agent.
+    """Append a one-off override to the next-speaker queue.
 
-    Sets state["next_speaker"]; the orchestrator consumes the override on
-    the next turn-start (one-shot, falls back to round-robin if unset).
-    Use this to call the DM with a question, pass focus to a specific PC,
-    or bend the table order when the situation demands it. Don't use it
-    casually — the default round-robin should handle most flow.
+    Each call appends; multiple calls in a single turn queue up multiple
+    redirects in the order called. The orchestrator pops one off per
+    turn. After the queue is drained, round-robin resumes from the last
+    redirected agent.
+
+    Example: a DM in their turn calls `glass turn handoff sumi` then
+    `glass turn handoff dm`. Sumi runs next, then the DM, then rotation
+    continues from the DM (dm -> next-in-rotation).
     """
     if agent_id not in _HANDOFF_AGENT_IDS:
         raise GlassError(
@@ -2508,29 +2516,101 @@ def turn_handoff(ctx: click.Context, agent_id: str) -> None:
     paths = get_paths()
     state = load_state(paths)
     role = current_role()
-    state["next_speaker"] = agent_id
+    state["next_speakers"].append({"agent": agent_id})
     queue_event(state, role.actor, f"handoff -> {agent_id}")
-    result = {"next_speaker": agent_id}
+    result = {"queue": list(state["next_speakers"])}
     commit(
-        paths,
-        state,
-        ctx,
-        "turn.handoff",
-        command_params(agent_id=agent_id),
-        result,
+        paths, state, ctx, "turn.handoff",
+        command_params(agent_id=agent_id), result,
+    )
+
+
+@turn.command("rapid-round")
+@click.argument("prompt_parts", nargs=-1, required=True)
+@click.option("--players", "players_csv", default=None,
+              help="Comma-separated player ids (subset of tev,sumi,renno,kit). "
+                   "Order matters. Defaults to all four in declaration order.")
+@click.pass_context
+def turn_rapid_round(
+    ctx: click.Context, prompt_parts: tuple[str, ...], players_csv: str | None,
+) -> None:
+    """DM-only: queue a single-shot rapid response from each player.
+
+    Each queued turn sees the prompt in TURN_START.md and is told to give
+    a brief reactive narration only — no rolls, no full menu, no handoff.
+    Use this when the DM needs each player's character to react to the
+    same stimulus quickly without spending a full per-player turn.
+    """
+    require_dm()
+    if players_csv:
+        targets = [p.strip() for p in players_csv.split(",") if p.strip()]
+    else:
+        targets = list(_PLAYER_AGENT_IDS)
+    for player in targets:
+        if player not in _PLAYER_AGENT_IDS:
+            raise GlassError(
+                f"unknown player {player!r}; valid: {', '.join(_PLAYER_AGENT_IDS)}"
+            )
+    paths = get_paths()
+    state = load_state(paths)
+    role = current_role()
+    prompt = " ".join(prompt_parts).strip()
+    if not prompt:
+        raise GlassError("rapid-round prompt cannot be empty")
+    for player in targets:
+        state["next_speakers"].append({
+            "agent": player,
+            "rapid_prompt": prompt,
+        })
+    queue_event(
+        state, role.actor,
+        f"rapid-round queued for {','.join(targets)}: {prompt[:60]}",
+    )
+    result = {"queue": list(state["next_speakers"]), "prompt": prompt}
+    commit(
+        paths, state, ctx, "turn.rapid-round",
+        command_params(prompt=prompt, players=targets), result,
+    )
+
+
+@turn.command("restart-order")
+@click.argument("agent_id")
+@click.pass_context
+def turn_restart_order(ctx: click.Context, agent_id: str) -> None:
+    """DM-only: clear any pending handoff queue + redirect to AGENT_ID.
+
+    Use this when the rotation needs a hard reset — e.g., a player went
+    out of order and you want to restart from a specific PC. Round-robin
+    resumes from the new agent on subsequent turns.
+    """
+    require_dm()
+    if agent_id not in _HANDOFF_AGENT_IDS:
+        raise GlassError(
+            f"unknown agent id {agent_id!r}; valid: {', '.join(_HANDOFF_AGENT_IDS)}"
+        )
+    paths = get_paths()
+    state = load_state(paths)
+    role = current_role()
+    cleared = list(state["next_speakers"])
+    state["next_speakers"] = [{"agent": agent_id}]
+    queue_event(state, role.actor, f"restart turn order -> {agent_id}")
+    result = {"cleared": cleared, "queue": list(state["next_speakers"])}
+    commit(
+        paths, state, ctx, "turn.restart-order",
+        command_params(agent_id=agent_id), result,
     )
 
 
 @turn.command("clear-handoff")
 @click.pass_context
 def turn_clear_handoff(ctx: click.Context) -> None:
-    """Clear any pending handoff (operator/DM only). Rare — usually the
-    orchestrator consumes it automatically on the next turn."""
+    """DM-only: wipe any pending handoff queue (rare — usually the
+    orchestrator consumes entries automatically on each turn)."""
     require_dm()
     paths = get_paths()
     state = load_state(paths)
-    previous = state.get("next_speaker")
-    state["next_speaker"] = None
+    previous = list(state.get("next_speakers", []))
+    state["next_speakers"] = []
     result = {"cleared": previous}
     commit(paths, state, ctx, "turn.clear-handoff", {}, result)
 

@@ -42,22 +42,30 @@ class Orchestrator:
         self.context_builder = ContextBuilder(config, store)
 
     def prepare_turn(self, state: SessionState) -> ContextPackage:
-        agent = self._resolve_next_agent(state)
-        return self.context_builder.build(state, agent)
+        agent, turn_meta = self._resolve_next_agent(state)
+        return self.context_builder.build(state, agent, turn_meta=turn_meta)
 
-    def _resolve_next_agent(self, state: SessionState) -> Agent:
-        """Pick the next agent, consuming a `next_speaker` override if set.
+    def _resolve_next_agent(
+        self, state: SessionState
+    ) -> tuple[Agent, dict[str, Any]]:
+        """Pick the next agent + any per-turn metadata.
 
-        Override is one-shot: read it, clear it, then return the override
-        agent. Falls back to the round-robin order from `next_agent_for` if
-        no override is pending or the override id is invalid.
+        Pops the head of `state["next_speakers"]` if non-empty. Each entry is
+        a dict with at least an `agent` key plus optional `rapid_prompt` for
+        rapid-response turns. Falls back to round-robin if the queue is empty
+        or the popped agent id is unrecognized.
         """
-        override = self._consume_handoff_override(state.session_id)
-        if override and override in AGENTS_BY_ID:
-            return AGENTS_BY_ID[override]
-        return next_agent_for(state)
+        entry = self._consume_next_speaker_entry(state.session_id)
+        if entry:
+            agent_id = entry.get("agent")
+            if agent_id in AGENTS_BY_ID:
+                meta = {k: v for k, v in entry.items() if k != "agent"}
+                return AGENTS_BY_ID[agent_id], meta
+        return next_agent_for(state), {}
 
-    def _consume_handoff_override(self, session_id: str) -> str | None:
+    def _consume_next_speaker_entry(
+        self, session_id: str
+    ) -> dict[str, Any] | None:
         path = self.store.glass_state_path(session_id)
         if not path.exists():
             return None
@@ -65,14 +73,19 @@ class Orchestrator:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
-        override = raw.get("next_speaker")
-        if not override:
+        queue = raw.get("next_speakers")
+        if not isinstance(queue, list) or not queue:
             return None
-        raw["next_speaker"] = None
+        entry = queue.pop(0)
+        if not isinstance(entry, dict):
+            entry = {"agent": entry} if isinstance(entry, str) else None
+        raw["next_speakers"] = queue
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.write_text(
+            json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         tmp.replace(path)
-        return override
+        return entry
 
     def run_loop(
         self,
@@ -117,8 +130,8 @@ class Orchestrator:
             raise
 
     def run_one_turn(self, state: SessionState, *, dry_run: bool) -> TurnResult:
-        agent = self._resolve_next_agent(state)
-        package = self.context_builder.build(state, agent)
+        agent, turn_meta = self._resolve_next_agent(state)
+        package = self.context_builder.build(state, agent, turn_meta=turn_meta)
         if dry_run:
             prose = (
                 f"_Dry run: prepared turn `{package.turn_id}` for {agent.display_name}. "

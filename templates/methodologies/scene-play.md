@@ -13,19 +13,18 @@ For action-shaped scenes (combat, chase, social pressure), separate methodologie
 
 ## Speaker order and handoffs
 
-Default order is round-the-table players, then the DM (`tev → sumi → renno → kit → dm → tev → ...`). At the **end of your turn** you can override who goes next with:
+Default order is round-the-table players, then the DM (`tev → sumi → renno → kit → dm → tev → ...`). The next-speaker queue handles overrides — each `glass turn handoff` call appends one entry; the orchestrator pops one per turn.
 
-```bash
-glass turn handoff <agent_id>
-```
+**Players** can use `glass turn handoff <agent>` (one entry) at the end of their turn to redirect — most often `glass turn handoff dm` to call the DM with a question. Use sparingly; the rotation handles most flow.
 
-One-shot — applies to the next turn only, then the round-robin resumes from the redirected agent. Use this to:
+**The DM** has a few additional levers (also rare — the rotation should still be the default):
 
-- Call the DM with an urgent question (`glass turn handoff dm`).
-- Pass focus to a PC who's clearly in the spotlight.
-- Hand back to whoever was mid-action when the DM was interrupted.
+- `glass turn handoff <agent>` — append one redirect. Multiple calls in a single DM turn queue a sequence: `handoff sumi` then `handoff dm` will run sumi next, then back to the DM, then resume rotation from the DM.
+- `glass turn restart-order <agent>` — DM-only. Wipes any pending queue and sets the next speaker to `<agent>`. Use when the rotation has clearly drifted and needs a hard reset ("Sorry kit, we're restarting from tev").
+- `glass turn rapid-round <prompt>` — DM-only. Queues a single-shot rapid response from each player to a single prompt (see "Rapid-response rounds" below).
+- `glass turn clear-handoff` — DM-only. Wipe the pending queue without setting a new next.
 
-Don't reach for it casually — most scenes flow fine through the default rotation. If you don't call `handoff`, the orchestrator picks next-in-line.
+If no handoff is queued, the orchestrator falls through to the round-robin from `last_speaker`.
 
 ## What a turn looks like
 
@@ -60,16 +59,65 @@ The traditional "DM tells you to make a check" pattern is reversed here. **Playe
 
 If the DM does push back (they'll do it via `glass msg secret <you>`), take the correction in stride. Re-roll with different parameters or narrate around the outcome. Don't litigate.
 
-## What the DM does in scene play
+## What the DM does on their turn
 
-When the DM is up, they typically:
+The DM's job in scene play is roughly threefold: **respond, drive, plan.** Every DM turn does all three.
 
-- Drain the bus (questions, secret intents, anything addressed to them).
-- Respond to questions on the bus — usually via `glass msg secret <player>`, sometimes by writing a transcript turn that delivers world-side observations (an NPC speaks, the building shakes, time passes, a clock ticks).
-- Update the scene framing if the situation has shifted.
-- Hand off to whichever PC is in focus, or back to the round-robin.
+### Respond
 
-The DM rarely takes a *narrative* turn unless the world is doing something the players need to see. Most DM turns are short — service the bus, hand off.
+- Drain the bus first (questions, secret intents, anything addressed to you).
+- Reply to questions via `glass msg secret <player>` (or `glass msg plot-hint` for world-side nudges). Multiple replies in one turn is fine.
+- If a question is urgent enough that a player needs to act before the rotation comes back to them, `glass turn handoff <player>` after responding so they get the next slot.
+
+### Drive
+
+- If the scene has stalled or a player has ended their turn open-endedly ("Tev approaches the door."), nudge them along: `glass msg instruction <player> "what do you do here?"` or `"the door is unlocked — what's your move?"`. The bus is the right channel; a turn of public prose just to ask "what do you do?" wastes the transcript.
+- If something in the world should *happen* (an NPC speaks, time passes, a clock ticks, the lights go out), write that as transcript prose to `<TURN_OUTPUT>`. World-side observations are the rare case where the DM's turn is narrative.
+- If you need rolls from any/all players, **roll them yourself** (see "DM-side roll inversion" below) — don't interrupt the player rotation just to ask for a check.
+
+### Plan
+
+Every DM turn should also include planning work. The agents only get one turn at a time, so use yours productively:
+
+- Update `dm/scratchpad.md` with where the scene is heading, what the next beat is, what NPC reactions you're tracking.
+- Add or refine entries in `dm/notes/` (NPCs, threads, hooks) as the scene reveals new specificity.
+- Tick clocks in your tracking files if appropriate.
+- Look ahead: what's the natural transition out of this scene? What lore might be relevant to what's coming? Pre-load those reads.
+- If a player's secret message reveals hidden intent, file a note in `dm/secret/` about how you'll surface or undermine it later.
+
+Plan even if the bus is empty and the rotation is fine. Idle DM turns are wasted DM turns.
+
+## DM-side roll inversion
+
+The same rule that gives players authority over their rolls applies to you: **don't interrupt a player turn just to ask for a check.** When you need a roll for a player's character — a perception check they didn't take, an opposed roll, a saving throw — run it yourself:
+
+```bash
+glass roll perception attunement --risk standard --character tev-pc-1
+```
+
+The roll's `actor` field will record that you (the DM) called it; the `character_id` attributes the result to the PC. Use the outcome to inform your own narration. If the player asks afterwards, tell them what they noticed.
+
+Only fall back to "asking the player to roll" (via `glass msg instruction <player> "roll <skill> <attribute> at <risk>"`) when the *moment of the dice* is something the player should experience for the narrative tension — and even then, prefer scheduling them via the rotation rather than interrupting it.
+
+## Rapid-response rounds
+
+Sometimes the DM needs each player to react to the same stimulus quickly — the lights going out, an NPC's pointed question to the room, a sudden shift in the air pressure. Rather than spending four full per-player turns on it, queue a rapid round:
+
+```bash
+glass turn rapid-round "the room goes black. roll briefly: what does your character do in the next two seconds?"
+```
+
+This queues all four players in order. Each rapid-response turn:
+
+- Sees the prompt at the top of their TURN_START with explicit "single-shot" framing.
+- Skips the full per-turn menu — no rolls, no side-channel coordination, no further handoffs.
+- Writes a short in-character reaction (a paragraph at most) to `<TURN_OUTPUT>` and exits.
+
+After the four rapid turns drain, the rotation continues from kit (so the next agent is the DM via round-robin).
+
+`glass turn rapid-round --players tev,renno "..."` if you only want a subset to react.
+
+Use rapid-rounds sparingly — they're for *moments*, not for replacing scene-play.
 
 ## Closing the scene
 

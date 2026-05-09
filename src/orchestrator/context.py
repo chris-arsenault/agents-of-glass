@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .config import AogConfig
 from . import permissions
@@ -36,7 +37,13 @@ class ContextBuilder:
         self.config = config
         self.store = store
 
-    def build(self, state: SessionState, agent: Agent) -> ContextPackage:
+    def build(
+        self,
+        state: SessionState,
+        agent: Agent,
+        *,
+        turn_meta: dict[str, Any] | None = None,
+    ) -> ContextPackage:
         turn_number = state.turn_number + 1
         turn_id = f"{state.session_id}-t{turn_number:04d}"
 
@@ -53,7 +60,8 @@ class ContextBuilder:
 
         turn_start_path.write_text(
             self._render_turn_start(
-                state, agent, turn_id, spawn_cwd, turn_output_path
+                state, agent, turn_id, spawn_cwd, turn_output_path,
+                turn_meta=turn_meta or {},
             ),
             encoding="utf-8",
         )
@@ -96,6 +104,8 @@ class ContextBuilder:
         turn_id: str,
         spawn_cwd: Path,
         turn_output_path: Path,
+        *,
+        turn_meta: dict[str, Any] | None = None,
     ) -> str:
         active = state.active_mode
         recent_turns = self._recent_turns(state, max_turns=6)
@@ -113,6 +123,22 @@ class ContextBuilder:
             tools_section = "\n".join(f"- {t}" for t in _player_tools())
             world_lore_section = ""
 
+        rapid_section = ""
+        if turn_meta and turn_meta.get("rapid_prompt"):
+            rapid_section = (
+                "## RAPID-RESPONSE TURN\n\n"
+                "**This is a single-shot rapid-response turn called by the DM. "
+                "Do NOT run the full per-turn menu.** Skip the world-look, the "
+                "rolls, the side-channel coordination. You are answering ONE "
+                "specific prompt and exiting.\n\n"
+                "**Prompt from DM:**\n\n"
+                f"> {turn_meta['rapid_prompt']}\n\n"
+                "Write a brief in-character reaction to `<TURN_OUTPUT>` (a "
+                "paragraph at most), then exit. Do not call `glass turn handoff` "
+                "or `glass roll` unless the prompt explicitly asks. Drain the "
+                "bus only if you actually need its content to react.\n\n"
+            )
+
         return (
             f"# Turn {state.turn_number + 1} — {agent.display_name}\n\n"
             f"You are **{agent.display_name}**. "
@@ -122,6 +148,7 @@ class ContextBuilder:
             f"- Turn id: `{turn_id}`\n"
             f"- Mode: **{active.mode}**\n"
             f"- Scene: **{active.scene_id}**\n\n"
+            f"{rapid_section}"
             "## Output contract\n\n"
             f"Write your final public turn prose to **`{turn_output_path}`** "
             "and exit. Do not include YAML, JSON, analysis notes, or private "
