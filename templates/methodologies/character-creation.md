@@ -1,40 +1,224 @@
 ---
 title: Character Creation Methodology
-status: stub
+status: authored
+audience: players, dm
 ---
 
 # Character Creation
 
-**Stub. To be co-authored.**
+The methodology you read during the `character_creation` phase. The DM has already finished campaign-planning and authored the party's organization, the campaign question, and an opening arc with hooks and NPCs. Now you build the character who lives inside that.
 
-## What this is
+This methodology has **two rounds**:
 
-The methodology document the DM and players read during the `character_creation` phase (see [`/docs/design/game-start.md`](../../../docs/design/game-start.md)). DM goes first, then each player, then DM ratifies. The output is a full party of PCs, each with a public intro entry, ready for the first session.
+1. **Character round** — each player builds and submits their PC. The DM ratifies one at a time.
+2. **Relationship round** — once all four PCs are ratified, each player adds 1-2 relationship ties to other PCs.
 
-## What this doc will cover (when authored)
+Don't start round 2 until round 1 is fully done. Relationships only make sense when there are characters to relate to.
 
-### DM-side
+For the mechanical layer (attribute budget, skill budget, HP, inventory rules), read [`character-creation-system.md`](character-creation-system.md). This doc is the *process*. That doc is the *rules*. You need both.
 
-- **Goal of the public intro.** What `shared/campaign-intro.md` should contain — a few paragraphs of player-facing scene-setting that names the situation, the party's reason to be together, and 2-3 of the planning-phase hooks. Specific, not "you all meet in a tavern."
-- **What to include and what to withhold.** DM-only knowledge stays in `dm/notes/`; the public intro reveals only what the players' characters would already know.
-- **How to ratify.** Reading each player's draft character + intro and either canonizing it (move to `shared/lore/characters/<id>.md`, graph-upsert) or pushing back via `glass msg secret <player>` with concrete revisions requested. Rejection is a real option for generic-fantasy drift.
+## Round 1: Build your character
 
-### Player-side
+### 1. Read before you write
 
-- **Reading order.** Persona, the public campaign-intro, the world bible (player-facing), the DM's hook list, and **the party's organization** at `shared/lore/organization.md` — including the capabilities the org typically needs.
-- **Build the character first, fit them to the org second.** You do *not* have to pick from a predefined role roster. The org's "capabilities the org typically needs" are guidance, not slots — they tell you *what kinds of leverage the org operates by*, not what archetype you have to play. A normal-path soldier in an agency hit squad is fine; an ex-biker who was delivering pizza and ended up on the same hit squad as the info dealer because of his connections is *better*. Come up with a backstory that makes a coherent person, then figure out how that person ended up here.
-- **The only required hook into the org:** your intro must explain *why this character is in this organization* in a way that holds up. Recruited, drafted, owed a debt, ran out of options, was already inside before the campaign starts — any narrative reason works as long as it makes sense for who the character is.
-- **Character creation outputs:**
-  - **`character.md`** — the canonical sheet. Attributes (one of seven), skills (free-form named, with tier), archetype (a string grounded in this world), name (per a culture's actual naming convention), pronouns, starting inventory, momentum/HP defaults. Plus an `org_tie` field — a one-line free-form description of what this PC brings to the org and how they got there. Per [`/docs/design/mechanics.md`](../../../docs/design/mechanics.md).
-  - **A public intro entry** — encyclopedia-shaped lore for `drafts/intro.md`. Three or four paragraphs on who this PC is, where they came from, what they want, and how they came to the org. References at least one of the DM's planning-phase hooks, NPCs, or the org by name.
-- **Constraints.** Specificity always. No "half-elf rogue with a tragic past" — pick a culture, commit to a naming convention, build the backstory from this world's actual species/culture/profession space. The persona's tastes shape what kind of PC this player would build (Sumi gravitates to morally complicated; Tev gravitates to mechanically interesting; etc.).
-- **Submission.** The player calls `glass note propose drafts/intro.md` to push to DM intake. The character.md is just written into place.
-- **Re-submission flow.** If the DM rejects, the player reads the secret message, revises, re-proposes.
+Before authoring anything, read in this order:
+
+- **Your persona** at `players/<your-id>/persona.md` — who you are as a *player*, what you like, what kind of PC you tend to build.
+- **The campaign context** at `context.md` (campaign root) — the Question, the Scarcity, the setting, the party's organization, the opening arc summary.
+- **The party's organization** at `shared/lore/organization.md` — what the org does, the capabilities it typically needs, the reason the party operates together.
+- **The system reference** at [`character-creation-system.md`](character-creation-system.md) — attribute budget, skill budget, inventory rules.
+- **Species lore** at `shared/lore/species/` — read the index, then read each species's full page. Don't skim. The texture matters.
+- **Cultures and naming** at `shared/lore/cultures/` — both the culture descriptions and the naming conventions. Names follow culture, not species.
+- **Whatever lore the DM has curated** at `shared/lore/` — locations, factions, NPCs, concepts.
+
+Reading takes time. Read first. Don't start building while you're still discovering the world.
+
+### 2. Required: non-adjacent web pull
+
+This is the same anti-sameness mechanism the DM uses during campaign-planning, applied to character creation. **You must do at least one non-adjacent web search before building your character.** Skip this step and your character will drift toward generic fantasy archetypes.
+
+**Non-adjacent means:** not fantasy fiction, not other RPGs, not "character creation tips," not anything in the orbit of TTRPGs or sci-fi. You are pulling texture from a real-world domain that interests you and using it to ground your character.
+
+Examples of good pulls:
+
+- A retired Antarctic radio operator's account of long-dark-season communication routines
+- The training regimen of an Olympic shot-putter
+- How hospice nurses talk to patients about death
+- The specific hand vocabulary of butchers, tailors, surgeons, glassblowers
+- What a deep-sea ROV pilot does during a 16-hour cable inspection
+- How blind people navigate unfamiliar buildings
+- The professional jargon of a niche field (lighthouse keeping, court interpretation, archive conservation, mortuary cosmetics)
+
+Pick something **specific** that actually interests you (or your persona). Search for one or two specific articles, skim them, and **write down 2-3 concrete textures** you found — phrases, routines, observations, professional tics. These are your raw material.
+
+You will use these textures to ground:
+- A skill or two (the "how" of what your character does, not just the label)
+- A trait (a specific habit or tic the real-world domain gave you)
+- A signature inventory item (something specific from that world)
+- A line or image in your backstory
+
+If you skip this step, the DM will see it. Generic-fantasy drift is obvious from the page.
+
+### 3. Choose species and culture
+
+Pick a species from `shared/lore/species/`. Pick a culture (or hybrid) from `shared/lore/cultures/`. These are independent choices — a Sithari orc is a different person from a Hab-Worlder orc.
+
+**Pick the species whose texture you actually want to play with.** Not the one that sounds coolest. The orc whose pain response is muted will play differently than the gnome who feels resonance like temperature. Decide what kind of *experience* you want to inhabit.
+
+Pick a name that follows your culture's naming convention exactly. See `shared/lore/cultures/naming-conventions.md`. Be specific. No "Thorgrim." No "Aelaria." Use the cultural pattern.
+
+### 4. Invent a class / role
+
+There is no class system. Don't pick a class.
+
+Read the org's "capabilities the party typically needs" section in `shared/lore/organization.md`. Those are guidance, not slots. They tell you *what kinds of leverage the org operates by* — not what archetype you have to play.
+
+Invent who your character is. **Capabilities-not-roles.** Examples:
+
+- "Lapsed Tuner who runs supplies into the Shear because she can't get certified work after the Conclave hearing."
+- "Hab-Worlder ex-medic, now running a back-channel pharmacy for migrants who can't get processed."
+- "Sithari archivist who got reassigned to the field after one too many letters to the wrong person."
+- "Orc smith from a Karet route family who took the org job because his sister did."
+
+Notice: each one names a profession (real or invented but world-grounded), gives a reason they're not in their default lane, and points at something specific in the world. None of them is "fighter" or "mage."
+
+The character.md `archetype` field is a short string version of this — "Lapsed Tuner," "Sithari archivist on rotation," "Karet smith on the org payroll." Descriptive, not categorical.
+
+### 5. Allocate attributes and skills
+
+Per [`character-creation-system.md`](character-creation-system.md):
+
+- 7 attributes default to `standard`. Bump 2 to `advanced`, 1 to `superior` (optional). Optionally drop 1 to `rudimentary` as a flaw.
+- 5 skills total: 1 `virtuoso`, 2 `artisan`, 2 `apprentice`. Be specific with skill names; pull at least one from your web-search texture.
+
+Choose attributes that match the character you're building. A Lapsed Tuner whose `attunement` is still `superior` makes sense — that's why the loss is sharp. A Hab-Worlder ex-medic with `vitality` at `rudimentary` because chronic exposure has cost her makes sense — the flaw is the story.
+
+### 6. Pick HP and inventory
+
+HP defaults to 10. Take 8 if you're fragile/specialized; take 12 if physical robustness is a defining trait.
+
+Inventory: 3-5 items. **One must be a signature item** with a specific story. The rest are tools-of-trade or sentimental. Read the system reference's inventory examples — generic gear gets bounced.
+
+### 7. Pick traits to RP imperfectly
+
+Pick **3-5 traits** that make this character a recognizable person. Each trait should be:
+
+- **Specific.** Not "loyal." "Won't leave a meal half-eaten — finishes everyone else's plates too if she can get away with it." Not "brave." "Never says 'I'm scared' out loud, even when she clearly is."
+- **Behavioral.** Something the character *does*, not something they *are*. Habits, tics, verbal patterns, physical mannerisms.
+- **Imperfect-able.** A trait you want to play but might not always succeed at. The character *tries* to be the patient mentor; sometimes she snaps anyway. The character *believes* in the org's mission; sometimes he resents it. Failed-trait moments are the best character moments.
+
+Examples of good traits:
+
+- "Always finishes other people's sentences. Sometimes wrongly."
+- "Refuses to call her former Conclave mentors by their titles, but slips when she's tired."
+- "Will eat anything you put in front of her. Has feelings about people who are picky."
+- "Holds grudges over specific phrasing — not what someone said, what words they used."
+- "Apologizes constantly for small things. Stops apologizing entirely when the situation is actually her fault."
+- "Touches every surface in a new room before sitting down. Doesn't realize she does it."
+
+These go in `drafts/intro.md` under a "Traits" section. The DM uses them for adjudication ("would your character actually do that?") and for character-voice work in transcripts.
+
+### 8. Write backstory and goals
+
+In `drafts/intro.md`, write:
+
+- **Backstory: 3-4 paragraphs.** Where the character is from. What shaped them. How they ended up at the org. **Reference at least one of the DM's planning-phase hooks, NPCs, factions, or locations by name.** This is the connective tissue that makes the campaign actually feel like a place this character lives in.
+- **Goals: 2-3 specific goals.** Present-tense. Achievable but with friction. Not "save the world." Not "get rich." Specific things this character is *currently trying to do*. The DM may or may not weave them into the campaign — that's their judgment call. Goals you don't reach are fine.
+
+Examples of good goals:
+- "Find out what happened to Rin's last route. Officially I'm not asking. Unofficially I won't stop until I know."
+- "Convince my mother to leave the hab before the council certifies it for decommissioning."
+- "Earn enough off-the-books to pay back the Karet family I owe."
+- "Find someone who knew my old name and wants to know me anyway."
+
+### 9. The org tie
+
+Your intro must explain **why this character is in this organization**, in a way that holds up. Recruited, drafted, owed a debt, ran out of options, was already inside before the campaign starts, family connection, romantic connection, true believer — any narrative reason works as long as it makes coherent sense for who the character is.
+
+The character.md `org_tie` field is a one-line free-form description: what this PC brings to the org and how they got there. Example: `"Tuning expertise the org can't get certified channels for; she joined after the Conclave hearing barred her."`
+
+### 10. Optional: hidden knowledge
+
+You may write **hidden knowledge** to `dm/intake/<your-id>-secrets.md`. This is content visible to the DM but not to other players. Use it for:
+
+- Alternative motivations (something your character is *also* doing while in the org)
+- Backstory the character hasn't told anyone (an old name, a buried debt, a relationship the org doesn't know about)
+- Knowledge the character has from before the campaign that the others don't (a face they'd recognize, a place they've been, a phrase that means something specific)
+- A skill or capability the character is hiding
+
+**Constraint:** alternative motivations are fine; **direct adversarial relationships with other PCs are not.** Your character can have agendas the party doesn't know about. Your character cannot be planning to betray the party, sell them out, or work against them in a way that would harm another player's enjoyment of the game. The line is: friction enriches play, sabotage breaks it.
+
+If you're not sure where the line is, ask the DM via `glass msg secret dm <reason>` before writing it.
+
+### 11. Submit
+
+```bash
+# Create the character row in Postgres
+glass character new <character-id> --player <your-agent-id> \
+    --name "<full-name>" --archetype "<short-string>" \
+    --hp <8|10|12> \
+    --attribute <name>=<tier> --attribute <name>=<tier> ... \
+    --skill <name>=<tier> --skill <name>=<tier> ... \
+    --tag <tag> --tag <tag>
+
+# Add inventory items one at a time
+glass character inventory-add <character-id> <slug> --qty 1
+glass character inventory-add <character-id> <slug> --qty 1
+# ...
+
+# Propose your intro for DM ratification
+glass note propose drafts/intro.md
+```
+
+The DM reads the intro, the character row, and the inventory; either ratifies (canonizes the intro into `shared/lore/characters/<id>.md`) or pushes back via `glass msg secret <your-id>` with specific revisions requested. **Rejection is a real option for generic-fantasy drift.** If you skipped the web pull, expect rejection. Read the DM's revisions, fix the issues, and re-propose.
+
+When all four PCs are ratified, round 1 is done.
+
+---
+
+## Round 2: Relationship round
+
+Once all four PCs are ratified and visible at `shared/lore/characters/`, each player adds 1-2 relationship ties to other PCs. This is the round that turns four strangers into a party with shared history.
+
+### Process
+
+1. **Read all four ratified intros** at `shared/lore/characters/`. You're now writing as someone who can see the others' characters.
+2. **Pick 1-2 relationship seeds** from the list below. Each seed must name a *specific other PC* — not a generic placeholder. You cannot point both at the same PC if you pick two; each seed must name a different other PC.
+3. **Write a paragraph for each seed** filling it in with specifics. Names, places, the particular thing that happened, the particular feeling that lingers. Use the same anti-sameness rigor you used for your backstory — this is shared canon, it should have texture.
+4. **Coordinate.** If two players pick a seed pointing at each other (e.g., A picks "we were lovers once" pointing at B, and B picks something different pointing at A), both versions become canon. If two players write contradictory specifics for the *same* shared event, the DM ratifies one or both — you may need to revise.
+5. **Submit** via `glass note propose drafts/relationships.md` (one file per player).
+6. **The DM ratifies the relationship round as a whole.** Push-back is normal — the DM may flag too-uniformly-positive ties (the party needs friction, not just bonds) or shared events that don't reconcile.
+
+### The seed list
+
+Pick seeds that *actually fit* the characters involved. Don't shoehorn. If none fit, ask the DM for a custom seed via `glass msg secret dm <reason>`.
+
+1. **The Reconnection split.** We came up through the Reconnection together. You took one path — Conclave, syndicate, independent, something. I took another. We're polite about it now. We don't talk about the year we stopped talking.
+2. **The Shear incident.** We were both in the Shear when something went wrong. Neither of us has talked about it to anyone, including each other. We're going to have to eventually.
+3. **The off-the-books job.** You owe me for a tuning job / route run / favor I did under the table. I haven't called it in. I'm not sure if I will.
+4. **Inherited rivalry.** Your mentor and mine were rivals. We've inherited the awkwardness. Neither of us started it. Neither of us is sure how to end it.
+5. **Glasswake recovery.** We were close — friends, lovers, collaborators — before glasswake hit one or both of us. Recovery changed us. We're still figuring out who we are to each other now.
+6. **The aborted apprenticeship.** I was your apprentice once. We don't talk about why I left. You think you know. You don't, fully.
+7. **The diagnostic I shouldn't have read.** I saw something on a Stillwater diagnostic / Conclave intake / hab record that named you. You don't know I saw it. It's why I trust you. (Or why I don't.)
+8. **The Karet route.** Someone you cared about died on a Karet route. I was there. You don't know the whole story. Maybe you should.
+9. **The manifest pick.** I picked your name from the manifest for this team. I'll be honest about why if you ask. I've been hoping you wouldn't.
+10. **The cultural slip.** We're both Sithari-trained / Hab-Worlder-raised / from the same culture, but you went a different direction after. I notice when you slip back into the formal register / the clipped consonants / the old habits.
+11. **The decommissioned hab.** Your hab was decommissioned the year I started running supplies into it. I remember your face from then. You don't remember mine. I'm not sure if I should tell you.
+12. **The passage debt.** I owed your family a passage debt. It's settled now, but we both know it shaped us.
+13. **The children's choir.** We played together in a children's resonance choir / class / training cohort. The recording / record / photo still exists somewhere. Neither of us mentions this.
+14. **The taught thing.** You taught me one specific thing — a knot, a phrase, a tuning trick, a way to hold a tool — that I use every day. I haven't told you it's still yours.
+15. **The Echo River disagreement.** We both heard the same Echo River fragment / station-broadcast / overheard conversation last year. We disagree about what it said. The disagreement matters more than either of us admits.
+
+These are seeds, not scripts. Take the structure, fill in the world-specific details (names, places, frequencies, factions). Two players can pick the same seed pointing at each other if it fits — overlapping accounts of the same event are good texture.
+
+### Constraint, restated
+
+**No party-adversarial relationships.** Friction is the goal. Sabotage is not. If your relationship paragraph contains "I'm planning to" or "I'm going to use this against," reframe or pick a different seed. Hidden context is fine; weaponized hidden context is not.
+
+If a relationship pulls in a direction that worries you, message the DM before submitting.
 
 ### Done criteria
 
-All four players have a ratified character + intro. Every PC has an `org_tie` that explains how they ended up in the organization. Every PC has at least one tie to a DM-authored hook, NPC, or org member. The DM signals phase-complete with a final invocation.
+All four PCs have between 1 and 2 ratified relationships pointing at other PCs. Every PC is referenced by at least one other PC's relationship (no orphan PCs). The DM has ratified the round. Round 2 is done.
 
-## Status
-
-Empty placeholder. Needs author pass.
+The character_creation phase ends. The DM signals phase-complete and the campaign moves to active play.
