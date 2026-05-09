@@ -240,6 +240,9 @@ class SessionStore:
         run_metadata = dict(existing.run_metadata) if existing else {}
         run_metadata["glass_state"] = "sessions/<id>/state.json"
 
+        closing_raw = glass_state.get("scene_closing_turns")
+        scene_closing_turns = int(closing_raw) if closing_raw is not None else None
+
         return SessionState(
             session_id=session_id,
             campaign=campaign,
@@ -251,6 +254,7 @@ class SessionStore:
             last_speaker=last_speaker,
             failure=existing.failure if existing else None,
             run_metadata=run_metadata,
+            scene_closing_turns=scene_closing_turns,
         )
 
     def _unique_session_id(self, campaign: str) -> str:

@@ -77,6 +77,7 @@ class SessionState:
     last_speaker: str | None = None
     failure: dict[str, Any] | None = None
     run_metadata: dict[str, Any] = field(default_factory=dict)
+    scene_closing_turns: int | None = None
 
     @classmethod
     def new(
@@ -108,6 +109,7 @@ class SessionState:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SessionState":
+        closing_raw = data.get("scene_closing_turns")
         return cls(
             session_id=str(data["session_id"]),
             campaign=str(data["campaign"]),
@@ -121,6 +123,7 @@ class SessionState:
             last_speaker=data.get("last_speaker"),
             failure=data.get("failure"),
             run_metadata=dict(data.get("run_metadata", {})),
+            scene_closing_turns=int(closing_raw) if closing_raw is not None else None,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -135,6 +138,7 @@ class SessionState:
             "last_speaker": self.last_speaker,
             "failure": self.failure,
             "run_metadata": self.run_metadata,
+            "scene_closing_turns": self.scene_closing_turns,
         }
 
     @property

@@ -198,8 +198,35 @@ class Orchestrator:
                 "dry_run": result.dry_run,
             },
         )
+        self._tick_closing_countdown(state.session_id)
         synced = self.store.sync_from_glass(state)
         state.__dict__.update(synced.__dict__)
+
+    def _tick_closing_countdown(self, session_id: str) -> None:
+        """Decrement state["scene_closing_turns"] by 1 if set, after a turn.
+
+        The closing countdown is set by `glass scene closing-down --turns N`
+        as N+1 (so the DM's setting turn is the first decrement). When the
+        value reaches 0 the next TURN_START renders a "Final round" section;
+        below 0 indicates an overrun that the methodology flags as a hard
+        backstop ("end the scene now even if it feels unfinished").
+        """
+        path = self.store.glass_state_path(session_id)
+        if not path.exists():
+            return
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        val = raw.get("scene_closing_turns")
+        if val is None:
+            return
+        raw["scene_closing_turns"] = int(val) - 1
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        tmp.replace(path)
 
     def _invoke_agent(
         self, state: SessionState, agent: Agent, package: ContextPackage

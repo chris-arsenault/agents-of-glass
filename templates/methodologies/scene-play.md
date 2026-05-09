@@ -121,13 +121,125 @@ Use rapid-rounds sparingly — they're for *moments*, not for replacing scene-pl
 
 ## Closing the scene
 
-The DM ends the mode (`glass mode end`) when the scene's natural arc completes. Closure signals can include:
+Scenes don't end themselves. Without explicit closure, the DM will keep finding "one more thing" to add and the scene runs forever — this is a real failure mode of agentic play. The closure mechanism has multiple layers; the DM is responsible for using all of them.
 
-- The scene's stake is resolved.
-- The party has clearly decided to leave.
+### Closure signals
+
+Every DM turn, look for at least one of these. When you see one, start closing:
+
+- The scene's stake is resolved (the question that opened the scene has an answer).
+- The party has clearly decided to leave (or to commit to an action that ends this scene's frame).
 - A clock has run out and the consequence has landed.
-- The scene has yielded everything it's going to.
+- The scene has yielded everything it's going to — repeated turns are getting smaller and more procedural, not larger.
 
-After `glass mode end`, the orchestrator returns to whatever called scene-play (an arc loop, scene-transition logic, or the operator).
+If you've gone three or more DM turns without any closure signal, the scene is probably already running too long. Force a signal — push a clock, have an NPC act, narrate a time-skip — and start closing.
 
-Players don't end the mode — that's the DM's call. If you think the scene is done, fire `glass msg secret dm "I think we're done here"` and let the DM decide.
+### The two-phase close
+
+Once a closure signal fires, run the close in two phases:
+
+**Phase 1: closing-down.** Call `glass scene closing-down [--turns N]` (default 10 ≈ two rounds). Every subsequent TURN_START will show the players a "Scene closing — N turns left" countdown so they know to converge their loose threads. They'll stop opening new arcs of action and start moving toward closure on what's already on the table.
+
+The DM continues normal turns during closing-down: respond, drive, plan. Use this window to surface any final beats that need to land — an NPC's last word, a clock tick, a piece of information the party needs before the scene closes.
+
+**Phase 2: final round.** When the countdown reaches 0 (or earlier if you're ready), fire a rapid-round prompting each PC for a closing beat:
+
+```bash
+glass turn rapid-round "your character's last action, line, or image as this scene closes"
+```
+
+This gives every PC a single-shot closing turn. After the four rapid-response turns drain, you call `glass scene end` and the scene is over.
+
+### Hard backstop: the overrun
+
+If the countdown goes past 0 and you still haven't ended, every TURN_START shows a "SCENE OVERRUN" warning. **Call `glass scene end` now even if it feels unfinished.** Imperfect closure beats a scene that runs forever. Whatever wasn't said can carry into the next scene as a hook.
+
+### Bundling wrap-up into `glass scene end`
+
+`glass scene end` takes flags so wrap-up is a single atomic call:
+
+```bash
+glass scene end \
+    --summary "Tev got the schematic. Senna is dead. The Council knows the party was at the substation." \
+    --beats "Senna died protecting the cache.
+Tev now carries the Reconnection schematic.
+The Displacement Council issued an arrest order for Karet's Echo." \
+    --xp tev=2,sumi=1,renno=1,kit=2
+```
+
+- `--summary` writes `arcs/<arc>/scenes/<scene>/summary.md` (corpus material; one or two paragraphs).
+- `--beats` appends each line to `shared/quest-log.md` tagged with the scene + arc (party-visible canon).
+- `--xp` calls `glass character award-xp` for each entry (logged to xp_awards with reason="scene end: <scene_id>").
+
+You can also write any of those manually before ending — `glass quest beat <text>` for ad-hoc beats during the scene, `glass character award-xp` for spot awards mid-scene. Bundling at scene end is the convention; the manual paths are escape hatches.
+
+Players don't end the scene — that's the DM's call. If you think the scene is done, fire `glass msg secret dm "I think we're done here"` and let the DM decide.
+
+## Nested scenes (push/pop)
+
+Sometimes a scene needs to interrupt itself — a fight breaks out during town exploration, a tense conversation suddenly pivots to a chase. The mode stack handles this: push a new mode + scene on top of the current one, play it through, then pop back to the parent.
+
+```bash
+# in town exploration (scene-play, scene id "vestige-square"); a fight starts:
+glass scene create vestige-square-fight --type combat --arc <arc>
+glass mode start combat vestige-square-fight     # pushes onto the mode stack
+
+# combat plays out under whatever combat methodology applies (TBD)...
+
+glass mode end       # pops; active mode is back to scene-play, scene "vestige-square"
+```
+
+The orchestrator's active mode is always the top of the stack. Speaker order, methodology pointer, and TURN_START framing all follow the active mode. Closing-down state is per-stack-frame conceptually but currently lives at session level — if you push a nested scene, clear the parent's closing countdown first (`glass turn clear-handoff` does NOT clear it; just `glass scene closing-down --turns 0` won't work either since it requires positive turns; manually edit the JSON if needed). Practically: don't push a nested scene during a closing parent. Close the parent first.
+
+Don't reach for nesting casually — most scene shifts are better as plain transitions (end the old scene, start the new). Nest only when the parent scene is genuinely paused and will resume after the inner scene completes.
+
+## Quest beats — what's worth logging
+
+`glass quest beat <text>` appends a tagged bullet to `shared/quest-log.md`. The log is party-visible canon; the corpus consumes it.
+
+A beat is a real story-shifting moment:
+
+- An NPC's allegiance flips, dies, or reveals something material.
+- A clock lands.
+- A faction makes a public move.
+- A character commits — pledges, betrays, declares.
+- The party gains or loses a meaningful asset (information, item, ally, location).
+
+Not a beat:
+
+- "Tev rolled poorly on perception."
+- "The party walked across the square."
+- "Sumi made a joke."
+
+Two or three beats per scene is healthy. If a scene generates zero beats, either nothing happened or the DM didn't recognize what mattered — use the scene-end summary to capture it instead. If a scene generates eight beats, you're logging too much; keep the most important and let the rest live in the transcript.
+
+The DM is the writer; players don't fire beats directly (use `glass msg instruction dm "I think this should be a beat: ..."` if you want to nominate one).
+
+## Awarding XP
+
+XP is the level-up currency: 10 XP per level, no max. The DM awards via `glass character award-xp` (with `--reason`) or, more commonly, bundled into `glass scene end --xp`.
+
+### Per-scene baseline
+
+Award **1-3 XP per character** at scene end, calibrated to:
+
+- **1 XP** — a quiet scene with little for the character to do, or a scene where the character was largely a bystander.
+- **2 XP** — a normal scene with meaningful participation.
+- **3 XP** — a scene where the character drove a major beat, took serious risk, or had a strong character moment.
+
+Different characters in the same scene can get different amounts. Don't flatten — XP is a signal of what the table noticed.
+
+### Spot awards
+
+Outside scene-end, give **+1 XP** for:
+
+- A breakthrough on a high-stakes roll.
+- A clever solution that bypassed the obvious approach.
+- Persistent good RP of an inconvenient trait (the character's flaw genuinely cost them, and the player leaned in anyway).
+- A character moment that the table will remember.
+
+Spot awards are rare — once or twice per session per player at most. Use `glass character award-xp <id> 1 --reason "<one-line>"`.
+
+### Calibration
+
+10 XP/level + 1-3 XP/scene means a level takes roughly 5-10 scenes. That's the right pace for a feature unlock or HP bump to feel earned. If players are leveling every 2 scenes you're awarding too much; if they're not leveling for 15 scenes you're awarding too little.

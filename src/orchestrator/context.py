@@ -139,6 +139,8 @@ class ContextBuilder:
                 "bus only if you actually need its content to react.\n\n"
             )
 
+        closing_section = self._closing_section(state, agent)
+
         return (
             f"# Turn {state.turn_number + 1} — {agent.display_name}\n\n"
             f"You are **{agent.display_name}**. "
@@ -149,6 +151,7 @@ class ContextBuilder:
             f"- Mode: **{active.mode}**\n"
             f"- Scene: **{active.scene_id}**\n\n"
             f"{rapid_section}"
+            f"{closing_section}"
             "## Output contract\n\n"
             f"Write your final public turn prose to **`{turn_output_path}`** "
             "and exit. Do not include YAML, JSON, analysis notes, or private "
@@ -203,6 +206,51 @@ class ContextBuilder:
             f"{world_lore_section}\n"
             "## Your tools\n\n"
             f"{tools_section}\n"
+        )
+
+    def _closing_section(self, state: SessionState, agent: Agent) -> str:
+        """Render the scene-closing pressure section if a countdown is active.
+
+        - val > 0   → "## Scene closing — N turn(s) left", soft converge nudge
+        - val == 0  → "## Final round", strong nudge to one closing beat
+        - val < 0   → "## SCENE OVERRUN", hard backstop telling the DM to end now
+        """
+        val = state.scene_closing_turns
+        if val is None:
+            return ""
+        if val > 0:
+            label = "turn" if val == 1 else "turns"
+            return (
+                f"## Scene closing — {val} {label} left\n\n"
+                "The DM has declared this scene is wrapping up. **Converge "
+                "your loose threads.** Don't open new arcs of action. Don't "
+                "introduce new NPCs or plot threads. Move toward closure on "
+                "what's already on the table. The DM will fire a Final Round "
+                "(rapid-response) before calling `glass scene end`.\n\n"
+            )
+        if val == 0:
+            return (
+                "## Final round\n\n"
+                "**This is the final round of the scene.** Write your "
+                "character's closing beat — the last thing they say, do, or "
+                "notice in this scene. Brief is fine; a paragraph at most. "
+                "After this round the DM will close the scene.\n\n"
+            )
+        # Overrun
+        if agent.role == "dm":
+            return (
+                f"## SCENE OVERRUN ({-val} turn(s) past Final round)\n\n"
+                "**The closing countdown has expired.** The scene should "
+                "have ended already. **Call `glass scene end --summary "
+                "<text> --beats <bullets> --xp <awards>` now even if it "
+                "feels unfinished.** Imperfect closure beats a scene that "
+                "runs forever.\n\n"
+            )
+        return (
+            f"## SCENE OVERRUN ({-val} turn(s) past Final round)\n\n"
+            "The scene closing countdown has expired. Keep your turn very "
+            "brief — do not introduce new threads. The DM should be ending "
+            "the scene any moment.\n\n"
         )
 
     def _recent_turns(self, state: SessionState, max_turns: int) -> str:

@@ -312,6 +312,7 @@ def default_state(session_id: str, campaign: str) -> dict[str, Any]:
         "threads": {},
         "turns": [],
         "next_speakers": [],
+        "scene_closing_turns": None,
     }
 
 
@@ -325,6 +326,7 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
     state.setdefault("turns", [])
     state.setdefault("session", {})
     state.setdefault("next_speakers", [])
+    state.setdefault("scene_closing_turns", None)
     # Migrate legacy `next_speaker` (single string) into the new queue.
     legacy_next = state.pop("next_speaker", None)
     if isinstance(legacy_next, str) and legacy_next:
@@ -2808,15 +2810,205 @@ def scene_create(
 
 
 @scene.command("end")
+@click.option("--summary", default=None,
+              help="Scene summary written to arcs/<arc>/scenes/<scene>/summary.md.")
+@click.option("--beats", default=None,
+              help="Newline-separated bullets appended to shared/quest-log.md, "
+                   "tagged with the scene + arc.")
+@click.option("--xp", "xp_spec", default=None,
+              help="XP awards: 'tev=2,sumi=1,renno=3'. Calls character "
+                   "award-xp per entry with reason=\"scene end: <scene_id>\".")
 @click.pass_context
-def scene_end_cmd(ctx: click.Context) -> None:
-    require_dm()
+def scene_end_cmd(
+    ctx: click.Context,
+    summary: str | None,
+    beats: str | None,
+    xp_spec: str | None,
+) -> None:
+    """End the active scene + bundle wrap-up writes.
+
+    Atomic: writes summary, appends beats, awards XP, then marks the scene
+    as no-longer-active in the campaign workspace state. Also clears any
+    scene_closing_turns countdown — the scene is over.
+    """
+    role = require_dm()
     workspace = _campaign_workspace()
+    state = load_state(get_paths())
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    session_id = state["session"]["id"]
+
+    current = _workspace.current_scene(workspace)
+    if not current:
+        raise GlassError("no active scene to end")
+    scene_id = current["scene_id"]
+    arc_id = current["arc_id"]
+
+    summary_path: str | None = None
+    if summary and summary.strip():
+        summary_path = _write_scene_summary(workspace, arc_id, scene_id, summary.strip())
+
+    beat_lines: list[str] = []
+    if beats:
+        for line in beats.splitlines():
+            text = line.strip().lstrip("-*").strip()
+            if text:
+                _append_quest_beat(workspace, text, scene_id=scene_id, arc_id=arc_id)
+                beat_lines.append(text)
+
+    xp_awards: list[dict[str, Any]] = []
+    if xp_spec:
+        with pg_connection() as conn:
+            for agent, delta in _parse_xp_spec(xp_spec):
+                character_id = lookup_player_character_id(campaign_id, agent)
+                if not character_id:
+                    raise GlassError(
+                        f"can't award xp to {agent!r}: no character row "
+                        f"or multiple characters in campaign"
+                    )
+                try:
+                    updated, before, after = _db.character_award_xp(
+                        conn,
+                        campaign_id=campaign_id,
+                        character_id=character_id,
+                        delta=delta,
+                        actor=role.actor,
+                        reason=f"scene end: {scene_id}",
+                        session_id=session_id,
+                        scene_id=scene_id,
+                    )
+                except LookupError:
+                    raise GlassError(f"unknown character {character_id!r}") from None
+                xp_awards.append({
+                    "player": agent,
+                    "character_id": character_id,
+                    "delta": delta,
+                    "xp_before": before,
+                    "xp_after": after,
+                    "level": updated["level"],
+                })
+
     try:
         ended = _workspace.end_scene(workspace)
     except ValueError as exc:
         raise GlassError(str(exc)) from exc
-    emit({"campaign_id": workspace.campaign_id, "ended_scene": ended})
+
+    state["scene_closing_turns"] = None
+    queue_event(
+        state, role.actor,
+        f"scene end: {ended}"
+        + (f" (+{len(xp_awards)} xp awards)" if xp_awards else ""),
+    )
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "ended_scene": ended,
+        "summary_path": summary_path,
+        "beats_logged": beat_lines,
+        "xp_awards": xp_awards,
+    }
+    commit(
+        paths, state, ctx, "scene.end",
+        command_params(summary=summary, beats=beats, xp=xp_spec),
+        result,
+    )
+
+
+@scene.command("closing-down")
+@click.option("--turns", "turn_budget", type=int, default=10, show_default=True,
+              help="How many turns of soft closing pressure (countdown ticks "
+                   "down each turn commit).")
+@click.pass_context
+def scene_closing_down(ctx: click.Context, turn_budget: int) -> None:
+    """DM-only: declare the scene is closing down.
+
+    Sets a turn countdown that surfaces in every subsequent TURN_START.md
+    as a "Scene closing — N turns left" section. Players see it and
+    converge their threads. When the counter hits 0, agents see a "Final
+    round" section instead. The DM closes with `glass scene end`.
+
+    The countdown is informational pressure, not a hard cap — the DM is
+    expected to actually call `glass scene end` when ready. The
+    methodology says imperfect closure beats a forever-running scene.
+    """
+    role = require_dm()
+    if turn_budget <= 0:
+        raise GlassError("--turns must be positive")
+    paths = get_paths()
+    state = load_state(paths)
+    # Stored as N+1 because the orchestrator decrements once on the commit
+    # of the DM's setting turn. The first non-DM turn that follows sees the
+    # user-friendly N in TURN_START.
+    state["scene_closing_turns"] = turn_budget + 1
+    queue_event(state, role.actor, f"scene closing down ({turn_budget} turns left)")
+    result = {"scene_closing_turns": turn_budget}
+    commit(
+        paths, state, ctx, "scene.closing-down",
+        command_params(turns=turn_budget), result,
+    )
+
+
+def _parse_xp_spec(spec: str) -> list[tuple[str, int]]:
+    out: list[tuple[str, int]] = []
+    for entry in spec.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if "=" not in entry:
+            raise GlassError(f"invalid xp award {entry!r}; expected agent=delta")
+        agent, delta_text = entry.split("=", 1)
+        agent = agent.strip()
+        try:
+            delta = int(delta_text.strip())
+        except ValueError:
+            raise GlassError(f"invalid xp delta {delta_text!r} (must be int)") from None
+        out.append((agent, delta))
+    return out
+
+
+def _write_scene_summary(
+    workspace: _workspace.CampaignWorkspace,
+    arc_id: str | None,
+    scene_id: str,
+    body: str,
+) -> str | None:
+    if not arc_id:
+        return None
+    scene_dir = workspace.scene_dir(arc_id, scene_id)
+    if not scene_dir.exists():
+        scene_dir.mkdir(parents=True, exist_ok=True)
+    path = scene_dir / "summary.md"
+    header = f"# {scene_id} — summary\n\n"
+    path.write_text(header + body.rstrip() + "\n", encoding="utf-8")
+    return display_path(path)
+
+
+def _append_quest_beat(
+    workspace: _workspace.CampaignWorkspace,
+    text: str,
+    *,
+    scene_id: str | None = None,
+    arc_id: str | None = None,
+) -> Path:
+    log_path = workspace.root / "shared" / "quest-log.md"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    if not log_path.exists():
+        log_path.write_text(
+            "---\ntitle: Quest Log\n---\n\n"
+            "# Quest Log\n\n"
+            "Party-visible log of story-shifting beats. Appended to via "
+            "`glass quest beat` and `glass scene end --beats`.\n\n",
+            encoding="utf-8",
+        )
+    tag_parts = []
+    if arc_id:
+        tag_parts.append(arc_id)
+    if scene_id:
+        tag_parts.append(scene_id)
+    prefix = f"[{':'.join(tag_parts)}] " if tag_parts else ""
+    line = f"- {prefix}{text}\n"
+    with log_path.open("a", encoding="utf-8") as fh:
+        fh.write(line)
+    return log_path
 
 
 @scene.command("current")
@@ -2836,6 +3028,55 @@ def scene_list(ctx: click.Context, arc_id: str | None) -> None:
     workspace = _campaign_workspace()
     scenes = _workspace.list_scenes(workspace, arc_id=arc_id)
     emit({"campaign_id": workspace.campaign_id, "arc_id": arc_id, "scenes": scenes})
+
+
+@main.group()
+def quest() -> None:
+    """Party-visible story log: beats."""
+
+
+@quest.command("beat")
+@click.argument("text_parts", nargs=-1, required=True)
+@click.option("--scene", "scene_id", default=None, help="Scene id tag (defaults to active).")
+@click.option("--arc", "arc_id", default=None, help="Arc id tag (defaults to active).")
+@click.pass_context
+def quest_beat(
+    ctx: click.Context,
+    text_parts: tuple[str, ...],
+    scene_id: str | None,
+    arc_id: str | None,
+) -> None:
+    """DM-only: append a story-shifting beat to shared/quest-log.md.
+
+    A beat is a real campaign-shifting moment — an NPC's allegiance flips,
+    a clock lands, a faction makes a move, a character commits. Not
+    bookkeeping. Beats are party-visible canon for what happened in the
+    campaign; the corpus consumes them.
+
+    Bundled into `glass scene end --beats` for end-of-scene logging.
+    """
+    role = require_dm()
+    text = " ".join(text_parts).strip()
+    if not text:
+        raise GlassError("beat text cannot be empty")
+    workspace = _campaign_workspace()
+    current = _workspace.current_scene(workspace) or {}
+    scene = scene_id or current.get("scene_id")
+    arc = arc_id or current.get("arc_id")
+    log_path = _append_quest_beat(workspace, text, scene_id=scene, arc_id=arc)
+    paths = get_paths()
+    state = load_state(paths)
+    queue_event(state, role.actor, f"beat: {text[:60]}")
+    result = {
+        "log_path": display_path(log_path),
+        "scene_id": scene,
+        "arc_id": arc,
+        "text": text,
+    }
+    commit(
+        paths, state, ctx, "quest.beat",
+        command_params(scene=scene, arc=arc, text=text), result,
+    )
 
 
 @main.group()
