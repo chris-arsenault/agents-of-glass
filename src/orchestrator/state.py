@@ -187,6 +187,16 @@ def speaker_order_for(mode: str) -> tuple[str, ...]:
         return ("dm",)
     if normalized in {"travel", "travel/montage", "montage"}:
         return PLAYER_IDS
+    if normalized == "character-creation":
+        # Interleave player-then-DM so the DM can ratify (or push back) after
+        # each player's submission. The cycle covers both round 1 (build) and
+        # round 2 (relationships); the DM tracks which round we're in via the
+        # methodology and signals phase completion by ending the mode.
+        return tuple(
+            slot
+            for player_id in PLAYER_IDS
+            for slot in (player_id, "dm")
+        )
     return tuple(agent.id for agent in AGENTS)
 
 

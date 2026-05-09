@@ -109,7 +109,7 @@ class ContextBuilder:
             world_lore_section = self._dm_world_lore_section()
         else:
             persona_pointer = f"players/{agent.id}/persona.md"
-            workspace_section = self._player_workspace_section(agent.id)
+            workspace_section = self._player_workspace_section(agent.id, active.mode)
             tools_section = "\n".join(f"- {t}" for t in _player_tools())
             world_lore_section = ""
 
@@ -211,8 +211,18 @@ class ContextBuilder:
             "UPPERCASE_SNAKE_CASE.\n"
         )
 
-    def _player_workspace_section(self, player_id: str) -> str:
+    def _player_workspace_section(self, player_id: str, mode: str) -> str:
         base = f"players/{player_id}"
+        methodology = _methodology_for_mode(mode)
+        if methodology:
+            methodology_line = (
+                f"- **Methodology for this mode:** "
+                f"[`methodologies/{methodology}`](methodologies/{methodology}). "
+                "Read it before producing your turn — it tells you what to author, "
+                "in what shape, with what constraints.\n"
+            )
+        else:
+            methodology_line = ""
         return (
             "## Player workspace\n\n"
             f"- `{base}/persona.md` is who you are at the table.\n"
@@ -225,6 +235,7 @@ class ContextBuilder:
             "encyclopedia entries you intend to propose to the DM. "
             f"`{base}/inbox/` is messages addressed to you.\n"
             "- Keep OOC player voice distinct from IC character voice.\n"
+            f"{methodology_line}"
         )
 
     def _dm_world_lore_section(self) -> str:

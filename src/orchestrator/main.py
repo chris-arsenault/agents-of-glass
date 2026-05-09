@@ -56,6 +56,20 @@ def campaign() -> None:
     help="Hard cap on DM invocations during campaign planning.",
 )
 @click.option(
+    "--max-creation-turns",
+    type=int,
+    default=24,
+    show_default=True,
+    help="Hard cap on character_creation turns (interleaves players + DM, "
+         "covers both round 1 build and round 2 relationships).",
+)
+@click.option(
+    "--skip-character-creation",
+    is_flag=True,
+    help="Stop after campaign planning (the previous default). Useful when "
+         "you want to inspect the planning output before letting players in.",
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     help="Build context packages and commit synthetic turns without invoking Claude.",
@@ -70,6 +84,8 @@ def campaign_bootstrap(
     cli: CliState,
     campaign_id: str,
     max_planning_turns: int,
+    max_creation_turns: int,
+    skip_character_creation: bool,
     dry_run: bool,
     keep_cwd: bool,
 ) -> None:
@@ -78,7 +94,9 @@ def campaign_bootstrap(
     Steps:
       1. Create campaigns/<id>/ from templates/.
       2. Invoke DM in campaign-planning mode (foundation + opening arc).
-      3. [STUB] Character creation.
+      3. Character creation: interleaved player + DM turns covering round 1
+         (build) and round 2 (relationships). Skipped with
+         --skip-character-creation.
       4. [STUB] Active scene play.
     """
 
@@ -100,16 +118,16 @@ def campaign_bootstrap(
     )
     cli.campaign_manager.advance_phase(campaign_id, PHASE_PLANNING)
 
-    state = cli.store.create_session(
+    planning_state = cli.store.create_session(
         campaign=campaign_id,
         initial_mode="campaign-planning",
         initial_scene="planning",
     )
-    click.echo(f"      session: {state.session_id}")
+    click.echo(f"      session: {planning_state.session_id}")
 
     try:
         turns_run = cli.orchestrator.run_loop(
-            state,
+            planning_state,
             max_turns=max_planning_turns,
             dry_run=dry_run,
             keep_cwd=keep_cwd,
@@ -122,15 +140,44 @@ def campaign_bootstrap(
         ) from exc
 
     click.echo(f"      DM produced {turns_run} planning turn(s)")
-    click.echo(f"      transcript: {cli.store.transcript_path(state.session_id)}")
+    click.echo(f"      transcript: {cli.store.transcript_path(planning_state.session_id)}")
     click.echo(f"      DM workspace: {space.campaign_dir / 'dm'}")
 
-    # 3. STUB — character creation
-    cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
-    click.secho("[3/4] [STUB] Character creation", fg="yellow")
-    click.echo("              this is where the PCs are created")
-    click.echo("              (DM writes campaign-intro; each player authors")
-    click.echo("               character.md + intro entry; DM ratifies)")
+    # 3. Character creation
+    if skip_character_creation:
+        cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
+        click.secho("[3/4] Character creation skipped (--skip-character-creation).",
+                    fg="yellow")
+    else:
+        cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
+        click.secho(
+            f"[3/4] Invoking players + DM for character creation "
+            f"(max {max_creation_turns} turns)",
+            fg="cyan",
+        )
+        creation_state = cli.store.create_session(
+            campaign=campaign_id,
+            initial_mode="character-creation",
+            initial_scene="character-creation",
+        )
+        click.echo(f"      session: {creation_state.session_id}")
+        try:
+            creation_turns = cli.orchestrator.run_loop(
+                creation_state,
+                max_turns=max_creation_turns,
+                dry_run=dry_run,
+                keep_cwd=keep_cwd,
+                resume_failed=False,
+            )
+        except TurnFailure as exc:
+            detail = json.dumps(exc.failure, indent=2, sort_keys=True)
+            raise click.ClickException(
+                f"character creation failed: {exc}\n{detail}"
+            ) from exc
+        click.echo(f"      ran {creation_turns} character-creation turn(s)")
+        click.echo(
+            f"      transcript: {cli.store.transcript_path(creation_state.session_id)}"
+        )
 
     # 4. STUB — active scene play
     cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
@@ -141,7 +188,8 @@ def campaign_bootstrap(
 
     click.echo()
     click.secho(
-        f"Campaign '{campaign_id}' bootstrapped through campaign_planning.",
+        f"Campaign '{campaign_id}' bootstrapped through "
+        f"{'campaign_planning' if skip_character_creation else 'character_creation'}.",
         fg="green",
     )
     click.echo(f"State file: {space.state_path}")

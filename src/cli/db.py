@@ -211,6 +211,7 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         tags,
         xp,
         level,
+        skill_xp,
         created_at,
         updated_at,
     ) = row
@@ -234,6 +235,7 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         "tags": list(tags or []),
         "xp": int(xp),
         "level": int(level),
+        "skill_xp": dict(skill_xp or {}),
         "created_at": _iso(created_at),
         "updated_at": _iso(updated_at),
     }
@@ -242,8 +244,38 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
 _CHARACTER_COLUMNS = (
     "campaign_id, character_id, player_id, name, archetype, pronouns, bio, "
     "attributes, skills, momentum_current, momentum_floor, momentum_ceiling, "
-    "hp_current, hp_max, inventory, tags, xp, level, created_at, updated_at"
+    "hp_current, hp_max, inventory, tags, xp, level, skill_xp, "
+    "created_at, updated_at"
 )
+
+
+# --- skill / attribute tier constants (kept in sync with main.py) ---
+
+
+SKILL_TIER_RANK = {
+    "fool": 0,
+    "apprentice": 1,
+    "artisan": 2,
+    "virtuoso": 3,
+    "legend": 4,
+}
+
+SKILL_AUTO_BUMP_THRESHOLDS = [
+    (5,  "apprentice"),
+    (15, "artisan"),
+    (30, "virtuoso"),
+]
+
+ATTRIBUTE_TIER_LADDER = ["rudimentary", "standard", "advanced", "superior"]
+
+
+def earned_skill_tier(xp: int) -> str:
+    """Return the highest tier earned for a given skill_xp count."""
+    tier = "fool"
+    for threshold, t in SKILL_AUTO_BUMP_THRESHOLDS:
+        if xp >= threshold:
+            tier = t
+    return tier
 
 
 def _iso(value: Any) -> str | None:
@@ -422,8 +454,12 @@ def character_award_xp(
     campaign_id: str,
     character_id: str,
     delta: int,
+    actor: str,
+    reason: str | None = None,
+    session_id: str | None = None,
+    scene_id: str | None = None,
 ) -> tuple[dict[str, Any], int, int]:
-    """Add `delta` to xp. Returns (character, before, after). delta may be negative."""
+    """Add `delta` to xp + log a row to xp_awards. Returns (character, before, after)."""
     with conn.cursor() as cur:
         cur.execute(
             "SELECT xp FROM characters "
@@ -442,8 +478,148 @@ def character_award_xp(
             (after, campaign_id, character_id),
         )
         updated = cur.fetchone()
+        cur.execute(
+            """
+            INSERT INTO xp_awards
+                (campaign_id, character_id, actor, delta, xp_before, xp_after,
+                 reason, session_id, scene_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                campaign_id, character_id, actor, delta, before, after,
+                reason, session_id, scene_id,
+            ),
+        )
     conn.commit()
     return _row_to_character(updated), before, after
+
+
+def character_level_up(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    actor: str,
+    hp_roll: int,
+    attribute_bumped: str | None,
+    attribute_to_tier: str | None,
+    momentum_ceiling_bumps: int,
+    session_id: str | None = None,
+    scene_id: str | None = None,
+) -> dict[str, Any]:
+    """Apply a single level-up resolution + log a row to level_ups.
+
+    Caller (the CLI) is responsible for:
+      - validating xp / level state (pending_level_ups > 0)
+      - rolling the d6
+      - validating the attribute choice (required iff new_level % 4 == 0)
+      - computing momentum_ceiling_bumps (1 if new_level % 5 == 0 else 0)
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT level, hp_current, hp_max, momentum_ceiling, attributes "
+            "FROM characters WHERE campaign_id = %s AND character_id = %s "
+            "FOR UPDATE",
+            (campaign_id, character_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(character_id)
+        from_level = int(row[0])
+        hp_current_before = int(row[1])
+        hp_max_before = int(row[2])
+        momentum_ceiling_before = int(row[3])
+        attributes = dict(row[4] or {})
+
+        to_level = from_level + 1
+        hp_max_after = hp_max_before + hp_roll
+        # Level-up restores some hp but doesn't exceed the new max.
+        hp_current_after = min(hp_current_before + hp_roll, hp_max_after)
+        momentum_ceiling_after = momentum_ceiling_before + momentum_ceiling_bumps
+        if attribute_bumped and attribute_to_tier:
+            attributes[attribute_bumped] = attribute_to_tier
+
+        cur.execute(
+            f"""
+            UPDATE characters SET
+                level = %s,
+                hp_current = %s,
+                hp_max = %s,
+                momentum_ceiling = %s,
+                attributes = %s
+            WHERE campaign_id = %s AND character_id = %s
+            RETURNING {_CHARACTER_COLUMNS}
+            """,
+            (
+                to_level, hp_current_after, hp_max_after,
+                momentum_ceiling_after, json.dumps(attributes),
+                campaign_id, character_id,
+            ),
+        )
+        updated = cur.fetchone()
+        cur.execute(
+            """
+            INSERT INTO level_ups
+                (campaign_id, character_id, actor, from_level, to_level,
+                 hp_roll, hp_max_before, hp_max_after,
+                 attribute_bumped, attribute_to_tier,
+                 momentum_ceiling_before, momentum_ceiling_after,
+                 session_id, scene_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                campaign_id, character_id, actor, from_level, to_level,
+                hp_roll, hp_max_before, hp_max_after,
+                attribute_bumped, attribute_to_tier,
+                momentum_ceiling_before, momentum_ceiling_after,
+                session_id, scene_id,
+            ),
+        )
+    conn.commit()
+    return _row_to_character(updated)
+
+
+def character_apply_skill_xp(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    skill: str,
+    delta: int,
+) -> tuple[int, int, str | None]:
+    """Increment skill_xp[skill] by delta and auto-bump skills[skill] if a
+    new threshold was crossed. Returns (xp_before, xp_after, bumped_to).
+
+    bumped_to is the new tier name if the skill tier was raised, else None.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT skills, skill_xp FROM characters "
+            "WHERE campaign_id = %s AND character_id = %s FOR UPDATE",
+            (campaign_id, character_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(character_id)
+        skills = dict(row[0] or {})
+        skill_xp = dict(row[1] or {})
+        before = int(skill_xp.get(skill, 0))
+        after = max(0, before + delta)
+        skill_xp[skill] = after
+
+        current_tier = skills.get(skill, "fool")
+        earned_tier = earned_skill_tier(after)
+        bumped_to: str | None = None
+        if SKILL_TIER_RANK[earned_tier] > SKILL_TIER_RANK[current_tier]:
+            skills[skill] = earned_tier
+            bumped_to = earned_tier
+
+        cur.execute(
+            "UPDATE characters SET skills = %s, skill_xp = %s "
+            "WHERE campaign_id = %s AND character_id = %s",
+            (json.dumps(skills), json.dumps(skill_xp), campaign_id, character_id),
+        )
+    return before, after, bumped_to
 
 
 def character_set_inventory(

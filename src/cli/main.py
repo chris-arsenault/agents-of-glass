@@ -171,6 +171,40 @@ def active_campaign_id() -> str:
         raise GlassError(str(exc)) from exc
 
 
+def active_campaign_root() -> Path:
+    """Return the filesystem root of the active campaign workspace.
+
+    Falls back to paths.content (templates) when no campaign is active —
+    used for tests and dev where the runtime workspace doesn't exist.
+    """
+    explicit = os.environ.get("GLASS_CAMPAIGN_ID")
+    paths = get_paths()
+    if paths.campaigns is None:
+        return paths.content
+    try:
+        if explicit:
+            return _workspace.resolve_active_campaign(
+                paths.campaigns, env_id=explicit
+            ).root
+        return _workspace.resolve_active_campaign(paths.campaigns).root
+    except FileNotFoundError:
+        return paths.content
+
+
+def lookup_player_character_id(campaign_id: str, player_id: str) -> str | None:
+    """Look up the character id for a player in the active campaign. Returns
+    None if the player has no character or has multiple."""
+    try:
+        with pg_connection() as conn:
+            characters = _db.character_list(conn, campaign_id)
+    except GlassError:
+        return None
+    candidates = [c["character_id"] for c in characters if c.get("player_id") == player_id]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 @contextmanager
 def pg_connection() -> Iterator[Any]:
     """Open a Postgres connection from the resolved config."""
@@ -1082,6 +1116,29 @@ def roll(
             character_id=character_id,
             value=momentum_out,
         )
+        # Skill-by-use: advance grants 1 skill_xp, breakthrough grants 2.
+        # Failures do not award skill_xp.
+        skill_xp_delta = 0
+        if outcome == "advance":
+            skill_xp_delta = 1
+        elif outcome == "breakthrough":
+            skill_xp_delta = 2
+        existing_xp = int(character["skill_xp"].get(skill, 0))
+        skill_xp_before = existing_xp
+        skill_xp_after = existing_xp
+        skill_bumped_to: str | None = None
+        if skill_xp_delta:
+            (
+                skill_xp_before,
+                skill_xp_after,
+                skill_bumped_to,
+            ) = _db.character_apply_skill_xp(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                skill=skill,
+                delta=skill_xp_delta,
+            )
         conn.commit()
 
     target_suffix = f" -> {target_id}" if target_id else ""
@@ -1090,6 +1147,15 @@ def roll(
         f"{outcome} ({momentum_in:+d} to {momentum_out:+d} momentum){target_suffix}"
     )
     queue_event(state, role.actor, summary)
+    if skill_bumped_to:
+        queue_event(
+            state,
+            role.actor,
+            f"{character_id} skill {skill} -> {skill_bumped_to} (xp {skill_xp_after})",
+        )
+    roll_row["skill_xp_before"] = skill_xp_before
+    roll_row["skill_xp_after"] = skill_xp_after
+    roll_row["skill_bumped_to"] = skill_bumped_to
     commit(
         paths,
         state,
@@ -1280,17 +1346,24 @@ def character_set_hp(ctx: click.Context, character_id: str, delta: int) -> None:
 @character.command("award-xp", context_settings={"ignore_unknown_options": True})
 @click.argument("character_id")
 @click.argument("delta", type=int)
+@click.option("--reason", default=None, help="Free-form note logged with the award.")
 @click.pass_context
-def character_award_xp(ctx: click.Context, character_id: str, delta: int) -> None:
+def character_award_xp(
+    ctx: click.Context, character_id: str, delta: int, reason: str | None
+) -> None:
     """DM-only: award (or revoke) XP. Bumps `xp`; `level` is unchanged.
 
-    Resolution of crossed level thresholds (HP roll, attribute bump, momentum
-    ceiling) happens via `glass character level-up` (TBD).
+    Resolution of crossed level thresholds happens via `glass character level-up`.
     """
     role = require_dm()
     paths = get_paths()
     state = load_state(paths)
     campaign_id = active_campaign_id()
+    session_id = state["session"]["id"]
+    scene_id = None
+    current = current_mode_record(state)
+    if current and current.get("scene_id") and current["scene_id"] != "none":
+        scene_id = current["scene_id"]
 
     with pg_connection() as conn:
         existing = _db.character_get(conn, campaign_id, character_id)
@@ -1302,6 +1375,10 @@ def character_award_xp(ctx: click.Context, character_id: str, delta: int) -> Non
                 campaign_id=campaign_id,
                 character_id=character_id,
                 delta=delta,
+                actor=role.actor,
+                reason=reason,
+                session_id=session_id,
+                scene_id=scene_id,
             )
         except LookupError:
             raise GlassError(f"unknown character {character_id!r}") from None
@@ -1309,8 +1386,6 @@ def character_award_xp(ctx: click.Context, character_id: str, delta: int) -> Non
     sign = f"{delta:+d}"
     summary = f"{character_id} xp {sign} ({before} -> {after}, level {updated['level']})"
     queue_event(state, role.actor, summary)
-    # Threshold: level N requires xp >= (N-1)*10. So at xp X, the level the
-    # character could reach is floor(X/10) + 1. Pending = that - actual.
     pending_levels = max(0, (after // 10) + 1 - int(updated["level"]))
     result = {
         "character_id": character_id,
@@ -1319,13 +1394,132 @@ def character_award_xp(ctx: click.Context, character_id: str, delta: int) -> Non
         "xp_after": after,
         "level": updated["level"],
         "pending_level_ups": pending_levels,
+        "reason": reason,
     }
     commit(
         paths,
         state,
         ctx,
         "character.award-xp",
-        command_params(character_id=character_id, delta=delta),
+        command_params(character_id=character_id, delta=delta, reason=reason),
+        result,
+    )
+
+
+@character.command("level-up")
+@click.argument("character_id")
+@click.option("--attribute", "attribute_name", default=None,
+              help="Required when crossing a level that's a multiple of 4. "
+                   "Bumps that attribute one tier (cap at superior).")
+@click.pass_context
+def character_level_up(
+    ctx: click.Context, character_id: str, attribute_name: str | None
+) -> None:
+    """Resolve one pending level. Each call bumps level by 1.
+
+    Mechanical effects:
+      - hp_max += d6 (hp_current grows by the same amount, capped at new max)
+      - new_level % 4 == 0: --attribute required; that attribute bumps one tier
+      - new_level % 5 == 0: momentum_ceiling += 1 (automatic)
+    """
+    paths = get_paths()
+    state = load_state(paths)
+    campaign_id = active_campaign_id()
+    session_id = state["session"]["id"]
+    scene_id = None
+    current = current_mode_record(state)
+    if current and current.get("scene_id") and current["scene_id"] != "none":
+        scene_id = current["scene_id"]
+
+    with pg_connection() as conn:
+        existing = _db.character_get(conn, campaign_id, character_id)
+        if existing is None:
+            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+        role = assert_character_writable(existing)
+
+        from_level = int(existing["level"])
+        xp = int(existing["xp"])
+        if (xp // 10) + 1 <= from_level:
+            raise GlassError(
+                f"{character_id} has no pending level-ups (xp {xp}, level {from_level})"
+            )
+
+        to_level = from_level + 1
+        attribute_to_tier: str | None = None
+        if to_level % 4 == 0:
+            if not attribute_name:
+                raise GlassError(
+                    f"reaching level {to_level} requires an attribute bump; "
+                    f"pass --attribute <name>"
+                )
+            assert_attribute_name(attribute_name)
+            current_tier = existing["attributes"].get(attribute_name, "standard")
+            ladder = _db.ATTRIBUTE_TIER_LADDER
+            try:
+                idx = ladder.index(current_tier)
+            except ValueError:
+                raise GlassError(
+                    f"attribute {attribute_name!r} is at non-bumpable tier {current_tier!r}"
+                ) from None
+            if idx >= len(ladder) - 1:
+                raise GlassError(
+                    f"attribute {attribute_name!r} is already at {current_tier!r}; "
+                    f"cannot bump further (transcendent is plot-only)"
+                )
+            attribute_to_tier = ladder[idx + 1]
+        elif attribute_name:
+            raise GlassError(
+                f"--attribute is only valid when crossing a multiple of 4 "
+                f"(this is level {to_level})"
+            )
+
+        hp_roll = random.SystemRandom().randint(1, 6)
+        momentum_ceiling_bumps = 1 if to_level % 5 == 0 else 0
+
+        try:
+            updated = _db.character_level_up(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                actor=role.actor,
+                hp_roll=hp_roll,
+                attribute_bumped=attribute_name if attribute_to_tier else None,
+                attribute_to_tier=attribute_to_tier,
+                momentum_ceiling_bumps=momentum_ceiling_bumps,
+                session_id=session_id,
+                scene_id=scene_id,
+            )
+        except LookupError:
+            raise GlassError(f"unknown character {character_id!r}") from None
+
+    parts = [f"{character_id} level {from_level} -> {to_level}", f"hp_max +{hp_roll}"]
+    if attribute_to_tier:
+        parts.append(f"{attribute_name} -> {attribute_to_tier}")
+    if momentum_ceiling_bumps:
+        parts.append(
+            f"momentum_ceiling -> {existing['momentum']['ceiling'] + momentum_ceiling_bumps}"
+        )
+    summary = ", ".join(parts)
+    queue_event(state, role.actor, summary)
+    result = {
+        "character_id": character_id,
+        "from_level": from_level,
+        "to_level": to_level,
+        "hp_roll": hp_roll,
+        "hp_max_before": existing["hp"]["max"],
+        "hp_max_after": updated["hp"]["max"],
+        "attribute_bumped": attribute_name if attribute_to_tier else None,
+        "attribute_to_tier": attribute_to_tier,
+        "momentum_ceiling_before": existing["momentum"]["ceiling"],
+        "momentum_ceiling_after": updated["momentum"]["ceiling"],
+        "pending_level_ups": max(0, (updated["xp"] // 10) + 1 - updated["level"]),
+    }
+    commit(
+        paths,
+        state,
+        ctx,
+        "character.level-up",
+        command_params(character_id=character_id, attribute=attribute_name),
         result,
     )
 
@@ -1529,25 +1723,42 @@ def note_propose(ctx: click.Context, path_text: str) -> None:
     paths = get_paths()
     state = load_state(paths)
     source = resolve_content_path(paths, path_text)
+    workspace_root = active_campaign_root()
+
+    def _player_drafts_root(workspace: Path, player: str) -> Path:
+        return (workspace / "players" / player / "drafts").resolve()
+
     if role.kind == "player":
-        allowed = (paths.content / "players" / role.actor / "drafts").resolve()
-        ensure_under(
-            source,
-            allowed,
-            "permission denied: players can propose only their own drafts/",
-        )
+        # Source must be under <campaign or templates>/players/<actor>/drafts/
+        candidates = [_player_drafts_root(workspace_root, role.actor)]
+        if workspace_root != paths.content:
+            candidates.append(_player_drafts_root(paths.content, role.actor))
+        if not any(
+            str(source.resolve()).startswith(str(root) + os.sep) or source.resolve() == root
+            for root in candidates
+        ):
+            raise GlassError(
+                "permission denied: players can propose only their own drafts/"
+            )
         player_id = role.actor
     else:
         player_id = infer_player_from_path(paths, source)
+        if not player_id and workspace_root != paths.content:
+            try:
+                rel = source.resolve().relative_to(workspace_root.resolve())
+                if len(rel.parts) >= 3 and rel.parts[0] == "players" and rel.parts[2] == "drafts":
+                    player_id = rel.parts[1]
+            except ValueError:
+                pass
         if not player_id:
             raise GlassError(
-                "operator note propose needs a path under content/players/<id>/drafts/"
+                "operator note propose needs a path under players/<id>/drafts/"
             )
     if not source.exists():
         raise GlassError(f"draft not found: {display_path(source)}")
     intake_id = new_id("intake")
     destination_name = f"{intake_id}--{player_id}--{source.name}"
-    destination = paths.content / "dm" / "intake" / destination_name
+    destination = workspace_root / "dm" / "intake" / destination_name
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
     record = {
@@ -1582,9 +1793,21 @@ def require_intake(state: dict[str, Any], intake_id: str) -> dict[str, Any]:
 
 @note.command("ratify")
 @click.argument("intake_id")
-@click.option("--to", "target_path", help="Target path under content/shared/lore/.")
+@click.option("--to", "target_path",
+              help="Explicit target relative to shared/lore/. "
+                   "Defaults: intro.md -> characters/<character>.md, "
+                   "relationships.md -> relationships/<character>.md, "
+                   "else -> shared/lore/<filename>.")
+@click.option("--character", "character_id_override",
+              help="Override the character id used for default routing of "
+                   "intro/relationships files.")
 @click.pass_context
-def note_ratify(ctx: click.Context, intake_id: str, target_path: str | None) -> None:
+def note_ratify(
+    ctx: click.Context,
+    intake_id: str,
+    target_path: str | None,
+    character_id_override: str | None,
+) -> None:
     require_dm()
     paths = get_paths()
     state = load_state(paths)
@@ -1592,27 +1815,67 @@ def note_ratify(ctx: click.Context, intake_id: str, target_path: str | None) -> 
     if item["status"] != "pending":
         raise GlassError(f"intake {intake_id} is already {item['status']}")
     source = REPO_ROOT / item["intake_path"]
+    workspace_root = active_campaign_root()
+    lore_root = workspace_root / "shared" / "lore"
+
     if target_path:
         rel = clean_relative_path(target_path)
-        if rel.parts and rel.parts[0] in {"content", "shared", "lore"}:
-            while rel.parts and rel.parts[0] in {"content", "shared", "lore"}:
-                rel = Path(*rel.parts[1:])
-        destination = paths.content / "shared" / "lore" / rel
+        while rel.parts and rel.parts[0] in {"content", "shared", "lore"}:
+            rel = Path(*rel.parts[1:])
+        destination = lore_root / rel
+        kind = "explicit"
     else:
-        destination = paths.content / "shared" / "lore" / source.name.split("--", 2)[-1]
+        # Auto-route based on the source filename.
+        # The intake filename is "<intake_id>--<player_id>--<original>"; pull
+        # the original off the end.
+        original_name = source.name.split("--", 2)[-1]
+        player_id = item.get("player_id")
+        char_id: str | None = character_id_override
+        if not char_id and player_id:
+            try:
+                campaign_id = active_campaign_id()
+            except GlassError:
+                campaign_id = None
+            if campaign_id:
+                char_id = lookup_player_character_id(campaign_id, player_id)
+
+        if original_name == "intro.md":
+            if not char_id:
+                raise GlassError(
+                    "ratifying an intro requires a character id; pass --character "
+                    "or ensure the player has exactly one character row in the campaign"
+                )
+            destination = lore_root / "characters" / f"{char_id}.md"
+            kind = "intro"
+        elif original_name == "relationships.md":
+            if not char_id:
+                raise GlassError(
+                    "ratifying relationships requires a character id; pass --character "
+                    "or ensure the player has exactly one character row in the campaign"
+                )
+            destination = lore_root / "relationships" / f"{char_id}.md"
+            kind = "relationships"
+        else:
+            destination = lore_root / original_name
+            kind = "lore"
+
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
     item["status"] = "ratified"
     item["resolved_at"] = now_iso()
     item["ratified_path"] = display_path(destination)
     entity = upsert_entity_from_path(paths, state, destination)
-    result = {"intake": item, "entity": entity}
+    result = {"intake": item, "entity": entity, "ratify_kind": kind}
     commit(
         paths,
         state,
         ctx,
         "note.ratify",
-        command_params(intake_id=intake_id, target_path=target_path),
+        command_params(
+            intake_id=intake_id,
+            target_path=target_path,
+            character_id=character_id_override,
+        ),
         result,
     )
 
