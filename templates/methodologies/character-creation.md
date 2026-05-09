@@ -10,12 +10,20 @@ The methodology you read during the `character_creation` phase. The DM has alrea
 
 This methodology has **two rounds**:
 
-1. **Character round** — each player builds and submits their PC. The DM ratifies one at a time.
-2. **Relationship round** — once all four PCs are ratified, each player adds 1-2 relationship ties to other PCs.
+1. **Character round** — each player builds their PC and writes their public intro.
+2. **Relationship round** — once all four PCs are authored, each player adds 1-2 relationship ties to other PCs.
 
 Don't start round 2 until round 1 is fully done. Relationships only make sense when there are characters to relate to.
 
 For the mechanical layer (attribute budget, skill budget, HP, inventory rules), read [`character-creation-system.md`](character-creation-system.md). This doc is the *process*. That doc is the *rules*. You need both.
+
+## Trust yourself, follow the rules
+
+You are not asking the DM for permission at each step. There is no propose / ratify loop on character intros, character sheets, or relationships. Read the methodology and the system reference, follow them, and write your files directly.
+
+The DM gets one turn at the end of each round to read what the party authored and transition the phase forward. If a player produces something off-spec — a non-existent species, an attribute budget that doesn't add up, a generic-fantasy backstory that ignored the web pull — the DM can push back via `glass msg secret <player>` and ask for a revision in a follow-up turn. But the default is "you make your character; the DM is not your editor."
+
+This applies to the rest of play too. Make your own rolls via `glass roll`. Take your own HP changes via `glass character set-hp`. Spend your own momentum. The system is the system — don't ask the DM to confirm each mechanical step. Propose / ratify is reserved for **public journal entries** during play (canonical, party-shared lore that the DM might want to fold into the campaign record).
 
 ## Round 1: Build your character
 
@@ -57,7 +65,7 @@ You will use these textures to ground:
 - A signature inventory item (something specific from that world)
 - A line or image in your backstory
 
-If you skip this step, the DM will see it. Generic-fantasy drift is obvious from the page.
+Generic-fantasy drift is obvious from the page. The DM will see it.
 
 ### 3. Choose species and culture
 
@@ -97,7 +105,7 @@ Choose attributes that match the character you're building. A Lapsed Tuner whose
 
 HP defaults to 10. Take 8 if you're fragile/specialized; take 12 if physical robustness is a defining trait.
 
-Inventory: 3-5 items. **One must be a signature item** with a specific story. The rest are tools-of-trade or sentimental. Read the system reference's inventory examples — generic gear gets bounced.
+Inventory: 3-5 items. **One must be a signature item** with a specific story. The rest are tools-of-trade or sentimental. Read the system reference's inventory examples — generic gear is bounceable.
 
 ### 7. Pick traits to RP imperfectly
 
@@ -116,11 +124,11 @@ Examples of good traits:
 - "Apologizes constantly for small things. Stops apologizing entirely when the situation is actually her fault."
 - "Touches every surface in a new room before sitting down. Doesn't realize she does it."
 
-These go in `drafts/intro.md` under a "Traits" section. The DM uses them for adjudication ("would your character actually do that?") and for character-voice work in transcripts.
+These go in your `intro.md` under a "Traits" section. The DM uses them for adjudication ("would your character actually do that?") and for character-voice work in transcripts.
 
 ### 8. Write backstory and goals
 
-In `drafts/intro.md`, write:
+In `players/<your-id>/intro.md`, write:
 
 - **Backstory: 3-4 paragraphs.** Where the character is from. What shaped them. How they ended up at the org. **Reference at least one of the DM's planning-phase hooks, NPCs, factions, or locations by name.** This is the connective tissue that makes the campaign actually feel like a place this character lives in.
 - **Goals: 2-3 specific goals.** Present-tense. Achievable but with friction. Not "save the world." Not "get rich." Specific things this character is *currently trying to do*. The DM may or may not weave them into the campaign — that's their judgment call. Goals you don't reach are fine.
@@ -139,7 +147,7 @@ The character.md `org_tie` field is a one-line free-form description: what this 
 
 ### 10. Optional: hidden knowledge
 
-You may write **hidden knowledge** to `dm/intake/<your-id>-secrets.md`. This is content visible to the DM but not to other players. Use it for:
+You may write **hidden knowledge** to a file the DM can read but other players can't. Drop it at `players/<your-id>/secrets.md` and message the DM via `glass msg secret dm <one-line summary>` so they know to read it. Use it for:
 
 - Alternative motivations (something your character is *also* doing while in the org)
 - Backstory the character hasn't told anyone (an old name, a buried debt, a relationship the org doesn't know about)
@@ -148,12 +156,12 @@ You may write **hidden knowledge** to `dm/intake/<your-id>-secrets.md`. This is 
 
 **Constraint:** alternative motivations are fine; **direct adversarial relationships with other PCs are not.** Your character can have agendas the party doesn't know about. Your character cannot be planning to betray the party, sell them out, or work against them in a way that would harm another player's enjoyment of the game. The line is: friction enriches play, sabotage breaks it.
 
-If you're not sure where the line is, ask the DM via `glass msg secret dm <reason>` before writing it.
+If you're not sure where the line is, ask the DM via `glass msg secret dm <reason>` before writing the secret.
 
-### 11. Submit
+### 11. Write your files
 
 ```bash
-# Create the character row in Postgres
+# Create the character row in Postgres.
 glass character new <character-id> --player <your-agent-id> \
     --name "<full-name>" --archetype "<short-string>" \
     --hp <8|10|12> \
@@ -161,33 +169,36 @@ glass character new <character-id> --player <your-agent-id> \
     --skill <name>=<tier> --skill <name>=<tier> ... \
     --tag <tag> --tag <tag>
 
-# Add inventory items one at a time
+# Add inventory items one at a time.
 glass character inventory-add <character-id> <slug> --qty 1
 glass character inventory-add <character-id> <slug> --qty 1
-# ...
-
-# Propose your intro for DM ratification
-glass note propose drafts/intro.md
 ```
 
-The DM reads the intro, the character row, and the inventory; either ratifies (canonizes the intro into `shared/lore/characters/<id>.md`) or pushes back via `glass msg secret <your-id>` with specific revisions requested. **Rejection is a real option for generic-fantasy drift.** If you skipped the web pull, expect rejection. Read the DM's revisions, fix the issues, and re-propose.
+Then write your intro markdown directly to `players/<your-id>/intro.md` using your file-write tool. The structure is up to you, but include:
 
-When all four PCs are ratified, round 1 is done.
+- Frontmatter with at least `title:` (your character's name) and `type: character`
+- A Traits section listing your 3-5 traits
+- A Backstory section (3-4 paragraphs)
+- A Goals section (2-3 goals)
+- An Org Tie line
+
+Optionally write a short cached display at `players/<your-id>/character.md` with attribute/skill/inventory summary for quick reference. The canonical numbers are in Postgres; this is just a human-readable mirror.
+
+When your turn ends, that's it for round 1. The other players take their turns; the DM reviews after.
 
 ---
 
 ## Round 2: Relationship round
 
-Once all four PCs are ratified and visible at `shared/lore/characters/`, each player adds 1-2 relationship ties to other PCs. This is the round that turns four strangers into a party with shared history.
+Once all four PCs are authored — visible at `players/*/intro.md` — each player adds 1-2 relationship ties to other PCs. This is the round that turns four strangers into a party with shared history.
 
 ### Process
 
-1. **Read all four ratified intros** at `shared/lore/characters/`. You're now writing as someone who can see the others' characters.
+1. **Read all four intros** at `players/*/intro.md`. You're now writing as someone who can see the others' characters.
 2. **Pick 1-2 relationship seeds** from the list below. Each seed must name a *specific other PC* — not a generic placeholder. You cannot point both at the same PC if you pick two; each seed must name a different other PC.
 3. **Write a paragraph for each seed** filling it in with specifics. Names, places, the particular thing that happened, the particular feeling that lingers. Use the same anti-sameness rigor you used for your backstory — this is shared canon, it should have texture.
-4. **Coordinate.** If two players pick a seed pointing at each other (e.g., A picks "we were lovers once" pointing at B, and B picks something different pointing at A), both versions become canon. If two players write contradictory specifics for the *same* shared event, the DM ratifies one or both — you may need to revise.
-5. **Submit** via `glass note propose drafts/relationships.md` (one file per player).
-6. **The DM ratifies the relationship round as a whole.** Push-back is normal — the DM may flag too-uniformly-positive ties (the party needs friction, not just bonds) or shared events that don't reconcile.
+4. **Coordinate.** If two players pick a seed pointing at each other (e.g., A picks "we were lovers once" pointing at B, and B picks something different pointing at A), both versions become canon. If two players write contradictory specifics for the *same* shared event, the DM may flag it on their round-end turn — you may need to revise on a follow-up turn.
+5. **Write the file** directly to `players/<your-id>/relationships.md`. Use frontmatter with `title:` (e.g., "<your character>'s relationships") and `type: relationships`.
 
 ### The seed list
 
@@ -215,10 +226,24 @@ These are seeds, not scripts. Take the structure, fill in the world-specific det
 
 **No party-adversarial relationships.** Friction is the goal. Sabotage is not. If your relationship paragraph contains "I'm planning to" or "I'm going to use this against," reframe or pick a different seed. Hidden context is fine; weaponized hidden context is not.
 
-If a relationship pulls in a direction that worries you, message the DM before submitting.
+If a relationship pulls in a direction that worries you, message the DM before writing it.
 
 ### Done criteria
 
-All four PCs have between 1 and 2 ratified relationships pointing at other PCs. Every PC is referenced by at least one other PC's relationship (no orphan PCs). The DM has ratified the round. Round 2 is done.
+All four PCs have between 1 and 2 relationships pointing at other PCs. Every PC is referenced by at least one other PC's relationship (no orphan PCs). The DM ends the mode on their round-end turn.
 
 The character_creation phase ends. The DM signals phase-complete and the campaign moves to active play.
+
+---
+
+## What the DM does
+
+Two turns total during character creation — one at the end of each round. On each turn the DM:
+
+- Reads what the players authored that round.
+- Optionally writes a short campaign-intro update at `shared/campaign-framing.md` (round 1) reflecting the actual party. After round 2, may add a "what the party knows about each other" passage.
+- If a player produced something off-spec (impossible species, broken attribute budget, generic-fantasy slop, contradictory shared events), pushes back via `glass msg secret <player> "revise: ..."` — the player can fix it on a follow-up turn.
+- Round 1 turn: announces "relationships round begins" via a transcript line so the players know to start round 2.
+- Round 2 turn: ends the mode (`glass mode end`) to signal phase-complete.
+
+The DM is not pre-approving every character. They are reviewing the party as a whole and only intervening when something concrete needs fixing.

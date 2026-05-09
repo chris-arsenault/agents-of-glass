@@ -1794,20 +1794,21 @@ def require_intake(state: dict[str, Any], intake_id: str) -> dict[str, Any]:
 @note.command("ratify")
 @click.argument("intake_id")
 @click.option("--to", "target_path",
-              help="Explicit target relative to shared/lore/. "
-                   "Defaults: intro.md -> characters/<character>.md, "
-                   "relationships.md -> relationships/<character>.md, "
-                   "else -> shared/lore/<filename>.")
-@click.option("--character", "character_id_override",
-              help="Override the character id used for default routing of "
-                   "intro/relationships files.")
+              help="Target path relative to shared/lore/. Defaults to "
+                   "shared/lore/<original-filename>.")
 @click.pass_context
 def note_ratify(
     ctx: click.Context,
     intake_id: str,
     target_path: str | None,
-    character_id_override: str | None,
 ) -> None:
+    """DM-only: ratify an intake (e.g. a public journal entry) into shared lore.
+
+    propose/ratify is intended for public journal entries — text the player
+    wants to publish to the party. Character sheets, intros, and relationships
+    are written by the player directly into their own dirs without going
+    through this loop.
+    """
     require_dm()
     paths = get_paths()
     state = load_state(paths)
@@ -1823,41 +1824,10 @@ def note_ratify(
         while rel.parts and rel.parts[0] in {"content", "shared", "lore"}:
             rel = Path(*rel.parts[1:])
         destination = lore_root / rel
-        kind = "explicit"
     else:
-        # Auto-route based on the source filename.
-        # The intake filename is "<intake_id>--<player_id>--<original>"; pull
-        # the original off the end.
+        # Strip the "<intake_id>--<player_id>--" prefix off the intake filename.
         original_name = source.name.split("--", 2)[-1]
-        player_id = item.get("player_id")
-        char_id: str | None = character_id_override
-        if not char_id and player_id:
-            try:
-                campaign_id = active_campaign_id()
-            except GlassError:
-                campaign_id = None
-            if campaign_id:
-                char_id = lookup_player_character_id(campaign_id, player_id)
-
-        if original_name == "intro.md":
-            if not char_id:
-                raise GlassError(
-                    "ratifying an intro requires a character id; pass --character "
-                    "or ensure the player has exactly one character row in the campaign"
-                )
-            destination = lore_root / "characters" / f"{char_id}.md"
-            kind = "intro"
-        elif original_name == "relationships.md":
-            if not char_id:
-                raise GlassError(
-                    "ratifying relationships requires a character id; pass --character "
-                    "or ensure the player has exactly one character row in the campaign"
-                )
-            destination = lore_root / "relationships" / f"{char_id}.md"
-            kind = "relationships"
-        else:
-            destination = lore_root / original_name
-            kind = "lore"
+        destination = lore_root / original_name
 
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
@@ -1865,17 +1835,13 @@ def note_ratify(
     item["resolved_at"] = now_iso()
     item["ratified_path"] = display_path(destination)
     entity = upsert_entity_from_path(paths, state, destination)
-    result = {"intake": item, "entity": entity, "ratify_kind": kind}
+    result = {"intake": item, "entity": entity}
     commit(
         paths,
         state,
         ctx,
         "note.ratify",
-        command_params(
-            intake_id=intake_id,
-            target_path=target_path,
-            character_id=character_id_override,
-        ),
+        command_params(intake_id=intake_id, target_path=target_path),
         result,
     )
 

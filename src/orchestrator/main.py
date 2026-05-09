@@ -58,10 +58,11 @@ def campaign() -> None:
 @click.option(
     "--max-creation-turns",
     type=int,
-    default=24,
+    default=12,
     show_default=True,
-    help="Hard cap on character_creation turns (interleaves players + DM, "
-         "covers both round 1 build and round 2 relationships).",
+    help="Hard cap on character_creation turns. The natural shape is "
+         "5 (4 players + DM) per round x 2 rounds = 10, with 2 turns of "
+         "slack for revisions.",
 )
 @click.option(
     "--skip-character-creation",

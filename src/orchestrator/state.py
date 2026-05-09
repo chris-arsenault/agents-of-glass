@@ -188,15 +188,13 @@ def speaker_order_for(mode: str) -> tuple[str, ...]:
     if normalized in {"travel", "travel/montage", "montage"}:
         return PLAYER_IDS
     if normalized == "character-creation":
-        # Interleave player-then-DM so the DM can ratify (or push back) after
-        # each player's submission. The cycle covers both round 1 (build) and
-        # round 2 (relationships); the DM tracks which round we're in via the
-        # methodology and signals phase completion by ending the mode.
-        return tuple(
-            slot
-            for player_id in PLAYER_IDS
-            for slot in (player_id, "dm")
-        )
+        # Round-robin players, then the DM at the end of each round. Players
+        # write their character + intro + relationships directly to their own
+        # dirs — no per-player propose/ratify. The DM's once-per-round turn is
+        # for review, campaign-intro updates, and transitioning between round
+        # 1 (build) and round 2 (relationships); ending the mode signals
+        # phase complete.
+        return PLAYER_IDS + ("dm",)
     return tuple(agent.id for agent in AGENTS)
 
 
