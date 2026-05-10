@@ -21,8 +21,15 @@ ENV/
 *.swo
 
 # Project-specific
+# local campaign runtime secrets/debug exports
+campaigns/**/.glass-grants.json
+campaigns/.checkpoints/
+campaigns/**/agent-debug.json
 # ephemeral per-turn agent CWDs
 .glass-cwd/
+# local machine secrets for operator-owned processes
+.env
+.env.*
 # local rollback snapshots may include campaign state/grants
 .reset-backups/
 # local pasted/debug context

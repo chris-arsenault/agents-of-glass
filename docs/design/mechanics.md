@@ -146,7 +146,7 @@ For v1:
 - **0 HP means out of the action**, captured, unconscious, pinned, routed, or
   otherwise unable to keep acting normally. It does not automatically mean dead.
 - **Death saves / death policy stay deferred** until a real campaign creates
-  the need. See `tracking-immediate-decisions.md`.
+  the need. See [`../backlog.md`](../backlog.md).
 - **Damage is pressure.** Most HP damage comes from `glass scene pressure`:
   impact reduction is usually 1-3 HP. Bigger consequences are DM-authored
   scene events, not a separate damage engine.

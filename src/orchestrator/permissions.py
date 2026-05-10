@@ -30,7 +30,8 @@ log = logging.getLogger(__name__)
 
 
 # Map from agent id -> Unix user. DM is intentionally absent (DM runs as
-# the operator, whoever that is).
+# the operator unless the optional `aog-dm` user has been provisioned).
+DM_USER = "aog-dm"
 PLAYER_USERS: dict[str, str] = {
     "tev": "aog-tev",
     "sumi": "aog-sumi",
@@ -63,12 +64,16 @@ def has_provisioned_users() -> bool:
 
 def player_user_for(agent_id: str) -> str | None:
     """Return the Unix user this agent should run as, or None to run as the
-    operator. The DM always returns None.
+    operator.
     """
-    if agent_id == "dm":
-        return None
     if not has_provisioned_users():
         return None
+    if agent_id == "dm":
+        try:
+            pwd.getpwnam(DM_USER)
+        except KeyError:
+            return None
+        return DM_USER
     return PLAYER_USERS.get(agent_id)
 
 
@@ -112,6 +117,25 @@ def apply_campaign_permissions(campaign_dir: Path) -> bool:
     return True
 
 
+def apply_projection_permissions(projection_root: Path) -> bool:
+    """Harden traversal permissions for `.glass-cwd/<campaign>/<turn>`.
+
+    Projection contents are chmodded by `projection.py`; the privileged helper
+    only fixes the parent `.glass-cwd` directories so isolated Unix users can
+    traverse to their own cwd without listing sibling projections.
+    """
+    if not has_provisioned_users():
+        _chmod_projection_parents(projection_root)
+        return False
+    try:
+        _run_helper(["projection", str(projection_root.resolve())])
+        return True
+    except RuntimeError:
+        log.exception("permissions: projection helper failed; falling back to chmod")
+        _chmod_projection_parents(projection_root)
+        return False
+
+
 def clean_workspace_via_helper(campaign_dir: Path) -> bool:
     """rm -rf the campaign workspace via the root-privileged helper.
 
@@ -148,3 +172,13 @@ def operator_user() -> str:
         return pwd.getpwuid(os.geteuid()).pw_name
     except KeyError:
         return getpass.getuser()
+
+
+def _chmod_projection_parents(projection_root: Path) -> None:
+    for path in (projection_root.parent.parent, projection_root.parent):
+        if not path.exists():
+            continue
+        try:
+            os.chmod(path, 0o710)
+        except OSError:
+            log.debug("permissions: could not chmod projection parent %s", path)

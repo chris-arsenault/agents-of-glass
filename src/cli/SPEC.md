@@ -4,7 +4,7 @@ The in-session tool surface. Used by both the orchestrator and the agents. The s
 
 For the role this CLI plays in the system, see [`../../docs/design/architecture.md`](../../docs/design/architecture.md). For when agents call it, see [`../../docs/design/turn-loop.md`](../../docs/design/turn-loop.md).
 
-This is a **spec, not an implementation**. We fill in details as we build. Aligned with [`tracking-immediate-decisions.md`](../../tracking-immediate-decisions.md) — most flag-level details are organic.
+This is a **spec, not an implementation**. We fill in details as we build. Aligned with [`docs/backlog.md`](../../docs/backlog.md) — most flag-level details are organic.
 
 ## Conventions
 
@@ -82,10 +82,14 @@ fictional effect but does not create a mechanical object.
 ```
 glass character new <id> --player <player-id>           # creates from interactive prose? TBD
 glass character get <id>
+glass character bulk-get <id>... [--all] [--no-signatures]
+glass character bulk-update --from update.json          # set fields, inventory, signatures, mirror, hp/momentum
 glass character set-hp <id> <delta>                     # DM, or own
 glass character set-momentum <id> <value>               # DM, or own
 glass character inventory-add <id> <item-id> [--qty N] [--effect-tag TEXT ...]
 glass character inventory-rm <id> <item-id> [--qty N]
+glass character signature-status <id>
+glass character signature-add <id> <name> [--body TEXT | --from PATH]
 glass character consequence-add <id> <label> [--severity minor|serious|critical]
 glass character consequence-list <id> [--all]
 glass character consequence-resolve <id> <consequence-id> [--note TEXT]
@@ -190,4 +194,4 @@ If `GLASS_ROLE` is unset, the CLI assumes operator and allows everything. (The o
 - Exit codes
 - Full output schemas
 
-These get pinned as we build. See [`tracking-immediate-decisions.md`](../../tracking-immediate-decisions.md) — the CLI surface is held for organic resolution.
+These get pinned as we build. See [`docs/backlog.md`](../../docs/backlog.md) — the CLI surface is held for organic resolution.

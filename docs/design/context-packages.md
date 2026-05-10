@@ -51,7 +51,8 @@ turn sequence, `srd/` for public rules, and `how-to/` for optional examples.
 
 ## Your tools (allowlist)
 - glass roll
-- glass character set-hp / set-momentum / inventory-add (your character only)
+- glass character bulk-get / bulk-update (bulk-update your character only)
+- glass character set-hp / set-momentum / inventory-add (single-change convenience)
 - glass msg <type> <recipient> <body>
 - glass note write (your own public/secrets/notes/journal/drafts files)
 - glass entity neighborhood / similar (read-only graph queries)
@@ -146,7 +147,7 @@ state, `scene.md` for the kickoff description, `handouts/` for in-game
 handouts, and freeform table-root markdown files for whatever visible immediate
 reference would prevent repeated clarification turns.
 
-Format and update cadence are intentionally not pre-specified beyond the methodology guidance — see [`/tracking-immediate-decisions.md`](../../tracking-immediate-decisions.md). We codify further after first sessions show what's useful.
+Format and update cadence are intentionally not pre-specified beyond the methodology guidance — see [`/docs/backlog.md`](../backlog.md). We codify further after first sessions show what's useful.
 
 ## File Layout
 

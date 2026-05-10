@@ -3,8 +3,8 @@
 Historically named "session" — kept for backward compat with the
 orchestrator's GlassBridge invocation. Each campaign now has exactly
 one runtime state record; when Postgres is configured, `state.json` is
-a derived cache/export. The "session" concept is gone; what these
-commands manage is the campaign's runtime state.
+not written and remains only the no-Postgres fallback. The "session" concept
+is gone; what these commands manage is the campaign's runtime state.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from ..state import (
     load_state,
     save_state,
     scene_framing_path,
+    state_exists,
     state_path,
     state_summary,
     transcript_path,
@@ -57,14 +58,8 @@ def session_new(ctx: click.Context, campaign: str, session_id_unused: str | None
             "run `aog campaign bootstrap <id>` first"
         )
 
-    state_file = state_path(paths, campaign)
-    if state_file.exists():
-        raise GlassError(
-            f"state already exists at {state_file}; "
-            "delete it manually if you want to reinitialize"
-        )
-
-    state = default_state(campaign)
+    existed = state_exists(paths, campaign)
+    state = load_state(paths, campaign) if existed else default_state(campaign)
     save_state(paths, state)
 
     transcript_file = transcript_path(paths, campaign)
@@ -80,6 +75,7 @@ def session_new(ctx: click.Context, campaign: str, session_id_unused: str | None
         "campaign": campaign,
         "status": "active",
         "path": display_path(runtime_dir),
+        "existing": existed,
     }
     append_audit(paths, state, ctx, "session.new", command_params(campaign=campaign), result)
     emit(result)

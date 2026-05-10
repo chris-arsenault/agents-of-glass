@@ -90,6 +90,36 @@ current implementation uses the Postgres search index as lexical fallback until
 embeddings are populated. New committed turns are indexed at `glass turn append`;
 markdown search chunks are refreshed by `glass search reindex`.
 
+## Checkpoints And Restore
+
+Operator checkpoints are campaign-wide. A checkpoint is not just runtime JSON:
+it snapshots every state surface that can change what agents see or remember.
+
+`aog campaign checkpoint <campaign-id>` captures:
+
+- the live campaign filesystem under `campaigns/<id>/`
+- all Postgres rows for the campaign, including `search_chunks.embedding`
+- all FalkorDB graph nodes and edges tagged with the campaign id
+
+Checkpoints live outside agent discovery at
+`campaigns/.checkpoints/<campaign-id>/<checkpoint-id>/`. Restoring a checkpoint
+archives the previous live campaign state under that checkpoint root, replaces
+the live filesystem, restores Postgres rows, restores the FalkorDB graph, clears
+stale projected CWDs, and reapplies filesystem permissions.
+
+Use:
+
+```bash
+aog campaign checkpoint <campaign-id> --label before-risky-replay
+aog campaign checkpoints <campaign-id>
+aog campaign restore <campaign-id> <checkpoint-id>
+aog campaign reconcile <campaign-id> --repair
+```
+
+Bootstrap creates checkpoints after campaign planning, after character
+creation, and after the prelude. Operators should create explicit checkpoints
+before manual repair, replay, risky resume, or long-running scenes.
+
 ## Rule Of Thumb
 
 If the value is authored prose, put it in markdown.

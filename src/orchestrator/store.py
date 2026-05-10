@@ -3,8 +3,8 @@
 There is no `session` concept. Each campaign has exactly one runtime state
 at `campaigns/<id>/`. This module owns:
 
-  campaigns/<id>/aog-state.json   — orchestrator's local runtime cache
-  campaigns/<id>/state.json       — glass runtime cache/export (Postgres-backed when configured)
+  campaigns/<id>/aog-state.json   — no-Postgres orchestrator fallback cache
+  campaigns/<id>/state.json       — no-Postgres glass runtime fallback
   campaigns/<id>/transcript.md    — derived public transcript export
   campaigns/<id>/audit.jsonl      — append-only audit log
   campaigns/<id>/scene-framing.md — current scene framing
@@ -69,8 +69,7 @@ class SessionStore:
                 "run `aog campaign bootstrap <id>` first."
             )
         try:
-            if not self.glass_state_path(campaign).exists():
-                self.glass.invoke(["session", "new", "--campaign", campaign])
+            self.glass.invoke(["session", "new", "--campaign", campaign])
         except GlassBridgeError as exc:
             raise RuntimeError(f"glass init for {campaign!r} failed: {exc}") from exc
 
@@ -119,7 +118,7 @@ class SessionStore:
         if path.exists():
             state = SessionState.from_dict(json.loads(path.read_text(encoding="utf-8")))
             return self.sync_from_glass(state)
-        if self.glass_state_path(resolved).exists():
+        if self._glass_runtime_exists(resolved):
             state = self._state_from_glass(resolved)
             self.save(state)
             return state
@@ -127,6 +126,12 @@ class SessionStore:
 
     def save(self, state: SessionState) -> None:
         state.updated_at = utc_now()
+        if self._postgres_runtime_configured():
+            self._save_aog_state_to_postgres(state)
+            path = self.state_path(state.campaign)
+            if path.exists():
+                path.unlink()
+            return
         path = self.state_path(state.campaign)
         path.parent.mkdir(parents=True, exist_ok=True)
         _atomic_write(path, json.dumps(state.to_dict(), indent=2, sort_keys=True) + "\n")
@@ -139,7 +144,11 @@ class SessionStore:
             if not d.is_dir():
                 continue
             campaign = d.name
-            if not (self.state_path(campaign).exists() or self.glass_state_path(campaign).exists()):
+            if not (
+                self.state_path(campaign).exists()
+                or self.glass_state_path(campaign).exists()
+                or self._glass_runtime_exists(campaign)
+            ):
                 continue
             try:
                 states.append(self.load(campaign))
@@ -201,7 +210,7 @@ class SessionStore:
             handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
     def clear_state(self, campaign: str) -> None:
-        """Delete runtime state/cache (Postgres runtime rows plus local files).
+        """Delete runtime state/cache (Postgres runtime rows plus fallback files).
 
         Does NOT delete the campaign workspace itself or any DM/player-
         authored content. Operator escape hatch.
@@ -267,15 +276,99 @@ class SessionStore:
         self.save(synced)
         return synced
 
+    def _postgres_runtime_configured(self) -> bool:
+        try:
+            from cli import db as _glass_db
+            from cli.config import load_config as _load_glass_config
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                return _glass_db.postgres_configured(_load_glass_config())
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            return False
+
+    def _glass_runtime_exists(self, campaign: str) -> bool:
+        if self.glass_state_path(campaign).exists():
+            return True
+        try:
+            from cli.config import get_paths as _get_glass_paths
+            from cli.config import load_config as _load_glass_config
+            from cli.state import state_exists as _runtime_state_exists
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                _load_glass_config()
+                return _runtime_state_exists(_get_glass_paths(), campaign)
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            return False
+
+    def _save_aog_state_to_postgres(self, state: SessionState) -> None:
+        from cli.config import get_paths as _get_glass_paths
+        from cli.config import load_config as _load_glass_config
+        from cli.state import default_state as _default_glass_state
+        from cli.state import load_state as _load_runtime_state
+        from cli.state import save_state as _save_runtime_state
+
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            _load_glass_config()
+            paths = _get_glass_paths()
+            try:
+                glass_state = _load_runtime_state(paths, state.campaign)
+            except Exception:
+                glass_state = _default_glass_state(state.campaign)
+            glass_state["aog_status"] = state.status
+            glass_state["aog_failure"] = state.failure
+            glass_state["aog_run_metadata"] = state.run_metadata
+            glass_state["aog_last_speaker"] = state.last_speaker
+            glass_state["aog_turn_number"] = state.turn_number
+            _save_runtime_state(paths, glass_state)
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
+
     def _state_from_glass(self, campaign: str) -> SessionState:
         glass_state = self._load_glass_state(campaign)
         return self._state_from_glass_state(glass_state, existing=None)
 
     def _load_glass_state(self, campaign: str) -> dict[str, Any]:
-        path = self.glass_state_path(campaign)
-        if not path.exists():
-            raise FileNotFoundError(f"No glass state found for campaign {campaign!r}")
-        return json.loads(path.read_text(encoding="utf-8"))
+        try:
+            from cli.config import get_paths as _get_glass_paths
+            from cli.config import load_config as _load_glass_config
+            from cli.state import load_state as _load_runtime_state
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                _load_glass_config()
+                return _load_runtime_state(_get_glass_paths(), campaign)
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            if self._postgres_runtime_configured():
+                raise
+            path = self.glass_state_path(campaign)
+            if not path.exists():
+                raise FileNotFoundError(f"No glass state found for campaign {campaign!r}")
+            return json.loads(path.read_text(encoding="utf-8"))
 
     def _state_from_glass_state(
         self,
@@ -306,8 +399,11 @@ class SessionStore:
         glass_stack_explicit = glass_stack_raw is not None
         glass_stack = list(glass_stack_raw) if glass_stack_explicit else []
 
+        aog_status = glass_state.get("aog_status")
         if existing and existing.status in {"failed", "interrupted", "paused", "running"}:
             status = existing.status
+        elif isinstance(aog_status, str) and status_raw != "wrapped":
+            status = aog_status
         else:
             status = _aog_status_from_glass(status_raw)
 
@@ -343,9 +439,15 @@ class SessionStore:
                 )
             ]
 
-        last_speaker = turns[-1].get("speaker") if turns else None
-        run_metadata = dict(existing.run_metadata) if existing else {}
-        run_metadata["glass_state"] = "campaigns/<id>/state.json"
+        last_speaker = (
+            turns[-1].get("speaker")
+            if turns
+            else glass_state.get("aog_last_speaker")
+        )
+        run_metadata = dict(glass_state.get("aog_run_metadata") or {})
+        if existing:
+            run_metadata.update(existing.run_metadata)
+        run_metadata["glass_state"] = "postgres runtime state"
 
         closing_raw = glass_state.get("scene_closing_turns")
         scene_closing_turns = int(closing_raw) if closing_raw is not None else None
@@ -358,7 +460,7 @@ class SessionStore:
             turn_number=turn_counter,
             mode_stack=frames,
             last_speaker=last_speaker,
-            failure=existing.failure if existing else None,
+            failure=existing.failure if existing else glass_state.get("aog_failure"),
             run_metadata=run_metadata,
             scene_closing_turns=scene_closing_turns,
         )

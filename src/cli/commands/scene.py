@@ -117,22 +117,38 @@ def scene_create(
 ) -> None:
     require_dm()
     workspace = _campaign_workspace()
+    paths = get_paths()
     try:
         scene_dir = _workspace.create_scene(workspace, scene_id, scene_type, arc_id=arc_id)
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         raise GlassError(str(exc)) from exc
+    state = load_state(paths, workspace.campaign_id)
     normalized_scene_type = _workspace.slugify(scene_type)
+    normalized_scene_id = _workspace.slugify(scene_id)
+    active_scene_arc = state.get("active_scene_arc")
+    queue_event(
+        state,
+        "dm",
+        f"scene create: {normalized_scene_id} ({normalized_scene_type})",
+    )
     result = {
         "campaign_id": workspace.campaign_id,
-        "scene_id": scene_id,
+        "scene_id": normalized_scene_id,
         "scene_type": normalized_scene_type,
-        "arc_id": arc_id or _workspace.load_campaign_state(workspace).get("active_scene_arc"),
+        "arc_id": arc_id or active_scene_arc,
         "path": str(scene_dir),
         "files": ["prep.md", "context.md", "summary.md", "transcript.md", "audit.jsonl"],
         "table_path": str(workspace.table_dir),
         "table_files": ["index.md", "scene.md", "handouts/"],
     }
-    emit(result)
+    commit(
+        paths,
+        state,
+        ctx,
+        "scene.create",
+        command_params(scene_id=scene_id, scene_type=scene_type, arc_id=arc_id),
+        result,
+    )
 
 
 @scene.command("end")

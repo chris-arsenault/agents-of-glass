@@ -1,9 +1,10 @@
 """Campaign-level workspace management.
 
 A campaign workspace lives at `campaigns/<id>/` and is populated by copying
-the `templates/` tree at campaign-bootstrap time. The campaign's `state.json`
-tracks the bootstrap phase (init / campaign_planning / character_creation /
-prelude / active) and per-phase history.
+the `templates/` tree at campaign-bootstrap time. Bootstrap phase fields
+(init / campaign_planning / character_creation / prelude / active) live in
+the runtime state row when Postgres is configured, with `state.json` kept only
+as the no-Postgres fallback.
 
 This module is the home for the campaign workspace lifecycle. It does NOT
 own the per-session/per-scene state machine (that's `store.py`/`state.py`),
@@ -69,8 +70,8 @@ class CampaignManager:
     def create(self, campaign_id: str) -> CampaignSpace:
         """Create a new campaign workspace by copying templates/ into campaigns/<id>/.
 
-        Initializes state.json at phase `init`. Raises FileExistsError if the
-        campaign already exists.
+        Initializes campaign phase state at `init`. Raises FileExistsError if
+        the campaign already exists.
         """
         space = CampaignSpace.from_config(self.config, campaign_id)
         if space.exists():
@@ -115,7 +116,7 @@ class CampaignManager:
         return sorted(
             p.name
             for p in self.config.campaigns_dir.iterdir()
-            if p.is_dir() and (p / "state.json").exists()
+            if p.is_dir() and not p.name.startswith(".")
         )
 
     def clear(self, campaign_id: str) -> None:
@@ -133,6 +134,9 @@ class CampaignManager:
 
     def load_state(self, campaign_id: str) -> dict[str, Any]:
         space = CampaignSpace.from_config(self.config, campaign_id)
+        state = self._load_state_from_postgres(campaign_id)
+        if state is not None:
+            return state
         if not space.state_path.exists():
             raise FileNotFoundError(
                 f"No campaign state found for {campaign_id!r} at {space.state_path}"
@@ -163,15 +167,18 @@ class CampaignManager:
     # --- internals ---
 
     def _write_state(self, space: CampaignSpace, state: dict[str, Any]) -> None:
+        if self._sync_state_to_postgres(state):
+            if space.state_path.exists():
+                space.state_path.unlink()
+            return
         tmp = space.state_path.with_suffix(space.state_path.suffix + ".tmp")
         tmp.write_text(
             json.dumps(state, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         tmp.replace(space.state_path)
-        self._sync_state_to_postgres(state)
 
-    def _sync_state_to_postgres(self, state: dict[str, Any]) -> None:
+    def _sync_state_to_postgres(self, state: dict[str, Any]) -> bool:
         """Keep campaign phase fields in the Postgres runtime row when enabled."""
         import os
 
@@ -183,12 +190,34 @@ class CampaignManager:
         try:
             toml_data = _load_glass_config()
             if not _glass_db.postgres_configured(toml_data):
-                return
+                return False
             pg_config = _glass_db.load_pg_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 existing = _glass_db.runtime_state_get(conn, state["campaign"]) or {}
                 merged = {**existing, **state}
                 _glass_db.runtime_state_upsert(conn, merged)
+            return True
+        finally:
+            if previous_config is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous_config
+
+    def _load_state_from_postgres(self, campaign_id: str) -> dict[str, Any] | None:
+        import os
+
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+
+        previous_config = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                return None
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                return _glass_db.runtime_state_get(conn, campaign_id)
         finally:
             if previous_config is None:
                 os.environ.pop("GLASS_CONFIG", None)

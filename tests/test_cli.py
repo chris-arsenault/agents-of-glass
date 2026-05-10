@@ -5,7 +5,17 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from cli.commands.character import (
+    _append_signature_move,
+    _inventory_add,
+    _normalize_bulk_update_payload,
+    _normalize_goals,
+    _render_public_character_mirror,
+    _signature_move_names,
+    _signature_move_slots,
+)
 from cli.config import Paths
+from cli.errors import GlassError
 from cli.main import main
 from cli.messages import load_message_types
 
@@ -37,6 +47,155 @@ def invoke_ok(runner: CliRunner, args: list[str], env: dict[str, str]):
 
 
 class GlassCliTests(unittest.TestCase):
+    def test_character_goal_validation_requires_two_or_three_goals(self) -> None:
+        self.assertEqual(_normalize_goals(("Find Rin.", "Pay the debt.")), [
+            "Find Rin.",
+            "Pay the debt.",
+        ])
+        with self.assertRaises(GlassError):
+            _normalize_goals(("Only one.",))
+        with self.assertRaises(GlassError):
+            _normalize_goals(("one", "two", "three", "four"))
+
+    def test_character_public_mirror_has_consistent_canonical_fields(self) -> None:
+        body = _render_public_character_mirror(
+            {
+                "character_id": "vel",
+                "player_id": "tev",
+                "name": "Vel Arannis",
+                "species": "human",
+                "culture": "Sithari",
+                "archetype": "route contact",
+                "organization_role": "witness handler",
+                "pronouns": "",
+                "bio": "Keeps doors open for people who cannot be seen asking.",
+                "goals": ["Get Mara safe passage.", "Pay down the route debt."],
+                "attributes": {"vitality": "standard", "finesse": "advanced"},
+                "skills": {"quiet entry": "artisan"},
+                "inventory": [
+                    {
+                        "id": "forged-route-seal",
+                        "qty": 1,
+                        "effect_tags": ["passes casual inspection"],
+                    }
+                ],
+                "tags": ["human", "sithari"],
+                "hp": {"current": 10, "max": 10},
+                "momentum": {"current": 0, "floor": -2, "ceiling": 3},
+                "xp": 0,
+                "level": 1,
+            }
+        )
+
+        self.assertIn("type: character-display", body)
+        self.assertIn("**Species:** human", body)
+        self.assertIn("**Culture:** Sithari", body)
+        self.assertIn("**Organization role:** witness handler", body)
+        self.assertIn("**Pronouns:** unspecified", body)
+        self.assertIn("- Get Mara safe passage.", body)
+        self.assertIn("forged-route-seal", body)
+
+    def test_signature_move_slots_progress_by_level(self) -> None:
+        self.assertEqual(_signature_move_slots(1), 1)
+        self.assertEqual(_signature_move_slots(2), 1)
+        self.assertEqual(_signature_move_slots(3), 2)
+        self.assertEqual(_signature_move_slots(5), 3)
+        self.assertEqual(_signature_move_slots(9), 5)
+        self.assertEqual(_signature_move_slots(10), 5)
+
+    def test_signature_move_parser_ignores_template_placeholder(self) -> None:
+        body = """
+# Signature Moves
+
+## Moves
+
+### Move name
+
+- **Look:** Placeholder.
+
+### Crackling Punch
+
+- **Look:** Sparks down the wrist.
+""".strip()
+
+        self.assertEqual(_signature_move_names(body), ["Crackling Punch"])
+
+    def test_signature_move_append_replaces_placeholder(self) -> None:
+        body = """
+# Signature Moves
+
+## Moves
+
+### Move name
+
+- **Look:** Placeholder.
+- **Usual use:** Placeholder.
+""".strip()
+
+        updated = _append_signature_move(
+            body,
+            {"name": "Vel Arannis"},
+            "Quiet Door",
+            "- **Look:** The latch clicks under a breath.\n"
+            "- **Usual use:** Entering places where asking would fail.\n"
+            "- **Tells/costs:** Leaves wax dust on the thumb.",
+        )
+
+        self.assertNotIn("### Move name", updated)
+        self.assertIn("### Quiet Door", updated)
+        self.assertIn("wax dust", updated)
+
+    def test_character_bulk_update_payload_normalizes_batched_mutations(self) -> None:
+        updates = _normalize_bulk_update_payload(
+            {
+                "mirror": True,
+                "characters": [
+                    {
+                        "character_id": "vel",
+                        "set": {"bio": "Keeps doors open."},
+                        "inventory_add": [
+                            {
+                                "id": "route-seal",
+                                "qty": 1,
+                                "effect_tags": "passes casual review",
+                            }
+                        ],
+                        "signature_moves": [
+                            {
+                                "name": "Quiet Door",
+                                "look": "A hand on the latch.",
+                                "use": "Entering quietly.",
+                                "tell": "Wax on the thumb.",
+                            }
+                        ],
+                    }
+                ],
+            },
+            mirror_override=None,
+        )
+
+        self.assertEqual(len(updates), 1)
+        update = updates[0]
+        self.assertEqual(update["character_id"], "vel")
+        self.assertTrue(update["mirror"])
+        self.assertEqual(update["set"], {"bio": "Keeps doors open."})
+        self.assertEqual(update["inventory_add"][0]["effect_tags"], ["passes casual review"])
+        self.assertEqual(update["signature_moves"][0]["name"], "Quiet Door")
+        self.assertIn("A hand on the latch.", update["signature_moves"][0]["body"])
+
+    def test_inventory_add_merges_qty_and_effect_tags(self) -> None:
+        inventory = [{"id": "route-seal", "qty": 1, "effect_tags": ["official"]}]
+
+        change = _inventory_add(
+            inventory,
+            {"id": "route-seal", "qty": 2, "effect_tags": ["official", "forged"]},
+        )
+
+        self.assertEqual(change["qty_before"], 1)
+        self.assertEqual(change["qty_after"], 3)
+        self.assertEqual(inventory[0]["qty"], 3)
+        self.assertEqual(inventory[0]["effect_tags"], ["official", "forged"])
+
     def test_message_types_load_from_instruction_headings_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -109,6 +268,22 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertEqual(campaign_note.read_text(encoding="utf-8"), "Observed.")
             self.assertFalse(template_note.exists())
+
+    def test_player_note_write_cannot_bypass_signature_move_progression(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+
+            result = runner.invoke(
+                main,
+                ["note", "write", "signature-moves.md", "--body", "Too many moves."],
+                env={**env, "GLASS_ROLE": "player:tev"},
+            )
+
+            self.assertNotEqual(result.exit_code, 0)
+            self.assertIn("glass character signature-add", result.output)
 
     def test_turn_append_exports_file_and_structured_feed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

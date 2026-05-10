@@ -267,6 +267,129 @@ def delete_campaign_graph(g: Any, campaign_id: str) -> dict[str, int]:
     return deleted
 
 
+def export_campaign_graph(g: Any, campaign_id: str) -> dict[str, Any]:
+    """Export all campaign-tagged graph nodes and relationships."""
+
+    node_rows = g.query(
+        """
+        MATCH (n)
+        WHERE n.campaign_id = $campaign
+        RETURN n
+        ORDER BY n.uid
+        """,
+        {"campaign": campaign_id},
+    )
+    nodes: list[dict[str, Any]] = []
+    for row in node_rows.result_set:
+        serialized = _serialize_value(row[0])
+        if isinstance(serialized, dict):
+            labels = serialized.pop("_labels", [])
+            serialized.pop("_kind", None)
+            nodes.append(
+                {
+                    "uid": serialized.get("uid"),
+                    "labels": labels or ["Entity"],
+                    "properties": serialized,
+                }
+            )
+
+    edge_rows = g.query(
+        """
+        MATCH (a)-[r]->(b)
+        WHERE a.campaign_id = $campaign AND b.campaign_id = $campaign
+        RETURN a.uid, r, b.uid
+        ORDER BY a.uid, b.uid
+        """,
+        {"campaign": campaign_id},
+    )
+    edges: list[dict[str, Any]] = []
+    for row in edge_rows.result_set:
+        serialized = _serialize_value(row[1])
+        if not isinstance(serialized, dict):
+            continue
+        edge_type = serialized.pop("_relation", None)
+        serialized.pop("_kind", None)
+        if not edge_type:
+            continue
+        edges.append(
+            {
+                "source_uid": row[0],
+                "type": str(edge_type),
+                "target_uid": row[2],
+                "properties": serialized,
+            }
+        )
+
+    return {
+        "campaign_id": campaign_id,
+        "exported_at": _now_iso(),
+        "nodes": nodes,
+        "edges": edges,
+        "counts": {
+            "nodes": len(nodes),
+            "edges": len(edges),
+            "entities": sum(1 for node in nodes if "Entity" in node.get("labels", [])),
+            "sections": sum(1 for node in nodes if "Section" in node.get("labels", [])),
+        },
+    }
+
+
+def import_campaign_graph(
+    g: Any,
+    campaign_id: str,
+    snapshot: dict[str, Any],
+) -> dict[str, int]:
+    """Replace a campaign's graph with an exported graph snapshot."""
+
+    nodes = snapshot.get("nodes")
+    edges = snapshot.get("edges")
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        raise ValueError("invalid Falkor checkpoint: expected nodes and edges lists")
+    delete_campaign_graph(g, campaign_id)
+
+    created_nodes = 0
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        props = dict(node.get("properties") or {})
+        if props.get("campaign_id") != campaign_id:
+            raise ValueError("checkpoint graph node campaign mismatch")
+        uid = str(props.get("uid") or node.get("uid") or "")
+        if not uid:
+            raise ValueError("checkpoint graph node missing uid")
+        props["uid"] = uid
+        labels = _cypher_labels(node.get("labels") or ["Entity"])
+        g.query(
+            f"CREATE (n{labels} {{uid: $uid}}) SET n += $props",
+            {"uid": uid, "props": props},
+        )
+        created_nodes += 1
+
+    created_edges = 0
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        edge_type = str(edge.get("type") or "")
+        if not _valid_edge_type(edge_type):
+            raise ValueError(f"invalid checkpoint graph edge type: {edge_type!r}")
+        src_uid = str(edge.get("source_uid") or "")
+        dst_uid = str(edge.get("target_uid") or "")
+        if not src_uid or not dst_uid:
+            raise ValueError("checkpoint graph edge missing endpoint uid")
+        props = dict(edge.get("properties") or {})
+        g.query(
+            f"""
+            MATCH (a {{uid: $src_uid}}), (b {{uid: $dst_uid}})
+            MERGE (a)-[r:{edge_type}]->(b)
+            SET r += $props
+            """,
+            {"src_uid": src_uid, "dst_uid": dst_uid, "props": props},
+        )
+        created_edges += 1
+
+    return {"nodes": created_nodes, "edges": created_edges}
+
+
 # ---------------------------------------------------------------------------
 # Queries
 # ---------------------------------------------------------------------------
@@ -597,6 +720,18 @@ def _slugify(value: str) -> str:
 
 def _valid_edge_type(name: str) -> bool:
     return bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", name))
+
+
+def _cypher_labels(labels: Any) -> str:
+    normalized: list[str] = []
+    raw_labels = labels if isinstance(labels, list) else [labels]
+    for label in raw_labels:
+        value = str(label)
+        if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", value):
+            normalized.append(value)
+    if not normalized:
+        normalized = ["Entity"]
+    return ":" + ":".join(dict.fromkeys(normalized))
 
 
 def _entity_uid(campaign_id: str, entity_id: str) -> str:

@@ -1,7 +1,7 @@
 """Helpers for arc / scene / lore management within a campaign workspace.
 
 Scaffolds the `campaigns/<id>/arcs/<arc>/...` directory tree, manages the
-campaign-level state.json (active arc / active scene / arc list), and copies
+campaign runtime state (active arc / active scene / arc list), and copies
 world-bible entries into the campaign's curated lore.
 
 These helpers are called by the `glass arc`, `glass scene`, and `glass lore`
@@ -14,10 +14,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-import json
 import os
 import re
 import shutil
+
+from .config import get_paths
+from .state import load_state, save_state
 
 
 def slugify(value: str) -> str:
@@ -29,7 +31,6 @@ def slugify(value: str) -> str:
 class CampaignWorkspace:
     campaign_id: str
     root: Path
-    state_path: Path
 
     @property
     def arcs_dir(self) -> Path:
@@ -61,16 +62,16 @@ def resolve_active_campaign(
     Resolution order:
       1. `explicit_id` (e.g. `--campaign foo`)
       2. `env_id` (e.g. `GLASS_CAMPAIGN_ID` env var, set by the orchestrator)
-      3. The most-recently-modified campaign with a `state.json`.
+      3. The most-recently-modified campaign directory.
     """
     candidate_id = explicit_id or env_id
     if candidate_id:
         candidate = campaigns_dir / candidate_id
-        if not (candidate / "state.json").exists():
+        if not candidate.is_dir():
             raise FileNotFoundError(
-                f"Campaign {candidate_id!r} has no state.json at {candidate / 'state.json'}"
+                f"Campaign {candidate_id!r} does not exist at {candidate}"
             )
-        return CampaignWorkspace(candidate_id, candidate, candidate / "state.json")
+        return CampaignWorkspace(candidate_id, candidate)
 
     if not campaigns_dir.exists():
         raise FileNotFoundError(
@@ -80,7 +81,7 @@ def resolve_active_campaign(
 
     latest: Path | None = None
     for p in campaigns_dir.iterdir():
-        if p.is_dir() and (p / "state.json").exists():
+        if p.is_dir() and not p.name.startswith("."):
             if latest is None or p.stat().st_mtime > latest.stat().st_mtime:
                 latest = p
     if latest is None:
@@ -88,17 +89,15 @@ def resolve_active_campaign(
             f"No campaigns found under {campaigns_dir}; "
             "create one with `aog campaign bootstrap`"
         )
-    return CampaignWorkspace(latest.name, latest, latest / "state.json")
+    return CampaignWorkspace(latest.name, latest)
 
 
 def load_campaign_state(workspace: CampaignWorkspace) -> dict[str, Any]:
-    return json.loads(workspace.state_path.read_text(encoding="utf-8"))
+    return load_state(get_paths(), workspace.campaign_id)
 
 
 def save_campaign_state(workspace: CampaignWorkspace, state: dict[str, Any]) -> None:
-    tmp = workspace.state_path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(workspace.state_path)
+    save_state(get_paths(), state)
 
 
 # --- arcs ---

@@ -168,6 +168,12 @@ class GlassApiProxyTests(unittest.TestCase):
                 ),
                 "hello from projection\n",
             )
+            self.assertEqual(
+                (projection / "players" / "tev" / "public" / "intro.md").read_text(
+                    encoding="utf-8"
+                ),
+                "hello from projection\n",
+            )
 
 
 if __name__ == "__main__":

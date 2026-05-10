@@ -55,7 +55,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "path": "../the-glass-frontier-lore",
     },
     "claude": {
-        "model": "claude-sonnet-4-6",
+        "model": "claude-opus-4-7",
         # 60 minutes per turn. The DM in campaign-planning mode reads the
         # methodology, persona, world bible, does web search for the
         # anti-sameness pulls, and writes 8+ files per invocation. Tight

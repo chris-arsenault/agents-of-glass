@@ -184,6 +184,10 @@ aog campaign character-create [<id>] # run the character_creation phase
 aog campaign bootstrap <id>          # run planning, character creation, and prelude
 aog campaign run [<id>]              # advance from current phase, doing whatever's next
 aog campaign resume [<id>]           # alias for `run`, framed for failure recovery
+aog campaign checkpoint <id> [--label <text>] # snapshot filesystem, Postgres, FalkorDB
+aog campaign checkpoints <id>        # list checkpoints
+aog campaign restore <id> <checkpoint-id>     # restore all persistence surfaces
+aog campaign reconcile <id> [--repair]        # validate/refresh projections
 aog campaign clear <id> --back-to <phase|arc|scene>   # roll back state
 
 aog scene run [<scene-slug>]         # run the active or named scene (foreground orchestrator loop)
@@ -202,7 +206,9 @@ Every phase and every scene is resumable mid-flight. State persists after every 
 
 - If an agent invocation fails (claude error, timeout, malformed output): the orchestrator stops. Scene-level state in `arcs/<arc>/scenes/<scene>/` reflects the last fully-committed turn. Campaign-level state is unchanged.
 - Operator inspects, fixes, runs `aog scene resume` (or `aog campaign resume` if no scene is active).
-- For structural failure: `aog campaign clear <id> --back-to <phase|arc|scene>` wipes state forward, preserves earlier work.
+- For structural failure: restore to an operator checkpoint. Checkpoints include
+  the campaign filesystem, Postgres runtime/search/vector rows, and FalkorDB
+  graph nodes/edges.
 
 Phase transitions are **explicit, not automatic**. The DM declares planning complete. The DM ratifies the last character. Scenes end when the DM calls `glass scene end`. This is so a half-finished phase or scene doesn't accidentally advance because of a stray turn.
 
@@ -226,4 +232,4 @@ The DM-only working documents (`foundation.md`, `plan.md`, `prep.md`) hold the f
 - **Whether `glass scene end` is the only way to end a scene** or whether the orchestrator can force-end at a hard turn cap. (The latter is the deferred closure design — see [`scene-ending.md`](scene-ending.md).)
 - **Hard caps per phase.** Pin during build.
 
-See [`/tracking-immediate-decisions.md`](../../tracking-immediate-decisions.md) for the working list.
+See [`/docs/backlog.md`](../backlog.md) for the active deferred work list.

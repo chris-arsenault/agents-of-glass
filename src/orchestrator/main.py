@@ -9,14 +9,6 @@ import shutil
 
 import click
 
-
-# umask 002 so subdirs the orchestrator creates inside the campaign
-# workspace (notably per-turn artifact dirs under <agent>/turns/) are
-# group-writable. Combined with setgid + group=aog-<player> on the
-# parent turns/, this lets the player Unix user write their out.md
-# into a subdir the orchestrator (running as operator) created.
-os.umask(0o002)
-
 from .campaign import (
     CampaignManager,
     CampaignSpace,
@@ -28,11 +20,22 @@ from .campaign import (
 from .config import config_env_value, load_config
 from .runner import Orchestrator, TurnFailure
 from .state import PLAYER_IDS
-from .store import SessionStore, summarize_states
+from .store import SessionStore
+
+
+# umask 002 so subdirs the orchestrator creates inside the campaign
+# workspace (notably per-turn artifact dirs under <agent>/turns/) are
+# group-writable. Combined with setgid + group=aog-<player> on the
+# parent turns/, this lets the player Unix user write their out.md
+# into a subdir the orchestrator (running as operator) created.
+os.umask(0o002)
 
 
 class CliState:
     def __init__(self, config_path: str | None):
+        from cli.local_env import load_repo_env
+
+        load_repo_env()
         self.config = load_config(config_path)
         self.store = SessionStore(self.config)
         self.orchestrator = Orchestrator(self.config, self.store)
@@ -193,13 +196,11 @@ def campaign_bootstrap(
         except (FileExistsError, FileNotFoundError) as exc:
             raise click.ClickException(str(exc))
     click.echo(f"      workspace: {space.campaign_dir}")
-    click.echo(f"      state:     {space.state_path}")
+    click.echo(f"      state:     Postgres runtime row (file fallback: {space.state_path})")
 
     # Phase 2: campaign planning
     if _phase_completed(cm_state, PHASE_PLANNING):
-        click.secho(
-            f"[2/5] Campaign planning already complete; skipping.", fg="yellow"
-        )
+        click.secho("[2/5] Campaign planning already complete; skipping.", fg="yellow")
     else:
         click.secho(
             f"[2/5] Invoking DM for campaign planning (max {max_planning_turns} turns)",
@@ -236,6 +237,12 @@ def campaign_bootstrap(
         click.echo(f"      DM produced {turns_run} planning turn(s)")
         click.echo(f"      transcript: {cli.store.transcript_path(state.campaign)}")
         click.echo(f"      DM workspace: {space.campaign_dir / 'dm'}")
+        checkpoint = _checkpoint_or_raise(
+            cli,
+            campaign_id,
+            label="after-campaign-planning",
+        )
+        click.echo(f"      checkpoint: {checkpoint['checkpoint_id']}")
         cm_state = cli.campaign_manager.load_state(campaign_id)  # refresh
 
     # Phase 3: character creation
@@ -250,12 +257,10 @@ def campaign_bootstrap(
             fg="green",
         )
         click.echo(f"Next phase: {PHASE_CHARACTER_CREATION}")
-        click.echo(f"State file: {space.state_path}")
+        click.echo(f"Runtime state: Postgres runtime row (file fallback: {space.state_path})")
         return
     elif _phase_completed(cm_state, PHASE_CHARACTER_CREATION):
-        click.secho(
-            f"[3/5] Character creation already complete; skipping.", fg="yellow"
-        )
+        click.secho("[3/5] Character creation already complete; skipping.", fg="yellow")
     else:
         click.secho(
             f"[3/5] Invoking players + DM for character creation "
@@ -293,6 +298,12 @@ def campaign_bootstrap(
             _validate_character_creation_complete(cli, campaign_id)
         click.echo(f"      ran {creation_turns} character-creation turn(s)")
         click.echo(f"      transcript: {cli.store.transcript_path(creation_state.campaign)}")
+        checkpoint = _checkpoint_or_raise(
+            cli,
+            campaign_id,
+            label="after-character-creation",
+        )
+        click.echo(f"      checkpoint: {checkpoint['checkpoint_id']}")
         cm_state = cli.campaign_manager.load_state(campaign_id)
 
     # Phase 4: prelude shakedown
@@ -306,10 +317,10 @@ def campaign_bootstrap(
             fg="green",
         )
         click.echo(f"Next phase: {PHASE_PRELUDE}")
-        click.echo(f"State file: {space.state_path}")
+        click.echo(f"Runtime state: Postgres runtime row (file fallback: {space.state_path})")
         return
     if _phase_completed(cm_state, PHASE_PRELUDE):
-        click.secho(f"[4/5] Prelude already complete; skipping.", fg="yellow")
+        click.secho("[4/5] Prelude already complete; skipping.", fg="yellow")
     else:
         click.secho(
             f"[4/5] Running bootstrap prelude (max {max_prelude_turns} turns)",
@@ -344,6 +355,12 @@ def campaign_bootstrap(
         )
         click.echo(f"      ran {prelude_turns} prelude turn(s)")
         click.echo(f"      transcript: {cli.store.transcript_path(prelude_state.campaign)}")
+        checkpoint = _checkpoint_or_raise(
+            cli,
+            campaign_id,
+            label="after-prelude",
+        )
+        click.echo(f"      checkpoint: {checkpoint['checkpoint_id']}")
         cm_state = cli.campaign_manager.load_state(campaign_id)
 
     # Phase 5: active campaign handoff
@@ -358,7 +375,7 @@ def campaign_bootstrap(
         f"Campaign '{campaign_id}' bootstrapped through prelude.",
         fg="green",
     )
-    click.echo(f"State file: {space.state_path}")
+    click.echo(f"Runtime state: Postgres runtime row (file fallback: {space.state_path})")
 
 
 def _phase_completed(cm_state: dict, phase_name: str) -> bool:
@@ -429,12 +446,21 @@ def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> No
             )
             continue
         character = player_characters[0]
+        for field_name in ("name", "species", "culture", "archetype", "organization_role", "bio"):
+            if not str(character.get(field_name) or "").strip():
+                failures.append(f"{player_id}: missing character field {field_name}")
+        goals = list(character.get("goals") or [])
+        if not (2 <= len([goal for goal in goals if str(goal).strip()]) <= 3):
+            failures.append(
+                f"{player_id}: expected 2-3 canonical goals, found {len(goals)}"
+            )
         inventory = list(character.get("inventory") or [])
         if not (3 <= len(inventory) <= 5):
             failures.append(
                 f"{player_id}: expected 3-5 inventory entries, found {len(inventory)}"
             )
         for rel_path in (
+            Path("players") / player_id / "public" / "character.md",
             Path("players") / player_id / "public" / "intro.md",
             Path("players") / player_id / "public" / "relationships.md",
         ):
@@ -600,6 +626,76 @@ def campaign_show(cli: CliState, campaign_id: str | None, as_json: bool) -> None
         click.echo(json.dumps(state.failure, indent=2, sort_keys=True))
 
 
+@campaign.command("checkpoint")
+@click.argument("campaign_id")
+@click.option("--label", default=None, help="Human-readable checkpoint label.")
+@click.pass_obj
+def campaign_checkpoint(cli: CliState, campaign_id: str, label: str | None) -> None:
+    """Snapshot filesystem, Postgres, search vectors, and FalkorDB graph."""
+    checkpoint = _checkpoint_or_raise(cli, campaign_id, label=label)
+    click.echo(f"checkpoint: {checkpoint['checkpoint_id']}")
+    click.echo(f"path: {checkpoint['path']}")
+    click.echo("counts:")
+    click.echo(json.dumps(checkpoint["counts"], indent=2, sort_keys=True))
+
+
+@campaign.command("checkpoints")
+@click.argument("campaign_id")
+@click.pass_obj
+def campaign_checkpoints(cli: CliState, campaign_id: str) -> None:
+    """List campaign checkpoints."""
+    from .checkpoints import list_checkpoints
+
+    checkpoints = list_checkpoints(cli.config, campaign_id)
+    if not checkpoints:
+        click.echo("no checkpoints")
+        return
+    for item in checkpoints:
+        click.echo(
+            f"{item['checkpoint_id']:<72}  "
+            f"{item.get('created_at', ''):<25}  {item.get('label', '')}"
+        )
+
+
+@campaign.command("restore")
+@click.argument("campaign_id")
+@click.argument("checkpoint_id")
+@click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
+@click.pass_obj
+def campaign_restore(
+    cli: CliState,
+    campaign_id: str,
+    checkpoint_id: str,
+    yes: bool,
+) -> None:
+    """Restore campaign state from a checkpoint."""
+    from .checkpoints import restore_checkpoint
+
+    if not yes and not click.confirm(
+        f"Restore campaign {campaign_id!r} to checkpoint {checkpoint_id!r}? "
+        "Current live state will be archived outside agent discovery."
+    ):
+        raise click.Abort()
+    try:
+        result = restore_checkpoint(cli.config, campaign_id, checkpoint_id)
+    except Exception as exc:
+        raise click.ClickException(f"checkpoint restore failed: {exc}") from exc
+    click.echo(f"restored: {campaign_id} <- {checkpoint_id}")
+    click.echo(f"discarded archive: {result['discarded_archive']}")
+    click.echo("restored counts:")
+    click.echo(json.dumps(result["restored_counts"], indent=2, sort_keys=True))
+
+
+@campaign.command("reconcile")
+@click.argument("campaign_id")
+@click.option("--repair", is_flag=True, help="Rewrite disposable projections and permissions.")
+@click.pass_obj
+def campaign_reconcile(cli: CliState, campaign_id: str, repair: bool) -> None:
+    """Check campaign state surfaces and optionally refresh projections."""
+    result = _reconcile_campaign(cli, campaign_id, repair=repair)
+    click.echo(json.dumps(result, indent=2, sort_keys=True))
+
+
 @campaign.command("prepare-turn")
 @click.argument("campaign_id", required=False)
 @click.pass_obj
@@ -656,7 +752,7 @@ def campaign_resume(
 @campaign.command("clean")
 @click.argument("campaign_id")
 @click.option("--state-only", is_flag=True,
-              help="Only delete runtime state/cache (runtime DB rows, state.json, "
+              help="Only delete runtime state/cache (runtime DB rows, file-fallback state, "
                    "transcript export, audit.jsonl, scene-framing.md, per-agent turns/). "
                    "Keeps the campaign workspace, DM/player content, arcs, lore, "
                    "characters/messages/rolls, and graph nodes.")
@@ -788,6 +884,130 @@ def _run_or_raise(
     except TurnFailure as exc:
         detail = json.dumps(exc.failure, indent=2, sort_keys=True)
         raise click.ClickException(f"{exc}\n{detail}") from exc
+
+
+def _checkpoint_or_raise(
+    cli: CliState,
+    campaign_id: str,
+    *,
+    label: str | None,
+) -> dict[str, object]:
+    from .checkpoints import create_checkpoint
+
+    try:
+        checkpoint = create_checkpoint(cli.config, campaign_id, label=label)
+    except Exception as exc:
+        raise click.ClickException(f"checkpoint failed: {exc}") from exc
+    return {
+        "checkpoint_id": checkpoint.checkpoint_id,
+        "path": str(checkpoint.path),
+        "counts": checkpoint.manifest.get("counts", {}),
+    }
+
+
+def _reconcile_campaign(
+    cli: CliState,
+    campaign_id: str,
+    *,
+    repair: bool,
+) -> dict[str, object]:
+    from . import permissions as _permissions
+    from cli import db as _glass_db
+    from cli.config import load_config as _load_glass_config
+
+    campaign_dir = cli.config.campaigns_dir / campaign_id
+    checks: list[dict[str, object]] = []
+    repaired: list[str] = []
+
+    def check(name: str, ok: bool, detail: str = "") -> None:
+        checks.append({"name": name, "ok": ok, "detail": detail})
+
+    check("workspace", campaign_dir.exists(), str(campaign_dir))
+    state_path = campaign_dir / "state.json"
+    aog_state_path = campaign_dir / "aog-state.json"
+    table_dir = campaign_dir / "table"
+    check("table", table_dir.exists(), str(table_dir))
+
+    phase_state: dict[str, object] = {}
+    try:
+        phase_state = cli.campaign_manager.load_state(campaign_id)
+        check("campaign.phase_state", True, "runtime state")
+    except Exception as exc:
+        check("campaign.phase_state", False, str(exc))
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        toml_data = _load_glass_config()
+        postgres_configured = _glass_db.postgres_configured(toml_data)
+        if postgres_configured:
+            check("state.json.absent", not state_path.exists(), str(state_path))
+            check("aog-state.json.absent", not aog_state_path.exists(), str(aog_state_path))
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                runtime = _glass_db.runtime_state_get(conn, campaign_id)
+                turns = _glass_db.turn_list(
+                    conn,
+                    campaign_id=campaign_id,
+                    limit=100000,
+                )
+            check("postgres.runtime", runtime is not None, pg_config.describe())
+            if runtime is not None:
+                pg_turn = int(runtime.get("turn_counter", 0))
+                max_turn = max((int(turn["turn_id"]) for turn in turns), default=0)
+                check(
+                    "postgres.turn_counter",
+                    pg_turn >= max_turn,
+                    f"turn_counter={pg_turn}, max_turn={max_turn}",
+                )
+                if repair:
+                    state = cli.store.load(campaign_id)
+                    cli.store.save(state)
+                    repaired.append("orchestrator-runtime-state")
+            if repair and turns:
+                transcript = "\n\n".join(str(turn["markdown"]).rstrip() for turn in turns)
+                (campaign_dir / "transcript.md").write_text(
+                    transcript.rstrip() + "\n",
+                    encoding="utf-8",
+                )
+                repaired.append("transcript.md")
+        else:
+            check("state.json", state_path.exists(), str(state_path))
+            check("aog-state.json", aog_state_path.exists(), str(aog_state_path))
+            check("postgres.configured", False, "using file fallback")
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
+
+    active_arc = phase_state.get("active_arc")
+    active_scene = phase_state.get("active_scene")
+    if active_arc:
+        check(
+            "active_arc_dir",
+            (campaign_dir / "arcs" / str(active_arc)).exists(),
+            str(active_arc),
+        )
+    if active_scene:
+        arc = str(phase_state.get("active_scene_arc") or active_arc or "")
+        check(
+            "active_scene_dir",
+            bool(arc) and (campaign_dir / "arcs" / arc / "scenes" / str(active_scene)).exists(),
+            f"{arc}/{active_scene}",
+        )
+
+    if repair and campaign_dir.exists():
+        _permissions.apply_campaign_permissions(campaign_dir)
+        repaired.append("permissions")
+
+    return {
+        "campaign_id": campaign_id,
+        "ok": all(bool(item["ok"]) for item in checks),
+        "repair": repair,
+        "repaired": repaired,
+        "checks": checks,
+    }
 
 
 if __name__ == "__main__":

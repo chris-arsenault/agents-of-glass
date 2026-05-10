@@ -127,6 +127,10 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertTrue((package.spawn_cwd / "scratch").is_dir())
             self.assertEqual((package.spawn_cwd.stat().st_mode & 0o777), 0o555)
             self.assertEqual(((package.spawn_cwd / "scratch").stat().st_mode & 0o777), 0o777)
+            self.assertEqual(((root / ".glass-cwd").stat().st_mode & 0o777), 0o710)
+            self.assertEqual(((root / ".glass-cwd" / "c1").stat().st_mode & 0o777), 0o710)
+            self.assertEqual(((package.spawn_cwd / ".claude").stat().st_mode & 0o777), 0o777)
+            self.assertEqual(((package.spawn_cwd / ".mcp.json").stat().st_mode & 0o777), 0o666)
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
             self.assertIn("read-only projection of the campaign workspace", turn_start)
 
@@ -167,6 +171,36 @@ class OrchestratorQueueTests(unittest.TestCase):
                     / "prep.md"
                 ).exists()
             )
+
+    def test_character_creation_turn_omits_recent_turn_excerpts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            (campaign_root / "state.json").write_text(
+                json.dumps({"campaign": "c1", "next_speakers": [{"agent": "tev"}]})
+                + "\n",
+                encoding="utf-8",
+            )
+            (campaign_root / "transcript.md").write_text(
+                "Sumi builds directly around Tev's hook.",
+                encoding="utf-8",
+            )
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="character-creation",
+                initial_scene="character-creation",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+
+            package = orchestrator.prepare_turn(state)
+
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("Prior character-creation turns are intentionally not embedded", turn_start)
+            self.assertIn("character concepts independent", turn_start)
+            self.assertNotIn("Sumi builds directly around Tev's hook", turn_start)
 
     def test_prepare_turn_uses_action_order_when_queue_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

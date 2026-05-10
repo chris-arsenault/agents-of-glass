@@ -138,7 +138,9 @@ glass mode push <mode> | pop | current    # nested modes within a scene
 glass turn initiative                     # DM only — roll/persist action-scene order
 glass turn handoff <agent>                # one-off next-speaker override
 glass roll <skill> <attribute> --risk <level> [--character <id>]
+glass character bulk-get|bulk-update
 glass character new|get|set-hp|set-momentum|inventory-add|inventory-rm
+glass character signature-status|signature-add
 glass character consequence-add|consequence-list|consequence-resolve
 glass note write <kind> <id> <file.md>
 glass note propose <file.md>          # player → DM intake

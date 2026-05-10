@@ -67,6 +67,9 @@ class GlassGroup(click.Group):
 @click.group(cls=GlassGroup)
 def main() -> None:
     """In-session state CLI for Agents of Glass."""
+    from .local_env import load_repo_env
+
+    load_repo_env()
 
 
 @click.group()

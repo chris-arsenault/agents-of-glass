@@ -1,8 +1,11 @@
 """Runtime state IO + audit + events.
 
-One state file per campaign. Layout under campaigns/<id>/:
+One runtime state record per campaign. When Postgres is configured it is the
+canonical store and no `state.json` runtime cache is written. Without
+Postgres, the CLI falls back to a local `state.json` for tests and standalone
+development. Layout under campaigns/<id>/:
 
-  state.json          — derived runtime state cache (Postgres is canonical when configured)
+  state.json          — file fallback only when Postgres is not configured
   transcript.md       — derived public transcript export
   audit.jsonl         — append-only command audit log
   scene-framing.md    — current scene framing (rewritten on scene start)
@@ -181,14 +184,16 @@ def load_state(paths: Paths, campaign_id: str) -> dict[str, Any]:
         state = _load_state_from_postgres(campaign_id)
         if state is not None:
             return normalize_state(state)
-        if path.exists():
-            state = normalize_state(json.loads(path.read_text(encoding="utf-8")))
-            _save_state_to_postgres(state)
-            return state
-        raise GlassError(f"no state for campaign {campaign_id!r} in Postgres or at {path}")
+        raise GlassError(f"no runtime state for campaign {campaign_id!r} in Postgres")
     if not path.exists():
         raise GlassError(f"no state for campaign {campaign_id!r} at {path}")
     return normalize_state(json.loads(path.read_text(encoding="utf-8")))
+
+
+def state_exists(paths: Paths, campaign_id: str) -> bool:
+    if _postgres_runtime_enabled():
+        return _load_state_from_postgres(campaign_id) is not None
+    return state_path(paths, campaign_id).exists()
 
 
 def save_state(paths: Paths, state: dict[str, Any]) -> None:
@@ -196,6 +201,10 @@ def save_state(paths: Paths, state: dict[str, Any]) -> None:
     state["updated_at"] = now_iso()
     if _postgres_runtime_enabled():
         _save_state_to_postgres(state)
+        path = state_path(paths, state["campaign"])
+        if path.exists():
+            path.unlink()
+        return
     campaign_id = state["campaign"]
     directory = campaign_runtime_dir(paths, campaign_id)
     directory.mkdir(parents=True, exist_ok=True)

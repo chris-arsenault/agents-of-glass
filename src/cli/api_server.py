@@ -197,6 +197,8 @@ def _invoke_glass(args: list[str], claim: dict[str, Any]) -> dict[str, Any]:
     runner = CliRunner()
     with _invoke_lock, _pushd(workspace_root):
         raw = runner.invoke(glass_main, args, env=env, prog_name="glass")
+        if raw.exit_code == 0:
+            _refresh_projection(campaign_root, workspace_root, claim)
     return {
         "exit_code": raw.exit_code,
         "output": raw.output,
@@ -211,6 +213,49 @@ def _claim_workspace_root(claim: dict[str, Any], *, fallback: Path) -> Path:
     if not path.exists() or not path.is_dir():
         return fallback
     return path
+
+
+def _refresh_projection(
+    campaign_root: Path,
+    workspace_root: Path,
+    claim: dict[str, Any],
+) -> None:
+    if workspace_root.resolve() == campaign_root.resolve():
+        return
+    turn_number = _turn_number_from_claim(claim)
+    if turn_number is None:
+        return
+    try:
+        from orchestrator.config import load_config as _load_aog_config
+        from orchestrator.projection import refresh_projection_from_canonical
+        from orchestrator.state import Agent
+
+        role = str(claim.get("role") or "")
+        actor = str(claim.get("actor") or "")
+        agent = Agent(
+            id=actor,
+            display_name=actor,
+            role="dm" if role == "dm" else "player",
+        )
+        refresh_projection_from_canonical(
+            config=_load_aog_config(os.environ.get("GLASS_CONFIG")),
+            campaign_root=campaign_root,
+            agent=agent,
+            turn_number=turn_number,
+            projection_root=workspace_root,
+        )
+    except Exception:
+        # Command success should remain authoritative; projection refresh is a
+        # same-turn convenience and the next turn rebuilds from canonical state.
+        return
+
+
+def _turn_number_from_claim(claim: dict[str, Any]) -> int | None:
+    raw = str(claim.get("turn_id") or "")
+    marker = raw.rsplit("t", 1)
+    if len(marker) != 2 or not marker[1].isdigit():
+        return None
+    return int(marker[1])
 
 
 @contextlib.contextmanager

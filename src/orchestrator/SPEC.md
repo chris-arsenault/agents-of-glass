@@ -39,6 +39,10 @@ aog campaign bootstrap <id>                 # IMPLEMENTED — full bootstrap end
 aog campaign show <id>                      # IMPLEMENTED — print state.json
 aog campaign list                           # IMPLEMENTED — list all campaigns with phase
 aog campaign clear <id> [--yes]             # IMPLEMENTED — wipe campaign workspace
+aog campaign checkpoint <id> [--label text] # IMPLEMENTED — snapshot filesystem + Postgres + FalkorDB
+aog campaign checkpoints <id>               # IMPLEMENTED — list available checkpoints
+aog campaign restore <id> <checkpoint>      # IMPLEMENTED — restore all persistence surfaces
+aog campaign reconcile <id> [--repair]      # IMPLEMENTED — inspect/refresh disposable projections
 
 aog campaign plan [<id>]                    # planned — run the campaign_planning phase only
 aog campaign character-create [<id>]        # planned — run the character_creation phase only
@@ -101,7 +105,12 @@ No automatic retries. No automatic recovery. See [`../../docs/design/architectur
 - Mode stack, turn number, last speaker, current speaker queue → all in Postgres.
 - Markdown content (transcript, framing, lore, journals) → all on disk, git-tracked.
 - Graph state → in FalkorDB.
+- Vector recall state → in Postgres `search_chunks`, including persisted embeddings.
 - Per-agent turn scratch (`dm/turns/*`, `players/<id>/turns/*`) → discardable after commit; rebuilt on resume as needed.
+
+Operator checkpoints capture and restore all four durable surfaces: campaign
+filesystem, Postgres runtime/search/vector rows, FalkorDB graph nodes/edges,
+and disposable projections/permissions.
 
 `aog session resume <id>` should be idempotent — running it on a clean session is a no-op.
 
@@ -118,4 +127,4 @@ No automatic retries. No automatic recovery. See [`../../docs/design/architectur
 - Replacing local `aog-state.json` with the Postgres-backed state boundary
   described above.
 
-See [`tracking-immediate-decisions.md`](../../tracking-immediate-decisions.md) for the broader list.
+See [`docs/backlog.md`](../../docs/backlog.md) for the broader list.

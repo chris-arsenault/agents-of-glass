@@ -118,6 +118,7 @@ Roughly (refined in [`architecture.md`](architecture.md) and [`messaging.md`](me
 | Tool | DM | Players |
 |------|----|----|
 | `glass roll` | yes | yes |
+| `glass character bulk-get` / `bulk-update` | yes | read all; mutate own only |
 | `glass character get` | yes | own + party-public |
 | `glass character set-hp` | yes | own only |
 | `glass character set-momentum` | yes | own only |

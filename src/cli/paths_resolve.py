@@ -113,7 +113,7 @@ def resolve_note_write_path(
             "inbox",
         }:
             rel = Path("players") / role.actor / rel
-        elif rel.parts and rel.parts[0] in {"scratchpad.md", "signature-moves.md"}:
+        elif rel.parts and rel.parts[0] == "scratchpad.md":
             rel = Path("players") / role.actor / rel
         allowed_roots = [
             Path("players") / role.actor / "public",
@@ -125,7 +125,6 @@ def resolve_note_write_path(
         ]
         allowed_files = {
             Path("players") / role.actor / "scratchpad.md",
-            Path("players") / role.actor / "signature-moves.md",
         }
         if rel not in allowed_files and not any(
             rel == root or root in rel.parents for root in allowed_roots
@@ -133,7 +132,7 @@ def resolve_note_write_path(
             raise GlassError(
                 "permission denied: players may write only their own public/, "
                 "secrets/, notes/, journal/, drafts/, inbox/, scratchpad.md, "
-                "or signature-moves.md"
+                "or use `glass character signature-add` for signature moves"
             )
     elif role.kind == "dm":
         if rel.parts and rel.parts[0] == "workspace":

@@ -46,7 +46,8 @@ Plain markdown. Whatever they want to say, written as the person they are.
 While they write it, they may call `glass` tools:
 
 - `glass roll <skill> <attribute> --risk <level> --character <id>` — when they want a check
-- `glass character set-hp` / `set-momentum` / `inventory-add` / `inventory-rm` — to record state changes
+- `glass character bulk-get` / `bulk-update` — to read or record several character facts at once
+- `glass character set-hp` / `set-momentum` / `inventory-add` / `inventory-rm` — convenience wrappers for small state changes
 - `glass character consequence-add` / `consequence-list` / `consequence-resolve` — lasting fictional state that should not drift
 - `glass clock set` / `tick` / `list` / `show` / `resolve` — durable cross-scene pressure
 - `glass summary show` / `write` / `append` — authored continuity summaries at campaign, arc/act, and scene level

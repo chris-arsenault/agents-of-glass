@@ -73,7 +73,7 @@ def start_daemon(
     if config_path:
         command.extend(["--config", config_path])
 
-    env = os.environ.copy()
+    env = _daemon_env()
     if config_path:
         env["GLASS_CONFIG"] = config_path
     env["PYTHONPATH"] = _pythonpath_with_src(env.get("PYTHONPATH"))
@@ -304,6 +304,22 @@ def _pythonpath_with_src(existing: str | None) -> str:
     if src in parts:
         return existing
     return os.pathsep.join([src, existing])
+
+
+def _daemon_env() -> dict[str, str]:
+    """Build the detached daemon environment.
+
+    The API daemon is operator-owned and may outlive the command that started
+    it. Load local repo `.env` values first, then let the caller's environment
+    override them when secrets are injected by `with-cred`.
+    """
+
+    from .local_env import dotenv_values
+
+    env: dict[str, str] = {}
+    env.update(dotenv_values(REPO_ROOT / ".env"))
+    env.update(os.environ)
+    return env
 
 
 def _int_or_none(value: Any) -> int | None:

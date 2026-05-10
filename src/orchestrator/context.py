@@ -136,6 +136,21 @@ class ContextBuilder:
             self.store.scene_framing_path(state.campaign), spawn_cwd
         )
         transcript_path = _agent_path(self.store.transcript_path(state.campaign), spawn_cwd)
+        recent_turns_guidance = (
+            "Prior character-creation turns are intentionally not embedded. "
+            "During Round 1, build from your persona, the setting, the party "
+            "organization, public lore, and the SRD; do not optimize around "
+            "previous players' character-design turns. During Round 2, read "
+            "`players/*/public/intro.md` as the methodology directs.\n\n"
+            if active.mode == "character-creation"
+            else (
+                f"Full transcript at `{transcript_path}`. "
+                "Last few turns embedded for convenience. For older detail, use "
+                "`glass search text`, `glass search semantic`, or "
+                "`glass turns find --text` instead of asking another agent to "
+                "repeat known history.\n\n"
+            )
+        )
         turn_output_ref = _agent_path(turn_output_path, spawn_cwd)
         table_section = self._table_section(agent, spawn_cwd)
 
@@ -259,11 +274,7 @@ class ContextBuilder:
             "- `srd/` — public game rules; start at `srd/index.md`\n"
             "- `how-to/` — optional player/DM craft examples; start at `how-to/index.md`\n\n"
             "## Recent turns\n\n"
-            f"Full transcript at `{transcript_path}`. "
-            "Last few turns embedded for convenience. For older detail, use "
-            "`glass search text`, `glass search semantic`, or "
-            "`glass turns find --text` instead of asking another agent to "
-            "repeat known history.\n\n"
+            f"{recent_turns_guidance}"
             "```markdown\n"
             f"{recent_turns}"
             "```\n\n"
@@ -464,6 +475,11 @@ class ContextBuilder:
         )
 
     def _recent_turns(self, state: SessionState, max_turns: int) -> str:
+        if state.active_mode.mode == "character-creation":
+            return (
+                "_Character-creation turn excerpt omitted to keep first-pass "
+                "character concepts independent._"
+            )
         return self.store.recent_turns_markdown(state.campaign, limit=max_turns)
 
     def _public_trackers_section(self, state: SessionState) -> str:
@@ -605,9 +621,12 @@ class ContextBuilder:
         return (
             "## Player workspace\n\n"
             f"- `{base}/persona.md` is who you are at the table.\n"
-            f"- `{base}/signature-moves.md` is your maintained list of 3-6 "
-            "recurring moves, habits, spells, maneuvers, or tactics. These "
-            "are narrative consistency tools, not guaranteed powers.\n"
+            f"- `{base}/signature-moves.md` starts with one simple recurring "
+            "move at level 1 and gains more slots as the character levels. "
+            "Use `glass character signature-status` and "
+            "`glass character signature-add` to update it; direct note writes "
+            "to this file are rejected. These are narrative consistency tools, "
+            "not guaranteed powers.\n"
             f"- `{base}/scratchpad.md` is your current working notes — persist "
             "updates with `glass note write scratchpad.md` or draft in `scratch/` first.\n"
             f"- `{base}/public/` is **party-readable**: drop intros, relationships, "
@@ -686,7 +705,9 @@ def _clear_stale_turn_artifacts(turn_dir: Path) -> None:
 def _dm_tools() -> list[str]:
     return [
         "glass roll",
-        "glass character get / set-hp / set-momentum / inventory-add / inventory-rm",
+        "glass character bulk-get / bulk-update",
+        "glass character get / mirror / set-hp / set-momentum / inventory-add / inventory-rm",
+        "glass character signature-status / signature-add",
         "glass character consequence-add / consequence-list / consequence-resolve",
         "glass clock set / tick / list / show / resolve",
         "glass summary show / write / append",
@@ -718,8 +739,10 @@ def _dm_tools() -> list[str]:
 def _player_tools() -> list[str]:
     return [
         "glass roll",
-        "glass character get / set-hp / set-momentum / inventory-add / inventory-rm "
-        "(your character only)",
+        "glass character bulk-get / bulk-update (bulk-update your character only)",
+        "glass character get / mirror / set-hp / set-momentum / inventory-add / inventory-rm "
+        "(single-character convenience commands; your character only for mutations)",
+        "glass character signature-status / signature-add (your character only)",
         "glass character consequence-list",
         "glass clock list / show",
         "glass summary show",

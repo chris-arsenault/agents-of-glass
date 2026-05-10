@@ -108,33 +108,45 @@ def arc() -> None:
 def arc_create(ctx: click.Context, arc_id: str) -> None:
     require_dm()
     workspace = _campaign_workspace()
+    paths = get_paths()
     try:
         arc_dir = _workspace.create_arc(workspace, arc_id)
     except (FileExistsError, ValueError) as exc:
         raise GlassError(str(exc)) from exc
+    state = load_state(paths, workspace.campaign_id)
+    normalized_arc_id = _workspace.slugify(arc_id)
+    queue_event(state, "dm", f"arc create: {normalized_arc_id}")
     result = {
         "campaign_id": workspace.campaign_id,
-        "arc_id": arc_id,
+        "arc_id": normalized_arc_id,
         "path": str(arc_dir),
         "files": ["plan.md", "context.md", "scenes/"],
     }
-    emit(result)
+    commit(paths, state, ctx, "arc.create", command_params(arc_id=arc_id), result)
 
 
 @arc.command("list")
 @click.pass_context
 def arc_list(ctx: click.Context) -> None:
     workspace = _campaign_workspace()
+    paths = get_paths()
+    state = load_state(paths, workspace.campaign_id)
     arcs = _workspace.list_arcs(workspace)
-    emit({"campaign_id": workspace.campaign_id, "arcs": arcs})
+    result = {"campaign_id": workspace.campaign_id, "arcs": arcs}
+    append_audit(paths, state, ctx, "arc.list", command_params(), result)
+    emit(result)
 
 
 @arc.command("current")
 @click.pass_context
 def arc_current(ctx: click.Context) -> None:
     workspace = _campaign_workspace()
+    paths = get_paths()
+    state = load_state(paths, workspace.campaign_id)
     current = _workspace.current_arc(workspace)
-    emit({"campaign_id": workspace.campaign_id, "active_arc": current})
+    result = {"campaign_id": workspace.campaign_id, "active_arc": current}
+    append_audit(paths, state, ctx, "arc.current", command_params(), result)
+    emit(result)
 
 
 @arc.command("activate")
@@ -143,15 +155,17 @@ def arc_current(ctx: click.Context) -> None:
 def arc_activate(ctx: click.Context, arc_id: str) -> None:
     require_dm()
     workspace = _campaign_workspace()
+    paths = get_paths()
     try:
         arc_dir = _workspace.activate_arc(workspace, arc_id)
     except (FileNotFoundError, ValueError) as exc:
         raise GlassError(str(exc)) from exc
-    emit(
-        {
-            "campaign_id": workspace.campaign_id,
-            "active_arc": arc_id,
-            "path": str(arc_dir),
-        }
-    )
-
+    state = load_state(paths, workspace.campaign_id)
+    normalized_arc_id = _workspace.slugify(arc_id)
+    queue_event(state, "dm", f"arc activate: {normalized_arc_id}")
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "active_arc": normalized_arc_id,
+        "path": str(arc_dir),
+    }
+    commit(paths, state, ctx, "arc.activate", command_params(arc_id=arc_id), result)

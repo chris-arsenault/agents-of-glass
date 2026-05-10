@@ -32,7 +32,7 @@ ephemeral_cwd = ".glass-cwd"     # per-turn agent CWDs; not committed
 
 [claude]
 # claude-p invocation tunables
-model = "claude-sonnet-4-6"
+model = "claude-opus-4-7"
 # Per-turn wall-clock cap. The DM during campaign-planning reads the
 # methodology, persona, world bible, does web searches, and writes 8+ files
 # per invocation. 300s was too short. 3600s (60 min) is the default;

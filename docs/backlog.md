@@ -1,64 +1,181 @@
 # Backlog
 
-Ideas worth pursuing once the core agentic loop is producing transcripts. Each entry is a sketch — what it is, why it matters, what we'd lift from existing work, and what's not yet figured out. Order is not priority.
+Active deferred work for Agents of Glass. Completed tracking items are removed
+from this file once the implementation and docs land; this is not a changelog.
 
-These are out of scope for v1. The first session that runs end-to-end is the trigger to revisit.
+Order is approximate priority, not a commitment.
 
-See also [`post-prelude-followups.md`](post-prelude-followups.md) for issues found during the `inspect-1` bootstrap that should be picked up after the prelude completes.
+## Next Run Follow-Ups
 
----
+### Prelude And Turn-Order Guardrails
 
-## System Gap Dispositions (May 2026)
+The first prelude attempt exposed that the `prelude` coordinator can leave the
+DM taking repeated turns instead of handing play to the players. It also exposed
+that a DM can write `glass ...` command lines into public prose instead of
+executing them.
 
-These came out of the feature-completeness pass before the documentation reorg.
+Do next:
+
+- Decide whether prelude is a real registered arc, a child scene under the
+  opening arc, or a special bootstrap phase with explicit projection rules.
+- Fail fast if bootstrap/prelude/action modes produce an invalid speaker loop,
+  especially repeated DM turns where player turns are expected.
+- Fail fast or warn loudly when a bootstrap-critical turn writes executable
+  `glass ...` lines into `out.md` without the corresponding state mutation.
+- Decide whether freeform table pressures such as "Transit Advisory: standard
+  review" are authored table prose or should project from durable
+  trackers/clocks.
+
+### Character Creation Context Isolation
+
+New character rows now require species, culture, archetype, organization role,
+bio, and character goals. The remaining issue is context shaping: characters
+should not be optimized around a campaign mystery board the players arguably
+should not know yet.
+
+Do next:
+
+- Consider giving players only setting, party organization, premise, tone, and
+  curated player-visible lore before the first character pass.
+- Hide prior player turn summaries until each player has made an initial pitch,
+  or implement a two-pass flow: blind independent pitch first, relationship and
+  party-cohesion pass second.
+- Decide whether `pronouns` should be required, explicitly optional, or
+  rendered as a visible "unspecified" value.
+
+### State Projection Hardening
+
+Campaign checkpointing and restore now snapshot the filesystem, Postgres
+runtime/search/vector rows, and FalkorDB graph nodes/edges. Keep this item open
+only for defects discovered during real recovery work.
+
+Do next:
+
+- Exercise `aog campaign restore` during the next genuine failed run, not only a
+  synthetic smoke test.
+- Tighten projection-specific repair cases that appear in real use.
+- Continue reducing vestigial runtime JSON where practical; if a JSON or
+  markdown projection must remain, make one projection API responsible for
+  rewriting it from the source of truth.
+
+### Projection / Durable Workspace Parity
+
+The `test-4` Turn 3 debug output exposed a brittle split between the agent's
+projected cwd and the durable campaign workspace. `glass arc create
+halsworn-edge` created canonical files under `campaigns/test-4/arcs/`, but the
+new arc did not appear in the current projection (`.glass-cwd/.../arcs` was
+missing). Mara then tested whether the canonical arc directory was writable,
+found that it was, and used the Claude `Write` tool against absolute durable
+paths for `arcs/halsworn-edge/plan.md` and `context.md`. That was a rational
+response to the workspace shape, not a prompt wording problem.
+
+The same turn also showed a state-source mismatch: `glass arc create` returned
+success and created files, but `glass arc list` returned `arcs: []`. This points
+at arc lifecycle state still relying on vestigial JSON while runtime state is
+Postgres-backed, or at least at projections/state refreshes not sharing one
+canonical source.
+
+Default debugging checklist:
+
+- Inspect the agent transcript for actual tool calls, not just
+  `claude-debug.log`; the debug log records dispatch/failure but not full Bash
+  command text.
+- Compare `glass <command>` output, canonical filesystem paths, projected cwd
+  paths, Postgres runtime rows, Falkor graph rows, and `audit.jsonl`.
+- Treat "agent wrote absolute canonical path" as evidence that the projection
+  lacked a valid mutation/readback loop, not primarily as an instruction
+  compliance issue.
+- Confirm whether a CLI mutation is visible inside the same turn's projection
+  before expecting the agent to continue from the new files.
+
+Do next:
+
+- Make `glass arc create` and related lifecycle commands update the same
+  canonical state store used by `glass arc list`, the orchestrator, and
+  checkpoint/restore. Prefer Postgres-backed runtime state; eliminate or
+  project any remaining JSON state instead of letting commands mutate it
+  independently.
+- Provide a robust projection refresh or parity mechanism for files created by
+  Glass during a turn. If a command creates `arcs/<slug>/plan.md`, the current
+  agent should be able to read and continue from `arcs/<slug>/plan.md` in its
+  cwd without falling back to absolute canonical paths.
+- Design a `glass sync` / `glass commit`-style surface only if it preserves the
+  mutation choke point: copy intended cwd changes or scratch drafts into durable
+  markdown, update Postgres, graph, text search, vector search, and audit in one
+  operation. Do not make agents manually coordinate separate filesystem, graph,
+  and DB commands.
+- Decide the supported write workflow for scaffolded files. Either commands
+  like `glass arc create` should accept `--plan-from` / `--context-from`, or
+  `glass note write arcs/<slug>/plan.md --from scratch/plan.md` should be the
+  blessed durable writer and should also update indexes/audit consistently.
+- Add a post-turn parity check that flags durable files written outside Glass
+  and flags Glass-created files that were not visible in the projection when
+  later turn steps needed them.
+
+### DM Mutation Discipline
+
+The `test-4` bootstrap showed that the DM projection is read-only, but the DM
+process still runs as the operator user and can address canonical campaign paths
+outside the projection. Turn 2 also appeared to create canonical lore and graph
+state without matching `glass lore import` / `glass lore upsert` audit entries.
+That means the projection limits accidental writes, but it does not yet make
+Glass the single mutation choke point for the DM.
+
+Do next:
+
+- Run the DM under a restricted campaign role instead of the operator user, or
+  otherwise make canonical campaign files non-writable except by the Glass
+  daemon/API.
+- Keep the projected workspace as the agent's readable view, with only
+  `scratch/` and the current turn output/debug paths writable.
+- Require all durable DM mutations to go through one Glass command/API surface;
+  agents should not have to run separate commands to write markdown, update
+  Postgres, upsert graph entities/edges, refresh text/semantic indexes, and
+  append audit records.
+- Replace split write flows such as "write note, then lore upsert" with unified
+  commands whose semantics are explicit: one invocation commits the prose,
+  metadata, graph projection, search/vector projection, and audit entry
+  together.
+- Audit every mutating Glass path consistently; investigate why imported lore
+  and graph rows can appear without corresponding audit entries, and make graph
+  projection a default part of durable lore/note writes where applicable.
+- Add a post-turn integrity check that compares canonical file changes,
+  Postgres mutations, graph mutations, and audit records; fail or flag any
+  durable mutation that bypassed Glass.
+- Add a scratch-promotion check for bootstrap/planning turns: important
+  `scratch/*.md` drafts should either be imported into durable state,
+  explicitly referenced as temporary working notes, or left with a visible
+  warning before the turn is accepted.
+- Fix markdown search/indexing for imported lore; live inspection found durable
+  lore that did not appear through `glass search text --type markdown`.
+
+## Deferred Until Demonstrated
 
 ### Hard Closure Backstop
-
-**Disposition:** intentionally deferred until it becomes a demonstrated problem.
 
 Soft closing exists: `glass scene closing-down`, final rounds, scene overrun
 warnings, action-scene visible endpoints, and `glass scene end`. Do not build
 hard forced closure, twist budgets, or a closer agent until transcripts show
-that soft closure still lets scenes run away.
+that soft closure still lets scenes run away. See
+[`design/scene-ending.md`](design/scene-ending.md).
 
-### Durable Cross-Scene Clocks
+### Death Saves / 0-HP Policy
 
-**Disposition:** implemented as durable `glass clock` state.
+0 HP means out of the action, not automatic death. Lasting consequences are
+already supported. Do not design death saves until a real campaign creates the
+need.
 
-Scene trackers remain short-term scene math. Durable clocks are for campaign,
-arc/act, thread, faction, NPC, or custom pressure that survives scene
-boundaries. Postgres is canonical; public clocks are projected to markdown for
-player reference at `shared/clocks.md` and relevant arc `clocks.md` files.
+### NPC Speech In Action Scenes
 
-### Continuity Compression
-
-**Disposition:** implemented as summary files plus turn text search.
-
-Continuity compression belongs in authored markdown summaries at the hierarchy
-being summarized, not as generated prose inside `TURN_START`: campaign
-`summary.md`, arc/act `summary.md`, and scene `summary.md`. Historical turn
-query is `glass turns find --text ...`; broader indexed recall is now exposed
-through `glass search text` and the `glass search semantic` surface, which uses
-lexical fallback until embeddings are populated.
-
-### Defeat, Recovery, Lasting Consequences
-
-**Disposition:** implemented as lightweight character consequences.
-
-0 HP still means out of the action, not automatic death. Lasting injuries,
-capture, obligations, disgrace, gear strain, and similar persistent fictional
-effects are tracked with `glass character consequence-*`. This is deliberately
-not a condition engine.
+Leave open whether NPCs speak only on DM turns or can be inserted
+mid-player-turn. Decide when a real action scene demands it.
 
 ### Travel / Montage Protocol
 
-**Disposition:** defer to the documentation rewrite.
+Travel and montage can run as ordinary scene play for now. Add a dedicated
+protocol only after transcripts show repeated drift or awkwardness.
 
-Travel/montage is named in the mode design and partly recognized by speaker
-order, but it does not need a new implementation pass before the reorg. Scene
-play can carry travel until the docs settle the exact protocol.
-
----
+## Future Systems
 
 ## Map Integration (Hex Boards)
 

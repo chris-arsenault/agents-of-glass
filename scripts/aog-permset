@@ -8,6 +8,7 @@
 #
 # Subcommands:
 #   campaign <campaign-dir>         apply campaign workspace permissions
+#   projection <projection-root>    apply projection parent permissions
 #   clean-workspace <campaign-dir>  rm -rf the campaign workspace (root)
 #
 # All paths are validated to be under expected roots before any chown/chmod
@@ -28,6 +29,7 @@ PLAYER_IDS=(tev sumi renno kit)
 usage() {
     cat <<EOF
 Usage: $0 campaign <campaign-dir>
+       $0 projection <projection-root>
        $0 clean-workspace <campaign-dir>
 EOF
     exit 1
@@ -211,9 +213,11 @@ cmd_campaign() {
         local puser="aog-$pid"
         if [[ ! -d "$pdir" ]]; then continue; fi
 
-        # Private subdirs: owner = player, group = player's own group, setgid
-        # so files created inside inherit the player-private group.
-        apply_perms_recursive "$puser" "$puser" 2750 0640 \
+        # Private subdirs: players read their canonical files but do not
+        # write them directly. Durable mutations go through the glass API,
+        # which runs as the operator and records persistence/audit side
+        # effects before updating markdown.
+        apply_perms_recursive "$OPERATOR" "$puser" 2750 0640 \
             "$pdir/journal" \
             "$pdir/drafts" \
             "$pdir/notes" \
@@ -232,21 +236,22 @@ cmd_campaign() {
             apply_nfs4_turns_acl "$pdir/turns"
         fi
 
-        # Public subdir: owner = player, group = aog-agents, setgid so files
-        # created inside inherit the shared group and become party-readable.
+        # Public subdir: players can read it directly; writes go through
+        # glass so player-facing prose, Postgres/search state, graph state,
+        # and audit stay in lockstep.
         # This is where intro.md, relationships.md, the cached character.md
         # display, and any other party-visible artifacts live.
         if [[ -d "$pdir/public" ]]; then
-            apply_perms_recursive "$puser" "$SHARED_GROUP" 2750 0640 "$pdir/public"
+            apply_perms_recursive "$OPERATOR" "$SHARED_GROUP" 2750 0640 "$pdir/public"
         fi
 
         for f in persona.md scratchpad.md; do
             if [[ -f "$pdir/$f" ]]; then
-                apply_perms "$puser" "$puser" 0640 0640 "$pdir/$f"
+                apply_perms "$OPERATOR" "$puser" 0640 0640 "$pdir/$f"
             fi
         done
         if [[ -f "$pdir/signature-moves.md" ]]; then
-            apply_perms "$puser" "$puser" 0640 0660 "$pdir/signature-moves.md"
+            apply_perms "$OPERATOR" "$puser" 0640 0640 "$pdir/signature-moves.md"
         fi
 
         # Player root dir: owner = OPERATOR, group = aog-agents, mode 0750
@@ -277,6 +282,25 @@ cmd_campaign() {
     chmod 2750 "$campaign_dir"
 }
 
+cmd_projection() {
+    local projection_root="${1:-}"
+    [[ -z "$projection_root" ]] && usage
+    assert_path_safe "$projection_root"
+
+    case "$projection_root" in
+        */.glass-cwd/*/*) ;;
+        *) echo "aog-permset: projection path must be under '/.glass-cwd/<campaign>/'; got $projection_root" >&2; exit 1 ;;
+    esac
+
+    local campaign_projection_dir
+    campaign_projection_dir="$(dirname "$projection_root")"
+    local glass_cwd_dir
+    glass_cwd_dir="$(dirname "$campaign_projection_dir")"
+
+    chown "$OPERATOR:$SHARED_GROUP" "$glass_cwd_dir" "$campaign_projection_dir"
+    chmod 0710 "$glass_cwd_dir" "$campaign_projection_dir"
+}
+
 cmd_clean_workspace() {
     local campaign_dir="${1:-}"
     [[ -z "$campaign_dir" ]] && usage
@@ -297,6 +321,7 @@ cmd_clean_workspace() {
 
 case "${1:-}" in
     campaign)         shift; cmd_campaign "$@" ;;
+    projection)       shift; cmd_projection "$@" ;;
     clean-workspace)  shift; cmd_clean_workspace "$@" ;;
     *)                usage ;;
 esac

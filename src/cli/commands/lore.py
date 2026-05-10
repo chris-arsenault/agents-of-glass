@@ -55,6 +55,7 @@ from ..paths_resolve import (
     resolve_content_path,
     resolve_note_write_path,
 )
+from ..persistence import CampaignPersistence
 from ..role import (
     Role,
     actor_for_turn,
@@ -124,6 +125,8 @@ def lore_import(ctx: click.Context, source_path: str, alias: str | None) -> None
     require_dm()
     workspace = _campaign_workspace()
     paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     if paths.lore is None:
         raise GlassError("lore.path is not configured")
 
@@ -135,17 +138,27 @@ def lore_import(ctx: click.Context, source_path: str, alias: str | None) -> None
     except (FileExistsError, FileNotFoundError) as exc:
         raise GlassError(str(exc)) from exc
 
-    # Mirror the imported entry into the graph (best-effort).
-    record = _record_for_lore_import(dest)
-    graph_status = _mirror_entity_to_graph(record, dest, workspace.campaign_id)
+    persistence = CampaignPersistence(
+        paths=paths,
+        campaign_id=workspace.campaign_id,
+        campaign_root=workspace.root,
+    )
+    persisted = persistence.register_markdown(dest, state=state, graph=True)
 
     result = {
         "campaign_id": workspace.campaign_id,
         "source": str(source),
         "destination": str(dest),
-        "graph": graph_status,
+        **persisted.to_dict(),
     }
-    emit(result)
+    commit(
+        paths,
+        state,
+        ctx,
+        "lore.import",
+        command_params(source_path=source_path, alias=alias),
+        result,
+    )
 
 
 def _record_for_lore_import(path: Path) -> dict[str, Any]:
@@ -227,6 +240,9 @@ def lore_new(
     """
     require_dm()
     workspace = _campaign_workspace()
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
     slug_clean = _workspace.slugify(slug)
     cat = category or _default_category_for(entity_type)
     dest_dir = workspace.lore_dir / cat
@@ -250,18 +266,40 @@ def lore_new(
         fm_lines.append(f"prominence: {prominence}")
     fm_lines.extend(["status: draft", "---", "", f"# {title_value}", "", "_Body to be authored._", ""])
     dest.write_text("\n".join(fm_lines), encoding="utf-8")
+    persistence = CampaignPersistence(
+        paths=paths,
+        campaign_id=workspace.campaign_id,
+        campaign_root=workspace.root,
+    )
+    persisted = persistence.register_markdown(dest, state=state, graph=True)
 
-    emit({
+    result = {
         "campaign_id": workspace.campaign_id,
         "id": slug_clean,
         "type": entity_type,
         "title": title_value,
         "path": str(dest),
+        "persistence": persisted.to_dict(),
         "next": [
             f"edit {dest} to fill in the body",
             f"glass lore upsert {dest.relative_to(workspace.root)} to register in the graph",
         ],
-    })
+    }
+    commit(
+        paths,
+        state,
+        ctx,
+        "lore.new",
+        command_params(
+            entity_type=entity_type,
+            slug=slug,
+            title=title,
+            tags=tags,
+            prominence=prominence,
+            category=category,
+        ),
+        result,
+    )
 
 
 def _default_category_for(entity_type: str) -> str:
@@ -312,11 +350,13 @@ def lore_upsert(ctx: click.Context, path_text: str) -> None:
     if not raw.exists():
         raise GlassError(f"file not found: {raw}")
 
-    record = upsert_entity_from_path(paths, state, raw)
-    graph_status = _mirror_entity_to_graph(
-        record, raw, os.environ.get("GLASS_CAMPAIGN_ID")
+    persistence = CampaignPersistence(
+        paths=paths,
+        campaign_id=campaign_id,
+        campaign_root=active_campaign_root(),
     )
-    result = {"entity": record, "graph": graph_status}
+    persisted = persistence.register_markdown(raw, state=state, graph=True)
+    result = persisted.to_dict()
     commit(paths, state, ctx, "lore.upsert", command_params(path=path_text), result)
 
 

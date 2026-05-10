@@ -14,12 +14,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import AogConfig
+from . import permissions
 from .state import Agent
 
 
 READONLY_DIR_MODE = 0o555
 READONLY_FILE_MODE = 0o444
 WRITABLE_DIR_MODE = 0o777
+PROJECTION_PARENT_DIR_MODE = 0o710
+WRITABLE_FILE_MODE = 0o666
 
 _TOP_LEVEL_FILES = {
     "README.md",
@@ -113,6 +116,7 @@ def build_projection(
         turn_number=turn_number,
         agent=agent,
     )
+    _ensure_projection_parents(root)
     _remove_tree(root)
     root.mkdir(parents=True, exist_ok=True)
 
@@ -138,10 +142,14 @@ def build_projection(
     projected_turn_dir.mkdir(parents=True, exist_ok=True)
     scratch_dir = root / "scratch"
     scratch_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_tool_runtime_files(root)
 
     _make_readonly(root)
-    os.chmod(projected_turn_dir, WRITABLE_DIR_MODE)
-    os.chmod(scratch_dir, WRITABLE_DIR_MODE)
+    _make_writable_tree(projected_turn_dir)
+    _make_writable_tree(scratch_dir)
+    _make_writable_tree(root / ".claude")
+    os.chmod(root / ".mcp.json", WRITABLE_FILE_MODE)
+    permissions.apply_projection_permissions(root)
 
     return ProjectionPaths(
         root=root,
@@ -166,6 +174,59 @@ def copy_turn_artifacts_to_canonical(
         target = canonical_turn_dir / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+
+
+def refresh_projection_from_canonical(
+    *,
+    config: AogConfig,
+    campaign_root: Path,
+    agent: Agent,
+    turn_number: int,
+    projection_root: Path | None = None,
+) -> None:
+    """Refresh canonical files into an existing per-turn projection.
+
+    The local glass API mutates canonical campaign storage while the agent's
+    cwd stays pointed at the projection. Refreshing after successful commands
+    lets files created by `glass` become readable in the same turn without
+    forcing agents to reach for absolute canonical paths.
+    """
+
+    root = projection_root or projection_root_for(
+        config,
+        campaign=campaign_root.name,
+        turn_number=turn_number,
+        agent=agent,
+    )
+    if not root.exists() or not root.is_dir():
+        return
+
+    current_turn_dir_rel = _current_turn_dir_rel(agent, turn_number)
+    current_turn_start_rel = current_turn_dir_rel / "in.md"
+    scratch_dir = root / "scratch"
+    projected_turn_dir = root / current_turn_dir_rel
+
+    _make_owner_writable(root)
+    for rel, _source in sorted(_iter_dirs(campaign_root), key=lambda item: item[0]):
+        if _directory_visible(rel, agent, current_turn_dir_rel):
+            (root / rel).mkdir(parents=True, exist_ok=True)
+
+    for rel, source in sorted(_iter_files(campaign_root), key=lambda item: item[0]):
+        if not _file_visible(rel, agent, current_turn_start_rel):
+            continue
+        if rel.parts and rel.parts[0] == "scratch":
+            continue
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _copy_file(source, target, campaign_root=campaign_root)
+
+    _prepare_tool_runtime_files(root)
+    _make_readonly(root)
+    _make_writable_tree(projected_turn_dir)
+    _make_writable_tree(scratch_dir)
+    _make_writable_tree(root / ".claude")
+    os.chmod(root / ".mcp.json", WRITABLE_FILE_MODE)
+    permissions.apply_projection_permissions(root)
 
 
 def _iter_dirs(root: Path) -> list[tuple[Path, Path]]:
@@ -266,6 +327,26 @@ def _copy_file(source: Path, target: Path, *, campaign_root: Path) -> None:
     shutil.copy2(source, target)
 
 
+def _ensure_projection_parents(root: Path) -> None:
+    root.parent.mkdir(parents=True, exist_ok=True)
+    for path in (root.parent.parent, root.parent):
+        if path.exists():
+            try:
+                os.chmod(path, PROJECTION_PARENT_DIR_MODE)
+            except OSError:
+                pass
+
+
+def _prepare_tool_runtime_files(root: Path) -> None:
+    # Claude may try to create local settings under cwd before it reads the
+    # prompt. Keep these hidden runtime paths writable while the campaign
+    # projection itself remains read-only.
+    (root / ".claude").mkdir(parents=True, exist_ok=True)
+    mcp_path = root / ".mcp.json"
+    if not mcp_path.exists():
+        mcp_path.write_text("{}\n", encoding="utf-8")
+
+
 def _make_readonly(root: Path) -> None:
     for path in root.rglob("*"):
         if path.is_dir():
@@ -273,6 +354,44 @@ def _make_readonly(root: Path) -> None:
         else:
             os.chmod(path, READONLY_FILE_MODE)
     os.chmod(root, READONLY_DIR_MODE)
+
+
+def _make_owner_writable(root: Path) -> None:
+    for path in root.rglob("*"):
+        try:
+            if path.is_dir():
+                os.chmod(path, 0o755)
+            else:
+                os.chmod(path, 0o644)
+        except OSError:
+            pass
+    try:
+        os.chmod(root, 0o755)
+    except OSError:
+        pass
+
+
+def _make_writable_tree(root: Path) -> None:
+    if not root.exists():
+        return
+    for path in root.rglob("*"):
+        try:
+            if path.is_dir():
+                os.chmod(path, WRITABLE_DIR_MODE)
+            else:
+                os.chmod(path, WRITABLE_FILE_MODE)
+        except OSError:
+            pass
+    try:
+        os.chmod(root, WRITABLE_DIR_MODE if root.is_dir() else WRITABLE_FILE_MODE)
+    except OSError:
+        pass
+
+
+def _current_turn_dir_rel(agent: Agent, turn_number: int) -> Path:
+    if agent.role == "dm":
+        return Path("dm") / "turns" / f"{turn_number:04d}"
+    return Path("players") / agent.id / "turns" / f"{turn_number:04d}"
 
 
 def _remove_tree(root: Path) -> None:

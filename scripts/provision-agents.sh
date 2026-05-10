@@ -6,10 +6,10 @@
 #
 # Idempotent: safe to re-run.
 #
-# Creates Unix users for each player agent, sets up a shared group and per-
+# Creates Unix users for each executing agent, sets up a shared group and per-
 # player private groups, adds the operator (dev) to all relevant groups so
-# the DM (running as dev) can read player content via group membership,
-# installs a sudoers rule allowing the operator to spawn player invocations
+# the operator can inspect player content via group membership,
+# installs a sudoers rule allowing the operator to spawn agent invocations
 # without password prompts, and installs the aog-permset helper that the
 # orchestrator uses to set ownership on freshly-created campaign workspaces.
 
@@ -32,7 +32,9 @@ if ! id "$OPERATOR" > /dev/null 2>&1; then
     exit 1
 fi
 
+DM_USER="aog-dm"
 PLAYER_USERS=(aog-tev aog-sumi aog-renno aog-kit)
+AGENT_USERS=("$DM_USER" "${PLAYER_USERS[@]}")
 SHARED_GROUP="aog-agents"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,7 +56,7 @@ fi
 
 # --- player users (each gets their own primary group of the same name) ---
 
-for user in "${PLAYER_USERS[@]}"; do
+for user in "${AGENT_USERS[@]}"; do
     if ! id "$user" > /dev/null 2>&1; then
         echo "creating user $user (with primary group $user)"
         useradd --system --create-home --shell /bin/bash "$user"
@@ -67,7 +69,7 @@ done
 
 # --- operator memberships ---
 # operator must be in: aog-agents (for shared content) and each player's
-# primary group (so DM can read player private journals/drafts/notes).
+# primary group (so the operator can inspect player private journals/drafts/notes).
 
 for grp in "$SHARED_GROUP" "${PLAYER_USERS[@]}"; do
     if ! id -nG "$OPERATOR" | tr ' ' '\n' | grep -qx "$grp"; then
@@ -83,10 +85,10 @@ install -o root -g root -m 0755 "$HELPER_SOURCE" "$HELPER_INSTALLED"
 
 # --- sudoers ---
 # The operator needs two privileges:
-#   1. spawn claude as a player user (sudo -u aog-<player>)
+#   1. spawn claude as an isolated agent user (sudo -u aog-<agent>)
 #   2. invoke the permset helper to chown/chmod new campaign workspaces
 
-PLAYER_LIST="$(IFS=,; echo "${PLAYER_USERS[*]}")"
+AGENT_LIST="$(IFS=,; echo "${AGENT_USERS[*]}")"
 TMP_SUDOERS="$(mktemp)"
 trap 'rm -f "$TMP_SUDOERS"' EXIT
 cat > "$TMP_SUDOERS" <<EOF
@@ -95,7 +97,7 @@ cat > "$TMP_SUDOERS" <<EOF
 # permissions without password prompts.
 
 Defaults:$OPERATOR env_keep += "ANTHROPIC_API_KEY ANTHROPIC_BASE_URL CLAUDE_API_KEY GLASS_* AOG_* SULION_*"
-$OPERATOR ALL=($PLAYER_LIST) NOPASSWD: SETENV: ALL
+$OPERATOR ALL=($AGENT_LIST) NOPASSWD: SETENV: ALL
 $OPERATOR ALL=(root) NOPASSWD: $HELPER_INSTALLED
 EOF
 
@@ -110,6 +112,7 @@ echo "installed $SUDOERS_FILE"
 echo
 echo "Provisioning complete."
 echo "  shared group: $SHARED_GROUP"
+echo "  dm user:      $DM_USER"
 echo "  player users: ${PLAYER_USERS[*]}"
 echo "  operator:     $OPERATOR (added to aog-agents and all player groups)"
 echo "  helper:       $HELPER_INSTALLED"

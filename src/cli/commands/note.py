@@ -55,6 +55,7 @@ from ..paths_resolve import (
     resolve_content_path,
     resolve_note_write_path,
 )
+from ..persistence import CampaignPersistence
 from ..role import (
     Role,
     actor_for_turn,
@@ -112,12 +113,13 @@ def note_write(
     state = load_state(paths, campaign_id)
     destination = resolve_note_write_path(paths, path_text, campaign_id=campaign_id)
     text = read_body(body, from_file)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(text, encoding="utf-8")
-    result = {
-        "path": display_path(destination),
-        "bytes": len(text.encode("utf-8")),
-    }
+    persistence = CampaignPersistence(
+        paths=paths,
+        campaign_id=campaign_id,
+        campaign_root=active_campaign_root(),
+    )
+    persisted = persistence.write_markdown(destination, text, state=state)
+    result = persisted.to_dict()
     commit(
         paths,
         state,
@@ -249,11 +251,13 @@ def note_ratify(
     item["status"] = "ratified"
     item["resolved_at"] = now_iso()
     item["ratified_path"] = display_path(destination)
-    entity = upsert_entity_from_path(paths, state, destination)
-    from .entity import _mirror_entity_to_graph
-
-    graph_status = _mirror_entity_to_graph(entity, destination, campaign_id)
-    result = {"intake": item, "entity": entity, "graph": graph_status}
+    persistence = CampaignPersistence(
+        paths=paths,
+        campaign_id=campaign_id,
+        campaign_root=workspace_root,
+    )
+    persisted = persistence.register_markdown(destination, state=state, graph=True)
+    result = {"intake": item, **persisted.to_dict()}
     commit(
         paths,
         state,

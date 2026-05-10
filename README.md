@@ -29,13 +29,12 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 - [docs/principles/](docs/principles/) — the deep "why" of the project; the artifact-first principle; codify-only-what-drifts; resist-generic-drift; non-negotiable design commitments
 - [docs/design/](docs/design/) — concrete designs for the orchestrator, agents, turn loop, modes, mechanics, context packages, messaging, instruction surface, [game start](docs/design/game-start.md), and (deferred) closure; plus [open questions](docs/design/open-questions.md) we want real play to settle
 - [docs/research/](docs/research/) — summaries of the supporting repos and a place to drop future research notes
-- [docs/backlog.md](docs/backlog.md) — sketches of out-of-scope ideas (map integration, image gen, live viewer)
+- [docs/backlog.md](docs/backlog.md) — active deferred work and larger out-of-scope systems
 - [src/cli/](src/cli/) — the `glass` CLI (in-play tool surface). Spec at [src/cli/SPEC.md](src/cli/SPEC.md).
 - [src/orchestrator/](src/orchestrator/) — the Python orchestrator + the `aog` operator CLI. Spec at [src/orchestrator/SPEC.md](src/orchestrator/SPEC.md).
 - [src/webui/](src/webui/) — read-only public live viewer (out of v1 scope; spec home only). See [src/webui/SPEC.md](src/webui/SPEC.md).
 - [templates/](templates/) — authored baseline content: personas, instructions, methodologies, SRD, how-to guidance, and character templates. Copied to a campaign at start. See [templates/README.md](templates/README.md).
 - `campaigns/<id>/` — runtime per-campaign root, created by `aog campaign new`. Mutates during play. Three-level player-facing context plus DM workspace plus per-arc and per-scene state. See [docs/design/game-start.md](docs/design/game-start.md).
-- [tracking-immediate-decisions.md](tracking-immediate-decisions.md) — what's deferred for organic resolution during the build.
 - [CLAUDE.md](CLAUDE.md) / [codex.md](codex.md) — agent instructions for AI assistants working in this repo.
 - [agents-of-glass.toml.example](agents-of-glass.toml.example) — config template; copy to `agents-of-glass.toml`.
 

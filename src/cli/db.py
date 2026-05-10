@@ -215,8 +215,12 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         player_id,
         name,
         archetype,
+        species,
+        culture,
+        organization_role,
         pronouns,
         bio,
+        goals,
         attributes,
         skills,
         momentum_current,
@@ -238,8 +242,12 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         "player_id": player_id,
         "name": name,
         "archetype": archetype,
+        "species": species,
+        "culture": culture,
+        "organization_role": organization_role,
         "pronouns": pronouns,
         "bio": bio,
+        "goals": list(goals or []),
         "attributes": attributes or {},
         "skills": skills or {},
         "momentum": {
@@ -259,8 +267,9 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 _CHARACTER_COLUMNS = (
-    "campaign_id, character_id, player_id, name, archetype, pronouns, bio, "
-    "attributes, skills, momentum_current, momentum_floor, momentum_ceiling, "
+    "campaign_id, character_id, player_id, name, archetype, species, culture, "
+    "organization_role, pronouns, bio, goals, attributes, skills, "
+    "momentum_current, momentum_floor, momentum_ceiling, "
     "hp_current, hp_max, inventory, tags, xp, level, skill_xp, "
     "created_at, updated_at"
 )
@@ -588,7 +597,12 @@ def character_create(
     player_id: str,
     name: str,
     archetype: str,
+    species: str,
+    culture: str,
+    organization_role: str,
     pronouns: str,
+    bio: str,
+    goals: list[str],
     attributes: dict[str, str],
     skills: dict[str, str],
     hp_max: int,
@@ -598,9 +612,10 @@ def character_create(
         cur.execute(
             f"""
             INSERT INTO characters (
-                campaign_id, character_id, player_id, name, archetype, pronouns,
-                attributes, skills, hp_current, hp_max, tags
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                campaign_id, character_id, player_id, name, archetype, species,
+                culture, organization_role, pronouns, bio, goals, attributes,
+                skills, hp_current, hp_max, tags
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING {_CHARACTER_COLUMNS}
             """,
             (
@@ -609,7 +624,12 @@ def character_create(
                 player_id,
                 name,
                 archetype,
+                species,
+                culture,
+                organization_role,
                 pronouns,
+                bio,
+                json.dumps(goals),
                 json.dumps(attributes),
                 json.dumps(skills),
                 hp_max,
@@ -618,6 +638,61 @@ def character_create(
             ),
         )
         row = cur.fetchone()
+    conn.commit()
+    return _row_to_character(row)
+
+
+def character_update_fields(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    fields: dict[str, Any],
+) -> dict[str, Any]:
+    allowed = {
+        "name",
+        "archetype",
+        "species",
+        "culture",
+        "organization_role",
+        "pronouns",
+        "bio",
+        "goals",
+        "attributes",
+        "skills",
+        "tags",
+    }
+    unknown = sorted(set(fields) - allowed)
+    if unknown:
+        raise ValueError(f"unsupported character field(s): {', '.join(unknown)}")
+    if not fields:
+        current = character_get(conn, campaign_id, character_id)
+        if current is None:
+            raise LookupError(character_id)
+        return current
+
+    set_parts: list[str] = []
+    values: list[Any] = []
+    for name, value in fields.items():
+        if name in {"goals", "attributes", "skills"}:
+            value = json.dumps(value)
+            set_parts.append(f"{name} = %s::jsonb")
+        else:
+            set_parts.append(f"{name} = %s")
+        values.append(value)
+    values.extend([campaign_id, character_id])
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE characters SET {', '.join(set_parts)}
+            WHERE campaign_id = %s AND character_id = %s
+            RETURNING {_CHARACTER_COLUMNS}
+            """,
+            tuple(values),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise LookupError(character_id)
     conn.commit()
     return _row_to_character(row)
 

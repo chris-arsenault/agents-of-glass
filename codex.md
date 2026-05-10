@@ -61,7 +61,7 @@ Each player agent runs as a dedicated Unix user; the DM runs as the operator. Fi
 2. [`docs/principles/`](docs/principles/) — the rules
 3. [`docs/design/architecture.md`](docs/design/architecture.md) — system shape
 4. [`docs/design/turn-loop.md`](docs/design/turn-loop.md) — the core loop
-5. [`tracking-immediate-decisions.md`](tracking-immediate-decisions.md) — what's deferred and why
+5. [`docs/backlog.md`](docs/backlog.md) — what's deferred and why
 6. The specific design doc relevant to the task at hand
 
 ## Environment
