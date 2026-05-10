@@ -163,6 +163,9 @@ glass turns feed [--after-turn N] [--limit N]   # structured public viewer feed
 glass search text <query> [--type turn|markdown]
 glass search semantic <query> [--type turn|markdown]  # vector surface, lexical fallback until embeddings exist
 glass search reindex [--turns-only]             # DM only
+glass tarot current [actor]
+glass tarot list [--actor <actor>] [--all]
+glass tarot draw <actor> [--turns N]             # DM only
 glass summary show campaign|arc|act|scene [id]
 glass summary write campaign|arc|act|scene [id] --body <markdown>
 glass summary append campaign|arc|act|scene [id] --body <markdown>

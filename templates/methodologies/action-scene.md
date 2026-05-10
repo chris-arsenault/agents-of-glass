@@ -108,7 +108,8 @@ Each initiative turn has a strict menu:
   the table, read relevant lore, inspect the character sheet, ask the DM a
   clarification. Housekeeping should support the turn, not become a second
   action. Use `glass search text` / `semantic` or `glass entity relations` /
-  `between` when the needed context is already recorded.
+  `between` when the needed context is already recorded. The verse phrase and
+  tarot in TURN_START are only creative texture, not extra actions or mechanics.
 
 Questions to the DM still work like normal scene play. Use the message bus for
 clarifications that need a private or directed answer:

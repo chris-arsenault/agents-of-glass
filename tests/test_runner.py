@@ -96,6 +96,33 @@ class OrchestratorQueueTests(unittest.TestCase):
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
             self.assertIn("## ACTION-SCENE TURN", turn_start)
             self.assertIn("`kit -> dm -> tev`", turn_start)
+            self.assertIn("## Creative Influence", turn_start)
+            self.assertIn("Verse phrase:", turn_start)
+            self.assertIn("Tarot:", turn_start)
+
+    def test_creative_influence_omitted_during_bootstrap_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            (campaign_root / "state.json").write_text(
+                json.dumps({"campaign": "c1"}) + "\n",
+                encoding="utf-8",
+            )
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="campaign-planning",
+                initial_scene="planning",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+
+            package = orchestrator.prepare_turn(state)
+
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertNotIn("## Creative Influence", turn_start)
+            self.assertNotIn("Verse phrase:", turn_start)
 
     def test_advance_action_order_wraps_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

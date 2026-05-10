@@ -63,7 +63,7 @@ Operator concerns only — no agent ever calls `aog`.
 ## What the orchestrator loop does, per turn (within an active scene)
 
 1. **Pick the next agent.** Handoff/rapid-response queue first, then persisted action-scene initiative order if present, otherwise the mode default (round-robin, DM-only, travel order, etc.).
-2. **Generate `TURN_START.md`** under the spawning agent's campaign directory. Contains pointers (relative to the campaign workspace) to persona, methodology-for-mode, public table, scene framing, campaign-level context, vocabulary, recent-turn snapshot, plus an absolute path to where the agent must write its prose (`TURN.md` in the same dir).
+2. **Generate `TURN_START.md`** under the spawning agent's campaign directory. Contains pointers (relative to the campaign workspace) to persona, methodology-for-mode, public table, scene framing, campaign-level context, vocabulary, recent-turn snapshot, actual-play creative influence when applicable, plus an absolute path to where the agent must write its prose (`TURN.md` in the same dir).
    Continuity compression lives in authored summary files (`summary.md` at
    campaign, arc/act, and scene levels); TURN_START points at those surfaces
    but does not generate its own summary prose.

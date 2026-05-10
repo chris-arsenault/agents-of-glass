@@ -32,6 +32,7 @@ from .commands.search import search_group
 from .commands.session import session
 from .commands.summary import summary
 from .commands.table import table
+from .commands.tarot import tarot
 from .commands.thread import thread
 from .commands.turn import turn
 from .commands.turns import turns
@@ -162,6 +163,7 @@ main.add_command(scene)
 main.add_command(search_group)
 main.add_command(summary)
 main.add_command(table)
+main.add_command(tarot)
 main.add_command(quest)
 main.add_command(lore)
 main.add_command(api)

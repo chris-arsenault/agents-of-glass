@@ -519,7 +519,13 @@ def runtime_state_delete(
 ) -> dict[str, int]:
     deleted: dict[str, int] = {}
     with conn.cursor() as cur:
-        for table in ("events", "scene_trackers", "action_orders", "search_chunks"):
+        for table in (
+            "events",
+            "scene_trackers",
+            "action_orders",
+            "search_chunks",
+            "tarot_influences",
+        ):
             cur.execute(f"DELETE FROM {table} WHERE campaign_id = %s", (campaign_id,))
             deleted[table] = cur.rowcount
         cur.execute("DELETE FROM turns WHERE campaign_id = %s", (campaign_id,))
@@ -2088,6 +2094,159 @@ def _preview_text(body: str, query: str, *, limit: int = 300) -> str:
     return body[start:end].strip()
 
 
+# --- creative influences ---
+
+
+_TAROT_COLUMNS = (
+    "id, campaign_id, actor, deck_id, deck_name, card_id, card_name, "
+    "influence, source_note, starts_turn, expires_turn, active, created_at"
+)
+
+
+def _row_to_tarot(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        tarot_id,
+        campaign_id,
+        actor,
+        deck_id,
+        deck_name,
+        card_id,
+        card_name,
+        influence,
+        source_note,
+        starts_turn,
+        expires_turn,
+        active,
+        created_at,
+    ) = row
+    return {
+        "id": str(tarot_id),
+        "campaign_id": campaign_id,
+        "actor": actor,
+        "deck_id": deck_id,
+        "deck_name": deck_name,
+        "card_id": card_id,
+        "card_name": card_name,
+        "influence": influence,
+        "source_note": source_note,
+        "starts_turn": int(starts_turn),
+        "expires_turn": int(expires_turn),
+        "active": bool(active),
+        "created_at": _iso(created_at),
+    }
+
+
+def tarot_current(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    actor: str,
+    turn_number: int,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_TAROT_COLUMNS}
+            FROM tarot_influences
+            WHERE campaign_id = %s
+              AND actor = %s
+              AND active
+              AND starts_turn <= %s
+              AND expires_turn >= %s
+            ORDER BY starts_turn DESC, created_at DESC
+            LIMIT 1
+            """,
+            (campaign_id, actor, turn_number, turn_number),
+        )
+        row = cur.fetchone()
+    return _row_to_tarot(row) if row else None
+
+
+def tarot_draw(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    actor: str,
+    deck_id: str,
+    deck_name: str,
+    card_id: str,
+    card_name: str,
+    influence: str,
+    source_note: str,
+    starts_turn: int,
+    expires_turn: int,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE tarot_influences
+            SET active = false
+            WHERE campaign_id = %s AND actor = %s AND active
+            """,
+            (campaign_id, actor),
+        )
+        cur.execute(
+            f"""
+            INSERT INTO tarot_influences (
+                campaign_id, actor, deck_id, deck_name, card_id, card_name,
+                influence, source_note, starts_turn, expires_turn, active
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, true)
+            RETURNING {_TAROT_COLUMNS}
+            """,
+            (
+                campaign_id,
+                actor,
+                deck_id,
+                deck_name,
+                card_id,
+                card_name,
+                influence,
+                source_note,
+                starts_turn,
+                expires_turn,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_tarot(row)
+
+
+def tarot_list(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    actor: str | None = None,
+    active_only: bool = True,
+    turn_number: int | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    where = ["campaign_id = %s"]
+    params: list[Any] = [campaign_id]
+    if actor:
+        where.append("actor = %s")
+        params.append(actor)
+    if active_only:
+        where.append("active")
+    if turn_number is not None:
+        where.append("starts_turn <= %s")
+        where.append("expires_turn >= %s")
+        params.extend([turn_number, turn_number])
+    params.append(limit)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_TAROT_COLUMNS}
+            FROM tarot_influences
+            WHERE {' AND '.join(where)}
+            ORDER BY starts_turn DESC, created_at DESC
+            LIMIT %s
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    return [_row_to_tarot(row) for row in rows]
+
+
 # --- durable clocks ---
 
 
@@ -2384,6 +2543,7 @@ def delete_campaign_data(
             "scene_trackers",
             "action_orders",
             "search_chunks",
+            "tarot_influences",
             "turns",
             "campaign_runtime_states",
             "clock_events",

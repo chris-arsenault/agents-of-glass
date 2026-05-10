@@ -32,6 +32,9 @@ If no handoff is queued, the orchestrator falls through to the round-robin from 
 There is no script. Within your turn, you do whatever the scene calls for. A typical turn includes some of:
 
 - **Drain the bus.** First action of every turn (covered by the always-present TURN_START reminder): `glass msg read --since-checkpoint`. Read what's there. Respond to anything that needs a reply.
+- **Notice creative influence.** In actual play, TURN_START may include a
+  verse phrase and current tarot. Use them as minor creative texture; they are
+  not mechanics and do not outrank the table or your character.
 - **Look at the table.** Read `table/index.md` first, then `table/scene.md`
   and any linked table-root files or handouts that matter. Use this before
   asking the DM to repeat visible room, NPC, monster, scene, or immediate

@@ -45,6 +45,7 @@ _PLAYER_ALLOWED: dict[str, set[str] | None] = {
     "turn": {"handoff"},
     "turns": {"find", "feed"},
     "summary": {"show"},
+    "tarot": {"current", "list"},
     "lore": {"list"},
 }
 

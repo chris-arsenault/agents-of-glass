@@ -72,6 +72,8 @@ Anything that needs crisp ground-truth, plus the orchestrator-supplied metadata 
 - **Per-turn metadata** (turn id, campaign, arc, scene, mode/scene-type, speaker, role, character, turn number, timestamp) — orchestrator-supplied, not agent-supplied. See [`context-packages.md`](context-packages.md).
 - **Turn prose** split from metadata in structured `turns` rows. `transcript.md` is a derived markdown export/cache, not the canonical communication surface.
 - **Messages** (the `glass msg` bus — sender, recipient, type, body, read state). See [`messaging.md`](messaging.md).
+- **Tarot influences** for actual-play creative nudges. See
+  [`creative-influences.md`](creative-influences.md).
 
 The Postgres schema is small. Don't push lore/notes into it as "description" columns — durable authored world prose lives in markdown. Turn prose is different: it is the public corpus and viewer feed, so it is stored in Postgres with structured metadata and also exported to markdown for git/human inspection.
 
@@ -140,6 +142,7 @@ glass entity upsert <file.md>         # markdown → graph
 glass entity neighborhood|relations|between|edges|stance|find|similar
 glass entity claim <src> <REL> <dst>  # propose relationship, DM ratifies
 glass search text|semantic <query>
+glass tarot current|list|draw
 glass thread current | beat <id>
 glass turn append <markdown>          # orchestrator typically calls this
 glass msg <type> <recipient> <body>   # see messaging.md
@@ -217,6 +220,7 @@ This creates the Unix users + groups, adds the operator (`SUDO_USER`) to all rel
 | Current HP, momentum | Postgres |
 | Inventory | Postgres |
 | Dice events | Postgres (audit) + turn event summaries |
+| Tarot influences | Postgres `tarot_influences` |
 | Beat advancement | FalkorDB (graph edges) + turn event summaries |
 | Mode transitions | Postgres runtime state + event summaries |
 | Scene trackers / initiative | Postgres when configured + state export fallback |

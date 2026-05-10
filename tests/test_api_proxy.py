@@ -36,6 +36,8 @@ class GlassApiProxyTests(unittest.TestCase):
             claim = validate_grant(campaigns, token, ["msg", "read"])
             self.assertEqual(claim["actor"], "tev")
             validate_grant(campaigns, token, ["search", "text", "duke"])
+            validate_grant(campaigns, token, ["tarot", "current"])
+            validate_grant(campaigns, token, ["tarot", "list"])
             validate_grant(campaigns, token, ["entity", "relations", "duke"])
             validate_grant(
                 campaigns,
@@ -45,6 +47,8 @@ class GlassApiProxyTests(unittest.TestCase):
 
             with self.assertRaises(GlassError):
                 validate_grant(campaigns, token, ["db", "init"])
+            with self.assertRaises(GlassError):
+                validate_grant(campaigns, token, ["tarot", "draw", "tev"])
             with self.assertRaises(GlassError):
                 validate_grant(campaigns, token, ["entity", "query", "MATCH (n) RETURN n"])
 

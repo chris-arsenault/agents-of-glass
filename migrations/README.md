@@ -22,6 +22,7 @@ Conventions:
 | `007_durable_clocks.sql` | durable cross-scene clocks and clock event history |
 | `008_character_consequences.sql` | lasting character consequences |
 | `009_persistence_outputs_and_search.sql` | turn metadata, event log, scene trackers, action orders, search chunks |
+| `010_creative_influences.sql` | persisted tarot influences for actual-play creative nudges |
 
 ## Running
 

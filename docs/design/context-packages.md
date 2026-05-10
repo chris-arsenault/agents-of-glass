@@ -3,6 +3,7 @@
 What each agent has in its prompt vs what it can query, per role. The shape of the per-turn handoff.
 
 For the codification rules behind this, see [`../principles/codify-only-what-drifts.md`](../principles/codify-only-what-drifts.md). For the message bus that supplements always-on context, see [`messaging.md`](messaging.md). For the vocabulary the agents share, see [`shared-vocabulary.md`](shared-vocabulary.md).
+For actual-play anti-staleness nudges, see [`creative-influences.md`](creative-influences.md).
 
 ## TURN_START.md — the single entry point
 
@@ -61,6 +62,8 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - Campaign framing
 - Campaign / arc / scene summaries as pointers, not embedded compression
 - Recent turns (last K, K depends on mode)
+- Actual-play creative influence: one verse phrase plus current persisted tarot
+  draw. This is omitted during bootstrap/prep modes.
 - Pointer to unread messages
 - Pointer to vocabulary index
 - Pointer to their `notes/index.md` (their personal encyclopedia)
@@ -82,6 +85,8 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - Party knowledge (`campaigns/<id>/shared/party-knowledge.md` — party-writable, all-readable)
 - Vocabulary detail files (`campaigns/<id>/shared/vocabulary/*.md`)
 - Past turns from prior scenes (via `glass turns find ...`, including `--text`)
+- Current and historical tarot influences (via `glass tarot current` and
+  `glass tarot list`)
 - Indexed prose search (`glass search text ...` and `glass search semantic ...`;
   semantic currently falls back to the Postgres text index until embeddings are
   populated)

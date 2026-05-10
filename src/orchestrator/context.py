@@ -157,6 +157,7 @@ class ContextBuilder:
 
         trackers_section = self._public_trackers_section(state)
         closing_section = self._closing_section(state, agent)
+        creative_section = self._creative_influence_section(state, agent)
 
         return (
             f"# Turn {state.turn_number + 1} — {agent.display_name}\n\n"
@@ -171,6 +172,7 @@ class ContextBuilder:
             f"{action_order_section}"
             f"{trackers_section}"
             f"{closing_section}"
+            f"{creative_section}"
             "## Output contract\n\n"
             f"Write your final public turn prose to **`{turn_output_ref}`** "
             "and exit. Do not include YAML, JSON, analysis notes, or private "
@@ -233,6 +235,115 @@ class ContextBuilder:
             "## Your tools\n\n"
             f"{tools_section}\n"
         )
+
+    def _creative_influence_section(self, state: SessionState, agent: Agent) -> str:
+        try:
+            from cli import creative as _creative
+        except Exception:
+            return ""
+        if not _creative.is_play_mode(state.active_mode.mode):
+            return ""
+
+        turn_number = state.turn_number + 1
+        verse = _creative.verse_for_turn(
+            campaign_id=state.campaign,
+            actor=agent.id,
+            turn_number=turn_number,
+        )
+        tarot = self._tarot_influence_for_turn(state, agent, turn_number)
+
+        lines = [
+            "## Creative Influence",
+            "",
+            "These are light anti-staleness nudges for actual play. They do not "
+            "override persona, character sheet, table state, rolls, or rules.",
+            "",
+            f"- Verse phrase: \"{verse['phrase']}\" "
+            f"({verse['work']}, {verse['ref']})",
+        ]
+        if tarot:
+            lines.append(
+                f"- Tarot: you are currently under {tarot['card_name']} "
+                f"({tarot['deck_name']}). {tarot['influence']}"
+            )
+        lines.extend(
+            [
+                "",
+                "Let these influence word choice, attention, risk appetite, or "
+                "interpretation at the margins. Do not announce or quote them "
+                "unless they naturally belong in the turn.",
+                "",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _tarot_influence_for_turn(
+        self, state: SessionState, agent: Agent, turn_number: int
+    ) -> dict[str, Any] | None:
+        try:
+            from cli import creative as _creative
+            from cli import db as _glass_db
+            from cli.config import load_config as _load_glass_config
+            from .config import config_env_value
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                toml_data = _load_glass_config()
+                if not _glass_db.postgres_configured(toml_data):
+                    return _creative.tarot_for_seed(
+                        campaign_id=state.campaign,
+                        actor=agent.id,
+                        turn_number=turn_number,
+                    )
+                pg_config = _glass_db.load_pg_config(toml_data)
+                with _glass_db.connect(pg_config) as conn:
+                    current = _glass_db.tarot_current(
+                        conn,
+                        campaign_id=state.campaign,
+                        actor=agent.id,
+                        turn_number=turn_number,
+                    )
+                    if current:
+                        return current
+                    draw = _creative.tarot_for_seed(
+                        campaign_id=state.campaign,
+                        actor=agent.id,
+                        turn_number=turn_number,
+                    )
+                    return _glass_db.tarot_draw(
+                        conn,
+                        campaign_id=state.campaign,
+                        actor=agent.id,
+                        deck_id=draw["deck_id"],
+                        deck_name=draw["deck_name"],
+                        card_id=draw["card_id"],
+                        card_name=draw["card_name"],
+                        influence=draw["influence"],
+                        source_note=draw["source_note"],
+                        starts_turn=turn_number,
+                        expires_turn=(
+                            turn_number
+                            + _creative.DEFAULT_TAROT_DURATION_TURNS
+                            - 1
+                        ),
+                    )
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            try:
+                from cli import creative as _creative
+
+                return _creative.tarot_for_seed(
+                    campaign_id=state.campaign,
+                    actor=agent.id,
+                    turn_number=turn_number,
+                )
+            except Exception:
+                return None
 
     def _closing_section(self, state: SessionState, agent: Agent) -> str:
         """Render the scene-closing pressure section if a countdown is active.
@@ -549,6 +660,7 @@ def _dm_tools() -> list[str]:
         "glass entity neighborhood / relations / between / edges / stance / find",
         "glass entity link / unlink / query / stats / upsert / ratify-claim",
         "glass search text / semantic / reindex",
+        "glass tarot current / list / draw",
         "glass lore new <type> <slug> [--title --tags --prominence] — scaffolds a new lore entry "
         "under shared/lore/ with valid frontmatter",
         "glass lore upsert <path> — registers an authored lore file in the graph "
@@ -580,6 +692,7 @@ def _player_tools() -> list[str]:
         "glass summary show",
         "glass entity neighborhood / relations / between / edges / stance / similar / find / claim",
         "glass search text / semantic",
+        "glass tarot current / list",
         "glass note write (your journal)",
         "glass note propose",
         "glass msg <type> <recipient> <body>",

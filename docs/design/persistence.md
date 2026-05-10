@@ -42,6 +42,7 @@ Postgres owns:
 - runtime metadata such as mode stack, turn counter, handoff queues
 - scene trackers and action-scene initiative order when Postgres is configured
 - durable clocks and character consequences
+- persisted tarot influences for actual-play creative nudges
 - search chunks for bounded recall over turns and indexed markdown
 
 Final public turn prose has a durable home in Postgres `turns.prose`. The
@@ -82,6 +83,7 @@ known information. They should query bounded stores:
 - indexed prose recall: `glass search text ...`
 - semantic-search surface: `glass search semantic ...`
 - relationship recall: `glass entity relations`, `between`, `edges`, `stance`
+- actual-play influence recall: `glass tarot current` / `glass tarot list`
 
 `glass search semantic` is the stable CLI shape for vector-backed recall. The
 current implementation uses the Postgres search index as lexical fallback until
