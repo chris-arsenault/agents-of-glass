@@ -36,15 +36,13 @@ def infer_player_from_path(paths: Paths, path: Path) -> str | None:
 
 
 def load_message_types(paths: Paths) -> set[str]:
-    vocab_path = paths.content / "shared" / "vocabulary" / "message-types.md"
-    if not vocab_path.exists():
+    instructions_path = paths.content / "instructions" / "message-bus.md"
+    if not instructions_path.exists():
         return set(STARTER_MESSAGE_TYPES)
-    text = vocab_path.read_text(encoding="utf-8")
-    found = set(re.findall(r"`([a-z][a-z0-9-]*)`", text))
-    for line in text.splitlines():
-        match = re.match(r"\s*[-*]\s+([a-z][a-z0-9-]*)(?:\s*[-:;.]|\s*$)", line)
-        if match and match.group(1) not in {"stub"}:
-            found.add(match.group(1))
+    text = instructions_path.read_text(encoding="utf-8")
+    found = set(
+        re.findall(r"^### `([a-z][a-z0-9-]*)`", text, flags=re.MULTILINE)
+    )
     return found or set(STARTER_MESSAGE_TYPES)
 
 

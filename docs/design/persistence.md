@@ -14,7 +14,7 @@ Markdown owns:
 - campaign, arc, and scene `summary.md`
 - public table files under `table/`
 - shared lore prose under `shared/lore/`
-- quest log, party knowledge, vocabulary, methodologies
+- quest log, party knowledge, instructions, methodologies, SRD, how-to guidance
 - DM notes/workspace/secret files
 - player notes, journals, drafts, public files, scratchpads, signature moves
 

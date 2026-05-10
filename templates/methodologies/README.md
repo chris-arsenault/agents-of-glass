@@ -1,6 +1,7 @@
 # Methodologies
 
-The instruction documents the agents read to know *how* a phase runs. **The real instructions** for each bootstrap phase plus regular play.
+The ordered workflow documents the executing agents read to know *how* a phase
+or mode runs.
 
 These get copied into each campaign at creation as `campaigns/<name>/methodologies/`, frozen against the campaign so editing the template here doesn't retroactively change a running campaign.
 
@@ -18,9 +19,12 @@ After character creation, the campaign is `active` and scenes begin. The first s
 
 ## What a methodology document is
 
-A methodology is **prose instructions for agents**, not a schema. It tells the DM (or the players) what they're doing during this phase, what counts as good output, what to avoid, what the boundary conditions are.
+A methodology is a binding sequence for an invocation: what to read first, what
+to produce, what order matters, and what done means.
 
-Think of it the way a human GM might read a craft article from a TTRPG blog before running a phase they haven't done before — guidance that shapes their decisions but doesn't dictate every word.
+It is not the whole instruction surface. Mechanical tool behavior lives in
+`instructions/`. Public game rules live in `srd/`. Examples and craft advice
+live in `how-to/`.
 
 ## What goes in one
 
@@ -36,10 +40,15 @@ Working shape (the actual content lands when we co-author):
 ## What does *not* go in one
 
 - Scene-by-scene scripts. Methodologies are not adventure modules.
-- Mechanical schemas. Methodologies explain table procedure; mechanical terms
-  and numbers belong in the shared vocabulary and CLI output.
+- Mechanical schemas. Methodologies explain sequence; terms and numbers belong
+  in the SRD.
+- Tool manuals. `glass` mechanics and file-write rules belong in
+  `instructions/`.
 - Lore content. Methodologies tell agents *how* to engage with the lore, not what the lore is.
 
 ## Status
 
-Campaign planning, arc creation, and scene prep are authored. Character creation is still a stub — needs a co-author pass before the first real campaign can run end to end. Arc creation and scene prep are intentionally separate from campaign planning so each can be re-invoked during active play when needed.
+Campaign planning, arc creation, scene prep, scene play, action scenes, and
+character creation are authored enough for first-play iteration. Arc creation
+and scene prep are intentionally separate from campaign planning so each can be
+re-invoked during active play when needed.

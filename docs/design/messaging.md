@@ -10,7 +10,7 @@ A simple typed message bus, exposed as a single CLI command:
 glass msg <type> <recipient> <body>
 ```
 
-- **`type`** — a string from a controlled vocabulary (`table-talk`, `banter`, `instruction`, `plot-hint`, `secret`, ...). The CLI validates against `shared/vocabulary/message-types.md` in the active campaign. Unknown types produce a helpful error so the agent can retry inline (the error includes the valid set and the closest match to what they tried).
+- **`type`** — a string from the message-bus instruction surface (`table-talk`, `banter`, `instruction`, `plot-hint`, `secret`, ...). The CLI validates against the explicit type headings in `instructions/message-bus.md` in the active campaign. Unknown types produce a helpful error so the agent can retry inline (the error includes the valid set and the closest match to what they tried).
 - **`recipient`** — a player name (`tev`, `sumi`, `renno`, `kit`), `party` (all players), or `dm`. The CLI validates against the active session's roster.
 - **`body`** — a multi-line string. Free-form prose. No other fields.
 
@@ -35,7 +35,7 @@ Messages live in Postgres. Small schema:
 | `session_id` | session scope |
 | `sender` | agent id |
 | `recipient` | `tev` / `party` / `dm` / etc. |
-| `type` | from message-types vocabulary |
+| `type` | from `instructions/message-bus.md` |
 | `body` | text |
 
 Read state:
@@ -64,7 +64,7 @@ Per [`../principles/codify-only-what-drifts.md`](../principles/codify-only-what-
 - **Codified:** the type, the sender/recipient, the timestamp, the read-checkpoint state. These need to agree across agents.
 - **Prose:** the body. Free-form text. The agent writes it like they'd write any other prose.
 
-The type vocabulary is the one place we validate, because untyped messages would defeat the purpose — the type is the indexable signal we want for analysis later. Type changes are vocabulary additions (see [`shared-vocabulary.md`](shared-vocabulary.md)), not schema migrations.
+The message type list is the one place we validate, because untyped messages would defeat the purpose — the type is the indexable signal we want for analysis later. Type changes are instruction-surface additions (see [`instruction-surface.md`](instruction-surface.md)), not schema migrations.
 
 ## Visibility
 

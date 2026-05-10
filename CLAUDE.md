@@ -21,6 +21,11 @@ Four principles govern every decision. **Read these first:**
 - Markdown + YAML frontmatter for narrative content (matching the lore repo's pattern).
 - All state mutations go through the `glass` CLI — never raw SQL or raw Cypher from the orchestrator or anywhere else.
 - Lore is encyclopedia-shaped (frontmatter + prose + sections, FalkorDB-mirrored). Personal notes are journal-shaped (free-form). Don't blur the two.
+- Runtime play-facing docs are intentionally split by target persona:
+  `instructions/` for executing-agent tool/file behavior, `methodologies/`
+  for executing-agent sequences, `srd/` for public player/DM rules,
+  `how-to/` for optional player/DM examples, and `shared/lore/` for
+  in-fiction character knowledge. Keep new prose in the right surface.
 - Agents are smart; resist the urge to enforce structure they can handle in prose.
 
 ## Working in this repo

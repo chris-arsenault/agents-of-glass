@@ -31,52 +31,32 @@ If no handoff is queued, the orchestrator falls through to the round-robin from 
 
 There is no script. Within your turn, you do whatever the scene calls for. A typical turn includes some of:
 
-- **Drain the bus.** First action of every turn (covered by the always-present TURN_START reminder): `glass msg read --since-checkpoint`. Read what's there. Respond to anything that needs a reply.
+- **Drain the bus.** Follow [`instructions/message-bus.md`](../instructions/message-bus.md).
 - **Notice creative influence.** In actual play, TURN_START may include a
   verse phrase and current tarot. Use them as minor creative texture; they are
   not mechanics and do not outrank the table or your character.
-- **Look at the table.** Read `table/index.md` first, then `table/scene.md`
-  and any linked table-root files or handouts that matter. Use this before
-  asking the DM to repeat visible room, NPC, monster, scene, or immediate
-  status information.
+- **Look at the table.** Follow [`instructions/table.md`](../instructions/table.md).
 - **Look at the world.** Read `shared/lore/`, recent transcript turns, your character file, other PCs' `players/<id>/public/intro.md`. Open whatever images, maps, or notes are relevant.
 - **Look at summaries and clocks.** Use `summary.md`, arc/scene `summary.md`
   files, and `shared/clocks.md` before asking the DM to repeat campaign
   continuity or public long-running pressure.
-- **Search before asking for old context.** Use `glass search text`,
-  `glass search semantic`, or `glass turns find --text` for prior turn detail.
-  Use `glass entity relations`, `between`, `edges`, or `stance` for
-  relationships between named things.
+- **Search before asking for old context.** Follow [`instructions/recall-and-search.md`](../instructions/recall-and-search.md).
 - **Decide what your character is doing.** Pick an action, a stance, a line of inquiry, an attempt at something.
-- **Take any rolls you decide are needed.** You call the rolls you initiate on
-  your own turn. The DM can still make DM-side checks for your character during
-  the DM turn when the scene needs that without an extra handoff.
-- **Send messages.** Side-channel via the bus: `glass msg banter <pc>` for IC asides, `glass msg secret dm <intent>` to flag hidden-from-party intent, `glass msg instruction party <plan>` for OOC coordination. Multiple is fine — batch them.
-- **Ask the DM questions.** Anything you need clarified about the world, the scene, or what your character would know goes through the bus: `glass msg secret dm "<question>"`. Multiple questions in one turn is fine. The DM will respond on their next turn.
-- **Write your turn narration.** End by writing IC prose to `<TURN_OUTPUT>` describing what your character did, what was visible to others, and the outcomes of any rolls in narrative form. The dice and message sends already left their own audit trails in the DB; this prose is the *story moment* that the rest of the party will read in the transcript. Tight is good — a paragraph or three.
+- **Take any rolls you decide are needed.** Use the roll authority in [`srd/checks.md`](../srd/checks.md).
+- **Send messages or ask questions.** Use the message bus; batch minor things.
+- **Write your turn narration.** Follow [`instructions/output-contract.md`](../instructions/output-contract.md).
 - **Optional handoff.** Run `glass turn handoff <agent_id>` if the next agent should not be next-in-rotation.
 
 You don't have to do all of these every turn. You don't have to do them in this order. The list is a menu.
 
-## The inversion: you call your own rolls
+## Rules References
 
-The traditional "DM tells you to make a check" pattern is reversed here. **Players call their own rolls.**
-
-- If your character is doing something with a real chance of failure, run the roll yourself: `glass roll <skill> <attribute> --risk <level> --character <id>`.
-- The risk level is your judgment call:
-  - `controlled` — easy / unattended / you've got time
-  - `standard` — the default
-  - `risky` — active opposition or pressure
-  - `desperate` — last-chance / under threat / no margin
-- When in doubt, pick lower. The DM will overrule if hidden knowledge demands otherwise.
-- Skill choice and attribute choice are also yours. Pick the combination that actually fits what you're doing. If you don't have the skill listed on your sheet, the roll uses `fool` (-2) — that's the system telling you the action is harder for someone untrained.
-- The roll's outcome is what it is. Narrate around it. A `regress` doesn't mean nothing happened — it means something specific went wrong. Make the failure interesting.
-
-**The DM only intervenes when hidden knowledge would invalidate the roll** — e.g., the lock you're picking is enchanted in a way that changes the attribute, the door you're listening at is one-way and your roll reveals nothing useful, the patrol you're sneaking past has a tuner with them and `attunement` is the relevant attribute instead of `finesse`. **This should be rare.** Most of your rolls stand as called.
-
-If the DM does push back, take the correction in stride. Usually they will
-interpret the result through hidden state or roll a corrected DM-side PC check
-on their own turn. Do not litigate.
+- Checks, risk, outcomes, momentum, and DM-side PC checks:
+  [`srd/checks.md`](../srd/checks.md).
+- Character hard-state commands:
+  [`instructions/character-state.md`](../instructions/character-state.md).
+- Creative influences:
+  [`instructions/creative-influences.md`](../instructions/creative-influences.md).
 
 ## What the DM does on their turn
 
@@ -84,24 +64,8 @@ The DM's job in scene play is roughly threefold: **respond, drive, plan.** Every
 
 ### Table upkeep
 
-The table is the current public short-term state under `table/`.
-
-- `table/index.md` is the at-a-glance board.
-- `table/scene.md` is the scene kickoff description.
-- `table/handouts/` is for in-game handouts: notices, pictures, maps, letters,
-  diagrams, evidence, or generated visuals.
-- Any other markdown file at `table/` root is freeform. Use names like
-  `npc-korth.md`, `west-balcony.md`, or `the-dukes-mental-state.md` when a
-  shared short-term reference would prevent repeated clarification questions.
-
-Do not put secrets in `table/`. Keep hidden state in `dm/secret/`, `dm/notes/`,
-or `dm/scratchpad.md` until it becomes visible. When visible state changes,
-update the table before ending your turn:
-
-```bash
-glass table write index.md --body "..."
-glass table append npc-korth.md --body "Korth is now visibly rattled."
-```
+Follow [`instructions/table.md`](../instructions/table.md). Update visible
+short-term state before ending your turn.
 
 ### Respond
 
@@ -134,20 +98,9 @@ Plan even if the bus is empty and the rotation is fine. Idle DM turns are wasted
 
 ## DM-side roll inversion
 
-The system minimizes actor transitions. A new agent invocation is expensive, so
-don't interrupt the player rotation just to ask for a check. When you need a
-roll for a player's character — a perception check they didn't take, an opposed
-roll, a saving throw — run it yourself:
-
-```bash
-glass roll perception attunement --risk standard --character tev-pc-1
-```
-
-The roll's `actor` field will record that you (the DM) called it; the `character_id` attributes the result to the PC. Use the outcome to inform your own narration. If the player asks afterwards, tell them what they noticed.
-
-Only hand off when the player has a real decision to make before the roll. Do
-not create a turn transition solely for dice. If the current actor can resolve
-the moment honestly within their authority, keep it in the current turn.
+Follow [`srd/checks.md`](../srd/checks.md): when the DM needs a PC check during
+the DM turn, the DM rolls it directly and narrates from the result. Hand off
+only when the player has a real decision to make before resolution.
 
 ## Rapid-response rounds
 

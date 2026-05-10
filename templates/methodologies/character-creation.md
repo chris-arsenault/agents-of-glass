@@ -15,31 +15,28 @@ This methodology has **two rounds**:
 
 Don't start round 2 until round 1 is fully done. Relationships only make sense when there are characters to relate to.
 
-For the mechanical layer (attribute budget, skill budget, HP, inventory rules), read [`character-creation-system.md`](character-creation-system.md). This doc is the *process*. That doc is the *rules*. You need both.
+For the mechanical layer (attribute budget, skill budget, HP, inventory rules),
+read [`srd/character-creation.md`](../srd/character-creation.md). For command
+and file behavior, read [`instructions/character-state.md`](../instructions/character-state.md).
+This doc is the process.
 
 ## Trust yourself, follow the rules
 
-You are not asking the DM for permission at each step. There is no propose / ratify loop on character intros, character sheets, or relationships. Read the methodology and the system reference, follow them, and write your files directly.
+You are not asking the DM for permission at each step. There is no propose / ratify loop on character intros, character sheets, or relationships. Read the methodology and SRD, follow them, and write your files directly.
 
 The DM gets one turn at the end of each round to read what the party authored and transition the phase forward. If a player produces something off-spec — a non-existent species, an attribute budget that doesn't add up, a generic-fantasy backstory that ignored the web pull — the DM can push back via `glass msg secret <player>` and ask for a revision in a follow-up turn. But the default is "you make your character; the DM is not your editor."
 
 This applies to the rest of play too. Make your own rolls via `glass roll`. Take your own HP changes via `glass character set-hp`. Spend your own momentum. The system is the system — don't ask the DM to confirm each mechanical step. Propose / ratify is reserved for **public journal entries** during play (canonical, party-shared lore that the DM might want to fold into the campaign record).
 
-### Things you must run via `glass` (not narrate, not Write-tool)
+### State and file boundaries
 
-- `glass character new` — your character row in Postgres. **If you skip this, every later `glass roll` will error: there's no character to roll for.**
-- `glass character inventory-add` / `inventory-rm` — items. Inventory is a jsonb column on your character row, not a markdown file.
-- `glass roll <skill> <attribute> --risk <level> --character <id>` — every uncertain action. Don't narrate "I rolled a 9"; the dice are the dice.
-- `glass character set-hp <id> <delta>` — when you take damage or heal. The number that lives in the DB is the number that's true.
-- `glass character set-momentum <id> <value>` — momentum changes from rolls happen automatically; only call this for narrative resets.
+Follow [`instructions/character-state.md`](../instructions/character-state.md)
+for character rows, inventory, HP, momentum, and consequences. Follow
+[`instructions/lore-and-notes.md`](../instructions/lore-and-notes.md) for notes
+and canon proposals.
 
-Things you write as markdown via your file-write tool (no `glass` involvement):
-- `players/<your-id>/public/intro.md`
-- `players/<your-id>/public/relationships.md`
-- `players/<your-id>/public/character.md` (optional cached display)
-- `players/<your-id>/signature-moves.md`
-- `players/<your-id>/secrets/<name>.md` (optional, DM-readable only)
-- Your private journal/drafts/notes/scratchpad — anything under `players/<your-id>/` that isn't `public/`.
+Write public character prose directly under `players/<your-id>/public/` and
+signature moves in `players/<your-id>/signature-moves.md`.
 
 ### Where files live in your player dir
 
@@ -64,7 +61,7 @@ Before authoring anything, read in this order:
 - **Your persona** at `players/<your-id>/persona.md` — who you are as a *player*, what you like, what kind of PC you tend to build.
 - **The campaign context** at `context.md` (campaign root) — the Question, the Scarcity, the setting, the party's organization, the opening arc summary.
 - **The party's organization** at `shared/lore/organization.md` — what the org does, the capabilities it typically needs, the reason the party operates together.
-- **The system reference** at [`character-creation-system.md`](character-creation-system.md) — attribute budget, skill budget, inventory rules.
+- **The SRD character creation rules** at [`srd/character-creation.md`](../srd/character-creation.md).
 - **Species lore** at `shared/lore/species/` — read the index, then read each species's full page. Don't skim. The texture matters.
 - **Cultures and naming** at `shared/lore/cultures/` — both the culture descriptions and the naming conventions. Names follow culture, not species.
 - **Whatever lore the DM has curated** at `shared/lore/` — locations, factions, NPCs, concepts.
@@ -124,7 +121,7 @@ The character.md `archetype` field is a short string version of this — "Lapsed
 
 ### 5. Allocate attributes and skills
 
-Per [`character-creation-system.md`](character-creation-system.md):
+Per [`srd/character-creation.md`](../srd/character-creation.md):
 
 - 7 attributes default to `standard`. Bump 2 to `advanced`, 1 to `superior` (optional). Optionally drop 1 to `rudimentary` as a flaw.
 - 5 skills total: 1 `virtuoso`, 2 `artisan`, 2 `apprentice`. Be specific with skill names; pull at least one from your web-search texture.
@@ -135,7 +132,7 @@ Choose attributes that match the character you're building. A Lapsed Tuner whose
 
 HP defaults to 10. Take 8 if you're fragile/specialized; take 12 if physical robustness is a defining trait.
 
-Inventory: 3-5 items. **One must be a signature item** with a specific story. The rest are tools-of-trade or sentimental. Read the system reference's inventory examples — generic gear is bounceable.
+Inventory: 3-5 items. **One must be a signature item** with a specific story. The rest are tools-of-trade or sentimental. Read the SRD's inventory examples — generic gear is bounceable.
 
 Also start `players/<your-id>/signature-moves.md` with 3-6 recurring things your
 character leans on: spells, combat maneuvers, search styles, social tactics,

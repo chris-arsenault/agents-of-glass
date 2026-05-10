@@ -5,7 +5,9 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
+from cli.config import Paths
 from cli.main import main
+from cli.messages import load_message_types
 
 
 def make_env(tmp_path: Path, campaign_id: str = "c1") -> dict[str, str]:
@@ -35,6 +37,33 @@ def invoke_ok(runner: CliRunner, args: list[str], env: dict[str, str]):
 
 
 class GlassCliTests(unittest.TestCase):
+    def test_message_types_load_from_instruction_headings_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            instructions = root / "instructions"
+            instructions.mkdir()
+            (instructions / "message-bus.md").write_text(
+                """
+# Message Bus
+
+Recipients are `dm`, `party`, or a player id.
+
+## Types
+
+### `table-talk`
+
+### `banter`
+
+### `plot-hint`
+""".strip()
+                + "\n",
+                encoding="utf-8",
+            )
+
+            found = load_message_types(Paths(content=root, campaigns=root / "campaigns"))
+
+            self.assertEqual(found, {"banter", "plot-hint", "table-talk"})
+
     def test_session_and_mode_use_campaign_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

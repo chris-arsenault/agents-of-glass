@@ -16,7 +16,10 @@ templates/
     party-knowledge.md     party-writable starter
     clocks.md              generated public durable-clock projection starter
     lore/                  starter campaign encyclopedia (usually empty until canonization happens)
-    vocabulary/            shared dialect — turn verbs, message types, mechanical terms
+  instructions/            binding executing-agent tool/file instructions
+  methodologies/           binding ordered workflows by mode/phase
+  srd/                     public game rules for players and DMs
+  how-to/                  optional player/DM examples and craft guidance
   table/                   public short-term table state (reset per scene)
     index.md               at-a-glance board
     scene.md               scene kickoff description
@@ -38,12 +41,6 @@ templates/
     journal/               starter dir
     drafts/                starter dir
     inbox/                 starter dir
-  methodologies/           the real instructions the agents read during each phase
-    README.md              what's here and when each is invoked
-    campaign-planning.md   world level — DM solo foundation (Question, Scarcity, factions, NPCs+antagonists, creatures, named things, locales, secrets, hooks, philosophy, opening arcs)
-    arc-creation.md        multi-scene pressure — invoked from campaign-planning AND during active play
-    scene-prep.md          single-scene level — run before each scene in active play
-    character-creation.md  DM + players authoring PCs and intros
 ```
 
 ## Authored vs runtime
@@ -57,6 +54,12 @@ The orchestrator copies `templates/` into a per-campaign root at campaign creati
 
 ## Two shapes of writing
 
+- **Instruction-shaped** (binding tool/file behavior for executing agents) —
+  `instructions/`.
+- **Methodology-shaped** (binding ordered workflows for executing agents) —
+  `methodologies/`.
+- **SRD-shaped** (public rules for player/DM roles) — `srd/`.
+- **How-to-shaped** (optional examples and craft guidance) — `how-to/`.
 - **Encyclopedia-shaped** (frontmatter + prose + sections, FalkorDB-mirrored when canonized) — `shared/lore/`, players' `drafts/`, players' `notes/`, DM's `notes/`.
 - **Journal-shaped** (free-form, no schema) — players' `journal/` and `scratchpad.md`, DM's `journal/` and `scratchpad.md` and `workspace/` and `secret/` and `intake/`.
 - **Table-shaped** (short, current, player-visible) — `table/index.md`,
@@ -75,4 +78,6 @@ FalkorDB owns entity relationships. See
 
 ## What gets committed
 
-Everything in this tree is committed to git — it's the authored baseline. Personas, vocabulary, the how-to-use indexes, the starter framing files. All durable.
+Everything in this tree is committed to git — it's the authored baseline.
+Personas, instructions, methodologies, SRD, how-to files, starter framing, and
+starter lore are all durable.

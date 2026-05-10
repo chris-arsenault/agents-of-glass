@@ -2,7 +2,7 @@
 
 What each agent has in its prompt vs what it can query, per role. The shape of the per-turn handoff.
 
-For the codification rules behind this, see [`../principles/codify-only-what-drifts.md`](../principles/codify-only-what-drifts.md). For the message bus that supplements always-on context, see [`messaging.md`](messaging.md). For the vocabulary the agents share, see [`shared-vocabulary.md`](shared-vocabulary.md).
+For the codification rules behind this, see [`../principles/codify-only-what-drifts.md`](../principles/codify-only-what-drifts.md). For the message bus that supplements always-on context, see [`messaging.md`](messaging.md). For the runtime instruction surfaces, see [`instruction-surface.md`](instruction-surface.md).
 For actual-play anti-staleness nudges, see [`creative-influences.md`](creative-influences.md).
 
 ## TURN_START.md — the single entry point
@@ -36,8 +36,9 @@ Last few turns are embedded. Pull older detail with `glass search text ...`,
 ## Messages waiting for you
 2 unread. Read with `glass msg read --since-checkpoint`.
 
-## Vocabulary
-TOC at [vocabulary/index.md](./vocabulary/index.md).
+## Instruction Surface
+Use `instructions/` for tool/file behavior, `methodologies/` for required
+turn sequence, `srd/` for public rules, and `how-to/` for optional examples.
 
 ## Your tools (allowlist)
 - glass roll
@@ -65,7 +66,7 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - Actual-play creative influence: one verse phrase plus current persisted tarot
   draw. This is omitted during bootstrap/prep modes.
 - Pointer to unread messages
-- Pointer to vocabulary index
+- Pointer to the relevant instruction surface roots
 - Pointer to their `notes/index.md` (their personal encyclopedia)
 
 ### Always-on for players additionally
@@ -83,7 +84,8 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - Public durable clocks (`campaigns/<id>/shared/clocks.md` and arc-local
   `clocks.md` projections — Postgres is canonical)
 - Party knowledge (`campaigns/<id>/shared/party-knowledge.md` — party-writable, all-readable)
-- Vocabulary detail files (`campaigns/<id>/shared/vocabulary/*.md`)
+- Public rules and examples (`campaigns/<id>/srd/`,
+  `campaigns/<id>/how-to/`)
 - Past turns from prior scenes (via `glass turns find ...`, including `--text`)
 - Current and historical tarot influences (via `glass tarot current` and
   `glass tarot list`)
@@ -148,7 +150,10 @@ templates/                             # authored, stable input
     quest-log.md
     party-knowledge.md
     lore/                              # usually empty in templates
-    vocabulary/                        # see shared-vocabulary.md
+  instructions/                        # executing-agent tool/file behavior
+  methodologies/                       # executing-agent workflows
+  srd/                                 # public game rules for players/DMs
+  how-to/                              # optional table examples and craft guidance
   dm/
     persona.md                         # who Mara is — voice, tastes, what she cuts
     scratchpad.md                      # starter current-notes file
@@ -169,7 +174,11 @@ campaigns/<id>/                        # per-campaign live root, copied from tem
     foundation.md                      # DM-only working framing
     notes/                             # NPCs, factions, creatures, artifacts, ships, locales, secrets, hooks, philosophy
   players/<player>/                    # journals, drafts, notes accumulate
-  shared/                              # methodologies snapshot, lore, vocabulary, quest-log, party-knowledge
+  instructions/                        # frozen snapshot of templates/instructions/
+  methodologies/                       # frozen snapshot of templates/methodologies/
+  srd/                                 # frozen snapshot of templates/srd/
+  how-to/                              # frozen snapshot of templates/how-to/
+  shared/                              # lore, quest-log, party-knowledge, clock projection
   arcs/<arc>/                          # one dir per arc, scaffolded via `glass arc create`
     context.md                         # PLAYER-FACING arc-level context
     summary.md                         # running arc/act continuity summary
@@ -262,7 +271,7 @@ This is the queryability layer that lets the always-on context stay small. An ag
 
 The orchestrator decides Sumi is up next during scene `keel-quarter-aftermath` in arc `reconnect-to-vantara`. It:
 
-1. Generates `players/sumi/turns/<NNNN>/TURN_START.md` with pointers to her readable campaign files: `persona.md`, `character.md`, `scratchpad.md`, campaign context, arc context, scene context, recent transcript, messages, vocabulary, and notes.
+1. Generates `players/sumi/turns/<NNNN>/TURN_START.md` with pointers to her readable campaign files: `persona.md`, `character.md`, `scratchpad.md`, campaign context, arc context, scene context, recent transcript, messages, instruction surfaces, and notes.
 2. Spawns `claude -p --dangerously-skip-permissions "Read <absolute TURN_START path> and take your turn."` with CWD set to `campaigns/<id>/` and the Sumi role grant installed for `glass`.
 3. Waits for the subprocess to exit.
 4. Reads the prose Sumi wrote to `players/sumi/turns/<NNNN>/TURN.md`; the audit log of any `glass` calls she made; appends to the campaign transcript with a header.
@@ -270,7 +279,7 @@ The orchestrator decides Sumi is up next during scene `keel-quarter-aftermath` i
 
 ## What This Doc Does Not Cover
 
-- The actual vocabulary entries (those are in `campaigns/<id>/shared/vocabulary/`).
+- The actual SRD, instruction, how-to, and lore prose entries.
 - How modes parameterize the always-on set (covered in [`modes.md`](modes.md)).
 - The DM's dual-purpose turn — what they do besides responding (covered in [`agents.md`](agents.md)).
 - The message bus details (covered in [`messaging.md`](messaging.md)).

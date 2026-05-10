@@ -15,6 +15,10 @@ table loop as scene play, but the turn order is tighter, fictional time moves in
 seconds instead of hours or days, and players should expect to choose rolls more
 often because more actions have immediate consequences.
 
+For the public rules, read [`srd/action-scenes.md`](../srd/action-scenes.md),
+[`srd/checks.md`](../srd/checks.md), and
+[`srd/pressure.md`](../srd/pressure.md). This methodology is the turn sequence.
+
 `combat`, `chase`, and `social-pressure` are **DM toolkit examples**, not a
 formal or exhaustive list. Use them when they fit. Make up another pattern when
 the narrative needs one.
@@ -66,7 +70,8 @@ Examples:
 - `escape distance: 0/6` opposed by `patrol alert: 0/4`.
 - `gate opens: 0/3 rounds` while `crystal fire: 0/5` threatens the room.
 
-Use `glass scene tracker` to keep the math honest:
+Use `glass scene tracker` to keep the math honest. Command details live in
+[`instructions/glass-cli.md`](../instructions/glass-cli.md).
 
 ```bash
 glass scene tracker set enemy-rout --label "Enemy rout" --max 6
@@ -126,58 +131,15 @@ next normal slot.
 
 ## Rolls
 
-On a player's own initiative turn, the player decides whether their action
-needs a roll. That does not change in action scenes.
-
-What changes is the pressure: because fictional time is short and opposition is
-active, more player actions will obviously be uncertain and consequential. If
-your character is changing position, leverage, HP, escape progress, attitude, or
-scene pressure, strongly consider rolling.
-
-No roll is needed for pure housekeeping, a short line of dialogue, checking a
-known fact, or moving through safe space.
-
-Players call their own rolls when they know the action and risk. Use
-`glass roll` for checks that do not directly reduce a scene value:
-
-```bash
-glass roll battlefield-footwork finesse --risk risky --character tev-pc-1 --target patrol-leader
-```
-
-Use `glass scene pressure` when the check is meant to reduce HP, resistance,
-distance, morale, or another pressure target.
-
-The DM can roll for NPCs, hazards, opposition, and DM-side PC checks they need
-to resolve on the DM turn. The DM does not hand off just to ask for dice.
+Follow [`srd/checks.md`](../srd/checks.md). Players call their own rolls on
+their own turns. The DM rolls for NPCs, hazards, opposition, and DM-side PC
+checks on DM turns. Do not hand off just to ask for dice.
 
 ## Pressure
 
-Use pressure when an action should reduce a target's numeric value. Combat is
-the obvious case: reduce HP. The same shape works for reducing the duke's
-resistance, closing distance in a chase, breaking morale, cracking a gate, or
-wearing down a hazard.
-
-A pressure attempt has two parts:
-
-1. **Hit check.** Roll the acting character's arbitrary skill + attribute
-   against the risk. The target's known `resistance` modifies how hard it is to
-   land pressure.
-2. **Impact roll.** If the hit check lands, roll `d6`, `d8`, or `d10` for
-   reduction. The acting player chooses the die honestly from the fiction:
-   weak/improvised pressure, solid pressure, or heavy/ideal pressure.
-
-Impact maps to reduction:
-
-| Impact roll | Reduction |
-|-------------|-----------|
-| `1-3` | 1 |
-| `4-6` | 2 |
-| `7-10` | 3 |
-
-The CLI applies impact on `breakthrough` and `advance`. A `stall` is glancing
-pressure: 1 reduction before impact resistance, with no impact die. `regress`
-and `collapse` apply no numeric reduction unless the DM changes the scene state
-separately in prose.
+Use pressure when an action should reduce a target's numeric value. The rules
+are in [`srd/pressure.md`](../srd/pressure.md); the command shape is in
+[`instructions/glass-cli.md`](../instructions/glass-cli.md).
 
 Use `glass scene pressure` for the numeric part:
 
@@ -196,27 +158,14 @@ glass scene pressure duke-resistance court-gossip presence \
   --note "I imply the petition is already circulating among his rivals."
 ```
 
-`--note` is not a rules object. It records the fictional pressure or side
-effect so the DM and players can respond to it in prose.
+`--note` is not a rules object. It records fictional pressure or side effect so
+the table can respond in prose.
 
 ## Inventory, Effects, and Signature Moves
 
-Inventory is arbitrary and narrative. A sword, net, forged seal, climbing rig,
-drugged wine, resonance fork, or signed letter can all matter if the fiction
-supports it. Players can use inventory to justify bonuses, lower risk, larger
-impact dice, constraints, stupor, changed positioning, or other prose effects.
-Those examples are not limits. Item `effect_tags` are reminders, not rules.
-
-The CLI only reduces the numeric value. Nonnumeric effects are handled in
-narration. If a net constrains a monster or a drug makes a social target
-sluggish, the DM responds in future framing, resistance, risk, or behavior. The
-same is true in reverse: the DM can impose arbitrary fictional effects on PCs,
-and players are expected to play within those effects until they address them.
-
-Each player also maintains `players/<id>/signature-moves.md`: 3-6 recurring
-moves, spells, maneuvers, search styles, social tactics, or other habits. These
-are not guaranteed powers. They give the table consistency, and they give the
-DM something the world can recognize, reward, counter, or prepare for.
+Rules for inventory, effects, consequences, and signature moves are in
+[`srd/character-state.md`](../srd/character-state.md). This methodology only
+cares that action turns stay tight and the table reflects visible changes.
 
 ## Outcome Authority
 

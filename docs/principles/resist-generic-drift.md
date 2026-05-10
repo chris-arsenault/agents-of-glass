@@ -25,11 +25,11 @@ These are all signals. They mean the agents have stopped writing in *this* world
 
 We don't have a single layer that solves this. We need several, applied continuously:
 
-**Specificity injection at every TURN_START.** The orchestrator surfaces specific lore in every turn's context — relevant entities, recent corpus details, vocabulary terms that fit the moment. The agent is anchored to specific names and specific concepts before they start writing.
+**Specificity injection at every TURN_START.** The orchestrator surfaces specific lore in every turn's context — relevant entities, recent corpus details, table state, SRD terms, and creative influences that fit the moment. The agent is anchored to specific names and specific concepts before they start writing.
 
 **The people files.** Mara, Tev, Sumi, Renno, Kit each have a specific voice and specific tastes. A player file that says "loves Sithari political maneuvering, hates anything that smells like generic fantasy" is a defense. A persona-level "the optimizer" is not. (See [`/docs/design/agents.md`](../design/agents.md).)
 
-**Vocabulary as anchor.** The shared vocabulary docs (`templates/shared/vocabulary/`) are populated with world-specific terms — `kite-flight`, `attunement`, `momentum`, `band`, `bandwidth` — instead of `mana`, `levitation`, `concentration`. Agents reaching for the vocabulary find the world, not generic fantasy.
+**Public rules and lore as anchors.** The SRD and lore docs are populated with world-specific terms — `kite-flight`, `attunement`, `momentum`, `band`, `bandwidth` — instead of `mana`, `levitation`, `concentration`. Agents reaching for rules, examples, and lore find the world, not generic fantasy.
 
 **The DM's gatekeeper role.** When a player drafts a generic-fantasy NPC and proposes it via `glass note propose`, the DM rejects or rewrites. Canonization is the choke point against generic content polluting the campaign.
 

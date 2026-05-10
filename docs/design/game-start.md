@@ -2,7 +2,7 @@
 
 The bootstrap flow that takes a fresh repo from "no campaign exists" to "real scenes are running." Two agent-driven phases plus an operator init step. Each phase produces transcripts, messages, public lore, and private notes. Every phase is clearable and resumable.
 
-For the methodology docs the agents read inside each phase, see [`/templates/methodologies/`](../../templates/methodologies/) — those are the *real instructions*. The core set is campaign-planning, arc-creation, scene-prep, scene-play, action-scene, and character-creation.
+For the workflow docs the agents read inside each phase, see [`/templates/methodologies/`](../../templates/methodologies/). For the broader runtime instruction surface, see [`instruction-surface.md`](instruction-surface.md). The core methodology set is campaign-planning, arc-creation, scene-prep, scene-play, action-scene, and character-creation.
 
 For the campaign-level state machine, see [Phase state](#phase-state). For the operator CLI, see [`/src/orchestrator/SPEC.md`](../../src/orchestrator/SPEC.md).
 
@@ -119,9 +119,12 @@ Each phase produces a transcript scoped to a scene (every phase runs as a typed 
 templates/                          # authored, stable; copied at campaign creation
   dm/                               # existing
   players/<id>/                     # existing
-  shared/                           # existing — lore, vocabulary, party-knowledge etc.
+  shared/                           # existing — lore, party-knowledge, clocks, etc.
+  instructions/                     # binding executing-agent tool/file behavior
   methodologies/                    # campaign-planning, arc-creation, scene-prep, character-creation
     README.md
+  srd/                              # public game rules for players and DMs
+  how-to/                           # optional player/DM examples and craft guidance
 
 campaigns/<id>/                     # per-campaign runtime root
   state.json                        # campaign phase state
@@ -136,9 +139,11 @@ campaigns/<id>/                     # per-campaign runtime root
     foundation.md                   # DM-only working framing for the campaign
   players/<id>/                     # copy of templates/players/<id>/, mutates
   methodologies/                    # frozen snapshot of templates/methodologies/
+  instructions/                     # frozen snapshot of templates/instructions/
+  srd/                              # frozen snapshot of templates/srd/
+  how-to/                           # frozen snapshot of templates/how-to/
   shared/                           # copy of templates/shared/, mutates
     lore/                           # campaign-canon (DM-canonized)
-    vocabulary/
     quest-log.md
     party-knowledge.md
     clocks.md                       # public durable-clock projection

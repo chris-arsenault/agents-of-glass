@@ -190,7 +190,10 @@ cmd_campaign() {
     # Shared content — all agents read, operator writes
     apply_perms_recursive "$OPERATOR" "$SHARED_GROUP" 2750 0640 \
         "$campaign_dir/shared" \
-        "$campaign_dir/methodologies"
+        "$campaign_dir/instructions" \
+        "$campaign_dir/methodologies" \
+        "$campaign_dir/srd" \
+        "$campaign_dir/how-to"
 
     # Per-player private dirs and files
     for pid in "${PLAYER_IDS[@]}"; do

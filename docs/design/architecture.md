@@ -36,6 +36,10 @@ All prose lives in markdown, in three layers:
 - **World bible** — `../the-glass-frontier-lore/`. Read-only. The full pre-existing canon. **DM-only** — players never see it directly, and it is *not* bulk-copied into the campaign (that would poison every agent's context with detail that doesn't matter to *this* campaign). The DM consults it as reference, and explicitly imports relevant entries into the campaign via `glass lore import`. See [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md#curate-dont-copy).
 - **Campaign lore** — `campaigns/<id>/shared/lore/`. Writable. The curated subset of world-bible entries (imported during campaign planning, 8-15 to start; more on demand during play) plus campaign-emergent entries: NPCs the party has met, locations they've discovered, events they've caused, faction reputations they've earned. **Encyclopedia-shaped, not notes-shaped** — same frontmatter + prose + sections pattern as the world bible, FalkorDB-mirrored. Players see this. Players also draft new entries into their `drafts/`; the DM ratifies (canonize) or rejects via `glass note`. Ratified entries land here.
 - **Player-facing context** — three levels: `campaigns/<id>/context.md`, `arcs/<arc>/context.md`, `arcs/<arc>/scenes/<scene>/context.md`. Each authored by the DM, projected into player CWDs as `campaign-context.md`, `arc-context.md`, `scene-context.md`. See [`game-start.md`](game-start.md) and [`context-packages.md`](context-packages.md).
+- **Instruction surfaces** — `instructions/`, `methodologies/`, `srd/`,
+  and `how-to/`. These are copied from templates into each campaign so runtime
+  agents have local binding tool instructions, workflows, public rules, and
+  optional examples. See [`instruction-surface.md`](instruction-surface.md).
 - **Public table** — `campaigns/<id>/table/`. The immediate visible table
   state for the current scene: `index.md`, `scene.md`, `handouts/`, plus any
   freeform table-root markdown files the DM creates to avoid repeated
@@ -251,12 +255,12 @@ agents-of-glass/
     orchestrator/         # the Python loop
     schema/               # graph + postgres schemas
   templates/              # authored input — copied into campaigns/<id>/ on creation
-    dm/, players/, shared/, methodologies/
+    dm/, players/, shared/, instructions/, methodologies/, srd/, how-to/
   campaigns/<id>/         # per-campaign live state — see game-start.md and context-packages.md
     state.json
     context.md            # player-facing campaign-level
     table/                # public short-term scene state
-    dm/, players/, shared/
+    dm/, players/, shared/, instructions/, methodologies/, srd/, how-to/
     arcs/<arc>/
       context.md          # player-facing arc-level
       plan.md             # DM-only
