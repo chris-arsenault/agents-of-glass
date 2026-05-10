@@ -4,8 +4,13 @@ import unittest
 from pathlib import Path
 
 from orchestrator.config import AogConfig, CapsConfig, ClaudeConfig
-from orchestrator.runner import Orchestrator
-from orchestrator.state import SessionState
+from orchestrator.runner import (
+    Orchestrator,
+    TurnFailure,
+    TurnResult,
+    _tool_transcript_lines,
+)
+from orchestrator.state import AGENTS_BY_ID, SessionState, speaker_order_for
 from orchestrator.store import SessionStore
 
 
@@ -27,6 +32,9 @@ def make_config(root: Path) -> AogConfig:
 
 
 class OrchestratorQueueTests(unittest.TestCase):
+    def test_prelude_coordinator_mode_is_dm_only(self) -> None:
+        self.assertEqual(speaker_order_for("prelude"), ("dm",))
+
     def test_prepare_turn_peeks_next_speaker_without_consuming(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -58,6 +66,107 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertIn("players/sumi/turns/0001", str(package.turn_dir))
             raw = json.loads((campaign_root / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(raw["next_speakers"][0]["agent"], "sumi")
+
+    def test_prepare_turn_builds_readonly_player_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            (campaign_root / "state.json").write_text(
+                json.dumps({"campaign": "c1", "next_speakers": [{"agent": "tev"}]})
+                + "\n",
+                encoding="utf-8",
+            )
+            (campaign_root / "table").mkdir()
+            (campaign_root / "table" / "scene.md").write_text("visible scene\n")
+            (campaign_root / "players" / "tev" / "public").mkdir(parents=True)
+            (campaign_root / "players" / "tev" / "public" / "intro.md").write_text(
+                "tev intro\n"
+            )
+            (campaign_root / "players" / "tev" / "secrets").mkdir(parents=True)
+            (campaign_root / "players" / "tev" / "secrets" / "debt.md").write_text(
+                "tev secret\n"
+            )
+            (campaign_root / "players" / "sumi" / "public").mkdir(parents=True)
+            (campaign_root / "players" / "sumi" / "public" / "intro.md").write_text(
+                "sumi intro\n"
+            )
+            (campaign_root / "players" / "sumi" / "secrets").mkdir(parents=True)
+            (campaign_root / "players" / "sumi" / "secrets" / "debt.md").write_text(
+                "sumi secret\n"
+            )
+            (campaign_root / "dm" / "secret").mkdir(parents=True)
+            (campaign_root / "dm" / "secret" / "truth.md").write_text("dm secret\n")
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+
+            package = orchestrator.prepare_turn(state)
+
+            self.assertEqual(package.spawn_cwd, root / ".glass-cwd" / "c1" / "0001-tev")
+            self.assertEqual(
+                package.agent_turn_start_path,
+                package.spawn_cwd / "players" / "tev" / "turns" / "0001" / "in.md",
+            )
+            self.assertTrue((package.spawn_cwd / "table" / "scene.md").exists())
+            self.assertTrue(
+                (package.spawn_cwd / "players" / "tev" / "secrets" / "debt.md").exists()
+            )
+            self.assertTrue(
+                (package.spawn_cwd / "players" / "sumi" / "public" / "intro.md").exists()
+            )
+            self.assertFalse(
+                (package.spawn_cwd / "players" / "sumi" / "secrets" / "debt.md").exists()
+            )
+            self.assertFalse((package.spawn_cwd / "dm" / "secret" / "truth.md").exists())
+            self.assertTrue((package.spawn_cwd / "scratch").is_dir())
+            self.assertEqual((package.spawn_cwd.stat().st_mode & 0o777), 0o555)
+            self.assertEqual(((package.spawn_cwd / "scratch").stat().st_mode & 0o777), 0o777)
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("read-only projection of the campaign workspace", turn_start)
+
+    def test_prepare_turn_dm_projection_includes_dm_arc_prep(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            (campaign_root / "state.json").write_text(
+                json.dumps({"campaign": "c1"}) + "\n",
+                encoding="utf-8",
+            )
+            arc_root = campaign_root / "arcs" / "opening"
+            scene_root = arc_root / "scenes" / "first-room"
+            scene_root.mkdir(parents=True)
+            (arc_root / "plan.md").write_text("dm arc plan\n")
+            (scene_root / "prep.md").write_text("dm scene prep\n")
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="campaign-planning",
+                initial_scene="planning",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+
+            package = orchestrator.prepare_turn(state)
+
+            self.assertIn("dm/turns/0001", str(package.turn_dir))
+            self.assertTrue((package.spawn_cwd / "arcs" / "opening" / "plan.md").exists())
+            self.assertTrue(
+                (
+                    package.spawn_cwd
+                    / "arcs"
+                    / "opening"
+                    / "scenes"
+                    / "first-room"
+                    / "prep.md"
+                ).exists()
+            )
 
     def test_prepare_turn_uses_action_order_when_queue_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -94,6 +203,11 @@ class OrchestratorQueueTests(unittest.TestCase):
 
             self.assertIn("players/kit/turns/0001", str(package.turn_dir))
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn(
+                "You are **Kit**, a player in a Glass Frontier TTRPG session.",
+                turn_start,
+            )
+            self.assertIn("You are playing the character summarized", turn_start)
             self.assertIn("## ACTION-SCENE TURN", turn_start)
             self.assertIn("`kit -> dm -> tev`", turn_start)
             self.assertIn("## Creative Influence", turn_start)
@@ -123,6 +237,119 @@ class OrchestratorQueueTests(unittest.TestCase):
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
             self.assertNotIn("## Creative Influence", turn_start)
             self.assertNotIn("Verse phrase:", turn_start)
+
+    def test_creative_influence_omitted_during_prelude_coordinator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            (campaign_root / "state.json").write_text(
+                json.dumps({"campaign": "c1"}) + "\n",
+                encoding="utf-8",
+            )
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="prelude",
+                initial_scene="prelude",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+
+            package = orchestrator.prepare_turn(state)
+
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn(
+                "You are **Mara**, the DM for a Glass Frontier TTRPG campaign.",
+                turn_start,
+            )
+            self.assertNotIn("operator", turn_start)
+            self.assertNotIn("shakedown", turn_start)
+            self.assertIn("methodologies/prelude-arc.md", turn_start)
+            self.assertNotIn("## Creative Influence", turn_start)
+
+    def test_public_prose_rejects_glass_command_transcripts(self) -> None:
+        prose = (
+            "The door opens.\n\n"
+            "> glass scene create ambush --type action\n"
+            "glass shards scatter across the floor.\n"
+            "glass turn rapid-round \"react\"\n"
+        )
+
+        self.assertEqual(
+            _tool_transcript_lines(prose),
+            [
+                "> glass scene create ambush --type action",
+                'glass turn rapid-round "react"',
+            ],
+        )
+
+    def test_prelude_dm_turn_without_handoff_fails_fast(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            (campaign_root / "state.json").write_text(
+                json.dumps({"campaign": "c1", "next_speakers": []}) + "\n",
+                encoding="utf-8",
+            )
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="prelude",
+                initial_scene="prelude",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            result = TurnResult(
+                turn_id="c1-t0001",
+                agent=AGENTS_BY_ID["dm"],
+                turn_dir=campaign_root / "dm" / "turns" / "0001",
+                spawn_cwd=campaign_root,
+                prose="What do you do?",
+                dry_run=False,
+            )
+
+            with self.assertRaises(TurnFailure) as caught:
+                orchestrator._validate_prelude_dm_handoff(
+                    state,
+                    result,
+                    state.active_mode,
+                )
+            self.assertEqual(caught.exception.failure["reason"], "prelude_dm_no_handoff")
+
+    def test_prelude_dm_turn_with_queued_player_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            (campaign_root / "state.json").write_text(
+                json.dumps({"campaign": "c1", "next_speakers": [{"agent": "tev"}]})
+                + "\n",
+                encoding="utf-8",
+            )
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="prelude",
+                initial_scene="prelude",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            result = TurnResult(
+                turn_id="c1-t0001",
+                agent=AGENTS_BY_ID["dm"],
+                turn_dir=campaign_root / "dm" / "turns" / "0001",
+                spawn_cwd=campaign_root,
+                prose="Tev, what do you do?",
+                dry_run=False,
+            )
+
+            orchestrator._validate_prelude_dm_handoff(
+                state,
+                result,
+                state.active_mode,
+            )
 
     def test_advance_action_order_wraps_round(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

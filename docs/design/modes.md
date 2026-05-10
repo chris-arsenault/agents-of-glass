@@ -148,6 +148,7 @@ These modes only apply during the bootstrap phases (see [`game-start.md`](game-s
 |------|-------|-------------------|--------|
 | **campaign-planning** | `campaign_planning` | DM only | campaign foundation per [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md) |
 | **character-creation** | `character_creation` | DM + players, sequential | PCs and intro entries per [`/templates/methodologies/character-creation.md`](../../templates/methodologies/character-creation.md) |
+| **prelude** | `prelude` | DM coordinator; pushes `scene-play` then `action` child modes | two-scene bootstrap shakedown per [`/templates/methodologies/prelude-arc.md`](../../templates/methodologies/prelude-arc.md) |
 
 ## Mode Nesting
 
@@ -168,7 +169,7 @@ Constraints:
 - **Pop is always allowed.** A child can always end and return control to the parent.
 - **Parent re-entry is a transcript event.** When a child pops, the transcript records "resuming town/social at keel-quarter" so analysis can see the seam.
 
-Some combinations are illegal — the orchestrator validates. For example, you cannot push a bootstrap mode (`campaign-planning`, `character-creation`) onto an active-play stack.
+Some combinations are illegal — the orchestrator validates. For example, you cannot push a bootstrap mode (`campaign-planning`, `character-creation`, `prelude`) onto an active-play stack.
 
 ## Authoring New Modes
 

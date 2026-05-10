@@ -7,11 +7,16 @@ For actual-play anti-staleness nudges, see [`creative-influences.md`](creative-i
 
 ## TURN_START.md — the single entry point
 
-The orchestrator builds a `TURN_START.md` file in the agent's working directory before each invocation. The agent's prompt is essentially:
+The orchestrator builds a per-turn `in.md`/TURN_START file in the agent's
+canonical turn directory and copies it into the projected workspace before each
+invocation. The agent's prompt is essentially:
 
 > Read `TURN_START.md` and take your turn.
 
-…spawned as `claude -p --dangerously-skip-permissions` with all tools available. Role-specific tool restriction is enforced at the `glass` CLI level (via env vars set by the orchestrator), not by Claude Code's permission system.
+…spawned as `claude -p --dangerously-skip-permissions` with all tools
+available, inside a per-turn read-only projection of the campaign workspace.
+Role-specific mutation authority is enforced at the `glass` CLI/API boundary,
+not by Claude Code's permission system.
 
 The TURN_START is dynamic — regenerated every turn — and contains pointers (links and headlines), not the full content of every relevant file. It pulls the agent into the right sub-files via curiosity instead of dumping everything in the prompt.
 
@@ -20,7 +25,11 @@ A typical player TURN_START:
 ```markdown
 # Turn 24 — Tev
 
-You are Tev. See [persona.md](./persona.md) (who you are), [character.md](./character.md) (your PC), and [scratchpad.md](./scratchpad.md) (your current working notes).
+You are Tev, a player in a Glass Frontier TTRPG session. Act as this player at
+the table, using the personality, voice, tastes, and habits in
+`players/tev/persona.md`. You are playing the character summarized in
+`players/tev/public/character.md`. Make choices as the player, and when you
+speak or act in fiction, embody only what the character knows and can do.
 
 It's your turn. Mode: **combat** | Scene: **ringglass-market-chase**.
 
@@ -44,7 +53,7 @@ turn sequence, `srd/` for public rules, and `how-to/` for optional examples.
 - glass roll
 - glass character set-hp / set-momentum / inventory-add (your character only)
 - glass msg <type> <recipient> <body>
-- glass note write (your journal)
+- glass note write (your own public/secrets/notes/journal/drafts files)
 - glass entity neighborhood / similar (read-only graph queries)
 - glass turns find / feed ... (query past turns)
 
@@ -56,15 +65,17 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 ## What's Always-On vs Queryable
 
 ### Always-on for every agent (in TURN_START as content or near-pointer)
-- Their `persona.md` (who they are)
-- Their `scratchpad.md` (current working notes — overwriteable)
+- An embodied identity paragraph drawn from their `persona.md`
+- Their `scratchpad.md` (current working notes — persisted through `glass note write`)
 - Current mode + scene framing
 - Current public table: `table/index.md`, `table/scene.md`, and `table/handouts/`
 - Campaign framing
 - Campaign / arc / scene summaries as pointers, not embedded compression
 - Recent turns (last K, K depends on mode)
 - Actual-play creative influence: one verse phrase plus current persisted tarot
-  draw. This is omitted during bootstrap/prep modes.
+  draw. This is omitted during non-play bootstrap/prep modes. Prelude
+  coordinator turns omit it; the actual scene-play/action child turns can use
+  it because characters are now in play.
 - Pointer to unread messages
 - Pointer to the relevant instruction surface roots
 - Pointer to their `notes/index.md` (their personal encyclopedia)
@@ -208,19 +219,37 @@ information.
 
 ## Process Isolation
 
-Each agent runs as a separate `claude -p` subprocess **directly inside the campaign workspace** (`cwd = campaigns/<id>/`). No per-turn ephemeral CWD with file projections. Per-turn artifacts (TURN_START.md, TURN.md) live under that agent's campaign directory: `dm/turns/<NNNN>/` for the DM and `players/<id>/turns/<NNNN>/` for players.
+Each agent runs as a separate `claude -p` subprocess inside a fresh per-turn
+projection at `.glass-cwd/<campaign>/<turn>-<agent>/`. The projection mirrors
+the canonical campaign tree's relative paths, but contains only the files that
+actor may read. For example, `table/scene.md` stays `table/scene.md`; Tev's
+private notes stay `players/tev/notes/`; another player's private notes simply
+are not present.
 
-Filesystem isolation between agents is enforced by Unix users + group-based chmod. See [`architecture.md`](architecture.md#process-isolation) for the full setup. Quick summary:
+The canonical campaign root remains `campaigns/<id>/`. TURN_START and output
+artifacts are written canonically under `dm/turns/<NNNN>/` or
+`players/<id>/turns/<NNNN>/`, and copied into the projection at the same
+relative path before the subprocess starts. The agent writes `out.md` in the
+projected turn dir; the orchestrator copies it back to canonical storage before
+committing the turn.
 
-- DM = the operator user (`dev`); full access.
-- Players = dedicated users (`aog-tev`, `aog-sumi`, `aog-renno`, `aog-kit`); each runs via `sudo -u`.
-- Shared content owned by `dev:aog-agents` mode `2750/0640` — all agents read, only the operator writes.
-- Player private (`journal`, `drafts`, `notes`, `inbox`, `scratchpad`, `persona`): owned by the player user + their primary group (which includes `dev` so the DM can read), mode `2750/0640`. Other players cannot see.
-- DM-only (`dm/foundation.md`, `dm/secret/`, etc.): `dev:dev` mode `0700/0600`. Players cannot see.
+Projected files are read-only. The only writable projected areas are the current
+turn dir and `scratch/`. Persistent mutations must go through `glass`:
+`glass note write`, `glass table write`, `glass character`, `glass scene`,
+`glass clock`, `glass entity`, etc. The local `glass` API runs commands against
+the canonical campaign while using the projection as the command cwd, so
+`--from scratch/foo.md` works without exposing extra canonical files.
 
-Operator setup is one command: `sudo bash scripts/provision-agents.sh`. Without it, the orchestrator falls through to running all agents as the operator (no isolation; documented as the dev/CI path).
+Unix users still matter: players run as dedicated users (`aog-tev`,
+`aog-sumi`, `aog-renno`, `aog-kit`) via `sudo -u`, and canonical campaign files
+retain restrictive permissions as a backstop. The projection removes the
+dependency on delicate group propagation for normal reads, and the `glass`
+boundary removes direct canonical writes from agent turns.
 
-The principle: **do not trust agents to honor "don't read X."** Agents are too good at finding things they shouldn't have. Enforce at the OS level, not via instructions in the prompt.
+The principle: **do not trust agents to honor "don't read X" or "only mutate
+through Y" instructions.** Agents are too good at finding things they shouldn't
+have. Give each actor a workspace containing only the correct readable files,
+and make the durable mutation path explicit.
 
 ## Streaming Output
 
@@ -271,11 +300,12 @@ This is the queryability layer that lets the always-on context stay small. An ag
 
 The orchestrator decides Sumi is up next during scene `keel-quarter-aftermath` in arc `reconnect-to-vantara`. It:
 
-1. Generates `players/sumi/turns/<NNNN>/TURN_START.md` with pointers to her readable campaign files: `persona.md`, `character.md`, `scratchpad.md`, campaign context, arc context, scene context, recent transcript, messages, instruction surfaces, and notes.
-2. Spawns `claude -p --dangerously-skip-permissions "Read <absolute TURN_START path> and take your turn."` with CWD set to `campaigns/<id>/` and the Sumi role grant installed for `glass`.
-3. Waits for the subprocess to exit.
-4. Reads the prose Sumi wrote to `players/sumi/turns/<NNNN>/TURN.md`; the audit log of any `glass` calls she made; appends to the campaign transcript with a header.
-5. Picks the next agent.
+1. Generates canonical `players/sumi/turns/<NNNN>/in.md` with an embodied identity paragraph plus pointers to her readable campaign files: `persona.md`, `character.md`, `scratchpad.md`, campaign context, arc context, scene context, recent transcript, messages, instruction surfaces, and notes.
+2. Builds `.glass-cwd/<campaign>/<NNNN>-sumi/` with the same relative paths for Sumi's visible files.
+3. Spawns `claude -p --dangerously-skip-permissions "Read players/sumi/turns/<NNNN>/in.md and take your turn."` with CWD set to the projection and the Sumi role grant installed for `glass`.
+4. Waits for the subprocess to exit.
+5. Copies projected turn artifacts back to the canonical turn dir, reads `out.md`, and appends the turn to Postgres plus markdown transcript exports.
+6. Picks the next agent.
 
 ## What This Doc Does Not Cover
 

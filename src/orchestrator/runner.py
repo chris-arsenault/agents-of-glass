@@ -9,6 +9,7 @@ import json
 import os
 import grp
 import pwd
+import re
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,7 @@ from .config import AogConfig, config_env_value
 from .context import ContextBuilder, ContextPackage
 from .glass_bridge import GlassBridgeError
 from . import permissions
+from .projection import copy_turn_artifacts_to_canonical
 from .state import AGENTS_BY_ID, Agent, SessionState, next_agent_for, utc_now
 from .store import SessionStore
 
@@ -41,6 +43,13 @@ class TurnResult:
     dry_run: bool
     queued_speaker_entry: dict[str, Any] | None = None
     action_order_entry: dict[str, Any] | None = None
+
+
+_GLASS_COMMAND_LINE_RE = re.compile(
+    r"^\s*>?\s*glass\s+"
+    r"(roll|character|clock|summary|entity|search|tarot|lore|note|arc|"
+    r"scene|table|mode|turn|thread|msg|turns)\b"
+)
 
 
 class Orchestrator:
@@ -391,6 +400,23 @@ class Orchestrator:
 
     def commit_turn(self, state: SessionState, result: TurnResult) -> None:
         active = state.active_mode
+        command_lines = _tool_transcript_lines(result.prose)
+        if command_lines:
+            raise TurnFailure(
+                "turn output included glass command transcript lines instead of executing them.",
+                {
+                    "reason": "turn_output_contains_tool_transcript",
+                    "turn_id": result.turn_id,
+                    "speaker": result.agent.id,
+                    "turn_dir": str(result.turn_dir),
+                    "lines": command_lines,
+                    "hint": (
+                        "Run required `glass` commands during the turn. Do not "
+                        "write command transcripts into the public prose file."
+                    ),
+                },
+            )
+
         # The agent's TURN.md (or the dry-run synthetic prose) is what we
         # commit. glass turn append owns the transcript header; we just hand
         # it the markdown file.
@@ -448,6 +474,49 @@ class Orchestrator:
             self._advance_action_order(state.campaign, result.action_order_entry)
         synced = self.store.sync_from_glass(state)
         state.__dict__.update(synced.__dict__)
+        self._validate_prelude_dm_handoff(state, result, active)
+
+    def _validate_prelude_dm_handoff(
+        self,
+        state: SessionState,
+        result: TurnResult,
+        previous_active: Any,
+    ) -> None:
+        """Fail fast if the prelude coordinator did not enter table play.
+
+        `prelude` is a DM-only coordinator mode. Its job is to scaffold the
+        normal/action scenes and then hand control to `scene-play`, `action`,
+        initiative, or an explicit next-speaker queue. If the DM remains in
+        bare `prelude` with no queue, the scheduler will select the DM again
+        forever and the players never get a turn.
+        """
+        if result.dry_run or result.agent.id != "dm":
+            return
+        if previous_active.mode != "prelude":
+            return
+        if not state.has_active_mode or state.active_mode.mode != "prelude":
+            return
+        if self._peek_next_speaker_entry(state.campaign):
+            return
+        if self._peek_action_order_entry(state):
+            return
+        raise TurnFailure(
+            "prelude DM turn did not start a scene mode or queue player turns.",
+            {
+                "reason": "prelude_dm_no_handoff",
+                "turn_id": result.turn_id,
+                "speaker": result.agent.id,
+                "turn_dir": str(result.turn_dir),
+                "active_mode": state.active_mode.mode,
+                "active_scene": state.active_mode.scene_id,
+                "hint": (
+                    "In prelude mode, the DM must execute `glass mode start "
+                    "scene-play <scene>` or `glass mode start action <scene>`, "
+                    "queue players with `glass turn rapid-round`/handoff, or "
+                    "end the prelude mode before finishing the turn."
+                ),
+            },
+        )
 
     def _tick_closing_countdown(self, campaign: str) -> None:
         """Decrement state["scene_closing_turns"] by 1 if set, after a turn.
@@ -510,33 +579,33 @@ class Orchestrator:
     ) -> TurnResult:
         # The prompt is intentionally short — the heavy lifting is in
         # TURN_START.md, which the agent reads as its first action.
-        turn_start_ref = _agent_path(package.turn_start_path, package.spawn_cwd)
-        turn_output_ref = _agent_path(package.turn_output_path, package.spawn_cwd)
+        turn_start_ref = _agent_path(package.agent_turn_start_path, package.spawn_cwd)
+        turn_output_ref = _agent_path(package.agent_turn_output_path, package.spawn_cwd)
         prompt = (
             f"Read {turn_start_ref} and follow its instructions. "
             f"Write your final public prose to {turn_output_ref} and exit."
         )
 
-        # If the agent has a dedicated Unix user (provisioning is set up),
-        # sudo into that user. The DM runs as the operator (None).
+        # Agents run in a read-only projection. `glass` uses the local API so
+        # file reads can come from the projection while mutations land in the
+        # canonical campaign tree.
         target_user = permissions.player_user_for(agent.id)
-        glass_api_url: str | None = None
-        glass_api_grant: str | None = None
+        glass_api_url = ensure_background_server(
+            url=os.environ.get("GLASS_API_URL", DEFAULT_API_URL),
+            config_path=config_env_value(self.config),
+        )
+        glass_api_grant = mint_grant(
+            self.config.campaigns_dir,
+            campaign_id=state.campaign,
+            role=agent.role,
+            actor=agent.id,
+            glass_role=agent.glass_role,
+            turn_id=package.turn_id,
+            ttl_seconds=max(self.config.claude.turn_timeout_seconds + 600, 3600),
+            workspace_root=package.spawn_cwd,
+        )
         glass_api_grant_file: Path | None = None
         if target_user is not None:
-            glass_api_url = ensure_background_server(
-                url=os.environ.get("GLASS_API_URL", DEFAULT_API_URL),
-                config_path=config_env_value(self.config),
-            )
-            glass_api_grant = mint_grant(
-                self.config.campaigns_dir,
-                campaign_id=state.campaign,
-                role=agent.role,
-                actor=agent.id,
-                glass_role=agent.glass_role,
-                turn_id=package.turn_id,
-                ttl_seconds=max(self.config.claude.turn_timeout_seconds + 600, 3600),
-            )
             glass_api_grant_file = _write_player_glass_api_file(
                 target_user=target_user,
                 api_url=glass_api_url,
@@ -560,7 +629,7 @@ class Orchestrator:
         command.append("claude")
         if self.config.claude.model:
             command.extend(["--model", self.config.claude.model])
-        claude_debug_path = package.turn_dir / "claude-debug.log"
+        claude_debug_path = package.agent_turn_dir / "claude-debug.log"
         claude_debug_ref = _agent_path(claude_debug_path, package.spawn_cwd)
         command.extend([
             "-p",
@@ -577,13 +646,14 @@ class Orchestrator:
                 "GLASS_CAMPAIGN_ID": state.campaign,
                 "GLASS_CONFIG": config_env_value(self.config),
                 "GLASS_TURN_ID": package.turn_id,
-                "AOG_TURN_START": str(package.turn_start_path),
-                "AOG_TURN_OUTPUT": str(package.turn_output_path),
+                "GLASS_API_URL": glass_api_url,
+                "GLASS_API_GRANT": glass_api_grant,
+                "AOG_TURN_START": str(package.agent_turn_start_path),
+                "AOG_TURN_OUTPUT": str(package.agent_turn_output_path),
             }
         )
         if target_user is not None:
             env["PATH"] = _player_path()
-            env["GLASS_API_URL"] = glass_api_url or DEFAULT_API_URL
             if glass_api_grant_file is not None:
                 env["GLASS_API_GRANT_FILE"] = str(glass_api_grant_file)
 
@@ -635,6 +705,10 @@ class Orchestrator:
                 },
             ) from exc
 
+        copy_turn_artifacts_to_canonical(
+            projection=package.projection,
+            canonical_turn_dir=package.turn_dir,
+        )
         _write_process_capture(package.turn_dir, stdout_text, stderr_text)
         debug_payload.update(
             {
@@ -681,9 +755,9 @@ class Orchestrator:
                 },
             )
 
-        prose = _collect_prose(package.turn_output_path, stdout_text)
+        prose = _collect_prose(package.agent_turn_output_path, stdout_text)
         if not prose:
-            output_debug = _path_debug(package.turn_output_path)
+            output_debug = _path_debug(package.agent_turn_output_path)
             raise TurnFailure(
                 f"Turn {package.turn_id} produced no prose.",
                 {
@@ -697,7 +771,7 @@ class Orchestrator:
                     "stderr_bytes": debug_payload["stderr_bytes"],
                     "stdout_preview": debug_payload["stdout_preview"],
                     "stderr_preview": debug_payload["stderr_preview"],
-                    "turn_output_path": str(package.turn_output_path),
+                    "turn_output_path": str(package.agent_turn_output_path),
                     "turn_output": output_debug,
                 },
             )
@@ -900,6 +974,13 @@ def _env_value_debug(key: str, value: str | None) -> str | None:
 def _turn_path_debug(package: ContextPackage) -> dict[str, Any]:
     return {
         "spawn_cwd": _path_debug(package.spawn_cwd),
+        "campaign_root": _path_debug(package.campaign_root),
+        "projection_turn_dir": _path_debug(package.agent_turn_dir),
+        "projection_turn_start_path": _path_debug(package.agent_turn_start_path),
+        "projection_turn_output_path": _path_debug(package.agent_turn_output_path),
+        "projection_claude_debug_path": _path_debug(
+            package.agent_turn_dir / "claude-debug.log"
+        ),
         "turn_dir": _path_debug(package.turn_dir),
         "turn_start_path": _path_debug(package.turn_start_path),
         "turn_output_path": _path_debug(package.turn_output_path),
@@ -1045,6 +1126,16 @@ def _collect_prose(turn_output_path: Path, stdout: str | None) -> str:
         if text:
             return text
     return ""
+
+
+def _tool_transcript_lines(prose: str) -> list[str]:
+    """Return public prose lines that look like unexecuted glass commands."""
+    matches: list[str] = []
+    for line in prose.splitlines():
+        stripped = line.strip()
+        if _GLASS_COMMAND_LINE_RE.match(stripped):
+            matches.append(stripped)
+    return matches
 
 
 def _write_process_capture(

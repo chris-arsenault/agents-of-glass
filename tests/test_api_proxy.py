@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from cli.api_grants import mint_grant, validate_grant
-from cli.api_server import ensure_background_server
+from cli.api_server import _invoke_glass, ensure_background_server
 from cli.errors import GlassError
 
 
@@ -96,6 +96,78 @@ class GlassApiProxyTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Usage: glass", result.stdout)
+
+    def test_api_invocation_reads_from_projected_workspace_and_writes_canonical(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            campaigns = root / "campaigns"
+            campaign_root = campaigns / "c1"
+            campaign_root.mkdir(parents=True)
+            (campaign_root / "state.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 5,
+                        "campaign": "c1",
+                        "status": "active",
+                        "turn_counter": 0,
+                        "mode_stack": [],
+                        "pending_events": [],
+                        "note_intake": [],
+                        "entities": {},
+                        "threads": {},
+                        "turns": [],
+                        "next_speakers": [],
+                        "action_order": None,
+                        "scene_trackers": {},
+                        "scene_closing_turns": None,
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            projection = root / ".glass-cwd" / "c1" / "0001-tev"
+            (projection / "scratch").mkdir(parents=True)
+            (projection / "scratch" / "intro.md").write_text("hello from projection\n")
+            config = root / "agents-of-glass.toml"
+            config.write_text(
+                f'[paths]\ncontent = "{root / "templates"}"\ncampaigns = "{campaigns}"\n',
+                encoding="utf-8",
+            )
+            token = mint_grant(
+                campaigns,
+                campaign_id="c1",
+                role="player",
+                actor="tev",
+                glass_role="player:tev",
+                turn_id="c1-t0001",
+                ttl_seconds=60,
+                workspace_root=projection,
+            )
+            claim = validate_grant(
+                campaigns,
+                token,
+                ["note", "write", "public/intro.md", "--from", "scratch/intro.md"],
+            )
+            old_config = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = str(config)
+            try:
+                result = _invoke_glass(
+                    ["note", "write", "public/intro.md", "--from", "scratch/intro.md"],
+                    claim,
+                )
+            finally:
+                if old_config is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = old_config
+
+            self.assertEqual(result["exit_code"], 0, result["output"])
+            self.assertEqual(
+                (campaign_root / "players" / "tev" / "public" / "intro.md").read_text(
+                    encoding="utf-8"
+                ),
+                "hello from projection\n",
+            )
 
 
 if __name__ == "__main__":

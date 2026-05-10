@@ -17,6 +17,7 @@ NON_PLAY_MODES = {
     "campaign-bootstrap",
     "campaign-planning",
     "character-creation",
+    "prelude",
     "arc-creation",
     "scene-prep",
 }

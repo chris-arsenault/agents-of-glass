@@ -15,6 +15,8 @@ Use how-to files only as optional craft guidance.
 ## Core Files
 
 - [`output-contract.md`](output-contract.md) — what to write at turn end.
+- [`workspace-projection.md`](workspace-projection.md) — how to read from the
+  per-turn workspace and persist writes through `glass`.
 - [`message-bus.md`](message-bus.md) — required message read and message types.
 - [`table.md`](table.md) — how to use the public short-term table.
 - [`recall-and-search.md`](recall-and-search.md) — how to retrieve old context.

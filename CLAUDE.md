@@ -53,7 +53,12 @@ sudo bash scripts/provision-agents.sh
 
 ## Security model
 
-Each player agent runs as a dedicated Unix user; the DM runs as the operator. Filesystem isolation is enforced via group-based chmod on the campaign workspace. See [`docs/design/architecture.md`](docs/design/architecture.md#process-isolation). Without provisioning, the orchestrator falls through to running everyone as the operator (intended for dev/CI).
+Each turn runs in a read-only campaign-shaped projection containing only that
+actor's visible files. Persistent mutations go through `glass`. Player agents
+still run as dedicated Unix users as a backstop; the DM runs as the operator.
+See [`docs/design/architecture.md`](docs/design/architecture.md#process-isolation).
+Without provisioning, the projection remains useful for ordinary workspace
+shape, but it is not a hard security boundary.
 
 ## Key reading order for new agents
 

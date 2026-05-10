@@ -154,6 +154,22 @@ def current_arc(workspace: CampaignWorkspace) -> dict[str, Any] | None:
     }
 
 
+def activate_arc(workspace: CampaignWorkspace, arc_id: str) -> Path:
+    arc_id = slugify(arc_id)
+    arc_dir = workspace.arc_dir(arc_id)
+    if not arc_dir.exists():
+        raise FileNotFoundError(
+            f"arc {arc_id!r} does not exist; run `glass arc create {arc_id}` first"
+        )
+    state = load_campaign_state(workspace)
+    arcs = state.setdefault("arcs", [])
+    if arc_id not in arcs:
+        arcs.append(arc_id)
+    state["active_arc"] = arc_id
+    save_campaign_state(workspace, state)
+    return arc_dir
+
+
 # --- scenes ---
 
 

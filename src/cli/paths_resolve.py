@@ -9,6 +9,7 @@ campaign or templates root, else against templates/.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from .config import REPO_ROOT, Paths
@@ -88,6 +89,9 @@ def resolve_content_path(paths: Paths, path_text: str) -> Path:
             return cwd_candidate
         except ValueError:
             pass
+        campaign_id = os.environ.get("GLASS_CAMPAIGN_ID")
+        if campaign_id:
+            return paths.campaigns / campaign_id / rel
     return paths.content / rel
 
 
@@ -100,15 +104,36 @@ def resolve_note_write_path(
         rel = Path(*rel.parts[1:])
 
     if role.kind == "player":
-        if rel.parts and rel.parts[0] in {"journal", "drafts"}:
+        if rel.parts and rel.parts[0] in {
+            "public",
+            "secrets",
+            "notes",
+            "journal",
+            "drafts",
+            "inbox",
+        }:
+            rel = Path("players") / role.actor / rel
+        elif rel.parts and rel.parts[0] in {"scratchpad.md", "signature-moves.md"}:
             rel = Path("players") / role.actor / rel
         allowed_roots = [
+            Path("players") / role.actor / "public",
+            Path("players") / role.actor / "secrets",
+            Path("players") / role.actor / "notes",
             Path("players") / role.actor / "journal",
             Path("players") / role.actor / "drafts",
+            Path("players") / role.actor / "inbox",
         ]
-        if not any(rel == root or root in rel.parents for root in allowed_roots):
+        allowed_files = {
+            Path("players") / role.actor / "scratchpad.md",
+            Path("players") / role.actor / "signature-moves.md",
+        }
+        if rel not in allowed_files and not any(
+            rel == root or root in rel.parents for root in allowed_roots
+        ):
             raise GlassError(
-                "permission denied: players may write only their own journal/ or drafts/"
+                "permission denied: players may write only their own public/, "
+                "secrets/, notes/, journal/, drafts/, inbox/, scratchpad.md, "
+                "or signature-moves.md"
             )
     elif role.kind == "dm":
         if rel.parts and rel.parts[0] == "workspace":
@@ -117,18 +142,36 @@ def resolve_note_write_path(
             rel = Path("dm") / "notes" / Path(*rel.parts[1:])
         elif rel.parts and rel.parts[0] == "canonical-notes":
             rel = Path("dm") / "notes" / Path(*rel.parts[1:])
+        elif rel.parts and rel.parts[0] == "journal":
+            rel = Path("dm") / "journal" / Path(*rel.parts[1:])
+        elif rel.parts and rel.parts[0] == "secret":
+            rel = Path("dm") / "secret" / Path(*rel.parts[1:])
+        elif rel.parts and rel.parts[0] == "intake":
+            rel = Path("dm") / "intake" / Path(*rel.parts[1:])
         elif rel.parts and rel.parts[0] == "lore":
             rel = Path("shared") / "lore" / Path(*rel.parts[1:])
         allowed_roots = [
             Path("dm") / "workspace",
             Path("dm") / "notes",
+            Path("dm") / "journal",
+            Path("dm") / "secret",
             Path("dm") / "intake",
+            Path("shared"),
             Path("shared") / "lore",
+            Path("arcs"),
         ]
-        if not any(rel == root or root in rel.parents for root in allowed_roots):
+        allowed_files = {
+            Path("dm") / "scratchpad.md",
+            Path("dm") / "foundation.md",
+            Path("context.md"),
+            Path("summary.md"),
+        }
+        if rel not in allowed_files and not any(
+            rel == root or root in rel.parents for root in allowed_roots
+        ):
             raise GlassError(
                 "permission denied: DM note writes must stay in workspace/, dm/intake/, "
-                "dm/notes/, or shared lore"
+                "dm/notes/, dm/journal/, dm/secret/, shared/, or arcs/"
             )
 
     return paths.campaigns / campaign_id / rel

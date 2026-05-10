@@ -11,6 +11,7 @@ The notes here are working documents. They get updated when we re-read source ma
 
 - [the-glass-frontier-lore.md](the-glass-frontier-lore.md) — the worldbuilding wiki + graph database project that supplies our setting and lore patterns
 - [the-glass-frontier.md](the-glass-frontier.md) — the TypeScript chronicle engine that supplies our game-design pieces (skill checks, intent taxonomy, beat tracking)
+- [persona-prompting.md](persona-prompting.md) — prompt-engineering notes behind the runtime identity and persona/character prompt surface
 
 ## Placeholders for Future Research
 

@@ -21,6 +21,7 @@ The DM scaffolds arcs and scenes through the CLI; the CLI creates the directory 
 
 ```
 glass arc create <slug>                        # creates arcs/<slug>/ with plan.md, context.md, scenes/
+glass arc activate <slug>                      # set active_arc for future scene creation
 glass arc current                              # which arc is active
 glass arc list
 

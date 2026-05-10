@@ -55,6 +55,10 @@ methodology, table state, dice, or SRD.
 - Design docs can reference all of the above, but executing play agents should
   not need to read design docs to take a turn.
 
+Runtime prompt wording follows [`prompt-writing.md`](prompt-writing.md):
+generated `TURN_START.md` files should name the active table identity directly
+before they list supporting files.
+
 ## Refactor Rule
 
 When adding or moving text, ask who the sentence is commanding:

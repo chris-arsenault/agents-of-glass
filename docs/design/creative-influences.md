@@ -4,9 +4,10 @@ Creative influences are actual-play anti-degeneracy nudges. They exist to push
 agents away from stale phrasing and overfamiliar choices without becoming
 mechanics.
 
-They are only injected during play modes. Bootstrap and prep modes such as
-campaign planning, character creation, arc creation, and scene prep do not use
-them.
+They are only injected during play modes. Non-play bootstrap and prep modes
+such as campaign planning, character creation, the prelude coordinator, arc
+creation, and scene prep do not use them. Prelude `scene-play` and `action`
+child modes do use them because the characters are actually on screen.
 
 ## The Four Active Influences
 

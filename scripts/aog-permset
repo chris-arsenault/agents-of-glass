@@ -193,7 +193,17 @@ cmd_campaign() {
         "$campaign_dir/instructions" \
         "$campaign_dir/methodologies" \
         "$campaign_dir/srd" \
-        "$campaign_dir/how-to"
+        "$campaign_dir/how-to" \
+        "$campaign_dir/table"
+
+    # Arc directories are traversable by players for public context/summary
+    # files. DM-only planning files stay owner-only.
+    if [[ -d "$campaign_dir/arcs" ]]; then
+        chown -R "$OPERATOR:$SHARED_GROUP" "$campaign_dir/arcs"
+        find "$campaign_dir/arcs" -type d -exec chmod 2750 {} +
+        find "$campaign_dir/arcs" -type f -exec chmod 0640 {} +
+        find "$campaign_dir/arcs" -type f -name plan.md -exec chmod 0600 {} +
+    fi
 
     # Per-player private dirs and files
     for pid in "${PLAYER_IDS[@]}"; do
@@ -235,6 +245,9 @@ cmd_campaign() {
                 apply_perms "$puser" "$puser" 0640 0640 "$pdir/$f"
             fi
         done
+        if [[ -f "$pdir/signature-moves.md" ]]; then
+            apply_perms "$puser" "$puser" 0640 0660 "$pdir/signature-moves.md"
+        fi
 
         # Player root dir: owner = OPERATOR, group = aog-agents, mode 0750
         # (NO setgid). Operator-owned so the orchestrator (running as the
@@ -257,12 +270,6 @@ cmd_campaign() {
     if [[ -d "$campaign_dir/players" ]]; then
         chown "$OPERATOR:$SHARED_GROUP" "$campaign_dir/players"
         chmod 2750 "$campaign_dir/players"
-    fi
-
-    # arcs/ — populated lazily; default ownership for now
-    if [[ -d "$campaign_dir/arcs" ]]; then
-        chown "$OPERATOR:$SHARED_GROUP" "$campaign_dir/arcs"
-        chmod 2750 "$campaign_dir/arcs"
     fi
 
     # The campaign root itself

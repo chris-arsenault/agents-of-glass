@@ -184,6 +184,7 @@ def _invoke_glass(args: list[str], claim: dict[str, Any]) -> dict[str, Any]:
     campaigns_dir = get_paths().campaigns
     campaign_id = str(claim["campaign_id"])
     campaign_root = campaigns_dir / campaign_id
+    workspace_root = _claim_workspace_root(claim, fallback=campaign_root)
     env = os.environ.copy()
     env.update(
         {
@@ -194,12 +195,22 @@ def _invoke_glass(args: list[str], claim: dict[str, Any]) -> dict[str, Any]:
         }
     )
     runner = CliRunner()
-    with _invoke_lock, _pushd(campaign_root):
+    with _invoke_lock, _pushd(workspace_root):
         raw = runner.invoke(glass_main, args, env=env, prog_name="glass")
     return {
         "exit_code": raw.exit_code,
         "output": raw.output,
     }
+
+
+def _claim_workspace_root(claim: dict[str, Any], *, fallback: Path) -> Path:
+    value = claim.get("workspace_root")
+    if not isinstance(value, str) or not value:
+        return fallback
+    path = Path(value).expanduser()
+    if not path.exists() or not path.is_dir():
+        return fallback
+    return path
 
 
 @contextlib.contextmanager

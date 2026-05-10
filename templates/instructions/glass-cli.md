@@ -6,8 +6,10 @@ authority: binding
 
 # Glass CLI Instructions
 
-`glass` is the only state mutation surface. Do not write raw SQL or raw Cypher.
-Do not invent mechanical state in prose when a `glass` command owns it.
+`glass` is the only persistent state mutation surface. Do not write raw SQL or
+raw Cypher. Do not rely on direct file writes outside `scratch/` and the current
+turn output; your cwd is a read-only projection. Do not invent mechanical state
+in prose when a `glass` command owns it.
 
 Use `glass --help` and command-specific `--help` when unsure.
 
@@ -35,6 +37,8 @@ glass scene pressure <target> <skill> <attribute> --risk <level> --character <id
 glass character set-hp <id> <delta>
 glass character inventory-add <id> <item-id>
 glass msg <type> <recipient> <body>
+glass note write public/intro.md --from scratch/intro.md
+glass note write secrets/<name>.md --from scratch/<name>.md
 glass note propose <path>
 ```
 

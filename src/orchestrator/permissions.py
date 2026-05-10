@@ -72,6 +72,30 @@ def player_user_for(agent_id: str) -> str | None:
     return PLAYER_USERS.get(agent_id)
 
 
+def missing_operator_groups() -> list[str]:
+    """Supplementary Unix groups the current operator process still lacks.
+
+    Provisioning can add the operator to `aog-agents` and each player group,
+    but an already-running login shell does not pick those groups up. In that
+    state campaign bootstrap appears to work until the DM/operator tries to
+    read shared or player-authored files and gets EACCES.
+    """
+    if not has_provisioned_users():
+        return []
+
+    current_gids = set(os.getgroups())
+    current_gids.add(os.getegid())
+    current_groups: set[str] = set()
+    for gid in current_gids:
+        try:
+            current_groups.add(grp.getgrgid(gid).gr_name)
+        except KeyError:
+            continue
+
+    required = [SHARED_GROUP, *PLAYER_USERS.values()]
+    return [name for name in required if name not in current_groups]
+
+
 def apply_campaign_permissions(campaign_dir: Path) -> bool:
     """Set ownership + modes on a freshly-created campaign workspace.
 

@@ -22,7 +22,7 @@ This doc is the process.
 
 ## Trust yourself, follow the rules
 
-You are not asking the DM for permission at each step. There is no propose / ratify loop on character intros, character sheets, or relationships. Read the methodology and SRD, follow them, and write your files directly.
+You are not asking the DM for permission at each step. There is no propose / ratify loop on character intros, character sheets, or relationships. Read the methodology and SRD, follow them, and persist your authored files with `glass note write`.
 
 The DM gets one turn at the end of each round to read what the party authored and transition the phase forward. If a player produces something off-spec — a non-existent species, an attribute budget that doesn't add up, a generic-fantasy backstory that ignored the web pull — the DM can push back via `glass msg secret <player>` and ask for a revision in a follow-up turn. But the default is "you make your character; the DM is not your editor."
 
@@ -35,22 +35,26 @@ for character rows, inventory, HP, momentum, and consequences. Follow
 [`instructions/lore-and-notes.md`](../instructions/lore-and-notes.md) for notes
 and canon proposals.
 
-Write public character prose directly under `players/<your-id>/public/` and
-signature moves in `players/<your-id>/signature-moves.md`.
+Write public character prose under `players/<your-id>/public/` and signature
+moves in `players/<your-id>/signature-moves.md` by using `glass note write`.
+Your cwd is a per-turn projection: read from it normally, draft in `scratch/`,
+then use `glass` for anything that must survive the turn.
 
 ### Where files live in your player dir
 
 ```
 players/<your-id>/
-  persona.md            you (the player) — provided by the operator
+  persona.md            you (the player) — provided with the campaign template
   signature-moves.md    3-6 recurring prose moves you maintain
-  scratchpad.md         your working notes — overwrite freely
+  scratchpad.md         your working notes — persist updates with glass note write
   public/               party-readable: intros, relationships, cached character display
   secrets/              DM-readable, other-player-private: hidden knowledge files
   drafts/, journal/, notes/, inbox/   private to you
 ```
 
-Anything you put in `public/` is automatically party-readable (filesystem permissions handle this). Anything you put in `secrets/` is DM-readable but not visible to other players. You don't have to chmod anything — drop the file in the right subdir and the perms follow.
+Anything you persist in `public/` is party-readable. Anything you persist in
+`secrets/` is DM-readable but not visible to other players. You don't have to
+chmod anything; use `glass note write` with the right path.
 
 ## Round 1: Build your character
 
@@ -180,7 +184,7 @@ The character.md `org_tie` field is a one-line free-form description: what this 
 
 ### 10. Optional: hidden knowledge
 
-You may write **hidden knowledge** to a file the DM can read but other players can't. Drop it under `players/<your-id>/secrets/<name>.md` (the `secrets/` subdir is provisioned DM-readable but party-private) and message the DM via `glass msg secret dm <one-line summary>` so they know to read it. Use it for:
+You may write **hidden knowledge** to a file the DM can read but other players can't. Persist it under `players/<your-id>/secrets/<name>.md` with `glass note write secrets/<name>.md --from scratch/<name>.md` and message the DM via `glass msg secret dm <one-line summary>` so they know to read it. Use it for:
 
 - Alternative motivations (something your character is *also* doing while in the org)
 - Backstory the character hasn't told anyone (an old name, a buried debt, a relationship the org doesn't know about)
@@ -216,7 +220,13 @@ glass character inventory-add <character-id> <slug> --qty 1 \
     --effect-tag "<optional free-text way this item can matter>"
 ```
 
-Then write your intro markdown directly to `players/<your-id>/public/intro.md` using your file-write tool. The `public/` subdir is party-readable; this is the file your fellow PCs will read in round 2. Include:
+Then draft your intro markdown in `scratch/intro.md` and persist it:
+
+```bash
+glass note write public/intro.md --from scratch/intro.md
+```
+
+The `public/` subdir is party-readable; this is the file your fellow PCs will read in round 2. Include:
 
 - Frontmatter with at least `title:` (your character's name) and `type: character`
 - A Traits section listing your 3-5 traits
@@ -224,9 +234,15 @@ Then write your intro markdown directly to `players/<your-id>/public/intro.md` u
 - A Goals section (2-3 goals)
 - An Org Tie line
 
-Optionally write a short cached display at `players/<your-id>/public/character.md` with attribute/skill/inventory summary for quick reference. The canonical numbers are in Postgres; this is just a human-readable mirror.
+Optionally draft a short cached display at `scratch/character.md`, then persist it with `glass note write public/character.md --from scratch/character.md`. The canonical numbers are in Postgres; this is just a human-readable mirror.
 
-Update `players/<your-id>/signature-moves.md` with your starting 3-6 moves.
+Draft your starting 3-6 moves in `scratch/signature-moves.md`, then persist
+them with:
+
+```bash
+glass note write signature-moves.md --from scratch/signature-moves.md
+```
+
 Keep it current during play as your character's habits settle.
 
 When your turn ends, that's it for round 1. The other players take their turns; the DM reviews after.
@@ -243,7 +259,7 @@ Once all four PCs are authored — visible at `players/*/public/intro.md` — ea
 2. **Pick 1-2 relationship seeds** from the list below. Each seed must name a *specific other PC* — not a generic placeholder. You cannot point both at the same PC if you pick two; each seed must name a different other PC.
 3. **Write a paragraph for each seed** filling it in with specifics. Names, places, the particular thing that happened, the particular feeling that lingers. Use the same anti-sameness rigor you used for your backstory — this is shared canon, it should have texture.
 4. **Coordinate via the message bus.** If you're picking a seed about a shared event with another PC (the Shear incident, the Reconnection split), fire a `glass msg banter <other-player> "..."` to nail down the basic facts before you write your paragraph. Both your account and theirs should reference the same names, place, and rough sequence of events. If two players write contradictory specifics, the DM may flag it on their round-end turn — you may need to revise on a follow-up turn.
-5. **Write the file** directly to `players/<your-id>/public/relationships.md`. Use frontmatter with `title:` (e.g., "<your character>'s relationships") and `type: relationships`.
+5. **Write the file** by drafting `scratch/relationships.md`, then running `glass note write public/relationships.md --from scratch/relationships.md`. Use frontmatter with `title:` (e.g., "<your character>'s relationships") and `type: relationships`.
 
 ### The seed list
 
@@ -277,7 +293,10 @@ If a relationship pulls in a direction that worries you, message the DM before w
 
 All four PCs have between 1 and 2 relationships pointing at other PCs. Every PC is referenced by at least one other PC's relationship (no orphan PCs). The DM ends the mode on their round-end turn.
 
-The character_creation phase ends. The DM signals phase-complete and the campaign moves to active play.
+The character_creation phase ends. The DM signals phase-complete and the
+campaign moves to the prelude phase. The next DM-facing workflow is
+[`prelude-arc.md`](prelude-arc.md): a short two-scene first incident before the
+main campaign begins.
 
 ---
 

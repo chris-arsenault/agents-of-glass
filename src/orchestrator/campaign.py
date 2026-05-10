@@ -3,7 +3,7 @@
 A campaign workspace lives at `campaigns/<id>/` and is populated by copying
 the `templates/` tree at campaign-bootstrap time. The campaign's `state.json`
 tracks the bootstrap phase (init / campaign_planning / character_creation /
-active) and per-phase history.
+prelude / active) and per-phase history.
 
 This module is the home for the campaign workspace lifecycle. It does NOT
 own the per-session/per-scene state machine (that's `store.py`/`state.py`),
@@ -27,9 +27,16 @@ from .state import utc_now
 PHASE_INIT = "init"
 PHASE_PLANNING = "campaign_planning"
 PHASE_CHARACTER_CREATION = "character_creation"
+PHASE_PRELUDE = "prelude"
 PHASE_ACTIVE = "active"
 
-PHASE_ORDER = (PHASE_INIT, PHASE_PLANNING, PHASE_CHARACTER_CREATION, PHASE_ACTIVE)
+PHASE_ORDER = (
+    PHASE_INIT,
+    PHASE_PLANNING,
+    PHASE_CHARACTER_CREATION,
+    PHASE_PRELUDE,
+    PHASE_ACTIVE,
+)
 
 
 @dataclass(frozen=True)

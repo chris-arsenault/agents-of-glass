@@ -88,8 +88,8 @@ Postgres is on the LAN.
 A Python process. Its job is small:
 
 1. Hold the campaign + scene state machine (which phase, which arc, which scene, which mode, which budgets, whose turn).
-2. Build the next agent's per-turn `TURN_START.md` under `dm/turns/` or `players/<id>/turns/`.
-3. Spawn `claude -p --dangerously-skip-permissions` in the campaign workspace. All tools are available; the role-specific state grant is enforced by the local `glass` API/CLI boundary.
+2. Build the next agent's per-turn `in.md` under `dm/turns/` or `players/<id>/turns/`, then project the actor-visible campaign files into `.glass-cwd/`.
+3. Spawn `claude -p --dangerously-skip-permissions` in the projection. All tools are available; the role-specific state grant is enforced by the local `glass` API/CLI boundary.
 4. Wait for the subprocess to exit.
 5. Commit the agent's prose through `glass turn append`, which inserts a structured `turns` row and writes a derived markdown transcript export.
 6. Update Postgres-backed runtime state. Decide next speaker. Loop.
@@ -126,6 +126,7 @@ Surface (subject to refinement in [`turn-loop.md`](turn-loop.md), [`mechanics.md
 
 ```
 glass arc create <slug>               # DM only — scaffold an arc dir
+glass arc activate <slug>             # DM only — set active arc
 glass arc current | list
 glass scene create <slug> --type <label>  # DM only — scaffold a scene dir
 glass scene current | list | end
@@ -177,8 +178,8 @@ directly instead of handing to a player just to request dice. See
 ## Data Flow Per Turn
 
 1. Orchestrator decides whose turn it is (mode-dependent — see [`modes.md`](modes.md)).
-2. Orchestrator writes the agent's per-turn `TURN_START.md` into that agent's campaign directory (see [`context-packages.md`](context-packages.md)). The process CWD is the campaign root; OS permissions determine which files the agent can see.
-3. Orchestrator spawns `claude -p "Read <TURN_START path> and take your turn."` with CWD set to `campaigns/<id>/` and a role-scoped `glass` grant.
+2. Orchestrator writes the agent's per-turn `in.md` into that agent's canonical campaign turn directory, then builds a read-only projected workspace containing only files that actor may see (same relative paths as the campaign root).
+3. Orchestrator spawns `claude -p "Read <turn-start path> and take your turn."` with CWD set to the projection and a role-scoped `glass` grant.
 4. Agent runs its own tool loop. May call `glass roll`, `glass entity neighborhood`, `glass character set-hp`, `glass msg`, etc. — each call is logged to the audit trail.
 5. Agent emits prose (their turn) and exits.
 6. Orchestrator wraps the prose with a header (speaker, role, mode, scene, turn number, timestamp) and inlines mechanical event lines drawn from pending events, then calls `glass turn append`. The CLI writes the structured turn row to Postgres and refreshes the markdown transcript export.
@@ -189,15 +190,21 @@ Note: agents do not emit structured delta blocks. Whose turn is next, what mode 
 
 ## Process Isolation
 
-Each agent runs as a separate `claude -p` subprocess **directly inside the campaign workspace** (`cwd = campaigns/<id>/`). There is no per-turn ephemeral CWD with file projections. Filesystem isolation between agents is enforced at the OS level via Unix users + group-based chmod on the campaign workspace itself — agents are *too good* at finding things they shouldn't have, so we don't rely on "don't read X" instructions in prompts.
+Each agent runs as a separate `claude -p` subprocess inside a fresh per-turn
+projection (`cwd = .glass-cwd/<campaign>/<turn>-<agent>/`). The projection is
+campaign-shaped: paths such as `table/scene.md`,
+`players/tev/public/intro.md`, and `shared/lore/` keep the same relative
+location they have in `campaigns/<id>/`, but only files visible to that actor
+are copied in.
 
 **The model:**
 
 - The DM runs as the current operator user (`dev`) — full access to the campaign workspace.
 - Each player agent has a dedicated Unix user: `aog-tev`, `aog-sumi`, `aog-renno`, `aog-kit`.
 - A shared group `aog-agents` contains all agents. Each player has their own primary group (`aog-tev`, etc.) that includes `dev` so the DM can read player private content via group membership.
-- Campaign workspace files are owned by the appropriate user/group with mode bits that enforce per-agent isolation. DM-only files: `dev:dev` mode `0700/0600`. Shared content: `dev:aog-agents` mode `2750/0640`. Per-player private: `aog-<player>:aog-<player>` mode `2750/0640` (player rw, dev r via group, others none).
-- Per-turn artifacts (TURN_START.md the agent reads, TURN.md the agent writes) live under the spawning agent's campaign directory (`dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`). Permissions on this dir are set so the spawning user can read/write inside.
+- Canonical campaign workspace files retain restrictive ownership/mode bits as a backstop. DM-only files: `dev:dev` mode `0700/0600`. Shared content: `dev:aog-agents` mode `2750/0640`. Per-player private: `aog-<player>:aog-<player>` mode `2750/0640` (player rw, dev r via group, others none).
+- Per-turn artifacts live under the spawning agent's canonical campaign directory (`dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`) and are also present at the same relative path in the projection for the subprocess.
+- Projected files are read-only except `scratch/` and the current projected turn dir. Persistent mutations go through `glass`, whose local API uses the projection as cwd for `--from scratch/...` inputs but writes to the canonical campaign root.
 - Player invocations spawn via `sudo -u aog-<player>` (NOPASSWD per a sudoers entry installed at provisioning time).
 
 **Operator setup (run once):**
@@ -208,7 +215,7 @@ sudo bash scripts/provision-agents.sh
 
 This creates the Unix users + groups, adds the operator (`SUDO_USER`) to all relevant groups, installs `/usr/local/bin/aog-permset` (the privileged helper that the orchestrator calls via sudo to chown/chmod new campaign workspaces), and writes a sudoers rule at `/etc/sudoers.d/agents-of-glass`.
 
-**Graceful fallback:** if provisioning hasn't been run, the orchestrator detects this (`permissions.has_provisioned_users()`) and falls through silently — no chowns happen, all agents run as the operator, the system behaves as it did before. This is the path used during early development and in CI.
+**Graceful fallback:** if provisioning hasn't been run, the orchestrator detects this (`permissions.has_provisioned_users()`) and falls through silently — no chowns happen, all agents run as the operator. The projection still limits the ordinary workspace view, but it is not a hard security boundary without Unix users.
 
 ## What Lives Where (Quick Reference)
 

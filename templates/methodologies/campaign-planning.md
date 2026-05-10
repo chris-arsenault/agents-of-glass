@@ -19,7 +19,7 @@ If the answer is no, the prep is too narrow. Re-shape it.
 1. Your own [`persona.md`](../../dm/persona.md) — your voice, your tastes, what you cut.
 2. The world bible's player-facing entries — places, peoples, history, technology, resonance, ringglass. Use `glass lore search <query>` to locate entries in the configured lore repo.
 3. The world bible's DM-facing entries — themes, threads, loops, secret truths. Players never see these directly.
-4. Any starter framing the operator dropped in `shared/campaign-framing.md`.
+4. Any starter framing in `shared/campaign-framing.md`.
 5. The companion methodology — [`arc-creation.md`](arc-creation.md). You'll use this for the opening arc(s) below.
 
 ## Anti-sameness pulls (do this — it is not optional)
@@ -271,9 +271,15 @@ What kinds of stories is this campaign *about*? Which DM-facing themes from the 
 
 **Scaffold via the CLI.** Call `glass arc create <slug>` to scaffold an arc directory. The CLI creates `arcs/<slug>/` with a `context.md` stub (player-facing) and a `plan.md` stub (DM-only) and an empty `scenes/` directory.
 
-**One arc** for the opening — possibly a second seed.
+**One arc** for the opening main campaign — possibly a second seed.
 
 Use the [`arc-creation.md`](arc-creation.md) methodology to populate the arc directory. An arc is the unit of pressure-and-escalation that runs over multiple scenes. The opening arc is what the first scene pulls *toward* once the campaign is `active`. You don't need to author everything you might run — one well-formed arc is plenty to start. Future arcs get authored as they emerge in play, by re-invoking [`arc-creation.md`](arc-creation.md) and `glass arc create`.
+
+Do not fully author the prelude here. The prelude is built after character
+creation with [`prelude-arc.md`](prelude-arc.md), because it should respond to
+the actual PCs and party chemistry. During campaign planning, at most leave one
+short note about what kind of first incident might expose the campaign premise
+without resolving it.
 
 ## What you do NOT prep
 
@@ -300,7 +306,9 @@ Two to four DM invocations. When you've produced the items above, write a short 
 5. Confirms you did the lore pulls and web pulls. If you didn't, you produced a generic campaign and should restart this methodology.
 6. Calls `glass mode end` to advance the phase.
 
-If after three invocations you don't feel ready to advance, stop and ask the operator to clear back and restart — usually it means the Question is wrong and everything downstream is reaching.
+If after three invocations you don't feel ready to advance, stop and say plainly
+that the foundation is not ready. Usually it means the Question is wrong and
+everything downstream is reaching.
 
 ## Tone
 

@@ -36,7 +36,9 @@ Use:
 glass table current
 glass table show [path]
 glass table write <path> --body "..."
+glass table write <path> --from scratch/<draft>.md
 glass table append <path> --body "..."
+glass table append <path> --from scratch/<draft>.md
 glass table snapshot
 ```
 

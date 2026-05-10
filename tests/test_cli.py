@@ -173,6 +173,25 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(set(action_order["order"]), {"tev", "dm", "kit"})
             self.assertEqual(len(action_order["rolls"]), 3)
 
+    def test_arc_activate_switches_current_arc(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+
+            invoke_ok(runner, ["arc", "create", "main-opening"], dm_env)
+            invoke_ok(runner, ["arc", "create", "prelude"], dm_env)
+            current = invoke_ok(runner, ["arc", "current"], dm_env)
+            self.assertIn("prelude", current.output)
+
+            activated = invoke_ok(runner, ["arc", "activate", "main-opening"], dm_env)
+
+            self.assertIn("main-opening", activated.output)
+            state = json.loads((tmp_path / "campaigns" / "c1" / "state.json").read_text())
+            self.assertEqual(state["active_arc"], "main-opening")
+
     def test_scene_create_accepts_custom_type_and_trackers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

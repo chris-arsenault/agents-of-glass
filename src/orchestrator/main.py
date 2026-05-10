@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import os
+import shutil
 
 import click
 
@@ -22,6 +23,7 @@ from .campaign import (
     PHASE_ACTIVE,
     PHASE_CHARACTER_CREATION,
     PHASE_PLANNING,
+    PHASE_PRELUDE,
 )
 from .config import config_env_value, load_config
 from .runner import Orchestrator, TurnFailure
@@ -119,9 +121,21 @@ def campaign() -> None:
     help="Safety net only. The DM ends character_creation when both rounds are done.",
 )
 @click.option(
+    "--max-prelude-turns",
+    type=int,
+    default=35,
+    show_default=True,
+    help="Safety net only. The DM ends prelude after the two-scene shakedown.",
+)
+@click.option(
     "--skip-character-creation",
     is_flag=True,
     help="Stop after campaign planning. Useful when you want to inspect the planning output.",
+)
+@click.option(
+    "--skip-prelude",
+    is_flag=True,
+    help="Stop after character creation without running the bootstrap prelude.",
 )
 @click.option(
     "--dry-run",
@@ -134,7 +148,9 @@ def campaign_bootstrap(
     campaign_id: str,
     max_planning_turns: int,
     max_creation_turns: int,
+    max_prelude_turns: int,
     skip_character_creation: bool,
+    skip_prelude: bool,
     dry_run: bool,
 ) -> None:
     """Bootstrap a campaign end-to-end.
@@ -149,16 +165,18 @@ def campaign_bootstrap(
       1. Create or resume campaigns/<id>/.
       2. Invoke DM in campaign-planning mode.
       3. Character creation (skip with --skip-character-creation).
-      4. [STUB] Active scene play.
+      4. Prelude shakedown: one normal scene, one action scene.
+      5. Advance to active play.
     """
     from .campaign import CampaignSpace
 
+    _ensure_operator_groups_active()
     _ensure_db_migrated(cli)
     _restart_api_daemon_for_run(cli)
 
     space = CampaignSpace.from_config(cli.config, campaign_id)
     if space.exists():
-        click.secho(f"[1/4] Resuming existing campaign: {campaign_id}", fg="cyan")
+        click.secho(f"[1/5] Resuming existing campaign: {campaign_id}", fg="cyan")
         try:
             cm_state = cli.campaign_manager.load_state(campaign_id)
         except FileNotFoundError as exc:
@@ -168,7 +186,7 @@ def campaign_bootstrap(
         from . import permissions as _permissions
         _permissions.apply_campaign_permissions(space.campaign_dir)
     else:
-        click.secho(f"[1/4] Creating campaign workspace: {campaign_id}", fg="cyan")
+        click.secho(f"[1/5] Creating campaign workspace: {campaign_id}", fg="cyan")
         try:
             space = cli.campaign_manager.create(campaign_id)
             cm_state = cli.campaign_manager.load_state(campaign_id)
@@ -180,11 +198,11 @@ def campaign_bootstrap(
     # Phase 2: campaign planning
     if _phase_completed(cm_state, PHASE_PLANNING):
         click.secho(
-            f"[2/4] Campaign planning already complete; skipping.", fg="yellow"
+            f"[2/5] Campaign planning already complete; skipping.", fg="yellow"
         )
     else:
         click.secho(
-            f"[2/4] Invoking DM for campaign planning (max {max_planning_turns} turns)",
+            f"[2/5] Invoking DM for campaign planning (max {max_planning_turns} turns)",
             fg="cyan",
         )
         if cm_state["phase"] != PHASE_PLANNING:
@@ -224,15 +242,23 @@ def campaign_bootstrap(
     if skip_character_creation:
         if cm_state["phase"] != PHASE_CHARACTER_CREATION:
             cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
-        click.secho("[3/4] Character creation skipped (--skip-character-creation).",
+        click.secho("[3/5] Character creation skipped (--skip-character-creation).",
                     fg="yellow")
+        click.echo()
+        click.secho(
+            f"Campaign '{campaign_id}' bootstrapped through campaign_planning.",
+            fg="green",
+        )
+        click.echo(f"Next phase: {PHASE_CHARACTER_CREATION}")
+        click.echo(f"State file: {space.state_path}")
+        return
     elif _phase_completed(cm_state, PHASE_CHARACTER_CREATION):
         click.secho(
-            f"[3/4] Character creation already complete; skipping.", fg="yellow"
+            f"[3/5] Character creation already complete; skipping.", fg="yellow"
         )
     else:
         click.secho(
-            f"[3/4] Invoking players + DM for character creation "
+            f"[3/5] Invoking players + DM for character creation "
             f"(max {max_creation_turns} turns)",
             fg="cyan",
         )
@@ -269,17 +295,67 @@ def campaign_bootstrap(
         click.echo(f"      transcript: {cli.store.transcript_path(creation_state.campaign)}")
         cm_state = cli.campaign_manager.load_state(campaign_id)
 
-    # Phase 4: STUB
+    # Phase 4: prelude shakedown
+    if skip_prelude:
+        if cm_state["phase"] != PHASE_PRELUDE:
+            cli.campaign_manager.advance_phase(campaign_id, PHASE_PRELUDE)
+        click.secho("[4/5] Prelude skipped (--skip-prelude).", fg="yellow")
+        click.echo()
+        click.secho(
+            f"Campaign '{campaign_id}' bootstrapped through character_creation.",
+            fg="green",
+        )
+        click.echo(f"Next phase: {PHASE_PRELUDE}")
+        click.echo(f"State file: {space.state_path}")
+        return
+    if _phase_completed(cm_state, PHASE_PRELUDE):
+        click.secho(f"[4/5] Prelude already complete; skipping.", fg="yellow")
+    else:
+        click.secho(
+            f"[4/5] Running bootstrap prelude (max {max_prelude_turns} turns)",
+            fg="cyan",
+        )
+        if cm_state["phase"] != PHASE_PRELUDE:
+            cli.campaign_manager.advance_phase(campaign_id, PHASE_PRELUDE)
+        prelude_state = cli.store.create_session(
+            campaign=campaign_id,
+            initial_mode="prelude",
+            initial_scene="prelude",
+        )
+        try:
+            prelude_turns = cli.orchestrator.run_loop(
+                prelude_state,
+                max_turns=max_prelude_turns,
+                dry_run=dry_run,
+                resume_failed=False,
+            )
+        except TurnFailure as exc:
+            detail = json.dumps(exc.failure, indent=2, sort_keys=True)
+            raise click.ClickException(
+                f"prelude failed: {exc}\n{detail}"
+            ) from exc
+        _require_bootstrap_mode_ended(
+            cli,
+            campaign_id=campaign_id,
+            mode_name="prelude",
+            scene_id="prelude",
+            phase_label="prelude",
+            turns_run=prelude_turns,
+        )
+        click.echo(f"      ran {prelude_turns} prelude turn(s)")
+        click.echo(f"      transcript: {cli.store.transcript_path(prelude_state.campaign)}")
+        cm_state = cli.campaign_manager.load_state(campaign_id)
+
+    # Phase 5: active campaign handoff
     if cm_state["phase"] != PHASE_ACTIVE:
         cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
-    click.secho("[4/4] [STUB] Active scene play", fg="yellow")
-    click.echo("              (DM creates scenes via glass scene create;")
-    click.echo("               operator drives via aog campaign run)")
+    click.secho("[5/5] Campaign ready for active play", fg="green")
+    click.echo("      DM creates the next scene via glass scene create;")
+    click.echo("      operator drives via aog campaign run.")
 
     click.echo()
     click.secho(
-        f"Campaign '{campaign_id}' bootstrapped through "
-        f"{'campaign_planning' if skip_character_creation else 'character_creation'}.",
+        f"Campaign '{campaign_id}' bootstrapped through prelude.",
         fg="green",
     )
     click.echo(f"State file: {space.state_path}")
@@ -365,8 +441,17 @@ def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> No
             path = campaign_root / rel_path
             try:
                 has_text = path.read_text(encoding="utf-8").strip()
+            except FileNotFoundError:
+                failures.append(f"{player_id}: missing {rel_path}")
+                continue
+            except PermissionError as exc:
+                failures.append(
+                    f"{player_id}: cannot read {rel_path}: {exc.strerror or exc}"
+                )
+                continue
             except OSError:
-                has_text = ""
+                failures.append(f"{player_id}: cannot read {rel_path}")
+                continue
             if not has_text:
                 failures.append(f"{player_id}: missing or empty {rel_path}")
 
@@ -376,6 +461,25 @@ def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> No
             "character creation hard-state validation failed; not advancing "
             f"bootstrap phase:\n{detail}"
         )
+
+
+def _ensure_operator_groups_active() -> None:
+    from . import permissions as _permissions
+
+    missing = _permissions.missing_operator_groups()
+    if not missing:
+        return
+    operator = _permissions.operator_user()
+    aog_bin = shutil.which("aog") or "aog"
+    raise click.ClickException(
+        "Unix isolation is provisioned, but this operator process has not "
+        "picked up all required supplementary groups. Missing: "
+        f"{', '.join(missing)}.\n"
+        "Start a fresh login shell, or run through sudo so groups are "
+        "recomputed, for example:\n"
+        f"  with-cred -- sudo -n -u {operator} -g {operator} "
+        f"{aog_bin} campaign bootstrap <campaign-id>"
+    )
 
 
 def _restart_api_daemon_for_run(cli: CliState) -> None:
@@ -521,6 +625,7 @@ def campaign_run(
     dry_run: bool,
 ) -> None:
     """Run the orchestration loop for a campaign."""
+    _ensure_operator_groups_active()
     _ensure_db_migrated(cli)
     _restart_api_daemon_for_run(cli)
     state = cli.store.load(campaign_id)
@@ -540,6 +645,7 @@ def campaign_resume(
     dry_run: bool,
 ) -> None:
     """Resume a failed/paused/interrupted campaign."""
+    _ensure_operator_groups_active()
     _ensure_db_migrated(cli)
     _restart_api_daemon_for_run(cli)
     state = cli.store.load(campaign_id)

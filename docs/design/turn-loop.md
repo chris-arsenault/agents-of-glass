@@ -30,7 +30,12 @@ directly instead of asking a player to take an extra turn just to roll dice.
 
 ## How a Turn Begins
 
-The orchestrator builds a `TURN_START.md` file in the agent's per-turn working directory. The agent's prompt is essentially "Read `TURN_START.md` and take your turn." TURN_START is a thin pointer file — links to the role, public table, scene framing, recent transcript, unread messages, instruction surfaces, and the tool allowlist. Full layout in [`context-packages.md`](context-packages.md).
+The orchestrator builds a canonical per-turn `in.md`/TURN_START file, then
+copies it into the agent's projected workspace at the same relative path. The
+agent's prompt is essentially "Read `in.md` and take your turn." TURN_START is
+a thin pointer file — links to the role, public table, scene framing, recent
+transcript, unread messages, instruction surfaces, and the tool allowlist. Full
+layout in [`context-packages.md`](context-packages.md).
 
 The orchestrator builds a fresh CWD per turn with only the files the agent's role is allowed to see. Process-level isolation, not policy. See [`architecture.md`](architecture.md) for how.
 

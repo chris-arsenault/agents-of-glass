@@ -4,6 +4,8 @@ Ideas worth pursuing once the core agentic loop is producing transcripts. Each e
 
 These are out of scope for v1. The first session that runs end-to-end is the trigger to revisit.
 
+See also [`post-prelude-followups.md`](post-prelude-followups.md) for issues found during the `inspect-1` bootstrap that should be picked up after the prelude completes.
+
 ---
 
 ## System Gap Dispositions (May 2026)

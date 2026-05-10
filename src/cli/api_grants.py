@@ -62,6 +62,7 @@ def mint_grant(
     glass_role: str,
     turn_id: str,
     ttl_seconds: int = _DEFAULT_TTL_SECONDS,
+    workspace_root: Path | str | None = None,
 ) -> str:
     """Create and persist a short-lived API grant."""
 
@@ -80,6 +81,8 @@ def mint_grant(
         "expires_at": expires_at,
         "created_at": int(time.time()),
     }
+    if workspace_root is not None:
+        grants[token]["workspace_root"] = str(workspace_root)
     _write_store(path, data)
     return token
 

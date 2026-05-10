@@ -74,12 +74,15 @@ class SessionStore:
         except GlassBridgeError as exc:
             raise RuntimeError(f"glass init for {campaign!r} failed: {exc}") from exc
 
-        # Check if the requested mode is already active (resume case).
+        # Check if the requested bootstrap mode is already on the stack
+        # (resume case). It may be below a child scene mode, e.g. the prelude
+        # coordinator beneath scene-play/action.
         existing = self._state_from_glass(campaign)
         already_active = (
-            existing.mode_stack
-            and existing.mode_stack[-1].mode == initial_mode
-            and existing.mode_stack[-1].scene_id == initial_scene
+            any(
+                frame.mode == initial_mode and frame.scene_id == initial_scene
+                for frame in existing.mode_stack
+            )
         )
         if not already_active:
             try:

@@ -1,8 +1,8 @@
 # Game Start
 
-The bootstrap flow that takes a fresh repo from "no campaign exists" to "real scenes are running." Two agent-driven phases plus an operator init step. Each phase produces transcripts, messages, public lore, and private notes. Every phase is clearable and resumable.
+The bootstrap flow that takes a fresh repo from "no campaign exists" to "real scenes are running." Two authoring phases, one short prelude-play phase, plus an operator init step. Each phase produces transcripts, messages, public lore, and private notes. Every phase is clearable and resumable.
 
-For the workflow docs the agents read inside each phase, see [`/templates/methodologies/`](../../templates/methodologies/). For the broader runtime instruction surface, see [`instruction-surface.md`](instruction-surface.md). The core methodology set is campaign-planning, arc-creation, scene-prep, scene-play, action-scene, and character-creation.
+For the workflow docs the agents read inside each phase, see [`/templates/methodologies/`](../../templates/methodologies/). For the broader runtime instruction surface, see [`instruction-surface.md`](instruction-surface.md). The core methodology set is campaign-planning, arc-creation, scene-prep, scene-play, action-scene, character-creation, and prelude-arc.
 
 For the campaign-level state machine, see [Phase state](#phase-state). For the operator CLI, see [`/src/orchestrator/SPEC.md`](../../src/orchestrator/SPEC.md).
 
@@ -35,11 +35,20 @@ For the campaign-level state machine, see [Phase state](#phase-state). For the o
    - Each player: authors character.md + a public intro entry
    - DM: ratifies or pushes back via messages
    - Done: all players ratified
+   - Phase: → prelude
+
+3. PRELUDE (DM + players, short bootstrap play)
+   - DM builds a dedicated prelude arc after seeing the actual PCs
+   - Runs exactly two scenes:
+     - one normal `scene-play` scene
+     - one `action` scene
+   - DM writes summary + inspection notes and names the time jump
+   - Done: prelude mode explicitly ends
    - Phase: → active
 
-3. ACTIVE
+4. ACTIVE
    - Scenes can now be started via `glass scene create <slug> --type <type>`
-   - The first scene is just the first scene — the DM has prepped for it during planning, runs it like any other
+   - The first main-campaign scene can jump forward from the prelude fallout
    - Phase stays `active` indefinitely
 ```
 
@@ -69,7 +78,7 @@ Each campaign has `campaigns/<id>/state.json`:
 }
 ```
 
-Phase values: `init`, `campaign_planning`, `character_creation`, `active`.
+Phase values: `init`, `campaign_planning`, `character_creation`, `prelude`, `active`.
 
 The orchestrator tracks `active_arc` and `active_scene` as the campaign progresses through `active`. State updates after every agent invocation.
 
@@ -96,6 +105,7 @@ The arc and scene directories are scaffolded by the CLI, not by the DM hand-crea
 
 - `aog campaign new <id>` (operator) — copies templates, creates `campaigns/<id>/` with the standard layout.
 - `glass arc create <slug>` (DM) — creates `arcs/<slug>/` with `plan.md`, `context.md`, and an empty `scenes/`.
+- `glass arc activate <slug>` (DM) — sets which arc receives future scenes by default.
 - `glass scene create <slug> --type <type>` (DM) — creates `arcs/<active>/scenes/<slug>/` with `prep.md`, `context.md`, `transcript.md`, `audit.jsonl`. Sets the new scene as active.
 
 The DM populates the contents using the relevant methodology. The CLI ensures the folders, stub files, and state-machine entries are consistent.
@@ -106,8 +116,9 @@ The DM populates the contents using the relevant methodology. The CLI ensures th
 |-------|-------------|--------|------|-------|--------|
 | **campaign_planning** | `campaign-planning.md` | DM only | `campaign-planning` | methodology, persona, world bible (player + dm) | `campaigns/<id>/context.md`, `dm/foundation.md`, `dm/notes/**`, **8-15 curated entries in `shared/lore/`** (imported from world bible via `glass lore import`), opening arc dir via `glass arc create` |
 | **character_creation** | `character-creation.md` | DM + players | `character-creation` | methodology, persona, campaign context, world bible | DM: `campaign-intro.md` (where TBD — likely campaign root or shared/), ratifications. Players: `players/<id>/character.md`, public intro entries. After ratification: `lore/characters/<id>.md`. Messages: DM↔player negotiation. |
+| **prelude** | `prelude-arc.md` | DM + players | `prelude` coordinator with `scene-play` and `action` child modes | PCs, relationships, signature moves, campaign foundation, opening arc | `arcs/prelude/plan.md`, `arcs/prelude/context.md`, exactly two scene dirs, scene summaries, `arcs/prelude/summary.md`, campaign summary / quest beats, DM inspection notes |
 
-Once `character_creation` completes, the campaign is `active`. The DM uses [`scene-prep.md`](../../templates/methodologies/scene-prep.md) before each scene; new arcs get authored via [`arc-creation.md`](../../templates/methodologies/arc-creation.md) when they emerge from play.
+Once `prelude` completes, the campaign is `active`. The DM uses [`scene-prep.md`](../../templates/methodologies/scene-prep.md) before each main-campaign scene; new arcs get authored via [`arc-creation.md`](../../templates/methodologies/arc-creation.md) when they emerge from play.
 
 Each phase produces a transcript scoped to a scene (every phase runs as a typed scene under a meta-arc, e.g. `arcs/_bootstrap/scenes/planning/`). Plus the agent-authored content lands in the campaign tree directly.
 
@@ -170,6 +181,7 @@ aog campaign show [<id>]             # show phase, active arc, active scene
 aog campaign list
 aog campaign plan [<id>]             # run the campaign_planning phase
 aog campaign character-create [<id>] # run the character_creation phase
+aog campaign bootstrap <id>          # run planning, character creation, and prelude
 aog campaign run [<id>]              # advance from current phase, doing whatever's next
 aog campaign resume [<id>]           # alias for `run`, framed for failure recovery
 aog campaign clear <id> --back-to <phase|arc|scene>   # roll back state

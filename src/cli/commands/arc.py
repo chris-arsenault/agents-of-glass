@@ -137,3 +137,21 @@ def arc_current(ctx: click.Context) -> None:
     emit({"campaign_id": workspace.campaign_id, "active_arc": current})
 
 
+@arc.command("activate")
+@click.argument("arc_id")
+@click.pass_context
+def arc_activate(ctx: click.Context, arc_id: str) -> None:
+    require_dm()
+    workspace = _campaign_workspace()
+    try:
+        arc_dir = _workspace.activate_arc(workspace, arc_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise GlassError(str(exc)) from exc
+    emit(
+        {
+            "campaign_id": workspace.campaign_id,
+            "active_arc": arc_id,
+            "path": str(arc_dir),
+        }
+    )
+

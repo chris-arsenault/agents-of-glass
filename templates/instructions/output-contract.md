@@ -18,3 +18,7 @@ both matter. Keep those registers clear in prose; do not add a schema for them.
 If you make rolls or state changes during the turn, narrate the visible outcome
 in the public prose. The `glass` commands leave their own audit trail; your
 turn prose is the story moment that other agents and viewers read.
+
+When an instruction or methodology says to run a `glass` command, execute that
+command in the shell during your turn. Do not write `glass ...` command lines
+into the public prose file as a substitute for executing them.

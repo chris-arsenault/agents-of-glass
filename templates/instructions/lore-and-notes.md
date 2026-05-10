@@ -6,12 +6,20 @@ authority: binding
 
 # Lore and Notes Instructions
 
-Use the right writing surface.
+Use the right writing surface. Read files directly from the projected
+workspace, but persist authored files through `glass note write` or a more
+specific `glass` command.
 
 ## DM Notes
 
 DM-only working notes live under `dm/notes/`, `dm/workspace/`, `dm/secret/`,
 and `dm/scratchpad.md`.
+
+```bash
+glass note write workspace/<name>.md --from scratch/<name>.md
+glass note write notes/<category>/<slug>.md --from scratch/<slug>.md
+glass note write secret/<name>.md --from scratch/<name>.md
+```
 
 Optional graph registration:
 
@@ -23,6 +31,13 @@ glass entity upsert dm/notes/<category>/<slug>.md
 
 Player private reference lives under `players/<id>/notes/`, `journal/`,
 `drafts/`, `scratchpad.md`, and `secrets/`.
+
+```bash
+glass note write notes/<slug>.md --from scratch/<slug>.md
+glass note write journal/<date>.md --from scratch/<date>.md
+glass note write drafts/<slug>.md --from scratch/<slug>.md
+glass note write secrets/<slug>.md --from scratch/<slug>.md
+```
 
 Players propose canon with:
 
