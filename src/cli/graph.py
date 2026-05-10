@@ -431,6 +431,141 @@ def graph_stats(g: Any) -> dict[str, Any]:
     return counts
 
 
+def relations(
+    g: Any,
+    entity_id: str,
+    *,
+    campaign_id: str,
+    edge_type: str | None = None,
+    direction: str = "both",
+    target_type: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Return typed relationships touching one entity."""
+    if edge_type and not _valid_edge_type(edge_type):
+        raise ValueError(f"invalid edge type: {edge_type!r}")
+    if direction not in {"out", "in", "both"}:
+        raise ValueError("direction must be out, in, or both")
+    rel = f":{edge_type}" if edge_type else ""
+    params: dict[str, Any] = {
+        "uid": _entity_uid(campaign_id, entity_id),
+        "target_type": target_type,
+        "limit": limit,
+    }
+    queries: list[tuple[str, str]] = []
+    if direction in {"out", "both"}:
+        queries.append(
+            (
+                "out",
+                f"""
+                MATCH (e:Entity {{uid: $uid}})-[r{rel}]->(other:Entity)
+                WHERE $target_type IS NULL OR other.type = $target_type
+                RETURN type(r), e.id, e.title, other.id, other.title, other.type, r
+                LIMIT $limit
+                """,
+            )
+        )
+    if direction in {"in", "both"}:
+        queries.append(
+            (
+                "in",
+                f"""
+                MATCH (other:Entity)-[r{rel}]->(e:Entity {{uid: $uid}})
+                WHERE $target_type IS NULL OR other.type = $target_type
+                RETURN type(r), other.id, other.title, e.id, e.title, other.type, r
+                LIMIT $limit
+                """,
+            )
+        )
+    out: list[dict[str, Any]] = []
+    for direction_label, cypher in queries:
+        res = g.query(cypher, params)
+        for row in res.result_set:
+            out.append(
+                {
+                    "direction": direction_label,
+                    "type": str(row[0]),
+                    "source": row[1],
+                    "source_title": row[2],
+                    "target": row[3],
+                    "target_title": row[4],
+                    "other_type": row[5],
+                    "properties": _edge_properties(row[6]),
+                }
+            )
+    return out[:limit]
+
+
+def edges_by_type(
+    g: Any,
+    *,
+    campaign_id: str,
+    edge_type: str,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    if not _valid_edge_type(edge_type):
+        raise ValueError(f"invalid edge type: {edge_type!r}")
+    res = g.query(
+        f"""
+        MATCH (a:Entity {{campaign_id: $campaign_id}})-[r:{edge_type}]->(b:Entity)
+        RETURN a.id, a.title, b.id, b.title, r
+        ORDER BY a.title, b.title
+        LIMIT $limit
+        """,
+        {"campaign_id": campaign_id, "limit": limit},
+    )
+    return [
+        {
+            "type": edge_type,
+            "source": row[0],
+            "source_title": row[1],
+            "target": row[2],
+            "target_title": row[3],
+            "properties": _edge_properties(row[4]),
+        }
+        for row in res.result_set
+    ]
+
+
+def between(
+    g: Any,
+    *,
+    campaign_id: str,
+    src_id: str,
+    dst_id: str,
+) -> list[dict[str, Any]]:
+    """Return direct typed edges in either direction between two entities."""
+    params = {
+        "src_uid": _entity_uid(campaign_id, src_id),
+        "dst_uid": _entity_uid(campaign_id, dst_id),
+    }
+    queries = [
+        """
+        MATCH (a:Entity {uid: $src_uid})-[r]->(b:Entity {uid: $dst_uid})
+        RETURN type(r), a.id, a.title, b.id, b.title, r
+        """,
+        """
+        MATCH (a:Entity {uid: $dst_uid})-[r]->(b:Entity {uid: $src_uid})
+        RETURN type(r), a.id, a.title, b.id, b.title, r
+        """,
+    ]
+    out: list[dict[str, Any]] = []
+    for cypher in queries:
+        res = g.query(cypher, params)
+        out.extend(
+            {
+                "type": str(row[0]),
+                "source": row[1],
+                "source_title": row[2],
+                "target": row[3],
+                "target_title": row[4],
+                "properties": _edge_properties(row[5]),
+            }
+            for row in res.result_set
+        )
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Markdown -> graph helpers
 # ---------------------------------------------------------------------------
@@ -505,3 +640,14 @@ def _serialize_value(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: _serialize_value(v) for k, v in value.items()}
     return value
+
+
+def _edge_properties(edge: Any) -> dict[str, Any]:
+    serialized = _serialize_value(edge)
+    if isinstance(serialized, dict):
+        return {
+            key: value
+            for key, value in serialized.items()
+            if key not in {"_kind", "_relation"}
+        }
+    return {}

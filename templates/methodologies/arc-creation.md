@@ -101,6 +101,15 @@ Examples:
 
 A clock is what makes the world feel like it's moving. Without one, the arc is static and waits for the players to poke it.
 
+If a clock should survive across scenes, create it with `glass clock`.
+Postgres is canonical; public clocks are projected to `shared/clocks.md` and
+`arcs/<arc>/clocks.md` for players to reference.
+
+```bash
+glass clock set accord-crackdown --scope arc --anchor <arc-slug> \
+  --label "Accord crackdown" --max 5 --public
+```
+
 ### 4. Possible end-states (3-5 of them)
 
 Brainstorm the **shapes the arc could resolve into**. Not "what will happen" — what *could* happen, given the threats and clocks. Three to five options, each one or two sentences.
@@ -142,7 +151,10 @@ Pointers, not new authoring. List which existing entries from `dm/notes/` this a
 - **Named things** — which `dm/notes/artifacts/` or `dm/notes/ships/` entries are present, contested, or sought.
 - **Locations** — which named locales the arc moves through.
 
-If the arc *needs* a thing or a creature that doesn't exist on the curated list, draft a stub for the appropriate directory and reference it here. Specific named things are a defense against generic drift (per [`/docs/principles/resist-generic-drift.md`](../../../docs/principles/resist-generic-drift.md)) — reach for the list before improvising.
+If the arc *needs* a thing or a creature that doesn't exist on the curated list,
+draft a stub for the appropriate directory and reference it here. Specific named
+things are a defense against generic drift — reach for the list before
+improvising.
 
 ### 8. Arc-specific secrets
 
@@ -168,4 +180,6 @@ You may also note the conditions under which you'd **abandon** the arc — the p
 
 `context.md` is the player-facing summary — they see it on every turn while the arc is active, projected as `arc-context.md` in their CWD. Keep it terse and updated. Show only what the players have been shown.
 
-Specificity always — per [`/docs/principles/resist-generic-drift.md`](../../../docs/principles/resist-generic-drift.md). Threats and clocks grounded in this world. No "ancient evil rising." No "shadowy cabal." When in doubt about a thing, name it from your curated list before reaching for a generic.
+Specificity always. Threats and clocks grounded in this world. No "ancient evil
+rising." No "shadowy cabal." When in doubt about a thing, name it from your
+curated list before reaching for a generic.

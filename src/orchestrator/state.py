@@ -1,9 +1,10 @@
 """Campaign and turn state for the orchestrator.
 
 There is no `session` concept. Each campaign has exactly one runtime
-state at `campaigns/<id>/state.json`. The orchestrator's mirror of that
-state is `SessionState` below — name kept only to limit churn elsewhere
-in the codebase. The runtime identity is the `campaign` field.
+state. Postgres is canonical when configured; `campaigns/<id>/state.json`
+is a cache/export. The orchestrator's mirror of that state is
+`SessionState` below — name kept only to limit churn elsewhere in the
+codebase. The runtime identity is the `campaign` field.
 """
 
 from __future__ import annotations

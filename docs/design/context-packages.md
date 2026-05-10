@@ -23,12 +23,14 @@ You are Tev. See [persona.md](./persona.md) (who you are), [character.md](./char
 
 It's your turn. Mode: **combat** | Scene: **ringglass-market-chase**.
 
-## Scene framing
-See [scene-framing.md](./scene-framing.md). Current state: the patrol leader is up and angry; Karrith is exposed.
+## Table
+See [table/index.md](./table/index.md) for the at-a-glance state and
+[table/scene.md](./table/scene.md) for the scene kickoff. Current state: the
+patrol leader is up and angry; Karrith is exposed.
 
 ## Recent turns
-[Last 6 turns](./transcript-recent.md) — full prose. [Earlier turns](./transcript-summary.md) — summarized;
-pull detail with `glass turns find ...`.
+Last few turns are embedded. Pull older detail with `glass search text ...`,
+`glass search semantic ...`, or `glass turns find ...`.
 
 ## Messages waiting for you
 2 unread. Read with `glass msg read --since-checkpoint`.
@@ -42,7 +44,7 @@ TOC at [vocabulary/index.md](./vocabulary/index.md).
 - glass msg <type> <recipient> <body>
 - glass note write (your journal)
 - glass entity neighborhood / similar (read-only graph queries)
-- glass turns find ... (query past turns)
+- glass turns find / feed ... (query past turns)
 
 When done, exit.
 ```
@@ -55,7 +57,9 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - Their `persona.md` (who they are)
 - Their `scratchpad.md` (current working notes — overwriteable)
 - Current mode + scene framing
+- Current public table: `table/index.md`, `table/scene.md`, and `table/handouts/`
 - Campaign framing
+- Campaign / arc / scene summaries as pointers, not embedded compression
 - Recent turns (last K, K depends on mode)
 - Pointer to unread messages
 - Pointer to vocabulary index
@@ -73,11 +77,18 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 ### Queryable by everyone
 - **Campaign lore** — `campaigns/<id>/shared/lore/`. The curated subset of world canon that matters to *this* campaign. Players see this. Read-only for players (write-via-ratification). The DM seeds this during planning (8-15 entries, imported from the world bible via `glass lore import`) and adds more on demand during play.
 - Quest log (`campaigns/<id>/shared/quest-log.md` — DM-writable, all-readable)
+- Public durable clocks (`campaigns/<id>/shared/clocks.md` and arc-local
+  `clocks.md` projections — Postgres is canonical)
 - Party knowledge (`campaigns/<id>/shared/party-knowledge.md` — party-writable, all-readable)
 - Vocabulary detail files (`campaigns/<id>/shared/vocabulary/*.md`)
-- Past turns from prior scenes (via `glass turns find ...`)
+- Past turns from prior scenes (via `glass turns find ...`, including `--text`)
+- Indexed prose search (`glass search text ...` and `glass search semantic ...`;
+  semantic currently falls back to the Postgres text index until embeddings are
+  populated)
 - Their own journal directory
-- Entity graph (read-only via `glass entity ...`)
+- Entity graph (`glass entity neighborhood`, `relations`, `between`, `edges`,
+  `stance`, `find`, `similar`; players can propose edges with
+  `glass entity claim`)
 
 ### Queryable by DM only
 - **World bible** — `../the-glass-frontier-lore/player/` and `../the-glass-frontier-lore/dm/`. The full canon. The DM consults it as reference at any time. **Players never see it directly.** Bulk-copying it would poison every agent's context. See [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md#curate-dont-copy) for the curation principle.
@@ -86,7 +97,7 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - DM canonical notes (NPCs, locales, etc.)
 - DM secret notes
 - **All player journals** (the DM can see what every player has been writing)
-- Monster stat blocks
+- DM creature/opposition notes
 - Thread/loop authorial scaffolding from the lore repo's `dm/` directory
 - DM workspace (planning, in-progress NPC drafts, future-scene seeds)
 
@@ -99,13 +110,23 @@ Note: a player's journal is *private from other players* but *visible to the DM*
 
 ### Three levels of player-facing context
 
-Each prep level produces a player-facing `context.md` at its own directory. All three are **DM-owned** and read by every player on every turn:
+Each prep level produces a player-facing `context.md` and a running
+`summary.md` at its own directory. Context is framing: what the players can see
+or know right now. Summary is continuity compression: what remains true after
+play has moved on. All summary files are authored markdown; they are not
+generated into TURN_START.
 
-- `campaigns/<id>/context.md` — campaign-level. Updates rarely. Projected as `campaign-context.md` in the player's CWD.
-- `arcs/<arc>/context.md` — arc-level. Updates per scene or two as the arc evolves. Projected as `arc-context.md` (when an arc is active).
-- `arcs/<arc>/scenes/<scene>/context.md` — scene-level. The "where are we right now" framing. Projected as `scene-context.md` (when a scene is active).
+- `campaigns/<id>/context.md` / `summary.md` — campaign-level. Updates rarely.
+- `arcs/<arc>/context.md` / `summary.md` — arc/act-level. Updates per scene or two as the arc evolves.
+- `arcs/<arc>/scenes/<scene>/context.md` / `summary.md` — scene-level. The scene summary is finalized by `glass scene end --summary`.
 
 The DM authors each level using the relevant methodology — campaign-level during planning, arc-level during arc creation, scene-level during scene prep. Each has a corresponding DM-only working document (`dm/foundation.md`, `arcs/<arc>/plan.md`, `arcs/<arc>/scenes/<scene>/prep.md`) that holds the full picture; the player-facing `context.md` holds only what's been shown.
+
+The live `table/` is separate from those context documents. It is the
+short-term public board for the current scene: `index.md` for at-a-glance
+state, `scene.md` for the kickoff description, `handouts/` for in-game
+handouts, and freeform table-root markdown files for whatever visible immediate
+reference would prevent repeated clarification turns.
 
 Format and update cadence are intentionally not pre-specified beyond the methodology guidance — see [`/tracking-immediate-decisions.md`](../../tracking-immediate-decisions.md). We codify further after first sessions show what's useful.
 
@@ -138,6 +159,7 @@ templates/                             # authored, stable input
 campaigns/<id>/                        # per-campaign live root, copied from templates/
   state.json                           # campaign phase + active arc/scene
   context.md                           # PLAYER-FACING campaign-level context
+  summary.md                           # running campaign continuity summary
   dm/                                  # DM workspace mutates over campaign
     foundation.md                      # DM-only working framing
     notes/                             # NPCs, factions, creatures, artifacts, ships, locales, secrets, hooks, philosophy
@@ -145,11 +167,14 @@ campaigns/<id>/                        # per-campaign live root, copied from tem
   shared/                              # methodologies snapshot, lore, vocabulary, quest-log, party-knowledge
   arcs/<arc>/                          # one dir per arc, scaffolded via `glass arc create`
     context.md                         # PLAYER-FACING arc-level context
+    summary.md                         # running arc/act continuity summary
+    clocks.md                          # public durable-clock projection for this arc
     plan.md                            # DM-only arc plan
     scenes/<scene>/                    # one dir per scene, scaffolded via `glass scene create`
       context.md                       # PLAYER-FACING scene-level context
+      summary.md                       # scene summary, finalized at scene end
       prep.md                          # DM-only scene prep
-      transcript.md                    # the corpus
+      transcript.md                    # scene-level derived turn export/cache
       audit.jsonl                      # operational audit log
 ```
 
@@ -160,7 +185,12 @@ campaigns/<id>/                        # per-campaign live root, copied from tem
 
 Players draft lore entries in their `drafts/` directory (encyclopedia-shaped), then call `glass note propose` to push to the DM's `intake/`. The DM ratifies (entry moves to the campaign's `shared/lore/` and gets graph-upserted) or rejects. Personal-thought scribbles stay in `journal/`.
 
-The `inbox/` and `transcript-recent.md` etc. are orchestrator-maintained projections of canonical state (Postgres + graph + the canonical transcript). Agents read these flat files; they don't query the database directly (except via `glass`).
+The recent-turn excerpt in `TURN_START.md` is an orchestrator-maintained
+projection of canonical state (Postgres + graph + structured turns). Agents
+read this excerpt and can query deeper history through `glass`; they don't
+connect to the database directly. Old-context recall should use `glass search`
+or `glass turns find`, not another actor transition just to repeat recorded
+information.
 
 ## Process Isolation
 
@@ -188,12 +218,15 @@ This is the operator's primary debugging tool during play — you can see the ag
 
 For v1: include the entire current scene plus the last 2 scenes' turns, with older scenes available via summary index plus on-demand `glass turns find` queries. Token budget is not the v1 concern; **context quality** is — too much old text drowns out the current scene; too little loses continuity.
 
-The transcript-recent / transcript-summary split is orchestrator-maintained:
+The recent/context split is orchestrator-maintained:
 
 - **Recent turns** are full prose, included directly.
-- **Older turns** are summarized in a way that preserves who-did-what-where but compresses dialog. Agents can always pull full older turns via `glass turns find --turn-id ...` if they need detail.
+- **Older turns** are available through `glass turns find`, `glass search text`,
+  and `glass search semantic`. Campaign/arc/scene `summary.md` files are
+  authored continuity compression, not generated into TURN_START.
 
-Summaries are auto-generated by the orchestrator (probably a small "summarizer" agent, scheduled when a scene closes). Not agent-emitted at turn time.
+Embeddings are a search-index concern, not a prompt-dump concern. The goal is
+bounded retrieval, not loading the whole campaign into each cold agent start.
 
 ## Postgres Turn Metadata
 
@@ -205,7 +238,7 @@ Beyond raw markdown, the orchestrator records per-turn metadata in Postgres for 
 | `campaign_id` | scope |
 | `arc_id` | which arc |
 | `scene_id` | which scene |
-| `scene_type` | town / combat / exploration / social / etc. |
+| `scene_type` | protocol/toolkit label, e.g. scene-play / action / travel / combat / custom |
 | `speaker` | agent id |
 | `role` | dm / player |
 | `character_id` | the PC, if applicable |
@@ -214,7 +247,9 @@ Beyond raw markdown, the orchestrator records per-turn metadata in Postgres for 
 
 This is **not** agent-provided metadata. The orchestrator knows all of these from its own state; it just records them so `glass turns find ...` can ask "what happened in scene X by player Y?" without scraping prose.
 
-Mechanical events (rolls, HP changes, mode transitions) are joined to turns via roll_id / event_id. The text of the turn lives in the markdown transcript; the metadata lives in Postgres.
+Mechanical events (rolls, HP changes, mode transitions) are joined to turns via
+event/roll ids. The final public prose of the turn lives in Postgres
+`turns.prose`; markdown transcripts are generated exports for readability.
 
 This is the queryability layer that lets the always-on context stay small. An agent who needs more can ask for it.
 

@@ -19,6 +19,7 @@ import json
 import shutil
 
 from .config import AogConfig
+from .config import config_env_value
 from . import permissions
 from .state import utc_now
 
@@ -154,11 +155,35 @@ class CampaignManager:
 
     # --- internals ---
 
-    @staticmethod
-    def _write_state(space: CampaignSpace, state: dict[str, Any]) -> None:
+    def _write_state(self, space: CampaignSpace, state: dict[str, Any]) -> None:
         tmp = space.state_path.with_suffix(space.state_path.suffix + ".tmp")
         tmp.write_text(
             json.dumps(state, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         tmp.replace(space.state_path)
+        self._sync_state_to_postgres(state)
+
+    def _sync_state_to_postgres(self, state: dict[str, Any]) -> None:
+        """Keep campaign phase fields in the Postgres runtime row when enabled."""
+        import os
+
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+
+        previous_config = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                return
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                existing = _glass_db.runtime_state_get(conn, state["campaign"]) or {}
+                merged = {**existing, **state}
+                _glass_db.runtime_state_upsert(conn, merged)
+        finally:
+            if previous_config is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous_config

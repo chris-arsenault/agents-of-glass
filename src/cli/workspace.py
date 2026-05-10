@@ -11,28 +11,13 @@ command groups in main.py.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 import json
 import os
 import re
-
-
-# Scene types recognised by `glass scene create --type <T>`.
-VALID_SCENE_TYPES: set[str] = {
-    "town",
-    "social",
-    "exploration",
-    "investigation",
-    "combat",
-    "travel",
-    "montage",
-    "wrap",
-    # bootstrap-only modes (not normally created via glass scene create,
-    # but valid if the operator wants to)
-    "campaign-planning",
-    "character-creation",
-}
+import shutil
 
 
 def slugify(value: str) -> str:
@@ -59,6 +44,10 @@ class CampaignWorkspace:
 
     def scene_dir(self, arc_id: str, scene_id: str) -> Path:
         return self.arc_dir(arc_id) / "scenes" / scene_id
+
+    @property
+    def table_dir(self) -> Path:
+        return self.root / "table"
 
 
 def resolve_active_campaign(
@@ -125,6 +114,8 @@ def create_arc(workspace: CampaignWorkspace, arc_id: str) -> Path:
     (arc_dir / "scenes").mkdir()
     (arc_dir / "plan.md").write_text(_arc_plan_stub(arc_id), encoding="utf-8")
     (arc_dir / "context.md").write_text(_arc_context_stub(arc_id), encoding="utf-8")
+    (arc_dir / "summary.md").write_text(_arc_summary_stub(arc_id), encoding="utf-8")
+    (arc_dir / "clocks.md").write_text(_arc_clocks_stub(arc_id), encoding="utf-8")
 
     state = load_campaign_state(workspace)
     arcs = state.setdefault("arcs", [])
@@ -173,12 +164,13 @@ def create_scene(
     arc_id: str | None = None,
 ) -> Path:
     scene_id = slugify(scene_id)
-    if scene_type not in VALID_SCENE_TYPES:
-        raise ValueError(
-            f"unknown scene type {scene_type!r}; valid: {sorted(VALID_SCENE_TYPES)}"
-        )
+    if not scene_type.strip():
+        raise ValueError("scene type cannot be empty")
+    scene_type = slugify(scene_type)
 
     state = load_campaign_state(workspace)
+    previous_scene = state.get("active_scene")
+    previous_arc = state.get("active_scene_arc") or state.get("active_arc")
     arc = arc_id or state.get("active_arc")
     if not arc:
         raise ValueError(
@@ -196,6 +188,15 @@ def create_scene(
     if scene_dir.exists():
         raise FileExistsError(f"scene {scene_id!r} already exists at {scene_dir}")
 
+    table_snapshot_path: Path | None = None
+    if previous_scene and previous_arc and workspace.table_dir.exists():
+        table_snapshot_path = snapshot_table(
+            workspace,
+            arc_id=str(previous_arc),
+            scene_id=str(previous_scene),
+            label=f"before-{scene_id}",
+        )
+
     scene_dir.mkdir(parents=True)
     (scene_dir / "prep.md").write_text(
         _scene_prep_stub(scene_id, scene_type), encoding="utf-8"
@@ -203,14 +204,20 @@ def create_scene(
     (scene_dir / "context.md").write_text(
         _scene_context_stub(scene_id, scene_type), encoding="utf-8"
     )
+    (scene_dir / "summary.md").write_text(
+        _scene_summary_stub(scene_id, scene_type), encoding="utf-8"
+    )
     (scene_dir / "transcript.md").write_text(
         f"# Scene: {scene_id}\n\nType: {scene_type}\n\n", encoding="utf-8"
     )
     (scene_dir / "audit.jsonl").write_text("", encoding="utf-8")
+    initialize_table(workspace, scene_id=scene_id, scene_type=scene_type, arc_id=arc)
 
     state["active_scene"] = scene_id
     state["active_scene_arc"] = arc
     state["active_scene_type"] = scene_type
+    if table_snapshot_path:
+        state["previous_table_snapshot"] = str(table_snapshot_path)
     save_campaign_state(workspace, state)
     return scene_dir
 
@@ -264,6 +271,118 @@ def list_scenes(
             }
         )
     return out
+
+
+# --- table ---
+
+
+def table_dir(workspace: CampaignWorkspace) -> Path:
+    return workspace.table_dir
+
+
+def initialize_table(
+    workspace: CampaignWorkspace,
+    *,
+    scene_id: str,
+    scene_type: str,
+    arc_id: str,
+) -> Path:
+    """Create a fresh live table for a top-level scene."""
+    root = workspace.table_dir
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    (root / "handouts").mkdir()
+    (root / "index.md").write_text(
+        _table_index_stub(scene_id=scene_id, scene_type=scene_type, arc_id=arc_id),
+        encoding="utf-8",
+    )
+    (root / "scene.md").write_text(
+        _table_scene_stub(scene_id=scene_id, scene_type=scene_type, arc_id=arc_id),
+        encoding="utf-8",
+    )
+    return root
+
+
+def snapshot_table(
+    workspace: CampaignWorkspace,
+    *,
+    arc_id: str,
+    scene_id: str,
+    label: str = "snapshot",
+) -> Path:
+    source = workspace.table_dir
+    if not source.exists():
+        raise FileNotFoundError(f"no live table at {source}")
+    snapshot_root = workspace.scene_dir(arc_id, scene_id) / "table" / "snapshots"
+    snapshot_root.mkdir(parents=True, exist_ok=True)
+    destination = snapshot_root / f"{_timestamp_slug()}-{slugify(label)}"
+    _copy_table(source, destination)
+    return destination
+
+
+def archive_table(
+    workspace: CampaignWorkspace,
+    *,
+    arc_id: str,
+    scene_id: str,
+    clear_live: bool = True,
+) -> Path:
+    source = workspace.table_dir
+    if not source.exists():
+        raise FileNotFoundError(f"no live table at {source}")
+    destination = workspace.scene_dir(arc_id, scene_id) / "table" / "final"
+    _copy_table(source, destination)
+    if clear_live:
+        _write_inactive_table(workspace, scene_id=scene_id, archive_path=destination)
+    return destination
+
+
+def _copy_table(source: Path, destination: Path) -> None:
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination)
+
+
+def _write_inactive_table(
+    workspace: CampaignWorkspace, *, scene_id: str, archive_path: Path
+) -> None:
+    root = workspace.table_dir
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    (root / "handouts").mkdir()
+    rel_archive = archive_path.relative_to(workspace.root)
+    (root / "index.md").write_text(
+        (
+            "---\n"
+            "status: inactive\n"
+            f"previous_scene: {scene_id}\n"
+            f"archive: {rel_archive}\n"
+            "---\n\n"
+            "# Table\n\n"
+            "No scene is currently active.\n\n"
+            f"The final table for `{scene_id}` is archived at "
+            f"`{rel_archive}`.\n"
+        ),
+        encoding="utf-8",
+    )
+    (root / "scene.md").write_text(
+        (
+            "---\n"
+            "status: inactive\n"
+            f"previous_scene: {scene_id}\n"
+            "---\n\n"
+            "# Scene\n\n"
+            "No scene is currently active.\n"
+        ),
+        encoding="utf-8",
+    )
+
+
+def _timestamp_slug() -> str:
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
 # --- lore curation ---
@@ -395,6 +514,26 @@ def _arc_context_stub(arc_id: str) -> str:
     )
 
 
+def _arc_summary_stub(arc_id: str) -> str:
+    return (
+        f"---\narc_id: {arc_id}\nstatus: stub\n---\n\n"
+        f"# Arc Summary: {arc_id}\n\n"
+        "_Running arc summary. Update as scenes resolve and pressures change._\n"
+    )
+
+
+def _arc_clocks_stub(arc_id: str) -> str:
+    return (
+        "---\n"
+        "generated_by: glass clock\n"
+        "---\n\n"
+        f"# Public Clocks - {arc_id}\n\n"
+        "Postgres is canonical. Public arc clocks will be projected here.\n\n"
+        "## Active\n\n_None._\n\n"
+        "## Resolved\n\n_None._\n"
+    )
+
+
 def _scene_prep_stub(scene_id: str, scene_type: str) -> str:
     return (
         f"---\nscene_id: {scene_id}\nscene_type: {scene_type}\nstatus: stub\n---\n\n"
@@ -420,4 +559,52 @@ def _scene_context_stub(scene_id: str, scene_type: str) -> str:
         f"# Scene: {scene_id}\n\n"
         f"**Type:** `{scene_type}`\n\n"
         "_Player-facing scene framing — locale, who's there, what's happening, what just happened._\n"
+    )
+
+
+def _scene_summary_stub(scene_id: str, scene_type: str) -> str:
+    return (
+        f"---\nscene_id: {scene_id}\nscene_type: {scene_type}\nstatus: stub\n---\n\n"
+        f"# {scene_id} - summary\n\n"
+        "_Scene summary is finalized by `glass scene end --summary`._\n"
+    )
+
+
+def _table_index_stub(scene_id: str, scene_type: str, arc_id: str) -> str:
+    return (
+        "---\n"
+        "status: active\n"
+        f"arc_id: {arc_id}\n"
+        f"scene_id: {scene_id}\n"
+        f"scene_type: {scene_type}\n"
+        "---\n\n"
+        "# Table\n\n"
+        f"- **Scene:** `{scene_id}`\n"
+        f"- **Type:** `{scene_type}`\n"
+        "- **Kickoff:** [`scene.md`](scene.md)\n"
+        "- **Handouts:** [`handouts/`](handouts/)\n\n"
+        "## At A Glance\n\n"
+        "_DM: keep the immediate visible state here. Link any freeform table "
+        "root files that players should read before asking for repeated "
+        "information._\n\n"
+        "## Relevant Table Files\n\n"
+        "- [`scene.md`](scene.md)\n\n"
+        "## Public Questions\n\n"
+        "_Questions the table can answer from visible state, or that the DM "
+        "should answer on the next update._\n"
+    )
+
+
+def _table_scene_stub(scene_id: str, scene_type: str, arc_id: str) -> str:
+    return (
+        "---\n"
+        "status: active\n"
+        f"arc_id: {arc_id}\n"
+        f"scene_id: {scene_id}\n"
+        f"scene_type: {scene_type}\n"
+        "---\n\n"
+        f"# Scene: {scene_id}\n\n"
+        "_DM: replace this with the scene kickoff description: where the party "
+        "is, what is visible, who or what is present, what is in motion, and "
+        "what the players should understand before taking their first turns._\n"
     )

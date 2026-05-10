@@ -3,11 +3,12 @@
 There is no `session` concept. Each campaign has exactly one runtime state
 at `campaigns/<id>/`. This module owns:
 
-  campaigns/<id>/aog-state.json   — orchestrator's mirror of session state
-  campaigns/<id>/state.json       — glass's runtime state (read via sync)
-  campaigns/<id>/transcript.md    — public transcript (managed by glass turn append)
+  campaigns/<id>/aog-state.json   — orchestrator's local runtime cache
+  campaigns/<id>/state.json       — glass runtime cache/export (Postgres-backed when configured)
+  campaigns/<id>/transcript.md    — derived public transcript export
   campaigns/<id>/audit.jsonl      — append-only audit log
   campaigns/<id>/scene-framing.md — current scene framing
+  campaigns/<id>/table/           — current public short-term table state
   campaigns/<id>/<agent>/turns/<NNNN>/ — per-turn artifacts
 
 The class is named `SessionStore` only to limit churn in the orchestrator
@@ -17,11 +18,13 @@ module; it operates on campaigns now.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any
 
 from .config import AogConfig
+from .config import config_env_value
 from .glass_bridge import GlassBridge, GlassBridgeError
 from .state import ModeFrame, SessionState, utc_now
 
@@ -151,6 +154,42 @@ class SessionStore:
         with self.transcript_path(campaign).open("a", encoding="utf-8") as handle:
             handle.write(markdown)
 
+    def recent_turns_markdown(self, campaign: str, *, limit: int) -> str:
+        records = self._recent_turn_records(campaign, limit=limit)
+        if records:
+            return _render_turn_records(records)
+        path = self.transcript_path(campaign)
+        if path.exists():
+            return _last_turns(path.read_text(encoding="utf-8"), limit)
+        return "No transcript exists yet.\n"
+
+    def _recent_turn_records(self, campaign: str, *, limit: int) -> list[dict[str, Any]]:
+        try:
+            from cli import db as _glass_db
+            from cli.config import load_config as _load_glass_config
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                toml_data = _load_glass_config()
+                if not _glass_db.postgres_configured(toml_data):
+                    return []
+                pg_config = _glass_db.load_pg_config(toml_data)
+                with _glass_db.connect(pg_config) as conn:
+                    return _glass_db.turn_list(
+                        conn,
+                        campaign_id=campaign,
+                        limit=limit,
+                        latest=True,
+                    )
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            return []
+
     def append_audit(self, campaign: str, event: dict[str, Any]) -> None:
         payload = {"ts": utc_now(), **event}
         path = self.audit_path(campaign)
@@ -159,12 +198,12 @@ class SessionStore:
             handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
     def clear_state(self, campaign: str) -> None:
-        """Delete the runtime state files (state.json, aog-state.json,
-        transcript.md, audit.jsonl, scene-framing.md, per-agent turns/).
+        """Delete runtime state/cache (Postgres runtime rows plus local files).
 
         Does NOT delete the campaign workspace itself or any DM/player-
         authored content. Operator escape hatch.
         """
+        self._clear_runtime_db(campaign)
         for filename in (
             "state.json", "aog-state.json", "transcript.md",
             "audit.jsonl", "scene-framing.md",
@@ -178,6 +217,28 @@ class SessionStore:
             turns_dir = agent_root / "turns"
             if turns_dir.exists():
                 shutil.rmtree(turns_dir)
+
+    def _clear_runtime_db(self, campaign: str) -> None:
+        try:
+            from cli import db as _glass_db
+            from cli.config import load_config as _load_glass_config
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                toml_data = _load_glass_config()
+                if not _glass_db.postgres_configured(toml_data):
+                    return
+                pg_config = _glass_db.load_pg_config(toml_data)
+                with _glass_db.connect(pg_config) as conn:
+                    _glass_db.runtime_state_delete(conn, campaign)
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            return
 
     def clear_scene(self, campaign: str, scene_id: str | None = None) -> str:
         state = self.load(campaign)
@@ -311,6 +372,42 @@ def _turns_taken_for_frame(turns: list[dict[str, Any]], mode: str, scene_id: str
         1 for turn in turns
         if turn.get("mode") == mode and turn.get("scene_id") == scene_id
     )
+
+
+def _render_turn_records(records: list[dict[str, Any]]) -> str:
+    return "\n".join(
+        str(record.get("markdown") or _turn_record_to_markdown(record)).rstrip()
+        for record in records
+    ).rstrip() + "\n"
+
+
+def _turn_record_to_markdown(record: dict[str, Any]) -> str:
+    header = (
+        f"## Turn {record['turn_id']} - {record['speaker']} ({record['role']}) - "
+        f"{record['mode']}, {record['scene_id']}"
+    )
+    parts = [header, "", str(record.get("prose") or "").strip()]
+    event_lines = [f"> {summary}" for summary in record.get("event_summaries", [])]
+    if event_lines:
+        parts.extend(["", *event_lines])
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def _last_turns(markdown: str, max_turns: int) -> str:
+    chunks = []
+    current: list[str] = []
+    for line in markdown.splitlines():
+        if line.startswith("## Turn ") and current:
+            chunks.append("\n".join(current).strip())
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        chunks.append("\n".join(current).strip())
+    turn_chunks = [chunk for chunk in chunks if chunk.startswith("## Turn ")]
+    if not turn_chunks:
+        return markdown.strip() + "\n"
+    return "\n\n".join(turn_chunks[-max_turns:]).strip() + "\n"
 
 
 def _aog_status_from_glass(value: str) -> str:

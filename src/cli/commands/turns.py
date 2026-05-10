@@ -104,6 +104,7 @@ def turns() -> None:
 @click.option("--speaker")
 @click.option("--mode", "mode_name")
 @click.option("--turn-id", type=int)
+@click.option("--text", "text_query", help="Case-insensitive text search across turn prose/events.")
 @click.option("--limit", type=int, default=20)
 @click.pass_context
 def turns_find(
@@ -112,21 +113,42 @@ def turns_find(
     speaker: str | None,
     mode_name: str | None,
     turn_id: int | None,
+    text_query: str | None,
     limit: int,
 ) -> None:
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    records = list(state.get("turns", []))
-    if scene:
-        records = [record for record in records if record["scene_id"] == scene]
-    if speaker:
-        records = [record for record in records if record["speaker"] == speaker]
-    if mode_name:
-        records = [record for record in records if record["mode"] == mode_name]
-    if turn_id is not None:
-        records = [record for record in records if record["turn_id"] == turn_id]
-    records = records[-limit:]
+    if _db.postgres_configured(load_config()):
+        with pg_connection() as conn:
+            records = _db.turn_list(
+                conn,
+                campaign_id=campaign_id,
+                scene=scene,
+                speaker=speaker,
+                mode=mode_name,
+                turn_id=turn_id,
+                text=text_query,
+                limit=limit,
+                latest=turn_id is None,
+            )
+    else:
+        records = list(state.get("turns", []))
+        if scene:
+            records = [record for record in records if record["scene_id"] == scene]
+        if speaker:
+            records = [record for record in records if record["speaker"] == speaker]
+        if mode_name:
+            records = [record for record in records if record["mode"] == mode_name]
+        if turn_id is not None:
+            records = [record for record in records if record["turn_id"] == turn_id]
+        if text_query:
+            needle = text_query.casefold()
+            records = [
+                record for record in records
+                if needle in _turn_search_text(record).casefold()
+            ]
+        records = records[-limit:]
     result = {"turns": records, "count": len(records)}
     append_audit(
         paths,
@@ -138,6 +160,7 @@ def turns_find(
             speaker=speaker,
             mode=mode_name,
             turn_id=turn_id,
+            text=text_query,
             limit=limit,
         ),
         result,
@@ -145,8 +168,88 @@ def turns_find(
     emit(result)
 
 
+@turns.command("feed")
+@click.option("--after-turn", type=int, default=0, show_default=True)
+@click.option("--limit", type=int, default=50, show_default=True)
+@click.pass_context
+def turns_feed(ctx: click.Context, after_turn: int, limit: int) -> None:
+    """Structured public turn feed for viewers/UI polling.
+
+    This is the replacement for parsing transcript.md. Each returned item is
+    stable, ordered, and already split into metadata, prose, and event lines.
+    """
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    if _db.postgres_configured(load_config()):
+        with pg_connection() as conn:
+            turns = _db.turn_list(
+                conn,
+                campaign_id=campaign_id,
+                after_turn=after_turn,
+                limit=limit,
+            )
+    else:
+        turns = [
+            turn for turn in state.get("turns", [])
+            if int(turn.get("turn_id", 0)) > after_turn
+        ][:limit]
+    events = [
+        {
+            "event_type": "turn.committed",
+            "campaign_id": turn.get("campaign_id") or campaign_id,
+            "turn_id": turn["turn_id"],
+            "scene_id": turn["scene_id"],
+            "mode": turn["mode"],
+            "speaker": turn["speaker"],
+            "role": turn["role"],
+            "created_at": turn.get("created_at") or turn.get("ts"),
+            "payload": {
+                "character_id": turn.get("character_id"),
+                "prose": turn.get("prose") or _strip_turn_header(turn.get("markdown", "")),
+                "event_summaries": turn.get("event_summaries", []),
+                "events": turn.get("events", []),
+                "markdown": turn.get("markdown", ""),
+            },
+        }
+        for turn in turns
+    ]
+    result = {
+        "campaign_id": campaign_id,
+        "after_turn": after_turn,
+        "events": events,
+        "count": len(events),
+        "next_after_turn": events[-1]["turn_id"] if events else after_turn,
+    }
+    append_audit(
+        paths,
+        state,
+        ctx,
+        "turns.feed",
+        command_params(after_turn=after_turn, limit=limit),
+        result,
+    )
+    emit(result)
+
+
+def _strip_turn_header(markdown: str) -> str:
+    lines = markdown.splitlines()
+    if lines and lines[0].startswith("## Turn "):
+        lines = lines[1:]
+        if lines and not lines[0].strip():
+            lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
+def _turn_search_text(record: dict[str, Any]) -> str:
+    parts = [
+        str(record.get("prose") or ""),
+        str(record.get("markdown") or ""),
+    ]
+    parts.extend(str(item) for item in record.get("event_summaries", []) or [])
+    return "\n".join(parts)
+
+
 # ============================================================================
 # Postgres / migrations
 # ============================================================================
-
-

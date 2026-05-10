@@ -501,12 +501,23 @@ def character_set_momentum(ctx: click.Context, character_id: str, value: int) ->
 @click.argument("character_id")
 @click.argument("item_id")
 @click.option("--qty", type=int, default=1)
+@click.option(
+    "--effect-tag",
+    "effect_tags",
+    multiple=True,
+    help="Repeatable free-text narrative tag for how this item can matter.",
+)
 @click.pass_context
 def character_inventory_add(
-    ctx: click.Context, character_id: str, item_id: str, qty: int
+    ctx: click.Context,
+    character_id: str,
+    item_id: str,
+    qty: int,
+    effect_tags: tuple[str, ...],
 ) -> None:
     if qty <= 0:
         raise GlassError("--qty must be greater than zero")
+    normalized_effect_tags = _normalize_effect_tags(effect_tags)
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -522,8 +533,16 @@ def character_inventory_add(
         before = int(item["qty"]) if item else 0
         if item:
             item["qty"] = before + qty
+            if normalized_effect_tags:
+                item["effect_tags"] = _merge_effect_tags(
+                    item.get("effect_tags"),
+                    normalized_effect_tags,
+                )
         else:
-            inventory.append({"id": item_id, "qty": qty})
+            entry: dict[str, Any] = {"id": item_id, "qty": qty}
+            if normalized_effect_tags:
+                entry["effect_tags"] = normalized_effect_tags
+            inventory.append(entry)
         after = before + qty
         updated = _db.character_set_inventory(
             conn,
@@ -543,6 +562,7 @@ def character_inventory_add(
         "qty_before": before,
         "delta": qty,
         "qty_after": after,
+        "effect_tags": normalized_effect_tags,
         "inventory": updated["inventory"],
     }
     commit(
@@ -550,7 +570,12 @@ def character_inventory_add(
         state,
         ctx,
         "character.inventory-add",
-        command_params(character_id=character_id, item_id=item_id, qty=qty),
+        command_params(
+            character_id=character_id,
+            item_id=item_id,
+            qty=qty,
+            effect_tags=normalized_effect_tags,
+        ),
         result,
     )
 
@@ -613,3 +638,218 @@ def character_inventory_rm(
     )
 
 
+@character.command("consequence-add")
+@click.argument("character_id")
+@click.argument("label")
+@click.option("--description", default="", help="Freeform consequence description.")
+@click.option(
+    "--severity",
+    type=click.Choice(["minor", "serious", "critical"]),
+    default="minor",
+    show_default=True,
+)
+@click.option(
+    "--scope",
+    type=click.Choice(["scene", "arc", "campaign"]),
+    default="scene",
+    show_default=True,
+)
+@click.option(
+    "--public/--hidden",
+    "public",
+    default=True,
+    show_default=True,
+    help="Whether players can see this consequence.",
+)
+@click.pass_context
+def character_consequence_add(
+    ctx: click.Context,
+    character_id: str,
+    label: str,
+    description: str,
+    severity: str,
+    scope: str,
+    public: bool,
+) -> None:
+    """DM-only: add a lasting character consequence.
+
+    Consequences are prose-backed state, not a condition engine. Use them for
+    injuries, capture, obligations, disgrace, gear strain, or other effects
+    that need to persist beyond the current line of narration.
+    """
+    role = require_dm()
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    visibility = "public" if public else "dm"
+    with pg_connection() as conn:
+        try:
+            consequence = _db.character_consequence_add(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                label=label,
+                description=description,
+                severity=severity,
+                scope=scope,
+                visibility=visibility,
+                actor=role.actor,
+            )
+        except LookupError:
+            raise GlassError(f"unknown character {character_id!r}") from None
+    queue_event(
+        state,
+        role.actor,
+        f"{character_id} consequence {severity}: {label} ({scope}, {visibility})",
+    )
+    commit(
+        paths,
+        state,
+        ctx,
+        "character.consequence-add",
+        command_params(
+            character_id=character_id,
+            label=label,
+            severity=severity,
+            scope=scope,
+            visibility=visibility,
+        ),
+        {"consequence": consequence},
+    )
+
+
+@character.command("consequence-list")
+@click.argument("character_id")
+@click.option("--all", "include_resolved", is_flag=True, help="Include resolved consequences.")
+@click.option("--hidden", "include_hidden", is_flag=True, help="DM-only: include hidden consequences.")
+@click.pass_context
+def character_consequence_list(
+    ctx: click.Context,
+    character_id: str,
+    include_resolved: bool,
+    include_hidden: bool,
+) -> None:
+    """List consequences for a character."""
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    role = current_role()
+    if role.kind == "player" and include_hidden:
+        raise GlassError("permission denied: players cannot read hidden consequences")
+    with pg_connection() as conn:
+        character = _db.character_get(conn, campaign_id, character_id)
+        if character is None:
+            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+        if role.kind == "player" and character.get("player_id") != role.actor:
+            include_hidden = False
+        consequences = _db.character_consequence_list(
+            conn,
+            campaign_id=campaign_id,
+            character_id=character_id,
+            include_hidden=include_hidden and role.kind != "player",
+            include_resolved=include_resolved,
+        )
+    result = {
+        "character_id": character_id,
+        "consequences": consequences,
+        "count": len(consequences),
+    }
+    append_audit(
+        paths,
+        state,
+        ctx,
+        "character.consequence-list",
+        command_params(
+            character_id=character_id,
+            all=include_resolved,
+            hidden=include_hidden,
+        ),
+        result,
+    )
+    emit(result)
+
+
+@character.command("consequence-resolve")
+@click.argument("character_id")
+@click.argument("consequence_id")
+@click.option("--note", default="", help="How this consequence was resolved.")
+@click.pass_context
+def character_consequence_resolve(
+    ctx: click.Context,
+    character_id: str,
+    consequence_id: str,
+    note: str,
+) -> None:
+    """DM-only: resolve a lasting character consequence."""
+    role = require_dm()
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    with pg_connection() as conn:
+        try:
+            consequence = _db.character_consequence_resolve(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                consequence_id=consequence_id,
+                actor=role.actor,
+                note=note,
+            )
+        except LookupError:
+            raise GlassError(f"unknown consequence {consequence_id!r}") from None
+    queue_event(
+        state,
+        role.actor,
+        f"{character_id} consequence resolved: {consequence['label']}",
+    )
+    commit(
+        paths,
+        state,
+        ctx,
+        "character.consequence-resolve",
+        command_params(
+            character_id=character_id,
+            consequence_id=consequence_id,
+            note=note,
+        ),
+        {"consequence": consequence},
+    )
+
+
+def _normalize_effect_tags(effect_tags: tuple[str, ...]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for tag in effect_tags:
+        value = tag.strip()
+        if not value:
+            continue
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(value)
+    return normalized
+
+
+def _merge_effect_tags(existing: Any, additions: list[str]) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    if isinstance(existing, list):
+        for tag in existing:
+            if not isinstance(tag, str):
+                continue
+            value = tag.strip()
+            if not value:
+                continue
+            key = value.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(value)
+    for tag in additions:
+        key = tag.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(tag)
+    return merged

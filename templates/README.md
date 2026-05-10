@@ -2,20 +2,25 @@
 
 **Authored content. Stable input.** This is the operator-curated baseline that the orchestrator copies into a campaign at start. Nothing in this tree is mutated by active play.
 
-For runtime mutable content, see `campaigns/<id>/` (per-campaign live state, created by `aog campaign new`).
-
-For the design behind this layout, see [`../docs/design/context-packages.md`](../docs/design/context-packages.md).
+For runtime mutable content, see `campaigns/<id>/` (per-campaign live state,
+created by `aog campaign new`).
 
 ## Layout
 
 ```
 templates/
+  summary.md               running campaign continuity summary starter
   shared/                  cross-arc, all agents readable (template form)
     campaign-framing.md    DM-owned starter framing
     quest-log.md           starter quest log
     party-knowledge.md     party-writable starter
+    clocks.md              generated public durable-clock projection starter
     lore/                  starter campaign encyclopedia (usually empty until canonization happens)
     vocabulary/            shared dialect — turn verbs, message types, mechanical terms
+  table/                   public short-term table state (reset per scene)
+    index.md               at-a-glance board
+    scene.md               scene kickoff description
+    handouts/              in-game handouts
   dm/                      DM workspace template
     persona.md             who Mara is at the table
     scratchpad.md          starter current-notes file
@@ -26,6 +31,7 @@ templates/
     intake/                starter dir
   players/<player>/
     persona.md             who they are at the table
+    signature-moves.md     3-6 recurring prose moves the player maintains
     character.md           starter character sheet (filled during character creation; canonical numbers in Postgres)
     scratchpad.md          starter current-notes file
     notes/index.md         encyclopedia how-to-use
@@ -40,8 +46,6 @@ templates/
     character-creation.md  DM + players authoring PCs and intros
 ```
 
-For the bootstrap flow these methodologies drive, see [`../docs/design/game-start.md`](../docs/design/game-start.md).
-
 ## Authored vs runtime
 
 Two distinct concerns:
@@ -55,8 +59,19 @@ The orchestrator copies `templates/` into a per-campaign root at campaign creati
 
 - **Encyclopedia-shaped** (frontmatter + prose + sections, FalkorDB-mirrored when canonized) — `shared/lore/`, players' `drafts/`, players' `notes/`, DM's `notes/`.
 - **Journal-shaped** (free-form, no schema) — players' `journal/` and `scratchpad.md`, DM's `journal/` and `scratchpad.md` and `workspace/` and `secret/` and `intake/`.
+- **Table-shaped** (short, current, player-visible) — `table/index.md`,
+  `table/scene.md`, `table/handouts/`, and any freeform markdown files at
+  `table/` root that prevent repeated clarification questions.
+- **Summary-shaped** (authored continuity compression) — `summary.md` at
+  campaign, arc/act, and scene level. These are summaries of what remains true,
+  not immediate scene boards.
 
-Don't blur them. The shape signals the intent. See [`../docs/design/agents.md`](../docs/design/agents.md) for the rule.
+Don't blur them. The shape signals the intent.
+
+Runtime authority is split intentionally: markdown is the readable authored
+surface, Postgres owns hard/queryable state and the public turn corpus, and
+FalkorDB owns entity relationships. See
+[`docs/design/persistence.md`](../docs/design/persistence.md).
 
 ## What gets committed
 

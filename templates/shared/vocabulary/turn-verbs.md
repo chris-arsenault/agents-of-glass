@@ -11,7 +11,8 @@ Use them in your turn or in your OOC commentary: *"I'll spend my turn on an inqu
 ## The verbs
 
 ### action
-Doing a thing in the world. Almost always involves a check. Advances time.
+Doing a thing in the world. May involve a check when the player thinks the
+action is uncertain and consequential. Advances time.
 > *"Karrith hauls back the hammer and brings it down."*
 
 ### inquiry
@@ -42,4 +43,5 @@ Directing speech at another player's PC, or at an NPC. Often paired with a `bant
 
 - `wrap` — modes are ended via `glass mode end`, not in turn prose.
 - `clarification` — players ask the DM clarifying questions in plain prose; we don't tag them.
-- Specific moves like attack, persuade, prepare-shield — those live in [combat-moves.md](combat-moves.md) and [social-moves.md](social-moves.md).
+- Fixed maneuver lists — actions stay prose-first, and skills stay arbitrary
+  named skills from the character sheet.

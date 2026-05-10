@@ -77,6 +77,23 @@ def load_pg_config(toml_data: dict[str, Any] | None = None) -> PgConfig:
     )
 
 
+def postgres_configured(toml_data: dict[str, Any] | None = None) -> bool:
+    """True when the runtime should use Postgres-backed state.
+
+    Tests and tiny local smoke runs often provide only [paths]; those keep the
+    file-backed fallback. Real runs use [postgres] or explicit libpq env vars
+    such as PGHOST/PGDATABASE.
+    """
+    override = os.environ.get("AOG_STATE_BACKEND", "").strip().lower()
+    if override == "file":
+        return False
+    if override == "postgres":
+        return True
+    if isinstance((toml_data or {}).get("postgres"), dict):
+        return True
+    return any(os.environ.get(name) for name in ("PGHOST", "PGDATABASE"))
+
+
 @contextmanager
 def connect(pg_config: PgConfig) -> Iterator["psycopg.Connection[Any]"]:
     """Open a Postgres connection. Caller manages transactions."""
@@ -284,6 +301,236 @@ def _iso(value: Any) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()
     return str(value)
+
+
+# --- runtime state ---
+
+
+def _jsonb(value: Any) -> str:
+    return json.dumps(value if value is not None else {})
+
+
+def _jsonb_list(value: Any) -> str:
+    return json.dumps(value if isinstance(value, list) else [])
+
+
+def runtime_state_get(
+    conn: "psycopg.Connection[Any]", campaign_id: str
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT campaign_id, status, created_at, updated_at, wrapped_at, summary,
+                   turn_counter, mode_stack, pending_events, note_intake, entities,
+                   threads, next_speakers, scene_closing_turns, state_extra
+            FROM campaign_runtime_states
+            WHERE campaign_id = %s
+            """,
+            (campaign_id,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    (
+        campaign,
+        status,
+        created_at,
+        updated_at,
+        wrapped_at,
+        summary,
+        turn_counter,
+        mode_stack,
+        pending_events,
+        note_intake,
+        entities,
+        threads,
+        next_speakers,
+        scene_closing_turns,
+        state_extra,
+    ) = row
+    state = {
+        "schema_version": 5,
+        "campaign": campaign,
+        "status": status,
+        "created_at": _iso(created_at),
+        "updated_at": _iso(updated_at),
+        "wrapped_at": _iso(wrapped_at),
+        "summary": summary or "",
+        "turn_counter": int(turn_counter),
+        "mode_stack": list(mode_stack or []),
+        "pending_events": list(pending_events or []),
+        "note_intake": list(note_intake or []),
+        "entities": dict(entities or {}),
+        "threads": dict(threads or {}),
+        "turns": turn_list(conn, campaign_id=campaign_id, limit=10000),
+        "next_speakers": list(next_speakers or []),
+        "scene_closing_turns": scene_closing_turns,
+    }
+    if isinstance(state_extra, dict):
+        for key, value in state_extra.items():
+            state.setdefault(key, value)
+    max_turn = max((int(t["turn_id"]) for t in state["turns"]), default=0)
+    state["turn_counter"] = max(int(state["turn_counter"]), max_turn)
+    return state
+
+
+def runtime_state_upsert(
+    conn: "psycopg.Connection[Any]", state: dict[str, Any]
+) -> None:
+    known = {
+        "schema_version",
+        "campaign",
+        "status",
+        "created_at",
+        "updated_at",
+        "wrapped_at",
+        "summary",
+        "turn_counter",
+        "mode_stack",
+        "pending_events",
+        "note_intake",
+        "entities",
+        "threads",
+        "turns",
+        "next_speakers",
+        "scene_closing_turns",
+    }
+    extra = {key: value for key, value in state.items() if key not in known}
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO campaign_runtime_states (
+                campaign_id, status, created_at, updated_at, wrapped_at, summary,
+                turn_counter, mode_stack, pending_events, note_intake, entities,
+                threads, next_speakers, scene_closing_turns, state_extra
+            ) VALUES (
+                %s, %s, COALESCE(%s::timestamptz, now()), COALESCE(%s::timestamptz, now()),
+                %s::timestamptz, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
+                %s::jsonb, %s::jsonb, %s::jsonb, %s, %s::jsonb
+            )
+            ON CONFLICT (campaign_id) DO UPDATE SET
+                status = EXCLUDED.status,
+                updated_at = EXCLUDED.updated_at,
+                wrapped_at = EXCLUDED.wrapped_at,
+                summary = EXCLUDED.summary,
+                turn_counter = EXCLUDED.turn_counter,
+                mode_stack = EXCLUDED.mode_stack,
+                pending_events = EXCLUDED.pending_events,
+                note_intake = EXCLUDED.note_intake,
+                entities = EXCLUDED.entities,
+                threads = EXCLUDED.threads,
+                next_speakers = EXCLUDED.next_speakers,
+                scene_closing_turns = EXCLUDED.scene_closing_turns,
+                state_extra = EXCLUDED.state_extra
+            """,
+            (
+                state["campaign"],
+                state.get("status", "active"),
+                state.get("created_at"),
+                state.get("updated_at"),
+                state.get("wrapped_at"),
+                state.get("summary", ""),
+                int(state.get("turn_counter", 0)),
+                _jsonb_list(state.get("mode_stack", [])),
+                _jsonb_list(state.get("pending_events", [])),
+                _jsonb_list(state.get("note_intake", [])),
+                _jsonb(state.get("entities", {})),
+                _jsonb(state.get("threads", {})),
+                _jsonb_list(state.get("next_speakers", [])),
+                state.get("scene_closing_turns"),
+                _jsonb(extra),
+            ),
+        )
+    conn.commit()
+
+
+def runtime_next_speaker_peek(
+    conn: "psycopg.Connection[Any]", campaign_id: str
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT next_speakers FROM campaign_runtime_states WHERE campaign_id = %s",
+            (campaign_id,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    queue = list(row[0] or [])
+    if not queue:
+        return None
+    entry = queue[0]
+    return entry if isinstance(entry, dict) else {"agent": entry}
+
+
+def runtime_next_speaker_consume(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    expected_entry: dict[str, Any],
+) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT next_speakers FROM campaign_runtime_states "
+            "WHERE campaign_id = %s FOR UPDATE",
+            (campaign_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return False
+        queue = list(row[0] or [])
+        if not queue:
+            return False
+        entry = queue[0]
+        normalized = entry if isinstance(entry, dict) else {"agent": entry}
+        if normalized != expected_entry:
+            return False
+        cur.execute(
+            "UPDATE campaign_runtime_states SET next_speakers = %s::jsonb, "
+            "updated_at = now() WHERE campaign_id = %s",
+            (json.dumps(queue[1:]), campaign_id),
+        )
+    conn.commit()
+    return True
+
+
+def runtime_scene_closing_tick(
+    conn: "psycopg.Connection[Any]", campaign_id: str
+) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT scene_closing_turns FROM campaign_runtime_states "
+            "WHERE campaign_id = %s FOR UPDATE",
+            (campaign_id,),
+        )
+        row = cur.fetchone()
+        if row is None or row[0] is None:
+            return False
+        cur.execute(
+            "UPDATE campaign_runtime_states SET scene_closing_turns = %s, "
+            "updated_at = now() WHERE campaign_id = %s",
+            (int(row[0]) - 1, campaign_id),
+        )
+    conn.commit()
+    return True
+
+
+def runtime_state_delete(
+    conn: "psycopg.Connection[Any]", campaign_id: str
+) -> dict[str, int]:
+    deleted: dict[str, int] = {}
+    with conn.cursor() as cur:
+        for table in ("events", "scene_trackers", "action_orders", "search_chunks"):
+            cur.execute(f"DELETE FROM {table} WHERE campaign_id = %s", (campaign_id,))
+            deleted[table] = cur.rowcount
+        cur.execute("DELETE FROM turns WHERE campaign_id = %s", (campaign_id,))
+        deleted["turns"] = cur.rowcount
+        cur.execute(
+            "DELETE FROM campaign_runtime_states WHERE campaign_id = %s",
+            (campaign_id,),
+        )
+        deleted["campaign_runtime_states"] = cur.rowcount
+    conn.commit()
+    return deleted
 
 
 def character_get(
@@ -643,6 +890,155 @@ def character_set_inventory(
     return _row_to_character(row)
 
 
+# --- character consequences ---
+
+
+_CONSEQUENCE_COLUMNS = (
+    "id, campaign_id, character_id, label, description, severity, scope, "
+    "visibility, status, created_by, resolved_by, resolution_note, "
+    "created_at, resolved_at"
+)
+
+
+def _row_to_consequence(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        consequence_id,
+        campaign_id,
+        character_id,
+        label,
+        description,
+        severity,
+        scope,
+        visibility,
+        status,
+        created_by,
+        resolved_by,
+        resolution_note,
+        created_at,
+        resolved_at,
+    ) = row
+    return {
+        "consequence_id": str(consequence_id),
+        "campaign_id": campaign_id,
+        "character_id": character_id,
+        "label": label,
+        "description": description,
+        "severity": severity,
+        "scope": scope,
+        "visibility": visibility,
+        "status": status,
+        "created_by": created_by,
+        "resolved_by": resolved_by,
+        "resolution_note": resolution_note,
+        "created_at": _iso(created_at),
+        "resolved_at": _iso(resolved_at),
+    }
+
+
+def character_consequence_add(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    label: str,
+    description: str,
+    severity: str,
+    scope: str,
+    visibility: str,
+    actor: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM characters WHERE campaign_id = %s AND character_id = %s",
+            (campaign_id, character_id),
+        )
+        if cur.fetchone() is None:
+            raise LookupError(character_id)
+        cur.execute(
+            f"""
+            INSERT INTO character_consequences (
+                campaign_id, character_id, label, description, severity, scope,
+                visibility, created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING {_CONSEQUENCE_COLUMNS}
+            """,
+            (
+                campaign_id,
+                character_id,
+                label,
+                description,
+                severity,
+                scope,
+                visibility,
+                actor,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_consequence(row)
+
+
+def character_consequence_list(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str | None = None,
+    include_hidden: bool = False,
+    include_resolved: bool = False,
+) -> list[dict[str, Any]]:
+    where = ["campaign_id = %s"]
+    params: list[Any] = [campaign_id]
+    if character_id:
+        where.append("character_id = %s")
+        params.append(character_id)
+    if not include_hidden:
+        where.append("visibility = 'public'")
+    if not include_resolved:
+        where.append("status = 'active'")
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_CONSEQUENCE_COLUMNS}
+            FROM character_consequences
+            WHERE {' AND '.join(where)}
+            ORDER BY created_at, id
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    return [_row_to_consequence(row) for row in rows]
+
+
+def character_consequence_resolve(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    consequence_id: str,
+    actor: str,
+    note: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE character_consequences
+            SET status = 'resolved',
+                resolved_by = %s,
+                resolved_at = now(),
+                resolution_note = %s
+            WHERE campaign_id = %s AND id = %s
+              AND character_id = %s
+            RETURNING {_CONSEQUENCE_COLUMNS}
+            """,
+            (actor, note, campaign_id, consequence_id, character_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise LookupError(consequence_id)
+    conn.commit()
+    return _row_to_consequence(row)
+
+
 # --- roll queries ---
 
 
@@ -888,6 +1284,1086 @@ def roll_record(
     return _row_to_roll(row)
 
 
+# --- structured turns / public corpus ---
+
+
+_TURN_COLUMNS = (
+    "campaign_id, turn_id, session_id, scene_id, mode, speaker, role, "
+    "character_id, source_path, prose, event_summaries, events, markdown, "
+    "created_at, arc_id, scene_type, turn_number_in_scene, visibility"
+)
+
+
+def _row_to_turn(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        campaign_id,
+        turn_id,
+        session_id,
+        scene_id,
+        mode,
+        speaker,
+        role,
+        character_id,
+        source_path,
+        prose,
+        event_summaries,
+        events,
+        markdown,
+        created_at,
+        arc_id,
+        scene_type,
+        turn_number_in_scene,
+        visibility,
+    ) = row
+    return {
+        "campaign_id": campaign_id,
+        "turn_id": int(turn_id),
+        "session_id": session_id,
+        "scene_id": scene_id,
+        "mode": mode,
+        "speaker": speaker,
+        "role": role,
+        "character_id": character_id,
+        "source_path": source_path,
+        "prose": prose,
+        "event_summaries": list(event_summaries or []),
+        "events": list(events or []),
+        "markdown": markdown,
+        "created_at": _iso(created_at),
+        "ts": _iso(created_at),
+        "arc_id": arc_id,
+        "scene_type": scene_type,
+        "turn_number_in_scene": (
+            int(turn_number_in_scene) if turn_number_in_scene is not None else None
+        ),
+        "visibility": visibility,
+    }
+
+
+def turn_insert(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    turn_id: int,
+    session_id: str,
+    scene_id: str,
+    mode: str,
+    speaker: str,
+    role: str,
+    character_id: str | None,
+    source_path: str | None,
+    prose: str,
+    event_summaries: list[str],
+    events: list[dict[str, Any]],
+    markdown: str,
+    created_at: str,
+    arc_id: str | None = None,
+    scene_type: str | None = None,
+    turn_number_in_scene: int | None = None,
+    visibility: str = "public",
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO turns (
+                campaign_id, turn_id, session_id, scene_id, mode, speaker, role,
+                character_id, source_path, prose, event_summaries, events,
+                markdown, created_at, arc_id, scene_type, turn_number_in_scene,
+                visibility
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s::jsonb, %s::jsonb, %s, %s::timestamptz, %s, %s, %s, %s
+            )
+            RETURNING {_TURN_COLUMNS}
+            """,
+            (
+                campaign_id,
+                turn_id,
+                session_id,
+                scene_id,
+                mode,
+                speaker,
+                role,
+                character_id,
+                source_path,
+                prose,
+                json.dumps(event_summaries),
+                json.dumps(events),
+                markdown,
+                created_at,
+                arc_id,
+                scene_type,
+                turn_number_in_scene,
+                visibility,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_turn(row)
+
+
+def turn_count(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene: str | None = None,
+) -> int:
+    where = ["campaign_id = %s"]
+    params: list[Any] = [campaign_id]
+    if scene:
+        where.append("scene_id = %s")
+        params.append(scene)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT count(*) FROM turns WHERE {' AND '.join(where)}",
+            params,
+        )
+        return int(cur.fetchone()[0])
+
+
+def turn_list(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene: str | None = None,
+    speaker: str | None = None,
+    mode: str | None = None,
+    turn_id: int | None = None,
+    after_turn: int | None = None,
+    text: str | None = None,
+    limit: int = 200,
+    latest: bool = False,
+) -> list[dict[str, Any]]:
+    where = ["campaign_id = %s"]
+    params: list[Any] = [campaign_id]
+    if scene:
+        where.append("scene_id = %s")
+        params.append(scene)
+    if speaker:
+        where.append("speaker = %s")
+        params.append(speaker)
+    if mode:
+        where.append("mode = %s")
+        params.append(mode)
+    if turn_id is not None:
+        where.append("turn_id = %s")
+        params.append(turn_id)
+    if after_turn is not None:
+        where.append("turn_id > %s")
+        params.append(after_turn)
+    if text:
+        where.append(
+            "(prose ILIKE %s OR markdown ILIKE %s OR event_summaries::text ILIKE %s)"
+        )
+        pattern = f"%{text}%"
+        params.extend([pattern, pattern, pattern])
+    params.append(limit)
+    order = "DESC" if latest else "ASC"
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_TURN_COLUMNS}
+            FROM turns
+            WHERE {' AND '.join(where)}
+            ORDER BY turn_id {order}
+            LIMIT %s
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    records = [_row_to_turn(row) for row in rows]
+    if latest:
+        records.reverse()
+    return records
+
+
+# --- event log ---
+
+
+def event_insert_many(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str | None,
+    turn_id: int | None,
+    events: list[dict[str, Any]],
+    event_type: str = "turn.inline",
+    visibility: str = "public",
+) -> list[dict[str, Any]]:
+    if not events:
+        return []
+    rows: list[dict[str, Any]] = []
+    with conn.cursor() as cur:
+        for event in events:
+            event_id = str(event.get("event_id") or f"event-{campaign_id}-{turn_id}-{len(rows)}")
+            actor = str(event.get("actor") or "unknown")
+            summary = str(event.get("summary") or "")
+            created_at = event.get("ts")
+            payload = {key: value for key, value in event.items() if key != "summary"}
+            cur.execute(
+                """
+                INSERT INTO events (
+                    event_id, campaign_id, scene_id, turn_id, actor, event_type,
+                    visibility, summary, payload, created_at, claimed_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb,
+                    COALESCE(%s::timestamptz, now()),
+                    CASE WHEN %s IS NULL THEN NULL ELSE now() END
+                )
+                ON CONFLICT (event_id) DO UPDATE SET
+                    turn_id = EXCLUDED.turn_id,
+                    scene_id = EXCLUDED.scene_id,
+                    visibility = EXCLUDED.visibility,
+                    summary = EXCLUDED.summary,
+                    payload = EXCLUDED.payload,
+                    claimed_at = EXCLUDED.claimed_at
+                RETURNING event_id, campaign_id, scene_id, turn_id, actor,
+                          event_type, visibility, summary, payload, created_at,
+                          claimed_at
+                """,
+                (
+                    event_id,
+                    campaign_id,
+                    scene_id,
+                    turn_id,
+                    actor,
+                    event_type,
+                    visibility,
+                    summary,
+                    json.dumps(payload),
+                    created_at,
+                    turn_id,
+                ),
+            )
+            row = cur.fetchone()
+            rows.append(
+                {
+                    "event_id": row[0],
+                    "campaign_id": row[1],
+                    "scene_id": row[2],
+                    "turn_id": row[3],
+                    "actor": row[4],
+                    "event_type": row[5],
+                    "visibility": row[6],
+                    "summary": row[7],
+                    "payload": row[8] or {},
+                    "created_at": _iso(row[9]),
+                    "claimed_at": _iso(row[10]),
+                }
+            )
+    conn.commit()
+    return rows
+
+
+# --- scene trackers ---
+
+
+_SCENE_TRACKER_COLUMNS = (
+    "campaign_id, tracker_id, scene_id, label, value, max_value, resistance, "
+    "impact_resistance, visibility, status, updated_by, created_at, updated_at"
+)
+
+
+def _row_to_scene_tracker(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        campaign_id,
+        tracker_id,
+        scene_id,
+        label,
+        value,
+        max_value,
+        resistance,
+        impact_resistance,
+        visibility,
+        status,
+        updated_by,
+        created_at,
+        updated_at,
+    ) = row
+    return {
+        "campaign_id": campaign_id,
+        "tracker_id": tracker_id,
+        "scene_id": scene_id,
+        "label": label,
+        "value": int(value),
+        "max": int(max_value),
+        "resistance": int(resistance),
+        "impact_resistance": int(impact_resistance),
+        "public": visibility == "public",
+        "visibility": visibility,
+        "status": status,
+        "updated_by": updated_by,
+        "created_at": _iso(created_at),
+        "updated_at": _iso(updated_at),
+    }
+
+
+def scene_tracker_get(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    tracker_id: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT {_SCENE_TRACKER_COLUMNS} FROM scene_trackers "
+            "WHERE campaign_id = %s AND tracker_id = %s",
+            (campaign_id, tracker_id),
+        )
+        row = cur.fetchone()
+    return _row_to_scene_tracker(row) if row else None
+
+
+def scene_tracker_list(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str | None = None,
+    visibility: str | None = None,
+    include_archived: bool = False,
+) -> list[dict[str, Any]]:
+    where = ["campaign_id = %s"]
+    params: list[Any] = [campaign_id]
+    if scene_id:
+        where.append("scene_id = %s")
+        params.append(scene_id)
+    if visibility:
+        where.append("visibility = %s")
+        params.append(visibility)
+    if not include_archived:
+        where.append("status <> 'archived'")
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_SCENE_TRACKER_COLUMNS}
+            FROM scene_trackers
+            WHERE {' AND '.join(where)}
+            ORDER BY scene_id, tracker_id
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    return [_row_to_scene_tracker(row) for row in rows]
+
+
+def scene_tracker_upsert(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    tracker_id: str,
+    scene_id: str,
+    label: str,
+    value: int,
+    max_value: int,
+    resistance: int,
+    impact_resistance: int,
+    visibility: str,
+    actor: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO scene_trackers (
+                campaign_id, tracker_id, scene_id, label, value, max_value,
+                resistance, impact_resistance, visibility, updated_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (campaign_id, tracker_id) DO UPDATE SET
+                scene_id = EXCLUDED.scene_id,
+                label = EXCLUDED.label,
+                value = EXCLUDED.value,
+                max_value = EXCLUDED.max_value,
+                resistance = EXCLUDED.resistance,
+                impact_resistance = EXCLUDED.impact_resistance,
+                visibility = EXCLUDED.visibility,
+                status = 'active',
+                updated_by = EXCLUDED.updated_by,
+                updated_at = now()
+            RETURNING {_SCENE_TRACKER_COLUMNS}
+            """,
+            (
+                campaign_id,
+                tracker_id,
+                scene_id,
+                label,
+                value,
+                max_value,
+                resistance,
+                impact_resistance,
+                visibility,
+                actor,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_scene_tracker(row)
+
+
+def scene_tracker_tick(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    tracker_id: str,
+    delta: int,
+    actor: str,
+) -> tuple[dict[str, Any], int, int]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT value, max_value FROM scene_trackers "
+            "WHERE campaign_id = %s AND tracker_id = %s FOR UPDATE",
+            (campaign_id, tracker_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(tracker_id)
+        before = int(row[0])
+        max_value = int(row[1])
+        after = max(0, min(max_value, before + delta))
+        cur.execute(
+            f"""
+            UPDATE scene_trackers
+            SET value = %s, updated_by = %s, updated_at = now()
+            WHERE campaign_id = %s AND tracker_id = %s
+            RETURNING {_SCENE_TRACKER_COLUMNS}
+            """,
+            (after, actor, campaign_id, tracker_id),
+        )
+        updated = cur.fetchone()
+    conn.commit()
+    return _row_to_scene_tracker(updated), before, after
+
+
+def scene_tracker_set_value(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    tracker_id: str,
+    value: int,
+    actor: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE scene_trackers
+            SET value = %s, updated_by = %s, updated_at = now()
+            WHERE campaign_id = %s AND tracker_id = %s
+            RETURNING {_SCENE_TRACKER_COLUMNS}
+            """,
+            (value, actor, campaign_id, tracker_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise LookupError(tracker_id)
+    conn.commit()
+    return _row_to_scene_tracker(row)
+
+
+def scene_tracker_delete_scene(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM scene_trackers WHERE campaign_id = %s AND scene_id = %s",
+            (campaign_id, scene_id),
+        )
+        deleted = cur.rowcount
+    conn.commit()
+    return int(deleted)
+
+
+# --- action order ---
+
+
+def action_order_get(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    mode: str,
+    scene_id: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT campaign_id, mode, scene_id, label, round, cursor,
+                   order_agents, rolls, active, created_by, created_at, updated_at
+            FROM action_orders
+            WHERE campaign_id = %s AND mode = %s AND scene_id = %s AND active
+            """,
+            (campaign_id, mode, scene_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    return _row_to_action_order(row)
+
+
+def action_order_upsert(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    mode: str,
+    scene_id: str,
+    label: str,
+    order: list[str],
+    rolls: list[dict[str, Any]],
+    actor: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO action_orders (
+                campaign_id, mode, scene_id, label, round, cursor, order_agents,
+                rolls, active, created_by
+            ) VALUES (%s, %s, %s, %s, 1, 0, %s::jsonb, %s::jsonb, true, %s)
+            ON CONFLICT (campaign_id, mode, scene_id) DO UPDATE SET
+                label = EXCLUDED.label,
+                round = 1,
+                cursor = 0,
+                order_agents = EXCLUDED.order_agents,
+                rolls = EXCLUDED.rolls,
+                active = true,
+                created_by = EXCLUDED.created_by,
+                updated_at = now()
+            RETURNING campaign_id, mode, scene_id, label, round, cursor,
+                      order_agents, rolls, active, created_by, created_at, updated_at
+            """,
+            (
+                campaign_id,
+                mode,
+                scene_id,
+                label,
+                json.dumps(order),
+                json.dumps(rolls),
+                actor,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_action_order(row)
+
+
+def action_order_advance(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    mode: str,
+    scene_id: str,
+    expected_agent: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT campaign_id, mode, scene_id, label, round, cursor,
+                   order_agents, rolls, active, created_by, created_at, updated_at
+            FROM action_orders
+            WHERE campaign_id = %s AND mode = %s AND scene_id = %s AND active
+            FOR UPDATE
+            """,
+            (campaign_id, mode, scene_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        order = _row_to_action_order(row)
+        agents = order.get("order", [])
+        if not agents:
+            return order
+        cursor = int(order.get("cursor", 0)) % len(agents)
+        if str(agents[cursor]) != expected_agent:
+            return order
+        cursor += 1
+        round_no = int(order.get("round", 1))
+        if cursor >= len(agents):
+            cursor = 0
+            round_no += 1
+        cur.execute(
+            """
+            UPDATE action_orders
+            SET cursor = %s, round = %s, updated_at = now()
+            WHERE campaign_id = %s AND mode = %s AND scene_id = %s
+            RETURNING campaign_id, mode, scene_id, label, round, cursor,
+                      order_agents, rolls, active, created_by, created_at, updated_at
+            """,
+            (cursor, round_no, campaign_id, mode, scene_id),
+        )
+        updated = cur.fetchone()
+    conn.commit()
+    return _row_to_action_order(updated)
+
+
+def action_order_clear_scene(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE action_orders SET active = false, updated_at = now() "
+            "WHERE campaign_id = %s AND scene_id = %s AND active",
+            (campaign_id, scene_id),
+        )
+        changed = cur.rowcount
+    conn.commit()
+    return int(changed)
+
+
+def _row_to_action_order(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        campaign_id,
+        mode,
+        scene_id,
+        label,
+        round_no,
+        cursor,
+        order_agents,
+        rolls,
+        active,
+        created_by,
+        created_at,
+        updated_at,
+    ) = row
+    return {
+        "campaign_id": campaign_id,
+        "mode": mode,
+        "scene_id": scene_id,
+        "label": label,
+        "round": int(round_no),
+        "cursor": int(cursor),
+        "order": [str(item) for item in list(order_agents or [])],
+        "rolls": list(rolls or []),
+        "active": bool(active),
+        "created_by": created_by,
+        "created_at": _iso(created_at),
+        "updated_at": _iso(updated_at),
+    }
+
+
+# --- search chunks ---
+
+
+def search_chunk_upsert(
+    conn: "psycopg.Connection[Any]",
+    *,
+    chunk_id: str,
+    campaign_id: str,
+    source_type: str,
+    source_id: str,
+    visibility: str,
+    owner_actor: str | None,
+    path: str | None,
+    title: str,
+    body: str,
+    metadata: dict[str, Any] | None = None,
+    embedding: list[float] | None = None,
+) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO search_chunks (
+                chunk_id, campaign_id, source_type, source_id, visibility,
+                owner_actor, path, title, body, metadata, embedding, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, now())
+            ON CONFLICT (chunk_id) DO UPDATE SET
+                source_type = EXCLUDED.source_type,
+                source_id = EXCLUDED.source_id,
+                visibility = EXCLUDED.visibility,
+                owner_actor = EXCLUDED.owner_actor,
+                path = EXCLUDED.path,
+                title = EXCLUDED.title,
+                body = EXCLUDED.body,
+                metadata = EXCLUDED.metadata,
+                embedding = EXCLUDED.embedding,
+                updated_at = now()
+            """,
+            (
+                chunk_id,
+                campaign_id,
+                source_type,
+                source_id,
+                visibility,
+                owner_actor,
+                path,
+                title,
+                body,
+                json.dumps(metadata or {}),
+                embedding,
+            ),
+        )
+
+
+def search_chunks_delete_source(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    source_type: str,
+    source_prefix: str | None = None,
+) -> int:
+    with conn.cursor() as cur:
+        if source_prefix is None:
+            cur.execute(
+                "DELETE FROM search_chunks WHERE campaign_id = %s AND source_type = %s",
+                (campaign_id, source_type),
+            )
+        else:
+            cur.execute(
+                "DELETE FROM search_chunks WHERE campaign_id = %s "
+                "AND source_type = %s AND source_id LIKE %s",
+                (campaign_id, source_type, f"{source_prefix}%"),
+            )
+        deleted = cur.rowcount
+    return int(deleted)
+
+
+def search_query(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    query: str,
+    role_kind: str,
+    actor: str,
+    source_type: str | None = None,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    where = ["campaign_id = %s"]
+    params: list[Any] = [campaign_id]
+    if role_kind == "player":
+        where.append(
+            "(visibility = 'public' OR (visibility = 'private' AND owner_actor = %s))"
+        )
+        params.append(actor)
+    if source_type:
+        where.append("source_type = %s")
+        params.append(source_type)
+    # Full text search is the primary implementation. The ILIKE fallback keeps
+    # obvious proper-noun queries useful even when tokenization is unhelpful.
+    sql_params = [query, *params, query, query, query, limit]
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT chunk_id, source_type, source_id, visibility, owner_actor,
+                   path, title, body, metadata,
+                   ts_rank_cd(search_vector, websearch_to_tsquery('english', %s)) AS rank
+            FROM search_chunks
+            WHERE {' AND '.join(where)}
+              AND (
+                search_vector @@ websearch_to_tsquery('english', %s)
+                OR title ILIKE ('%%' || %s || '%%')
+                OR body ILIKE ('%%' || %s || '%%')
+              )
+            ORDER BY rank DESC, updated_at DESC
+            LIMIT %s
+            """,
+            sql_params,
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "chunk_id": row[0],
+            "source_type": row[1],
+            "source_id": row[2],
+            "visibility": row[3],
+            "owner_actor": row[4],
+            "path": row[5],
+            "title": row[6],
+            "preview": _preview_text(row[7], query),
+            "metadata": row[8] or {},
+            "rank": float(row[9] or 0),
+        }
+        for row in rows
+    ]
+
+
+def _preview_text(body: str, query: str, *, limit: int = 300) -> str:
+    if len(body) <= limit:
+        return body
+    needle = query.casefold()
+    idx = body.casefold().find(needle)
+    if idx < 0:
+        return body[:limit].rstrip()
+    start = max(0, idx - limit // 3)
+    end = min(len(body), start + limit)
+    return body[start:end].strip()
+
+
+# --- durable clocks ---
+
+
+_CLOCK_COLUMNS = (
+    "campaign_id, clock_id, scope, anchor_id, label, description, value, "
+    "max_value, direction, visibility, status, created_by, updated_by, "
+    "created_at, updated_at, resolved_at, resolution_note"
+)
+
+
+def _row_to_clock(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        campaign_id,
+        clock_id,
+        scope,
+        anchor_id,
+        label,
+        description,
+        value,
+        max_value,
+        direction,
+        visibility,
+        status,
+        created_by,
+        updated_by,
+        created_at,
+        updated_at,
+        resolved_at,
+        resolution_note,
+    ) = row
+    return {
+        "campaign_id": campaign_id,
+        "clock_id": clock_id,
+        "scope": scope,
+        "anchor_id": anchor_id,
+        "label": label,
+        "description": description,
+        "value": int(value),
+        "max": int(max_value),
+        "direction": direction,
+        "visibility": visibility,
+        "status": status,
+        "created_by": created_by,
+        "updated_by": updated_by,
+        "created_at": _iso(created_at),
+        "updated_at": _iso(updated_at),
+        "resolved_at": _iso(resolved_at),
+        "resolution_note": resolution_note,
+    }
+
+
+def clock_get(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    clock_id: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT {_CLOCK_COLUMNS} FROM clocks "
+            "WHERE campaign_id = %s AND clock_id = %s",
+            (campaign_id, clock_id),
+        )
+        row = cur.fetchone()
+    return _row_to_clock(row) if row else None
+
+
+def clock_list(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scope: str | None = None,
+    anchor_id: str | None = None,
+    visibility: str | None = None,
+    include_archived: bool = False,
+) -> list[dict[str, Any]]:
+    where = ["campaign_id = %s"]
+    params: list[Any] = [campaign_id]
+    if scope:
+        where.append("scope = %s")
+        params.append(scope)
+    if anchor_id:
+        where.append("anchor_id = %s")
+        params.append(anchor_id)
+    if visibility:
+        where.append("visibility = %s")
+        params.append(visibility)
+    if not include_archived:
+        where.append("status <> 'archived'")
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_CLOCK_COLUMNS}
+            FROM clocks
+            WHERE {' AND '.join(where)}
+            ORDER BY scope, anchor_id NULLS FIRST, clock_id
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    return [_row_to_clock(row) for row in rows]
+
+
+def clock_upsert(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    clock_id: str,
+    scope: str,
+    anchor_id: str | None,
+    label: str,
+    description: str,
+    value: int,
+    max_value: int,
+    direction: str,
+    visibility: str,
+    actor: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT value FROM clocks WHERE campaign_id = %s AND clock_id = %s",
+            (campaign_id, clock_id),
+        )
+        existing = cur.fetchone()
+        before = int(existing[0]) if existing else None
+        cur.execute(
+            f"""
+            INSERT INTO clocks (
+                campaign_id, clock_id, scope, anchor_id, label, description,
+                value, max_value, direction, visibility, created_by, updated_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (campaign_id, clock_id) DO UPDATE SET
+                scope = EXCLUDED.scope,
+                anchor_id = EXCLUDED.anchor_id,
+                label = EXCLUDED.label,
+                description = EXCLUDED.description,
+                value = EXCLUDED.value,
+                max_value = EXCLUDED.max_value,
+                direction = EXCLUDED.direction,
+                visibility = EXCLUDED.visibility,
+                status = 'active',
+                updated_by = EXCLUDED.updated_by,
+                resolved_at = NULL,
+                resolution_note = NULL
+            RETURNING {_CLOCK_COLUMNS}
+            """,
+            (
+                campaign_id,
+                clock_id,
+                scope,
+                anchor_id,
+                label,
+                description,
+                value,
+                max_value,
+                direction,
+                visibility,
+                actor,
+                actor,
+            ),
+        )
+        row = cur.fetchone()
+        cur.execute(
+            """
+            INSERT INTO clock_events (
+                campaign_id, clock_id, actor, event_type, value_before,
+                value_after, note
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                campaign_id,
+                clock_id,
+                actor,
+                "set",
+                before,
+                value,
+                description,
+            ),
+        )
+    conn.commit()
+    return _row_to_clock(row)
+
+
+def clock_tick(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    clock_id: str,
+    delta: int,
+    actor: str,
+    note: str,
+) -> tuple[dict[str, Any], int, int]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT value, max_value FROM clocks "
+            "WHERE campaign_id = %s AND clock_id = %s FOR UPDATE",
+            (campaign_id, clock_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(clock_id)
+        before = int(row[0])
+        max_value = int(row[1])
+        after = max(0, min(max_value, before + delta))
+        cur.execute(
+            f"""
+            UPDATE clocks
+            SET value = %s, updated_by = %s
+            WHERE campaign_id = %s AND clock_id = %s
+            RETURNING {_CLOCK_COLUMNS}
+            """,
+            (after, actor, campaign_id, clock_id),
+        )
+        updated = cur.fetchone()
+        cur.execute(
+            """
+            INSERT INTO clock_events (
+                campaign_id, clock_id, actor, event_type, delta,
+                value_before, value_after, note
+            ) VALUES (%s, %s, %s, 'tick', %s, %s, %s, %s)
+            """,
+            (campaign_id, clock_id, actor, delta, before, after, note),
+        )
+    conn.commit()
+    return _row_to_clock(updated), before, after
+
+
+def clock_set_status(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    clock_id: str,
+    status: str,
+    actor: str,
+    note: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        if status == "resolved":
+            cur.execute(
+                f"""
+                UPDATE clocks
+                SET status = 'resolved',
+                    updated_by = %s,
+                    resolved_at = now(),
+                    resolution_note = %s
+                WHERE campaign_id = %s AND clock_id = %s
+                RETURNING {_CLOCK_COLUMNS}
+                """,
+                (actor, note, campaign_id, clock_id),
+            )
+        else:
+            cur.execute(
+                f"""
+                UPDATE clocks
+                SET status = %s,
+                    updated_by = %s,
+                    resolution_note = COALESCE(%s, resolution_note)
+                WHERE campaign_id = %s AND clock_id = %s
+                RETURNING {_CLOCK_COLUMNS}
+                """,
+                (status, actor, note, campaign_id, clock_id),
+            )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(clock_id)
+        cur.execute(
+            """
+            INSERT INTO clock_events (campaign_id, clock_id, actor, event_type, note)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (campaign_id, clock_id, actor, status, note),
+        )
+    conn.commit()
+    return _row_to_clock(row)
+
+
 # --- campaign-wide deletion ---
 
 
@@ -903,7 +2379,19 @@ def delete_campaign_data(
     """
     deleted: dict[str, int] = {}
     with conn.cursor() as cur:
-        for table in ("rolls", "xp_awards", "level_ups"):
+        for table in (
+            "events",
+            "scene_trackers",
+            "action_orders",
+            "search_chunks",
+            "turns",
+            "campaign_runtime_states",
+            "clock_events",
+            "clocks",
+        ):
+            cur.execute(f"DELETE FROM {table} WHERE campaign_id = %s", (campaign_id,))
+            deleted[table] = cur.rowcount
+        for table in ("rolls", "xp_awards", "level_ups", "character_consequences"):
             cur.execute(f"DELETE FROM {table} WHERE campaign_id = %s", (campaign_id,))
             deleted[table] = cur.rowcount
         cur.execute("DELETE FROM messages WHERE campaign_id = %s", (campaign_id,))

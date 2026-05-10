@@ -4,9 +4,9 @@ title: Message Types
 
 # Message Types
 
-The schema for `glass msg <type> <recipient> <body>`. **CLI-validated** — unknown types are rejected with a list of valid options. The body is free-form prose.
-
-For the messaging system itself, see [`/docs/design/messaging.md`](../../../docs/design/messaging.md).
+The schema for `glass msg <type> <recipient> <body>`. **CLI-validated** —
+unknown types are rejected with a list of valid options. The body is free-form
+prose.
 
 ## The types
 
@@ -40,8 +40,11 @@ Private knowledge. DM-to-player when the player needs to know something hidden f
 | `plot-hint` | recipient + DM (DM is also the sender) |
 | `secret` | recipient + DM |
 
-The DM sees everything. Player-to-player messages are file-permission-isolated from other players. See [`/docs/design/context-packages.md`](../../../docs/design/context-packages.md).
+The DM sees everything. Player-to-player messages are file-permission-isolated
+from other players.
 
 ## Adding a new type
 
-Don't, casually. The list is short on purpose. A new type is only worth adding when an existing one is being misused for two distinct purposes the corpus would benefit from telling apart. Propose in [`/docs/design/open-questions.md`](../../../docs/design/open-questions.md), not here.
+Don't, casually. The list is short on purpose. A new type is only worth adding
+when an existing one is being misused for two distinct purposes the corpus would
+benefit from telling apart.

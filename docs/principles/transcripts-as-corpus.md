@@ -29,6 +29,12 @@ This principle has consequences that touch most of the system:
 
 **The agent emits prose. The orchestrator emits structure.** Agents don't write YAML delta blocks at the end of their turns. They write what they have to say, calling `glass` for any mechanical thing along the way. The orchestrator wraps each turn with a structured header (speaker, role, mode, scene, turn number, timestamp) and inlines mechanical event lines (rolls, HP changes) drawn from the `glass` audit log. Structure comes from the metadata around the prose, not from forcing the agent to author both.
 
+**The durable home is Postgres.** The agent's per-turn `out.md` is an
+operational handoff file. `glass turn append` commits that prose into
+Postgres `turns.prose`, links/inlines pending events, and refreshes campaign
+and scene markdown transcript exports. Viewers and narrative-weaving passes
+consume the structured turn feed, not per-agent turn folders.
+
 **Two layers per turn: in-character + out-of-character.** Real TTRPG transcripts have both. Tev says "I'm rolling perception" (OOC); Karrith says "what was that sound?" (IC). The transcript preserves both, distinguished by the agent's own prose conventions (e.g. `Tev (OOC):` vs `Karrith:`). We don't enforce the distinction with a schema field — the agents are smart enough to mark their own register, and human readers and narrative-weaving passes can pick it up just fine.
 
 **Speakers are people, not roles.** The transcript records "Tev said X," not "player_2 said X." Same for the DM. This means the people files (`mara.md`, `tev.md`, etc.) are part of the corpus — readers later need to know *who* Tev is to make sense of what Tev said.

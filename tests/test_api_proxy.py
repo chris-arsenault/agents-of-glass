@@ -35,9 +35,18 @@ class GlassApiProxyTests(unittest.TestCase):
 
             claim = validate_grant(campaigns, token, ["msg", "read"])
             self.assertEqual(claim["actor"], "tev")
+            validate_grant(campaigns, token, ["search", "text", "duke"])
+            validate_grant(campaigns, token, ["entity", "relations", "duke"])
+            validate_grant(
+                campaigns,
+                token,
+                ["entity", "claim", "duke", "ATTITUDE_TOWARD", "party", "--summary", "heard it"],
+            )
 
             with self.assertRaises(GlassError):
                 validate_grant(campaigns, token, ["db", "init"])
+            with self.assertRaises(GlassError):
+                validate_grant(campaigns, token, ["entity", "query", "MATCH (n) RETURN n"])
 
     def test_standalone_client_proxies_to_local_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

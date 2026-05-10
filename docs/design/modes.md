@@ -1,20 +1,33 @@
 # Modes (Scene Types)
 
-A **mode** is the turn protocol for a particular kind of scene. Combat is a mode. Town/social is a mode. Each scene has exactly one mode at any moment — the mode determines who speaks, whether checks fire, how time advances.
+A **mode** is the turn protocol currently governing a scene. It determines who
+speaks, how fast fictional time moves, how often checks fire, and what kind of
+state must stay visible.
 
-"Mode" and "scene type" are synonyms in this project. The technical field is `mode`; the user-facing word is "scene type."
+The `--type` label on a scene is intentionally loose. Some labels are protocol
+labels (`scene-play`, `action`, `travel`); some are DM toolkit labels that have
+worked before (`combat`, `chase`, `social-pressure`); and the DM can make up a
+label that fits the narrative. Do not treat the examples in this doc as an
+exhaustive taxonomy.
 
 For the universal turn shape that modes parameterize, see [`turn-loop.md`](turn-loop.md). For closure (deferred), see [`scene-ending.md`](scene-ending.md). For the broader hierarchy of campaign → arc → scene, see [`game-start.md`](game-start.md) and [`context-packages.md`](context-packages.md).
 
 ## Why Modes
 
-A free-form loop ("agents talk to each other forever") produces undifferentiated mush. A real table has phases — the dungeon crawl looks nothing like the negotiation looks nothing like the cleanup at the end. Each phase has different rules about who speaks, when checks fire, how time advances.
+A free-form loop ("agents talk to each other forever") produces undifferentiated mush. A real table has phases — the tense standoff looks nothing like the quiet investigation looks nothing like the cleanup at the end. Each phase has different rules about who speaks, when checks fire, how time advances.
 
-Modes encode those phase-specific rules so the orchestrator can enforce them. They also give the corpus cut-points for analysis: "what happened in the combat at the market" is a queryable scene, not a fuzzy region.
+Modes encode those phase-specific rules so the orchestrator can enforce the
+parts that need enforcement. The DM toolkit names give the corpus useful
+analysis labels: "what happened in the market chase" is queryable without
+claiming that `chase` is the only possible action scene shape.
 
 ## How a Scene Gets a Mode
 
-When the DM scaffolds a new scene with `glass scene create <slug> --type <mode>`, the CLI records the mode in scene state. From that point, the orchestrator runs the scene under that mode's turn protocol.
+When the DM scaffolds a new scene with `glass scene create <slug> --type <label>`,
+the CLI records that label in scene state. Custom slugs are allowed. The DM then
+uses the methodology/protocol that fits the scene: usually `scene-play` for
+open-ended play, `action` for quickfire rounds, `travel`/`montage` for compressed
+movement, or a toolkit label that points to one of those protocols.
 
 A scene's mode can change mid-scene if the situation changes — combat erupts in the middle of a town-mode scene. The DM calls `glass mode push combat` to nest, and `glass mode end` (or `glass mode pop`) to return to the parent. See [Mode Nesting](#mode-nesting) below.
 
@@ -26,15 +39,18 @@ A mode doc covers three things:
 
 ### Entry — what the DM addresses when starting the scene
 
-In prose, the DM frames the scene: where are we, who's here, what's at stake, what's a reasonable resolution shape. For combat that includes initiative ordering and the lineup of monsters; for travel it includes the destination and the kind of montage we're after.
+In prose, the DM frames the scene: where are we, who's here, what's at stake,
+what's a reasonable resolution shape. For action scenes that includes action
+order, visible stakes, and the numeric tracker(s) that define progress. For
+travel it includes the destination and the kind of montage we're after.
 
 The DM's framing prose lands in the scene's `context.md` (player-facing) and is informed by `prep.md` (DM-only working scene prep — see [`/templates/methodologies/scene-prep.md`](../../templates/methodologies/scene-prep.md)).
 
 ### Turn protocol — how turns flow in this mode
 
-- **Speaker selection** — round-robin? initiative? free-form? DM-prompted? (Codified: the orchestrator implements the rule. See [`open-questions.md`](open-questions.md) for unsettled cases.)
-- **Whether checks are typical** — combat fires checks constantly; reflection rarely.
-- **What state surfaces matter** — combat reads HP every turn; town/social reads notes about NPC disposition.
+- **Speaker selection** — round-robin? action order? free-form? DM-prompted? (Codified: the orchestrator implements the rule. See [`open-questions.md`](open-questions.md) for unsettled cases.)
+- **Whether checks are typical** — action scenes make player-called checks more common; reflection rarely needs them.
+- **What state surfaces matter** — action scenes read HP/trackers/effects every turn; quiet social scenes read notes about NPC disposition.
 - **What the DM is licensed to do** — describe environment freely, introduce minor NPCs, advance time, etc.
 
 ### Exit — when the scene ends
@@ -47,31 +63,78 @@ Three categories:
 
 For v1, exit is intentionally simple. Layered closure machinery (twist budgets, scene-closer agent, monotonic pressure) is deferred.
 
-## Starter Mode Set (Active Play)
+## Active Play Protocols
 
-| Mode | Speaker selection | Checks | Typical turn cap | Ends when |
-|------|-------------------|--------|------------------|-----------|
-| **town / social** | DM addresses one player or asks "anyone?" | mid-stakes inquiry, social pressure | 12 | DM cuts to next scene, or no player has new action |
-| **exploration** | round-robin | environmental, perception, navigation | 8 | locale fully described or party moves on |
-| **investigation** | free-form, DM-gated reveals | inquiry + planning checks | 10 | key clue surfaces or party deadlocks |
-| **combat** | initiative order (rolled, persisted) | every action | 8 | one side resolved (defeated/fled/yielded) |
-| **travel / montage** | one beat per player, in order | none or one big check | 4 (one per player) | every PC contributed once |
+These are protocols, not an exhaustive scene-kind list.
 
-### town / social
+| Protocol | Speaker selection | Fictional time per turn | Checks | Typical turn cap | Ends when |
+|----------|-------------------|-------------------------|--------|------------------|-----------|
+| **scene-play** | round-robin plus handoffs | minutes, hours, or days as needed | fewer; players roll when they judge uncertainty matters; DM rolls DM-side checks when needed | 12 | DM cuts to next scene, or no player has new action |
+| **action** | action order rolled after DM layout | seconds or a few heartbeats | more common; players still choose their own rolls, DM-side checks stay on DM turns | 8 | a visible objective/tracker resolves |
+| **travel / montage** | one beat per player, in order | hours, days, or longer | none or one big check | 4 (one per player) | every PC contributed once |
 
-The most flexible mode. Players can propose almost anything; the DM decides which proposals warrant checks. Time advances slowly. Notes proliferate (NPCs met, rumors heard, deals brokered). The default mode when no other mode is active.
+### scene-play
 
-### exploration
+The flexible protocol for open-ended scenes: town business, ordinary social
+play, exploration, investigation, downtime, relationship beats, and anything
+else where the DM wants broader turns. Players can propose almost anything; the
+players decide when their characters roll. Time can advance slowly or in larger
+chunks. Notes proliferate.
 
-The party moves through a locale, learning it. Round-robin gives every player a chance to interact with the environment. DM emits descriptions; players probe, climb, search. Distinct from investigation: there's no specific clue to find, just terrain to know.
+Toolkit labels that often use `scene-play`: `town`, `social`, `exploration`,
+`investigation`, `downtime`, `research`, `planning`, `aftermath`. The DM can add
+others freely.
 
-### investigation
+### action
 
-The party is hunting something specific (a clue, a person, a truth). DM-gated reveals — the DM controls what surfaces and when, players' actions tilt the odds. Free-form speaker selection allows the most engaged player to push. The DM's twist budget matters here.
+The quickfire protocol for contested moments where every turn changes the
+situation. Use it for any scene where the table needs tight order, fast
+fictional time, visible pressure, and more frequent player-called rolls.
 
-### combat
+The action protocol:
 
-The hardest mode. Initiative ordered, HP ticking, every action a check. Atomic combat — declaration + roll + outcome narration in one turn (see [`turn-loop.md`](turn-loop.md#combat-specifically)). No reactions; no after-the-fact mitigation. Players cannot write notes mid-combat (no time at the table). Reads heavily from Postgres. Combats that drag are the canonical failure mode — the hard turn cap matters.
+1. The DM creates or pushes the scene mode.
+2. The DM takes an opening layout turn: location, positions, visible pressure,
+   stakes, opposition, and likely exit shape.
+3. In that opening turn, after the layout, the DM calls `glass turn initiative`.
+   This rolls/shuffles the participants into a persisted action order. The DM is
+   included by default, so the DM's next turn after layout lands wherever the
+   roll puts it.
+4. The orchestrator follows that action order round after round. Handoffs and
+   rapid-response queues can interrupt; after the queue drains, play continues
+   from the stored action cursor.
+5. Each player turn is quickfire: move, one action, housekeeping. Housekeeping
+   includes messages, inventory checks, reading relevant lore/state, and asking
+   DM clarifications. It should not become a second action.
+6. Because the scene is under pressure, actions that change position, HP,
+   leverage, escape progress, or scene pressure are usually good candidates for
+   player-called rolls. Pure housekeeping and safe movement usually are not.
+7. The scene has a **player-visible end condition**, usually numeric, tracked
+   through `glass scene tracker` and reduced through `glass scene pressure` when
+   the fiction calls for roll-mediated pressure: defeat/rout the opposition,
+   fill the escape clock, convince the duke, survive until the gate opens,
+   prevent the hazard clock from filling.
+
+The methodology for this protocol is
+[`/templates/methodologies/action-scene.md`](../../templates/methodologies/action-scene.md).
+
+Toolkit labels that often use `action`: `combat`, `chase`, `social-pressure`,
+`escape`, `duel`, `infiltration`, `trial`, `disaster`, `heist`, `race`,
+`exorcism`, `rescue`. These are examples, not the list.
+
+### DM Toolkit Examples
+
+The toolkit is a shelf of patterns that have worked before. The DM can point to
+one, combine two, or make up a new one.
+
+| Toolkit label | Usually protocol | Honest tracker examples |
+|---------------|------------------|-------------------------|
+| `combat` | `action` | enemy HP, enemy morale, party holdout clock |
+| `chase` | `action` | escape distance 0/6, pursuit clock 0/4, route hazards |
+| `social-pressure` | `action` | concession clock, suspicion clock, public-support clock |
+| `investigation` | `scene-play` | clue web, deadlock clock, lead quality |
+| `exploration` | `scene-play` | rooms mapped, hazard clock, supplies |
+| `travel` | `travel / montage` | days crossed, weather clock, route risk |
 
 ### travel / montage
 
@@ -109,14 +172,20 @@ Some combinations are illegal — the orchestrator validates. For example, you c
 
 ## Authoring New Modes
 
-Adding a mode is:
+Most new scene labels do **not** need a new mode. The DM can choose
+`scene-play`, `action`, or `travel/montage`, then describe the custom toolkit
+shape in prep and scene framing.
+
+Adding a truly new protocol is heavier:
 
 1. Create `modes/<name>.md` with the three required sections.
 2. Specify which modes it can nest inside (and which can nest inside it).
 3. Add the mode to the orchestrator's mode registry.
 4. Run a scene, see how it goes.
 
-Modes should be cheap to add. Don't over-engineer mode inheritance or shared machinery — three similar modes is better than a premature abstraction layer.
+Protocols should be cheap to add, but don't create one just to name a narrative
+shape. `duel`, `trial`, and `escape` can all use `action` until their turn
+rules actually diverge.
 
 ## Open Questions
 

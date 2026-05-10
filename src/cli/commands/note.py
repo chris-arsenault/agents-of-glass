@@ -250,7 +250,10 @@ def note_ratify(
     item["resolved_at"] = now_iso()
     item["ratified_path"] = display_path(destination)
     entity = upsert_entity_from_path(paths, state, destination)
-    result = {"intake": item, "entity": entity}
+    from .entity import _mirror_entity_to_graph
+
+    graph_status = _mirror_entity_to_graph(entity, destination, campaign_id)
+    result = {"intake": item, "entity": entity, "graph": graph_status}
     commit(
         paths,
         state,
@@ -285,4 +288,3 @@ def note_reject(ctx: click.Context, intake_id: str, reason: str) -> None:
         command_params(intake_id=intake_id, reason=reason),
         result,
     )
-

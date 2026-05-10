@@ -21,7 +21,7 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 - **One DM agent** (Mara) and **four player agents** (Tev, Sumi, Renno, Kit). Each is a fictional person with a name, voice, likes, dislikes, playstyle. They are *not* archetypes.
 - Each agent is its own `claude -p` invocation. The orchestrator is a dumb Python loop that owns turn order, mode state, transcript append, and which agent runs next.
 - The agents talk to state through a single CLI (`glass`). They do not write SQL or Cypher directly.
-- Soft narrative state lives in markdown + a FalkorDB graph (same approach as the lore repo). Hard stats — HP, inventory, dice, momentum — live in Postgres.
+- Authored prose lives in markdown, entity relationships live in FalkorDB, and hard/queryable state — turns, events, HP, inventory, dice, momentum — lives in Postgres.
 - The lore comes from `the-glass-frontier-lore`; the game-design pieces are cribbed from `the-glass-frontier`. Neither repo's code is being ported.
 
 ## What's Here

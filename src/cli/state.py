@@ -2,10 +2,11 @@
 
 One state file per campaign. Layout under campaigns/<id>/:
 
-  state.json          — runtime state (this module owns it)
-  transcript.md       — append-only public transcript
+  state.json          — derived runtime state cache (Postgres is canonical when configured)
+  transcript.md       — derived public transcript export
   audit.jsonl         — append-only command audit log
   scene-framing.md    — current scene framing (rewritten on scene start)
+  table/              — current public short-term table state
   dm/turns/<NNNN>/    — DM's per-turn artifacts (in.md, out.md, stdout, stderr)
   players/<id>/turns/<NNNN>/ — that player's per-turn artifacts
 
@@ -14,9 +15,9 @@ the campaign workspace is the runtime root. There is no central
 `turns/<NNNN>/` directory — turn artifacts always live inside the
 specific agent's directory under the campaign workspace.
 
-Schema (v4):
+Schema (v5):
 
-  schema_version:       4
+  schema_version:       5
   campaign:             text — same id as the campaign workspace dirname
   status:               'active' | 'wrapped'
   created_at, updated_at, wrapped_at, summary
@@ -26,8 +27,10 @@ Schema (v4):
   note_intake:          list — DM intake queue
   entities:             dict — graph mirror cache
   threads:              dict — DM thread tracker
-  turns:                list — turn metadata
+  turns:                list — structured turn rows from Postgres or file fallback
   next_speakers:        list[{agent, rapid_prompt?}] — handoff queue
+  action_order:         dict | None — persistent initiative order for action scenes
+  scene_trackers:       dict — scene-local generic counters/clocks
   scene_closing_turns:  int | None — closing-down countdown (in agent commits)
 """
 
@@ -40,7 +43,9 @@ from typing import Any
 
 import click
 
+from . import db as _db
 from .config import Paths
+from .config import load_config
 from .errors import GlassError
 from .ids import new_id, now_iso
 from .role import current_role
@@ -111,7 +116,7 @@ def agent_turn_dir(
 def default_state(campaign_id: str) -> dict[str, Any]:
     ts = now_iso()
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "campaign": campaign_id,
         "status": "active",
         "created_at": ts,
@@ -126,6 +131,8 @@ def default_state(campaign_id: str) -> dict[str, Any]:
         "threads": {},
         "turns": [],
         "next_speakers": [],
+        "action_order": None,
+        "scene_trackers": {},
         "scene_closing_turns": None,
     }
 
@@ -142,7 +149,7 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
         state.setdefault("summary", legacy.get("summary", ""))
         state.setdefault("turn_counter", legacy.get("turn_counter", 0))
 
-    state.setdefault("schema_version", 4)
+    state.setdefault("schema_version", 5)
     state.setdefault("status", "active")
     state.setdefault("turn_counter", len(state.get("turns", [])))
     state.setdefault("mode_stack", [])
@@ -152,6 +159,8 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
     state.setdefault("threads", {})
     state.setdefault("turns", [])
     state.setdefault("next_speakers", [])
+    state.setdefault("action_order", None)
+    state.setdefault("scene_trackers", {})
     state.setdefault("scene_closing_turns", None)
 
     legacy_next = state.pop("next_speaker", None)
@@ -168,13 +177,25 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
 
 def load_state(paths: Paths, campaign_id: str) -> dict[str, Any]:
     path = state_path(paths, campaign_id)
+    if _postgres_runtime_enabled():
+        state = _load_state_from_postgres(campaign_id)
+        if state is not None:
+            return normalize_state(state)
+        if path.exists():
+            state = normalize_state(json.loads(path.read_text(encoding="utf-8")))
+            _save_state_to_postgres(state)
+            return state
+        raise GlassError(f"no state for campaign {campaign_id!r} in Postgres or at {path}")
     if not path.exists():
         raise GlassError(f"no state for campaign {campaign_id!r} at {path}")
     return normalize_state(json.loads(path.read_text(encoding="utf-8")))
 
 
 def save_state(paths: Paths, state: dict[str, Any]) -> None:
+    state = normalize_state(state)
     state["updated_at"] = now_iso()
+    if _postgres_runtime_enabled():
+        _save_state_to_postgres(state)
     campaign_id = state["campaign"]
     directory = campaign_runtime_dir(paths, campaign_id)
     directory.mkdir(parents=True, exist_ok=True)
@@ -182,6 +203,40 @@ def save_state(paths: Paths, state: dict[str, Any]) -> None:
     tmp_path = path.with_suffix(".json.tmp")
     tmp_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     tmp_path.replace(path)
+
+
+def _postgres_runtime_enabled() -> bool:
+    return _db.postgres_configured(load_config())
+
+
+def _load_state_from_postgres(campaign_id: str) -> dict[str, Any] | None:
+    config = load_config()
+    pg_config = _db.load_pg_config(config)
+    try:
+        with _db.connect(pg_config) as conn:
+            return _db.runtime_state_get(conn, campaign_id)
+    except GlassError:
+        raise
+    except Exception as exc:
+        raise GlassError(
+            "postgres runtime state load failed "
+            f"({pg_config.describe()}): {exc}. Run `glass db migrate`."
+        ) from exc
+
+
+def _save_state_to_postgres(state: dict[str, Any]) -> None:
+    config = load_config()
+    pg_config = _db.load_pg_config(config)
+    try:
+        with _db.connect(pg_config) as conn:
+            _db.runtime_state_upsert(conn, state)
+    except GlassError:
+        raise
+    except Exception as exc:
+        raise GlassError(
+            "postgres runtime state save failed "
+            f"({pg_config.describe()}): {exc}. Run `glass db migrate`."
+        ) from exc
 
 
 # --- audit + commit + events ---

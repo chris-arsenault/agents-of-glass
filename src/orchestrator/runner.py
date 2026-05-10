@@ -40,6 +40,7 @@ class TurnResult:
     prose: str
     dry_run: bool
     queued_speaker_entry: dict[str, Any] | None = None
+    action_order_entry: dict[str, Any] | None = None
 
 
 class Orchestrator:
@@ -49,29 +50,45 @@ class Orchestrator:
         self.context_builder = ContextBuilder(config, store)
 
     def prepare_turn(self, state: SessionState) -> ContextPackage:
-        agent, turn_meta, _queued_entry = self._resolve_next_agent(state)
+        agent, turn_meta, _queued_entry, _action_entry = self._resolve_next_agent(state)
         return self.context_builder.build(state, agent, turn_meta=turn_meta)
 
     def _resolve_next_agent(
         self, state: SessionState
-    ) -> tuple[Agent, dict[str, Any], dict[str, Any] | None]:
+    ) -> tuple[
+        Agent,
+        dict[str, Any],
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+    ]:
         """Pick the next agent + any per-turn metadata.
 
         Peeks at the head of `state["next_speakers"]` if non-empty. Each entry is
         a dict with at least an `agent` key plus optional `rapid_prompt` for
-        rapid-response turns. Falls back to round-robin if the queue is empty
-        or the queued agent id is unrecognized.
+        rapid-response turns. Falls back to action-scene initiative order,
+        then round-robin if no queue/order applies.
         """
         entry = self._peek_next_speaker_entry(state.campaign)
         if entry:
             agent_id = entry.get("agent")
             if agent_id in AGENTS_BY_ID:
                 meta = {k: v for k, v in entry.items() if k != "agent"}
-                return AGENTS_BY_ID[agent_id], meta, entry
-            return next_agent_for(state), {}, entry
-        return next_agent_for(state), {}, None
+                return AGENTS_BY_ID[agent_id], meta, entry, None
+            return next_agent_for(state), {}, entry, None
+        action_entry = self._peek_action_order_entry(state)
+        if action_entry:
+            return (
+                AGENTS_BY_ID[action_entry["agent"]],
+                {"action_order": action_entry},
+                None,
+                action_entry,
+            )
+        return next_agent_for(state), {}, None, None
 
     def _peek_next_speaker_entry(self, campaign: str) -> dict[str, Any] | None:
+        checked_postgres, entry = self._peek_next_speaker_entry_from_postgres(campaign)
+        if checked_postgres:
+            return entry
         path = self.store.glass_state_path(campaign)
         if not path.exists():
             return None
@@ -87,9 +104,105 @@ class Orchestrator:
             entry = {"agent": entry}
         return entry
 
+    def _peek_next_speaker_entry_from_postgres(
+        self, campaign: str
+    ) -> tuple[bool, dict[str, Any] | None]:
+        try:
+            from cli import db as _glass_db
+            from cli.config import load_config as _load_glass_config
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                toml_data = _load_glass_config()
+                if not _glass_db.postgres_configured(toml_data):
+                    return False, None
+                pg_config = _glass_db.load_pg_config(toml_data)
+                with _glass_db.connect(pg_config) as conn:
+                    return True, _glass_db.runtime_next_speaker_peek(conn, campaign)
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            return False, None
+
+    def _peek_action_order_entry(self, state: SessionState) -> dict[str, Any] | None:
+        """Return the next initiative-order turn for the active scene, if any."""
+        checked_postgres, action_order = self._load_action_order_from_postgres(state)
+        if not checked_postgres:
+            action_order = self._load_action_order(state.campaign)
+        if not isinstance(action_order, dict):
+            return None
+        active = state.active_mode
+        if (
+            action_order.get("mode") != active.mode
+            or action_order.get("scene_id") != active.scene_id
+        ):
+            return None
+        order = action_order.get("order")
+        if not isinstance(order, list) or not order:
+            return None
+        cursor = int(action_order.get("cursor", 0)) % len(order)
+        agent_id = str(order[cursor])
+        if agent_id not in AGENTS_BY_ID:
+            return None
+        return {
+            "agent": agent_id,
+            "mode": active.mode,
+            "scene_id": active.scene_id,
+            "label": action_order.get("label", "initiative"),
+            "round": int(action_order.get("round", 1)),
+            "cursor": cursor,
+            "order": [str(agent) for agent in order],
+        }
+
+    def _load_action_order(self, campaign: str) -> dict[str, Any] | None:
+        path = self.store.glass_state_path(campaign)
+        if not path.exists():
+            return None
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        action_order = raw.get("action_order")
+        return action_order if isinstance(action_order, dict) else None
+
+    def _load_action_order_from_postgres(
+        self, state: SessionState
+    ) -> tuple[bool, dict[str, Any] | None]:
+        try:
+            from cli import db as _glass_db
+            from cli.config import load_config as _load_glass_config
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                toml_data = _load_glass_config()
+                if not _glass_db.postgres_configured(toml_data):
+                    return False, None
+                pg_config = _glass_db.load_pg_config(toml_data)
+                with _glass_db.connect(pg_config) as conn:
+                    return True, _glass_db.action_order_get(
+                        conn,
+                        campaign_id=state.campaign,
+                        mode=state.active_mode.mode,
+                        scene_id=state.active_mode.scene_id,
+                    )
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            return False, None
+
     def _consume_next_speaker_entry(
         self, campaign: str, expected_entry: dict[str, Any]
     ) -> None:
+        if self._consume_next_speaker_entry_in_postgres(campaign, expected_entry):
+            return
         path = self.store.glass_state_path(campaign)
         if not path.exists():
             return
@@ -110,6 +223,103 @@ class Orchestrator:
             json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         tmp.replace(path)
+
+    def _consume_next_speaker_entry_in_postgres(
+        self, campaign: str, expected_entry: dict[str, Any]
+    ) -> bool:
+        try:
+            from cli import db as _glass_db
+            from cli.config import load_config as _load_glass_config
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                toml_data = _load_glass_config()
+                if not _glass_db.postgres_configured(toml_data):
+                    return False
+                pg_config = _glass_db.load_pg_config(toml_data)
+                with _glass_db.connect(pg_config) as conn:
+                    return _glass_db.runtime_next_speaker_consume(
+                        conn,
+                        campaign_id=campaign,
+                        expected_entry=expected_entry,
+                    )
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            return False
+
+    def _advance_action_order(
+        self, campaign: str, expected_entry: dict[str, Any]
+    ) -> None:
+        if self._advance_action_order_in_postgres(campaign, expected_entry):
+            return
+        path = self.store.glass_state_path(campaign)
+        if not path.exists():
+            return
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        action_order = raw.get("action_order")
+        if not isinstance(action_order, dict):
+            return
+        if (
+            action_order.get("mode") != expected_entry.get("mode")
+            or action_order.get("scene_id") != expected_entry.get("scene_id")
+        ):
+            return
+        order = action_order.get("order")
+        if not isinstance(order, list) or not order:
+            return
+        cursor = int(action_order.get("cursor", 0)) % len(order)
+        if str(order[cursor]) != expected_entry.get("agent"):
+            return
+        cursor += 1
+        if cursor >= len(order):
+            cursor = 0
+            action_order["round"] = int(action_order.get("round", 1)) + 1
+        action_order["cursor"] = cursor
+        raw["action_order"] = action_order
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        tmp.replace(path)
+
+    def _advance_action_order_in_postgres(
+        self, campaign: str, expected_entry: dict[str, Any]
+    ) -> bool:
+        try:
+            from cli import db as _glass_db
+            from cli.config import load_config as _load_glass_config
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                toml_data = _load_glass_config()
+                if not _glass_db.postgres_configured(toml_data):
+                    return False
+                pg_config = _glass_db.load_pg_config(toml_data)
+                with _glass_db.connect(pg_config) as conn:
+                    advanced = _glass_db.action_order_advance(
+                        conn,
+                        campaign_id=campaign,
+                        mode=str(expected_entry.get("mode")),
+                        scene_id=str(expected_entry.get("scene_id")),
+                        expected_agent=str(expected_entry.get("agent")),
+                    )
+                return advanced is not None
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            return False
 
     def run_loop(
         self,
@@ -153,7 +363,7 @@ class Orchestrator:
             raise
 
     def run_one_turn(self, state: SessionState, *, dry_run: bool) -> TurnResult:
-        agent, turn_meta, queued_entry = self._resolve_next_agent(state)
+        agent, turn_meta, queued_entry, action_entry = self._resolve_next_agent(state)
         package = self.context_builder.build(state, agent, turn_meta=turn_meta)
         if dry_run:
             prose = (
@@ -168,9 +378,16 @@ class Orchestrator:
                 prose=prose,
                 dry_run=True,
                 queued_speaker_entry=queued_entry,
+                action_order_entry=action_entry,
             )
 
-        return self._invoke_agent(state, agent, package, queued_entry=queued_entry)
+        return self._invoke_agent(
+            state,
+            agent,
+            package,
+            queued_entry=queued_entry,
+            action_entry=action_entry,
+        )
 
     def commit_turn(self, state: SessionState, result: TurnResult) -> None:
         active = state.active_mode
@@ -227,6 +444,8 @@ class Orchestrator:
             self._consume_next_speaker_entry(
                 state.campaign, result.queued_speaker_entry
             )
+        elif result.action_order_entry is not None:
+            self._advance_action_order(state.campaign, result.action_order_entry)
         synced = self.store.sync_from_glass(state)
         state.__dict__.update(synced.__dict__)
 
@@ -239,6 +458,8 @@ class Orchestrator:
         below 0 indicates an overrun that the methodology flags as a hard
         backstop ("end the scene now even if it feels unfinished").
         """
+        if self._tick_closing_countdown_in_postgres(campaign):
+            return
         path = self.store.glass_state_path(campaign)
         if not path.exists():
             return
@@ -256,6 +477,28 @@ class Orchestrator:
         )
         tmp.replace(path)
 
+    def _tick_closing_countdown_in_postgres(self, campaign: str) -> bool:
+        try:
+            from cli import db as _glass_db
+            from cli.config import load_config as _load_glass_config
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+            try:
+                toml_data = _load_glass_config()
+                if not _glass_db.postgres_configured(toml_data):
+                    return False
+                pg_config = _glass_db.load_pg_config(toml_data)
+                with _glass_db.connect(pg_config) as conn:
+                    return _glass_db.runtime_scene_closing_tick(conn, campaign)
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+        except Exception:
+            return False
+
     def _invoke_agent(
         self,
         state: SessionState,
@@ -263,6 +506,7 @@ class Orchestrator:
         package: ContextPackage,
         *,
         queued_entry: dict[str, Any] | None,
+        action_entry: dict[str, Any] | None,
     ) -> TurnResult:
         # The prompt is intentionally short — the heavy lifting is in
         # TURN_START.md, which the agent reads as its first action.
@@ -465,6 +709,7 @@ class Orchestrator:
             prose=prose,
             dry_run=False,
             queued_speaker_entry=queued_entry,
+            action_order_entry=action_entry,
         )
 
     def _should_continue(
@@ -794,12 +1039,12 @@ def _agent_path(path: Path, spawn_cwd: Path) -> str:
 
 
 def _collect_prose(turn_output_path: Path, stdout: str | None) -> str:
-    """Read the agent's TURN.md (preferred) or fall back to stdout."""
+    """Read the agent's committed public turn prose file."""
     if turn_output_path.exists():
         text = turn_output_path.read_text(encoding="utf-8").strip()
         if text:
             return text
-    return (stdout or "").strip()
+    return ""
 
 
 def _write_process_capture(

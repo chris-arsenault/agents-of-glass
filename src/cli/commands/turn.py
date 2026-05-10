@@ -131,6 +131,9 @@ def turn_append(
     current = current_mode_record(state)
     resolved_mode = mode_name or (current["mode"] if current else "none")
     resolved_scene = scene_id or (current["scene_id"] if current else "none")
+    export_info = _turn_export_info(resolved_scene)
+    arc_id = export_info.get("arc_id")
+    scene_type = export_info.get("scene_type") or resolved_mode
     state["turn_counter"] = int(state.get("turn_counter", 0)) + 1
     turn_id = state["turn_counter"]
 
@@ -152,27 +155,116 @@ def turn_append(
     if event_lines:
         parts.extend(["", *event_lines])
     turn_markdown = "\n".join(parts).rstrip() + "\n\n"
-    with transcript_path(paths, state["campaign"]).open("a", encoding="utf-8") as handle:
-        handle.write(turn_markdown)
+    ts = now_iso()
+    turn_number_in_scene = _fallback_turn_number_in_scene(
+        state, scene_id=resolved_scene
+    )
 
     record = {
         "turn_id": turn_id,
+        "campaign_id": state["campaign"],
         "session_id": state["campaign"],
         "scene_id": resolved_scene,
         "mode": resolved_mode,
         "speaker": speaker_id,
         "role": resolved_role,
         "character_id": character_id,
-        "ts": now_iso(),
         "source_path": str(source),
+        "prose": body,
         "event_summaries": [event["summary"] for event in flushed],
+        "events": flushed,
         "markdown": turn_markdown,
+        "created_at": ts,
+        "ts": ts,
+        "arc_id": arc_id,
+        "scene_type": scene_type,
+        "turn_number_in_scene": turn_number_in_scene,
+        "visibility": "public",
     }
+    if _db.postgres_configured(load_config()):
+        with pg_connection() as conn:
+            turn_number_in_scene = (
+                _db.turn_count(
+                    conn,
+                    campaign_id=state["campaign"],
+                    scene=resolved_scene,
+                )
+                + 1
+            )
+            record = _db.turn_insert(
+                conn,
+                campaign_id=state["campaign"],
+                turn_id=turn_id,
+                session_id=state["campaign"],
+                scene_id=resolved_scene,
+                mode=resolved_mode,
+                speaker=speaker_id,
+                role=resolved_role,
+                character_id=character_id,
+                source_path=str(source),
+                prose=body,
+                event_summaries=[event["summary"] for event in flushed],
+                events=flushed,
+                markdown=turn_markdown,
+                created_at=ts,
+                arc_id=arc_id,
+                scene_type=scene_type,
+                turn_number_in_scene=turn_number_in_scene,
+                visibility="public",
+            )
+            _db.event_insert_many(
+                conn,
+                campaign_id=state["campaign"],
+                scene_id=resolved_scene,
+                turn_id=turn_id,
+                events=flushed,
+            )
+            _db.search_chunk_upsert(
+                conn,
+                chunk_id=f"{state['campaign']}:turn:{turn_id}",
+                campaign_id=state["campaign"],
+                source_type="turn",
+                source_id=str(turn_id),
+                visibility="public",
+                owner_actor=None,
+                path=str(source),
+                title=(
+                    f"Turn {turn_id} - {speaker_id} "
+                    f"({resolved_mode}, {resolved_scene})"
+                ),
+                body=body,
+                metadata={
+                    "turn_id": turn_id,
+                    "speaker": speaker_id,
+                    "role": resolved_role,
+                    "mode": resolved_mode,
+                    "scene_id": resolved_scene,
+                    "arc_id": arc_id,
+                },
+            )
+            conn.commit()
+
+    # Derived compatibility export. The structured row above is the canonical
+    # communication surface for queries and the future viewer UI.
+    root_transcript = transcript_path(paths, state["campaign"])
+    root_transcript.parent.mkdir(parents=True, exist_ok=True)
+    with root_transcript.open("a", encoding="utf-8") as handle:
+        handle.write(turn_markdown)
+    scene_transcript_path = export_info.get("scene_transcript_path")
+    if isinstance(scene_transcript_path, Path):
+        with scene_transcript_path.open("a", encoding="utf-8") as handle:
+            handle.write(turn_markdown)
+
     state["turns"].append(record)
     result = {
         "turn": {key: value for key, value in record.items() if key != "markdown"},
         "events_flushed": flushed,
-        "transcript_path": display_path(transcript_path(paths, state["campaign"])),
+        "transcript_export_path": display_path(root_transcript),
+        "scene_transcript_export_path": (
+            display_path(scene_transcript_path)
+            if isinstance(scene_transcript_path, Path)
+            else None
+        ),
     }
     commit(
         paths,
@@ -184,8 +276,38 @@ def turn_append(
     )
 
 
+def _turn_export_info(scene_id: str) -> dict[str, Any]:
+    try:
+        workspace = resolve_active_campaign_workspace()
+        current = _workspace.current_scene(workspace)
+    except GlassError:
+        return {}
+    if not current or current.get("scene_id") != scene_id:
+        return {}
+    arc_id = current.get("arc_id")
+    transcript: Path | None = None
+    if arc_id:
+        transcript = workspace.scene_dir(str(arc_id), scene_id) / "transcript.md"
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+        if not transcript.exists():
+            transcript.write_text(f"# Scene: {scene_id}\n\n", encoding="utf-8")
+    return {
+        "arc_id": arc_id,
+        "scene_type": current.get("scene_type"),
+        "scene_transcript_path": transcript,
+    }
+
+
+def _fallback_turn_number_in_scene(state: dict[str, Any], *, scene_id: str) -> int:
+    return (
+        sum(1 for turn in state.get("turns", []) if turn.get("scene_id") == scene_id)
+        + 1
+    )
+
+
 _HANDOFF_AGENT_IDS = ("dm", "tev", "sumi", "renno", "kit")
 _PLAYER_AGENT_IDS = ("tev", "sumi", "renno", "kit")
+_ACTION_PARTICIPANT_IDS = ("dm", "tev", "sumi", "renno", "kit")
 
 
 @turn.command("handoff")
@@ -217,6 +339,127 @@ def turn_handoff(ctx: click.Context, agent_id: str) -> None:
     commit(
         paths, state, ctx, "turn.handoff",
         command_params(agent_id=agent_id), result,
+    )
+
+
+@turn.command("initiative")
+@click.option(
+    "--participants",
+    "participants_csv",
+    default=None,
+    help="Comma-separated agent ids. Defaults to dm,tev,sumi,renno,kit.",
+)
+@click.option("--label", default="initiative", show_default=True)
+@click.pass_context
+def turn_initiative(
+    ctx: click.Context, participants_csv: str | None, label: str
+) -> None:
+    """DM-only: roll and persist action-scene turn order.
+
+    Use this after the DM's opening layout for quickfire action scenes.
+    The DM is a participant by default, so their next turn after the
+    opening layout can land wherever the initiative roll puts it.
+    """
+    role = require_dm()
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    current = current_mode_record(state)
+    if not current or current.get("mode") == "none":
+        raise GlassError("cannot roll initiative without an active mode")
+
+    if participants_csv:
+        participants = [
+            entry.strip() for entry in participants_csv.split(",") if entry.strip()
+        ]
+    else:
+        participants = list(_ACTION_PARTICIPANT_IDS)
+    if not participants:
+        raise GlassError("initiative needs at least one participant")
+
+    seen: set[str] = set()
+    for participant in participants:
+        if participant not in _ACTION_PARTICIPANT_IDS:
+            raise GlassError(
+                f"unknown participant {participant!r}; valid: "
+                f"{', '.join(_ACTION_PARTICIPANT_IDS)}"
+            )
+        if participant in seen:
+            raise GlassError(f"duplicate initiative participant {participant!r}")
+        seen.add(participant)
+
+    rng = random.SystemRandom()
+    rolls: list[dict[str, Any]] = []
+    for participant in participants:
+        dice = [rng.randint(1, 6), rng.randint(1, 6)]
+        rolls.append(
+            {
+                "agent": participant,
+                "dice": dice,
+                "total": sum(dice),
+                "tiebreaker": rng.randint(1, 1_000_000),
+            }
+        )
+    ordered_rolls = sorted(
+        rolls,
+        key=lambda item: (int(item["total"]), int(item["tiebreaker"])),
+        reverse=True,
+    )
+    order = [str(item["agent"]) for item in ordered_rolls]
+    public_rolls = [
+        {
+            "agent": item["agent"],
+            "dice": item["dice"],
+            "total": item["total"],
+        }
+        for item in ordered_rolls
+    ]
+    state["action_order"] = {
+        "mode": current["mode"],
+        "scene_id": current["scene_id"],
+        "label": label,
+        "round": 1,
+        "cursor": 0,
+        "order": order,
+        "rolls": public_rolls,
+        "created_at": now_iso(),
+        "created_by": role.actor,
+    }
+    if _db.postgres_configured(load_config()):
+        with pg_connection() as conn:
+            persisted = _db.action_order_upsert(
+                conn,
+                campaign_id=campaign_id,
+                mode=str(current["mode"]),
+                scene_id=str(current["scene_id"]),
+                label=label,
+                order=order,
+                rolls=public_rolls,
+                actor=role.actor,
+            )
+        state["action_order"] = {
+            key: persisted[key]
+            for key in ("mode", "scene_id", "label", "round", "cursor", "order", "rolls")
+        } | {"created_at": persisted["created_at"], "created_by": role.actor}
+
+    order_summary = ", ".join(
+        f"{item['agent']}({item['total']})" for item in public_rolls
+    )
+    queue_event(
+        state,
+        role.actor,
+        f"{label} order @ {current['scene_id']}: {order_summary}",
+    )
+    result = {
+        "action_order": state["action_order"],
+    }
+    commit(
+        paths,
+        state,
+        ctx,
+        "turn.initiative",
+        command_params(participants=participants, label=label),
+        result,
     )
 
 
@@ -311,5 +554,3 @@ def turn_clear_handoff(ctx: click.Context) -> None:
     state["next_speakers"] = []
     result = {"cleared": previous}
     commit(paths, state, ctx, "turn.clear-handoff", {}, result)
-
-

@@ -9,7 +9,8 @@ applies_to_modes: [scene-play]
 
 The active mode for free-form scenes — exploration, conversation, investigation, downtime. The DM has framed the scene; you're inside it. This is *the table is rolling*: act, react, ask, decide, narrate.
 
-For action-shaped scenes (combat, chase, social pressure), separate methodologies will apply when those modes exist. This doc is for everything else.
+For quickfire action scenes, use [`action-scene.md`](action-scene.md). Combat,
+chases, and social pressure are common examples, not the exhaustive list.
 
 ## Speaker order and handoffs
 
@@ -31,9 +32,22 @@ If no handoff is queued, the orchestrator falls through to the round-robin from 
 There is no script. Within your turn, you do whatever the scene calls for. A typical turn includes some of:
 
 - **Drain the bus.** First action of every turn (covered by the always-present TURN_START reminder): `glass msg read --since-checkpoint`. Read what's there. Respond to anything that needs a reply.
-- **Look at the world.** Read `shared/lore/`, the scene framing file, recent transcript turns, your character file, other PCs' `players/<id>/public/intro.md`. Open whatever images, maps, or notes are relevant.
+- **Look at the table.** Read `table/index.md` first, then `table/scene.md`
+  and any linked table-root files or handouts that matter. Use this before
+  asking the DM to repeat visible room, NPC, monster, scene, or immediate
+  status information.
+- **Look at the world.** Read `shared/lore/`, recent transcript turns, your character file, other PCs' `players/<id>/public/intro.md`. Open whatever images, maps, or notes are relevant.
+- **Look at summaries and clocks.** Use `summary.md`, arc/scene `summary.md`
+  files, and `shared/clocks.md` before asking the DM to repeat campaign
+  continuity or public long-running pressure.
+- **Search before asking for old context.** Use `glass search text`,
+  `glass search semantic`, or `glass turns find --text` for prior turn detail.
+  Use `glass entity relations`, `between`, `edges`, or `stance` for
+  relationships between named things.
 - **Decide what your character is doing.** Pick an action, a stance, a line of inquiry, an attempt at something.
-- **Take any rolls you decide are needed.** *You* call your rolls; the DM doesn't (see below).
+- **Take any rolls you decide are needed.** You call the rolls you initiate on
+  your own turn. The DM can still make DM-side checks for your character during
+  the DM turn when the scene needs that without an extra handoff.
 - **Send messages.** Side-channel via the bus: `glass msg banter <pc>` for IC asides, `glass msg secret dm <intent>` to flag hidden-from-party intent, `glass msg instruction party <plan>` for OOC coordination. Multiple is fine — batch them.
 - **Ask the DM questions.** Anything you need clarified about the world, the scene, or what your character would know goes through the bus: `glass msg secret dm "<question>"`. Multiple questions in one turn is fine. The DM will respond on their next turn.
 - **Write your turn narration.** End by writing IC prose to `<TURN_OUTPUT>` describing what your character did, what was visible to others, and the outcomes of any rolls in narrative form. The dice and message sends already left their own audit trails in the DB; this prose is the *story moment* that the rest of the party will read in the transcript. Tight is good — a paragraph or three.
@@ -57,11 +71,34 @@ The traditional "DM tells you to make a check" pattern is reversed here. **Playe
 
 **The DM only intervenes when hidden knowledge would invalidate the roll** — e.g., the lock you're picking is enchanted in a way that changes the attribute, the door you're listening at is one-way and your roll reveals nothing useful, the patrol you're sneaking past has a tuner with them and `attunement` is the relevant attribute instead of `finesse`. **This should be rare.** Most of your rolls stand as called.
 
-If the DM does push back (they'll do it via `glass msg secret <you>`), take the correction in stride. Re-roll with different parameters or narrate around the outcome. Don't litigate.
+If the DM does push back, take the correction in stride. Usually they will
+interpret the result through hidden state or roll a corrected DM-side PC check
+on their own turn. Do not litigate.
 
 ## What the DM does on their turn
 
 The DM's job in scene play is roughly threefold: **respond, drive, plan.** Every DM turn does all three.
+
+### Table upkeep
+
+The table is the current public short-term state under `table/`.
+
+- `table/index.md` is the at-a-glance board.
+- `table/scene.md` is the scene kickoff description.
+- `table/handouts/` is for in-game handouts: notices, pictures, maps, letters,
+  diagrams, evidence, or generated visuals.
+- Any other markdown file at `table/` root is freeform. Use names like
+  `npc-korth.md`, `west-balcony.md`, or `the-dukes-mental-state.md` when a
+  shared short-term reference would prevent repeated clarification questions.
+
+Do not put secrets in `table/`. Keep hidden state in `dm/secret/`, `dm/notes/`,
+or `dm/scratchpad.md` until it becomes visible. When visible state changes,
+update the table before ending your turn:
+
+```bash
+glass table write index.md --body "..."
+glass table append npc-korth.md --body "Korth is now visibly rattled."
+```
 
 ### Respond
 
@@ -73,7 +110,9 @@ The DM's job in scene play is roughly threefold: **respond, drive, plan.** Every
 
 - If the scene has stalled or a player has ended their turn open-endedly ("Tev approaches the door."), nudge them along: `glass msg instruction <player> "what do you do here?"` or `"the door is unlocked — what's your move?"`. The bus is the right channel; a turn of public prose just to ask "what do you do?" wastes the transcript.
 - If something in the world should *happen* (an NPC speaks, time passes, a clock ticks, the lights go out), write that as transcript prose to `<TURN_OUTPUT>`. World-side observations are the rare case where the DM's turn is narrative.
-- If you need rolls from any/all players, **roll them yourself** (see "DM-side roll inversion" below) — don't interrupt the player rotation just to ask for a check.
+- If you need checks for any/all player characters, **roll them yourself** (see
+  "DM-side roll inversion" below) — don't interrupt the player rotation just to
+  ask for dice.
 
 ### Plan
 
@@ -82,6 +121,9 @@ Every DM turn should also include planning work. The agents only get one turn at
 - Update `dm/scratchpad.md` with where the scene is heading, what the next beat is, what NPC reactions you're tracking.
 - Add or refine entries in `dm/notes/` (NPCs, threads, hooks) as the scene reveals new specificity.
 - Tick clocks in your tracking files if appropriate.
+- Update durable clocks with `glass clock` when cross-scene pressure changes.
+- Update `summary.md` files when continuity has changed enough that future
+  agents should not reconstruct it from raw turns.
 - Look ahead: what's the natural transition out of this scene? What lore might be relevant to what's coming? Pre-load those reads.
 - If a player's secret message reveals hidden intent, file a note in `dm/secret/` about how you'll surface or undermine it later.
 
@@ -89,7 +131,10 @@ Plan even if the bus is empty and the rotation is fine. Idle DM turns are wasted
 
 ## DM-side roll inversion
 
-The same rule that gives players authority over their rolls applies to you: **don't interrupt a player turn just to ask for a check.** When you need a roll for a player's character — a perception check they didn't take, an opposed roll, a saving throw — run it yourself:
+The system minimizes actor transitions. A new agent invocation is expensive, so
+don't interrupt the player rotation just to ask for a check. When you need a
+roll for a player's character — a perception check they didn't take, an opposed
+roll, a saving throw — run it yourself:
 
 ```bash
 glass roll perception attunement --risk standard --character tev-pc-1
@@ -97,7 +142,9 @@ glass roll perception attunement --risk standard --character tev-pc-1
 
 The roll's `actor` field will record that you (the DM) called it; the `character_id` attributes the result to the PC. Use the outcome to inform your own narration. If the player asks afterwards, tell them what they noticed.
 
-Only fall back to "asking the player to roll" (via `glass msg instruction <player> "roll <skill> <attribute> at <risk>"`) when the *moment of the dice* is something the player should experience for the narrative tension — and even then, prefer scheduling them via the rotation rather than interrupting it.
+Only hand off when the player has a real decision to make before the roll. Do
+not create a turn transition solely for dice. If the current actor can resolve
+the moment honestly within their authority, keep it in the current turn.
 
 ## Rapid-response rounds
 
@@ -185,6 +232,14 @@ The Displacement Council issued an arrest order for Karet's Echo." \
 
 You can also write any of those manually before ending — `glass quest beat <text>` for ad-hoc beats during the scene, `glass character award-xp` for spot awards mid-scene. Bundling at scene end is the convention; the manual paths are escape hatches.
 
+After ending, update the relevant arc/act and campaign summaries if the scene
+changed durable continuity:
+
+```bash
+glass summary append arc <arc-id> --body "..."
+glass summary append campaign --body "..."
+```
+
 Players don't end the scene — that's the DM's call. If you think the scene is done, fire `glass msg secret dm "I think we're done here"` and let the DM decide.
 
 ## Nested scenes (push/pop)
@@ -193,10 +248,10 @@ Sometimes a scene needs to interrupt itself — a fight breaks out during town e
 
 ```bash
 # in town exploration (scene-play, scene id "vestige-square"); a fight starts:
-glass scene create vestige-square-fight --type combat --arc <arc>
-glass mode start combat vestige-square-fight     # pushes onto the mode stack
+glass scene create vestige-square-fight --type action --arc <arc>
+glass mode start action vestige-square-fight     # pushes onto the mode stack
 
-# combat plays out under whatever combat methodology applies (TBD)...
+# action plays out under methodologies/action-scene.md...
 
 glass mode end       # pops; active mode is back to scene-play, scene "vestige-square"
 ```

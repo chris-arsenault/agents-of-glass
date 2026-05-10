@@ -98,7 +98,7 @@ The full file layout — what each role can read, what each role can write, wher
 
 - **Player private:** `persona.md` (who they are), `character.md` (their PC, cached from Postgres), `scratchpad.md` (current working notes — overwriteable), `notes/` (personal encyclopedia, journal-shaped subset), `journal/` (free-form dated reflection), `drafts/` (encyclopedia-shaped lore intended for DM proposal), and messages addressed specifically to them via `glass msg`. **Visible to the DM** — the DM can see what every player is writing.
 - **DM-only:** `persona.md` (who Mara is), `scratchpad.md`, `notes/` (encyclopedia of NPCs, monsters, locales, threads, philosophy — much larger than any player's), `journal/`, `workspace/` (in-progress drafts), `secret/` (DM-only truth), `intake/` (player-drafted lore awaiting ratification).
-- **Shared (campaign-wide):** campaign lore (encyclopedia-shaped, DM-canonized), quest log (DM-writable, all-readable), party knowledge (party-writable, all-readable), vocabulary, scene framing, transcript.
+- **Shared (campaign-wide):** campaign lore (encyclopedia-shaped, DM-canonized), quest log (DM-writable, all-readable), party knowledge (party-writable, all-readable), vocabulary, public table, scene framing, transcript.
 
 **Lore is encyclopedia-shaped, not notes-shaped.** When a player or the DM is writing material that should become canonical (an NPC the party met, a locale they discovered, an event they caused), they write it as an encyclopedia entry — same shape as the world bible (`../the-glass-frontier-lore/`). When they're writing for themselves (theories, character thoughts, planning sketches), they write journal-style. The two don't blur; the shape signals the intent.
 
@@ -118,8 +118,14 @@ Roughly (refined in [`architecture.md`](architecture.md) and [`messaging.md`](me
 | `glass character get` | yes | own + party-public |
 | `glass character set-hp` | yes | own only |
 | `glass character set-momentum` | yes | own only |
-| `glass entity neighborhood` / `similar` | yes | yes |
-| `glass entity upsert` | yes | no |
+| `glass character consequence-*` | yes | read public; own/public read only |
+| `glass clock *` | yes | read public clocks |
+| `glass summary show` | yes | yes |
+| `glass entity neighborhood` / `relations` / `between` / `edges` / `stance` / `find` / `similar` | yes | yes |
+| `glass entity claim` | yes | yes |
+| `glass entity upsert` / `link` / `unlink` / `query` / `ratify-claim` | yes | no |
+| `glass search text` / `semantic` | yes | yes |
+| `glass search reindex` | yes | no |
 | `glass note write` | yes (canonical + workspace) | yes (own journal) |
 | `glass note propose` | no | yes |
 | `glass note ratify` | yes | no |
@@ -127,7 +133,7 @@ Roughly (refined in [`architecture.md`](architecture.md) and [`messaging.md`](me
 | `glass thread beat` | yes (read+advance) | yes (read) |
 | `glass msg <type> <recipient> <body>` | yes | yes |
 | `glass msg read` | yes (all) | yes (own inbox) |
-| `glass turns find` | yes | yes |
+| `glass turns find` / `feed` | yes | yes |
 
 The DM is the only agent that mutates canonical narrative state. Players act on their own characters, write their journals, send messages, and propose notes.
 

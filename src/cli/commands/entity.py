@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import re
 import shutil
 import sys
 from datetime import UTC, datetime
@@ -232,6 +233,185 @@ def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
     emit(result)
 
 
+@entity.command("relations")
+@click.argument("entity_id")
+@click.option("--type", "edge_type", default=None, help="Filter by edge type.")
+@click.option(
+    "--direction",
+    type=click.Choice(["out", "in", "both"]),
+    default="both",
+    show_default=True,
+)
+@click.option("--target-type", default=None, help="Filter by related entity type.")
+@click.option("--limit", type=int, default=50, show_default=True)
+@click.pass_context
+def entity_relations(
+    ctx: click.Context,
+    entity_id: str,
+    edge_type: str | None,
+    direction: str,
+    target_type: str | None,
+    limit: int,
+) -> None:
+    """Show typed relationships touching an entity."""
+    from .. import graph as _graph
+
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+    try:
+        with _graph.connect(config) as g:
+            rows = _graph.relations(
+                g,
+                entity_id,
+                campaign_id=campaign_id,
+                edge_type=edge_type,
+                direction=direction,
+                target_type=target_type,
+                limit=limit,
+            )
+    except Exception as exc:
+        raise GlassError(f"falkordb relations failed: {exc}") from exc
+    result = {
+        "target": config.describe(),
+        "entity_id": entity_id,
+        "relationships": rows,
+        "count": len(rows),
+    }
+    append_audit(
+        paths,
+        state,
+        ctx,
+        "entity.relations",
+        command_params(entity_id=entity_id, type=edge_type, direction=direction),
+        result,
+    )
+    emit(result)
+
+
+@entity.command("between")
+@click.argument("src_id")
+@click.argument("dst_id")
+@click.pass_context
+def entity_between(ctx: click.Context, src_id: str, dst_id: str) -> None:
+    """Show direct typed relationships between two entities."""
+    from .. import graph as _graph
+
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+    try:
+        with _graph.connect(config) as g:
+            rows = _graph.between(
+                g, campaign_id=campaign_id, src_id=src_id, dst_id=dst_id
+            )
+    except Exception as exc:
+        raise GlassError(f"falkordb between failed: {exc}") from exc
+    result = {
+        "target": config.describe(),
+        "source": src_id,
+        "destination": dst_id,
+        "relationships": rows,
+        "count": len(rows),
+    }
+    append_audit(
+        paths,
+        state,
+        ctx,
+        "entity.between",
+        command_params(src=src_id, dst=dst_id),
+        result,
+    )
+    emit(result)
+
+
+@entity.command("edges")
+@click.option("--type", "edge_type", required=True, help="Edge type, e.g. AT_WAR_WITH.")
+@click.option("--limit", type=int, default=100, show_default=True)
+@click.pass_context
+def entity_edges(ctx: click.Context, edge_type: str, limit: int) -> None:
+    """List graph edges of a given type."""
+    from .. import graph as _graph
+
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+    try:
+        with _graph.connect(config) as g:
+            rows = _graph.edges_by_type(
+                g, campaign_id=campaign_id, edge_type=edge_type, limit=limit
+            )
+    except Exception as exc:
+        raise GlassError(f"falkordb edges failed: {exc}") from exc
+    result = {
+        "target": config.describe(),
+        "edge_type": edge_type,
+        "edges": rows,
+        "count": len(rows),
+    }
+    append_audit(
+        paths,
+        state,
+        ctx,
+        "entity.edges",
+        command_params(type=edge_type, limit=limit),
+        result,
+    )
+    emit(result)
+
+
+@entity.command("stance")
+@click.argument("src_id")
+@click.argument("dst_id")
+@click.pass_context
+def entity_stance(ctx: click.Context, src_id: str, dst_id: str) -> None:
+    """Convenience alias for relationship state between two entities.
+
+    No social schema is implied: this returns direct edge facts and their
+    freeform properties.
+    """
+    from .. import graph as _graph
+
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+    try:
+        with _graph.connect(config) as g:
+            rows = _graph.between(
+                g, campaign_id=campaign_id, src_id=src_id, dst_id=dst_id
+            )
+    except Exception as exc:
+        raise GlassError(f"falkordb stance failed: {exc}") from exc
+    result = {
+        "target": config.describe(),
+        "source": src_id,
+        "destination": dst_id,
+        "relationships": rows,
+        "count": len(rows),
+    }
+    append_audit(
+        paths,
+        state,
+        ctx,
+        "entity.stance",
+        command_params(src=src_id, dst=dst_id),
+        result,
+    )
+    emit(result)
+
+
 @entity.command("similar")
 @click.argument("section_id")
 @click.option("--limit", type=int, default=5)
@@ -293,7 +473,11 @@ def entity_find(
     if not _graph.is_available(config):
         raise GlassError(f"falkordb is not reachable at {config.describe()}")
 
-    campaign = campaign_id or os.environ.get("GLASS_CAMPAIGN_ID")
+    role = current_role()
+    active_campaign = active_campaign_id()
+    if role.kind == "player" and campaign_id and campaign_id != active_campaign:
+        raise GlassError("permission denied: players cannot query another campaign graph")
+    campaign = campaign_id or active_campaign
     try:
         with _graph.connect(config) as g:
             matches = _graph.find_entities(
@@ -370,6 +554,118 @@ def entity_link(
         "properties": properties,
         "status": "linked",
     })
+
+
+@entity.command("claim")
+@click.argument("src_id")
+@click.argument("edge_type")
+@click.argument("dst_id")
+@click.option("--summary", required=True, help="Why this relationship should exist.")
+@click.option("--prop", "props", multiple=True, help="key=value edge property; repeatable.")
+@click.pass_context
+def entity_claim(
+    ctx: click.Context,
+    src_id: str,
+    edge_type: str,
+    dst_id: str,
+    summary: str,
+    props: tuple[str, ...],
+) -> None:
+    """Propose a graph relationship without mutating the canonical graph."""
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]*", edge_type):
+        raise GlassError(f"edge type must be UPPERCASE_SNAKE_CASE: {edge_type!r}")
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    role = current_role()
+    properties = _parse_edge_props(props)
+    claim_id = new_id("claim")
+    workspace_root = active_campaign_root()
+    destination = workspace_root / "dm" / "intake" / f"{claim_id}--{role.actor}--relationship.md"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    body = (
+        "---\n"
+        "kind: relationship-claim\n"
+        f"claim_id: {claim_id}\n"
+        f"actor: {role.actor}\n"
+        f"src: {src_id}\n"
+        f"edge_type: {edge_type}\n"
+        f"dst: {dst_id}\n"
+        "---\n\n"
+        "# Relationship Claim\n\n"
+        f"- Source: `{src_id}`\n"
+        f"- Edge: `{edge_type}`\n"
+        f"- Target: `{dst_id}`\n"
+        f"- Properties: `{json.dumps(properties, sort_keys=True)}`\n\n"
+        f"{summary.strip()}\n"
+    )
+    destination.write_text(body, encoding="utf-8")
+    record = {
+        "intake_id": claim_id,
+        "kind": "relationship-claim",
+        "player_id": role.actor if role.kind == "player" else None,
+        "actor": role.actor,
+        "source_path": None,
+        "intake_path": display_path(destination),
+        "status": "pending",
+        "created_at": now_iso(),
+        "resolved_at": None,
+        "src": src_id,
+        "edge_type": edge_type,
+        "dst": dst_id,
+        "properties": properties,
+        "summary": summary.strip(),
+    }
+    state["note_intake"].append(record)
+    result = {"claim": record}
+    commit(
+        paths,
+        state,
+        ctx,
+        "entity.claim",
+        command_params(src=src_id, edge_type=edge_type, dst=dst_id),
+        result,
+    )
+
+
+@entity.command("ratify-claim")
+@click.argument("claim_id")
+@click.pass_context
+def entity_ratify_claim(ctx: click.Context, claim_id: str) -> None:
+    """DM-only: ratify a relationship claim into a canonical graph edge."""
+    require_dm()
+    from .. import graph as _graph
+
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    claim = _relationship_claim(state, claim_id)
+    config = _graph.load_falkor_config(load_config())
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+    try:
+        with _graph.connect(config) as g:
+            _graph.link_entities(
+                g,
+                campaign_id=campaign_id,
+                src_id=claim["src"],
+                edge_type=claim["edge_type"],
+                dst_id=claim["dst"],
+                properties=claim.get("properties", {}),
+            )
+    except Exception as exc:
+        raise GlassError(f"falkordb claim ratify failed: {exc}") from exc
+    claim["status"] = "ratified"
+    claim["resolved_at"] = now_iso()
+    result = {"claim": claim, "target": config.describe(), "status": "ratified"}
+    commit(
+        paths,
+        state,
+        ctx,
+        "entity.ratify-claim",
+        command_params(claim_id=claim_id),
+        result,
+    )
 
 
 @entity.command("unlink")
@@ -452,3 +748,30 @@ def entity_stats(ctx: click.Context) -> None:
     except Exception as exc:
         raise GlassError(f"falkordb stats failed: {exc}") from exc
     emit({"target": config.describe(), **stats})
+
+
+def _parse_edge_props(props: tuple[str, ...]) -> dict[str, Any]:
+    properties: dict[str, Any] = {}
+    for raw in props:
+        if "=" not in raw:
+            raise GlassError(f"--prop must be key=value: {raw!r}")
+        k, v = raw.split("=", 1)
+        properties[k.strip()] = v.strip()
+    return properties
+
+
+def _relationship_claim(state: dict[str, Any], claim_id: str) -> dict[str, Any]:
+    for item in state.get("note_intake", []):
+        if item.get("intake_id") != claim_id:
+            continue
+        if item.get("kind") != "relationship-claim":
+            raise GlassError(f"intake {claim_id!r} is not a relationship claim")
+        if item.get("status") != "pending":
+            raise GlassError(f"relationship claim {claim_id!r} is already {item.get('status')}")
+        return item
+    known = ", ".join(
+        item.get("intake_id", "")
+        for item in state.get("note_intake", [])
+        if item.get("kind") == "relationship-claim"
+    ) or "none"
+    raise GlassError(f"unknown relationship claim {claim_id!r}; known claims: {known}")

@@ -146,6 +146,21 @@ def mode_end(ctx: click.Context) -> None:
         raise GlassError("cannot end mode: mode stack is empty")
     ended = state["mode_stack"].pop()
     ended["ended_at"] = now_iso()
+    action_order = state.get("action_order")
+    if (
+        isinstance(action_order, dict)
+        and action_order.get("mode") == ended.get("mode")
+        and action_order.get("scene_id") == ended.get("scene_id")
+    ):
+        state["action_order"] = None
+    trackers = state.get("scene_trackers")
+    if isinstance(trackers, dict):
+        state["scene_trackers"] = {
+            key: value
+            for key, value in trackers.items()
+            if not isinstance(value, dict)
+            or value.get("scene_id") != ended.get("scene_id")
+        }
     current = current_mode_record(state)
     queue_event(
         state,
@@ -175,5 +190,3 @@ def mode_current(ctx: click.Context) -> None:
     }
     append_audit(paths, state, ctx, "mode.current", {}, result)
     emit(result)
-
-

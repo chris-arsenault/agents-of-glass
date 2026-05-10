@@ -4,15 +4,14 @@ The instruction documents the agents read to know *how* a phase runs. **The real
 
 These get copied into each campaign at creation as `campaigns/<name>/methodologies/`, frozen against the campaign so editing the template here doesn't retroactively change a running campaign.
 
-For when each methodology is invoked, see [`/docs/design/game-start.md`](../../docs/design/game-start.md).
-
 ## The methodologies
 
 Three nested levels of DM prep, plus character creation:
 
 - **[`campaign-planning.md`](campaign-planning.md)** — the **world** level. Solo DM authoring during the `campaign_planning` phase. Outputs: the Question, the Scarcity, factions, NPCs (with antagonist flags), recurring creatures, named things (artifacts/ships/relics), locations, secrets, hooks, philosophy, the opening arc(s). The principle: **prep situations, not plots**. Authored.
 - **[`arc-creation.md`](arc-creation.md)** — the **multi-scene-pressure** level. Called from campaign-planning to author the opening arc(s), and re-invoked during active play whenever the DM formalizes a new arc. Outputs: stakes question, threats, clocks, possible end-states, nodes, what from the curated lists is in play, arc-specific secrets. **Shape, not script.** Authored.
-- **[`scene-prep.md`](scene-prep.md)** — the **single-scene** level. Run before each new scene in active play. Outputs: recap, strong start, 3-5 possible directions, NPCs/antagonists/creatures/named-things in play, secrets that might surface, open questions to be answered through play. Closely follows Sly Flourish's *Lazy Dungeon Master*. Authored.
+- **[`scene-prep.md`](scene-prep.md)** — the **single-scene** level. Run before each new scene in active play. Outputs: recap, strong start, 3-5 possible directions, NPCs/antagonists/creatures/named-things in play, secrets that might surface, open questions to be answered through play, and the opening public table state. Closely follows Sly Flourish's *Lazy Dungeon Master*. Authored.
+- **[`action-scene.md`](action-scene.md)** — quickfire contested scenes using action order and short in-world time. Combat, chase, and social pressure are toolkit examples, not an exhaustive mode list. Outputs: tight move/action/housekeeping turns, frequent checks without extra handoffs, public trackers/clocks, HP/effect consequences. Drafted.
 - **[`character-creation.md`](character-creation.md)** — the `character_creation` phase. DM writes a public campaign-intro; each player authors their character and a public intro entry; DM ratifies. Multi-agent. Stub.
 
 After character creation, the campaign is `active` and scenes begin. The first scene is just the first scene — the DM does scene prep for it like any other.
@@ -37,7 +36,8 @@ Working shape (the actual content lands when we co-author):
 ## What does *not* go in one
 
 - Scene-by-scene scripts. Methodologies are not adventure modules.
-- Mechanical schemas (those live in [`/docs/design/mechanics.md`](../../docs/design/mechanics.md) and the vocabulary).
+- Mechanical schemas. Methodologies explain table procedure; mechanical terms
+  and numbers belong in the shared vocabulary and CLI output.
 - Lore content. Methodologies tell agents *how* to engage with the lore, not what the lore is.
 
 ## Status

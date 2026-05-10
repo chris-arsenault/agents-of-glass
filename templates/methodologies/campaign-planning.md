@@ -26,7 +26,8 @@ If the answer is no, the prep is too narrow. Re-shape it.
 
 Generic LLM output collapses to a small number of attractors. Without intervention you will write the same campaign every other LLM-DM writes — the same factions, the same NPC archetypes, the same beats. **Saying "be unique" doesn't work.** The attractor wins by gradient, not by intention.
 
-Two specific external pulls protect against this. Both are *required* — they are built into this methodology because they are the only thing that works. (See [`/docs/principles/resist-generic-drift.md`](../../../docs/principles/resist-generic-drift.md) for the principle.)
+Two specific external pulls protect against this. Both are *required* — they
+are built into this methodology because they are the only thing that works.
 
 ### 1. Lore pull
 
@@ -126,6 +127,9 @@ You produce **two related documents:**
 - **Capabilities the org typically needs.** A loose list — *not* a role roster. Things like "someone who can move between hab tiers," "someone the Conclave will return calls from," "someone who reads what nobody else does." Players will invent characters that come at these from unexpected angles; you're naming the *kinds of leverage* the org operates by, not slotting people into boxes.
 - **Advancement track.** Three to five stages the org could move through over a campaign. Each stage names what advancing *broadly* unlocks — capacity, recognition, territory, intel reach, gear, contacts. Don't pre-specify mechanical numbers; the DM resolves bonuses at the moment of advance based on what the table cares about.
 - **Trigger conditions.** What the org needs to do (or have done to it) to advance a stage. Tied to arc resolutions and named threats neutralised.
+- **Public pressure if useful.** If the org starts with a visible long-running
+  pressure, create a durable public clock with `glass clock`. Keep hidden
+  pressures hidden.
 - **Secrets and agendas (encouraged).** The org can absolutely keep things from the party — a hidden funder, a leader's compromise, a long-game the rank-and-file isn't briefed on. These belong in `dm/notes/organization.md`, not in `shared/lore/organization.md`. They surface through play.
 
 #### What the players will do (later)
@@ -200,7 +204,9 @@ Grand-scale non-actor pieces — weapons, instruments, relics, vessels — that 
 
 Why you curate these:
 
-- **Anti-drift defense.** When a scene calls for a notable artifact, you reach for *Splitfork* and not "the sword." Per [`/docs/principles/resist-generic-drift.md`](../../../docs/principles/resist-generic-drift.md) — the specific name lands; the generic drifts.
+- **Anti-drift defense.** When a scene calls for a notable artifact, you reach
+  for *Splitfork* and not "the sword." The specific name lands; the generic
+  drifts.
 - **Observable plan-work.** A reader of the corpus sees the named thing was on the curated list before the scene and grew significance through play.
 - **Texture without improv pressure.** You don't have to invent these mid-scene.
 
@@ -298,4 +304,7 @@ If after three invocations you don't feel ready to advance, stop and ask the ope
 
 ## Tone
 
-This is a foundation, not a pitch document. Keep entries short and dense. Encyclopedia entries are paragraphs, not pages. Specificity always — per [`/docs/principles/resist-generic-drift.md`](../../../docs/principles/resist-generic-drift.md). No "ancient evil." No "the tavern." Every name grounded in a culture; every locale grounded in resonance or this world's actual texture; every NPC with a tell.
+This is a foundation, not a pitch document. Keep entries short and dense.
+Encyclopedia entries are paragraphs, not pages. Specificity always. No "ancient
+evil." No "the tavern." Every name grounded in a culture; every locale grounded
+in resonance or this world's actual texture; every NPC with a tell.

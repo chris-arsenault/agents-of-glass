@@ -37,6 +37,7 @@ Things you write as markdown via your file-write tool (no `glass` involvement):
 - `players/<your-id>/public/intro.md`
 - `players/<your-id>/public/relationships.md`
 - `players/<your-id>/public/character.md` (optional cached display)
+- `players/<your-id>/signature-moves.md`
 - `players/<your-id>/secrets/<name>.md` (optional, DM-readable only)
 - Your private journal/drafts/notes/scratchpad — anything under `players/<your-id>/` that isn't `public/`.
 
@@ -45,6 +46,7 @@ Things you write as markdown via your file-write tool (no `glass` involvement):
 ```
 players/<your-id>/
   persona.md            you (the player) — provided by the operator
+  signature-moves.md    3-6 recurring prose moves you maintain
   scratchpad.md         your working notes — overwrite freely
   public/               party-readable: intros, relationships, cached character display
   secrets/              DM-readable, other-player-private: hidden knowledge files
@@ -135,6 +137,12 @@ HP defaults to 10. Take 8 if you're fragile/specialized; take 12 if physical rob
 
 Inventory: 3-5 items. **One must be a signature item** with a specific story. The rest are tools-of-trade or sentimental. Read the system reference's inventory examples — generic gear is bounceable.
 
+Also start `players/<your-id>/signature-moves.md` with 3-6 recurring things your
+character leans on: spells, combat maneuvers, search styles, social tactics,
+chase techniques, rituals, or other habits. These are not guaranteed powers or
+mechanical buttons. They are consistency anchors the table can recognize, and
+the DM can eventually let the world react to them.
+
 ### 7. Pick traits to RP imperfectly
 
 Pick **3-5 traits** that make this character a recognizable person. Each trait should be:
@@ -207,7 +215,8 @@ glass character new <character-id> --player <your-agent-id> \
 
 # Add inventory items one at a time.
 glass character inventory-add <character-id> <slug> --qty 1
-glass character inventory-add <character-id> <slug> --qty 1
+glass character inventory-add <character-id> <slug> --qty 1 \
+    --effect-tag "<optional free-text way this item can matter>"
 ```
 
 Then write your intro markdown directly to `players/<your-id>/public/intro.md` using your file-write tool. The `public/` subdir is party-readable; this is the file your fellow PCs will read in round 2. Include:
@@ -219,6 +228,9 @@ Then write your intro markdown directly to `players/<your-id>/public/intro.md` u
 - An Org Tie line
 
 Optionally write a short cached display at `players/<your-id>/public/character.md` with attribute/skill/inventory summary for quick reference. The canonical numbers are in Postgres; this is just a human-readable mirror.
+
+Update `players/<your-id>/signature-moves.md` with your starting 3-6 moves.
+Keep it current during play as your character's habits settle.
 
 When your turn ends, that's it for round 1. The other players take their turns; the DM reviews after.
 

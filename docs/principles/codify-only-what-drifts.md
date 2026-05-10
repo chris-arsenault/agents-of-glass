@@ -28,7 +28,11 @@ That's the list. It's short on purpose.
 These were tempting but stay in prose:
 
 - **Intent classification.** No `action` / `inquiry` / `clarification` / `possibility` / `planning` / `reflection` enum. The DM reads the player's prose and adjudicates from it. The Glass Frontier intent taxonomy was a single-prompt-engine necessity; we have a real DM agent that can read.
-- **Proposed checks / proposed actions.** Players narrate what they want to do and either roll directly or describe the action and let the DM call a check. No `proposed_check: { skill: ..., risk: ... }` field.
+- **Proposed checks / proposed actions.** Players narrate what they want to do
+  and either roll directly on their turn or leave the situation for the DM to
+  resolve in prose. When the DM needs a PC check on the DM turn, the DM rolls it
+  directly; see [`minimize-actor-transitions.md`](minimize-actor-transitions.md).
+  No `proposed_check: { skill: ..., risk: ... }` field.
 - **Prepared abilities.** "I prepare my shield instead of attacking" is a thing the player wrote. The DM tracks it from prose. No `prepared_actions: [{ trigger: ..., effect: ... }]` array.
 - **Visibility flags.** A hidden preparation is hidden because the prose says it's hidden ("Mork subtly attunes a barrier nobody can see"), and the DM honors that in their narration. No `visibility: dm_only` flag on actions.
 - **Questions.** When a player asks the DM things, they ask in prose. The DM answers in prose. No `questions: []` array.
@@ -49,7 +53,7 @@ Two reasons. They reinforce each other.
 Despite all of the above, the transcript is a richly structured artifact. The structure comes from *metadata around the prose*, not from forcing the agent to author both:
 
 - **Per-turn header** (orchestrator-supplied) — speaker, role, mode, scene, turn number, timestamp.
-- **Inline mechanical event lines** (orchestrator-inserted from the `glass` audit log) — e.g. `> 🎲 attack (vitality, finesse) @ risky → 10 vs 9 → advance · 4 dmg → patrol-leader`.
+- **Inline mechanical event lines** (orchestrator-inserted from the `glass` audit log) — e.g. `> pressure Patrol leader HP: advance, impact d8=5 -> 2, -2 (8/8 -> 6/8)`.
 - **Mode transition records** (orchestrator-supplied at `glass mode start` / `glass mode end`).
 - **Dice events fully recorded in Postgres** — the inline summary is for readability; the canonical record (every modifier, the seed, the outcome math) is queryable by `roll_id`.
 

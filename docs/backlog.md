@@ -6,6 +6,58 @@ These are out of scope for v1. The first session that runs end-to-end is the tri
 
 ---
 
+## System Gap Dispositions (May 2026)
+
+These came out of the feature-completeness pass before the documentation reorg.
+
+### Hard Closure Backstop
+
+**Disposition:** intentionally deferred until it becomes a demonstrated problem.
+
+Soft closing exists: `glass scene closing-down`, final rounds, scene overrun
+warnings, action-scene visible endpoints, and `glass scene end`. Do not build
+hard forced closure, twist budgets, or a closer agent until transcripts show
+that soft closure still lets scenes run away.
+
+### Durable Cross-Scene Clocks
+
+**Disposition:** implemented as durable `glass clock` state.
+
+Scene trackers remain short-term scene math. Durable clocks are for campaign,
+arc/act, thread, faction, NPC, or custom pressure that survives scene
+boundaries. Postgres is canonical; public clocks are projected to markdown for
+player reference at `shared/clocks.md` and relevant arc `clocks.md` files.
+
+### Continuity Compression
+
+**Disposition:** implemented as summary files plus turn text search.
+
+Continuity compression belongs in authored markdown summaries at the hierarchy
+being summarized, not as generated prose inside `TURN_START`: campaign
+`summary.md`, arc/act `summary.md`, and scene `summary.md`. Historical turn
+query is `glass turns find --text ...`; broader indexed recall is now exposed
+through `glass search text` and the `glass search semantic` surface, which uses
+lexical fallback until embeddings are populated.
+
+### Defeat, Recovery, Lasting Consequences
+
+**Disposition:** implemented as lightweight character consequences.
+
+0 HP still means out of the action, not automatic death. Lasting injuries,
+capture, obligations, disgrace, gear strain, and similar persistent fictional
+effects are tracked with `glass character consequence-*`. This is deliberately
+not a condition engine.
+
+### Travel / Montage Protocol
+
+**Disposition:** defer to the documentation rewrite.
+
+Travel/montage is named in the mode design and partly recognized by speaker
+order, but it does not need a new implementation pass before the reorg. Scene
+play can carry travel until the docs settle the exact protocol.
+
+---
+
 ## Map Integration (Hex Boards)
 
 **What:** Spatial state for scenes that need it — combat, exploration of a structured space, party positioning. Hex grid with terrain tags, occupant tracking, line-of-sight, and a basic distance/movement model. The map is a queryable surface the DM can consult ("how far from Karrith to the gantry?") and player agents can reason about ("can I get to cover this turn?").

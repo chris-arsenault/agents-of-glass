@@ -16,6 +16,12 @@ Conventions:
 | `001_characters.sql` | `characters` table — per-PC state per `docs/design/mechanics.md` |
 | `002_rolls.sql` | `rolls` table — every dice event with full context (audit trail) |
 | `003_messages.sql` | `messages` + `message_reads` tables — typed inter-agent message bus per `docs/design/messaging.md` |
+| `004_xp_levels.sql` | character XP and level columns |
+| `005_skill_xp_and_logs.sql` | skill-by-use XP plus XP/level-up history |
+| `006_runtime_state_and_turns.sql` | Postgres runtime state and structured turns |
+| `007_durable_clocks.sql` | durable cross-scene clocks and clock event history |
+| `008_character_consequences.sql` | lasting character consequences |
+| `009_persistence_outputs_and_search.sql` | turn metadata, event log, scene trackers, action orders, search chunks |
 
 ## Running
 

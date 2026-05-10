@@ -35,7 +35,8 @@ type: npc        # or location, faction, theory, observation, ...
 - **Link freely.** Markdown relative links between files are encouraged. Future-you and the analysis pipeline both benefit.
 - **Subdirectories** are fine when a topic has obvious children (`npcs/`, `locations/`, `theories/`).
 - **Update, don't append.** When your understanding of something changes, update the relevant entry. The note is the *current state* of your knowledge, not a log.
-- **Specificity always.** Per [`/docs/principles/resist-generic-drift.md`](../../../../docs/principles/resist-generic-drift.md), every entry should be defensible against the world's actual texture. No "the tavern," no "the wizard," no "Thorgrim."
+- **Specificity always.** Every entry should be defensible against the world's
+  actual texture. No "the tavern," no "the wizard," no "Thorgrim."
 
 ### Proposing a note to the DM
 

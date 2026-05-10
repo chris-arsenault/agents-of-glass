@@ -2,7 +2,7 @@
 
 The bootstrap flow that takes a fresh repo from "no campaign exists" to "real scenes are running." Two agent-driven phases plus an operator init step. Each phase produces transcripts, messages, public lore, and private notes. Every phase is clearable and resumable.
 
-For the methodology docs the agents read inside each phase, see [`/templates/methodologies/`](../../templates/methodologies/) — those are the *real instructions*. There are four methodology files: campaign-planning, arc-creation, scene-prep, and character-creation.
+For the methodology docs the agents read inside each phase, see [`/templates/methodologies/`](../../templates/methodologies/) — those are the *real instructions*. The core set is campaign-planning, arc-creation, scene-prep, scene-play, action-scene, and character-creation.
 
 For the campaign-level state machine, see [Phase state](#phase-state). For the operator CLI, see [`/src/orchestrator/SPEC.md`](../../src/orchestrator/SPEC.md).
 
@@ -17,8 +17,9 @@ For the campaign-level state machine, see [Phase state](#phase-state). For the o
 
 1. CAMPAIGN PLANNING (DM solo, 1-few invocations)
    - DM reads: campaign-planning methodology, persona, world bible
-   - DM authors:
+  - DM authors:
      - campaigns/<id>/context.md (player-facing campaign-level)
+     - campaigns/<id>/summary.md (running campaign continuity summary)
      - dm/foundation.md (DM-only working framing)
      - dm/notes/factions/, dm/notes/npcs/ (with antagonist flag), dm/notes/creatures/,
        dm/notes/artifacts/, dm/notes/ships/, dm/notes/locales/, dm/notes/secrets.md,
@@ -42,7 +43,12 @@ For the campaign-level state machine, see [Phase state](#phase-state). For the o
    - Phase stays `active` indefinitely
 ```
 
-There are no "sessions." A scene is the unit of play; a scene's type (town, exploration, combat, social, investigation, travel, wrap) determines its turn protocol. The agents play as long as the operator runs the orchestrator. When a scene ends, the next scene starts when the DM is ready.
+There are no "sessions." A scene is the unit of play; its `--type` is a
+protocol/toolkit label, not an exhaustive taxonomy. Common protocols are
+`scene-play`, `action`, and `travel/montage`; toolkit labels like `combat`,
+`chase`, `social-pressure`, `investigation`, or a custom slug help the DM frame
+the scene. The agents play as long as the operator runs the orchestrator. When a
+scene ends, the next scene starts when the DM is ready.
 
 ## Phase State
 
@@ -74,8 +80,8 @@ The DM produces three player-facing context documents — one per level — that
 | Level | Player-facing | DM-only |
 |-------|---------------|---------|
 | **Campaign** | `campaigns/<id>/context.md` | `dm/foundation.md`, `dm/notes/**` |
-| **Arc** | `arcs/<arc>/context.md` | `arcs/<arc>/plan.md` |
-| **Scene** | `arcs/<arc>/scenes/<scene>/context.md` | `arcs/<arc>/scenes/<scene>/prep.md` |
+| **Arc / act** | `arcs/<arc>/context.md`, `summary.md`, `clocks.md` | `arcs/<arc>/plan.md` |
+| **Scene** | `arcs/<arc>/scenes/<scene>/context.md`, `summary.md` | `arcs/<arc>/scenes/<scene>/prep.md` |
 
 In a player's per-turn CWD, these get projected as:
 - `campaign-context.md`
@@ -120,6 +126,11 @@ templates/                          # authored, stable; copied at campaign creat
 campaigns/<id>/                     # per-campaign runtime root
   state.json                        # campaign phase state
   context.md                        # PLAYER-FACING campaign-level context
+  summary.md                        # running campaign continuity summary
+  table/                            # public short-term state, reset per scene
+    index.md                        # at-a-glance board
+    scene.md                        # scene kickoff description
+    handouts/                       # in-game handouts
   dm/                               # copy of templates/dm/, mutates during play
     persona.md, scratchpad.md, journal/, notes/, secret/, intake/, workspace/
     foundation.md                   # DM-only working framing for the campaign
@@ -130,13 +141,17 @@ campaigns/<id>/                     # per-campaign runtime root
     vocabulary/
     quest-log.md
     party-knowledge.md
+    clocks.md                       # public durable-clock projection
   arcs/<arc-slug>/                  # one dir per arc — created by `glass arc create`
     context.md                      # PLAYER-FACING arc-level context
+    summary.md                      # running arc/act continuity summary
+    clocks.md                       # public durable clocks for this arc/act
     plan.md                         # DM-only arc plan
     scenes/<scene-slug>/            # created by `glass scene create`
       context.md                    # PLAYER-FACING scene-level context
+      summary.md                    # finalized via `glass scene end --summary`
       prep.md                       # DM-only scene prep
-      transcript.md                 # the scene's transcript (corpus)
+      transcript.md                 # scene-level transcript export; Postgres turns are canonical
       audit.jsonl                   # operational audit log
 ```
 
@@ -176,11 +191,13 @@ Phase transitions are **explicit, not automatic**. The DM declares planning comp
 
 ## Why This Hierarchy
 
-Each level has its own player-facing context document because the *zoom level* matters. A player in a scene needs scene framing (immediate), arc context (mid-term stakes), and campaign framing (long-term world state) — three levels of focus, all on every turn. The DM authors each separately because they update at different cadences:
+Each level has its own player-facing context document because the *zoom level* matters. A player in a scene needs scene framing (immediate), arc context (mid-term stakes), and campaign framing (long-term world state) — three levels of focus, all on every turn. The live `table/` sits beside those documents as the short-term public board: current visible state, scene kickoff, handouts, and freeform immediate references. The DM authors each separately because they update at different cadences:
 
 - Campaign context updates rarely — when a major faction shift, a region change, a thread advances dramatically.
 - Arc context updates per scene or two — what the players have learned, who's pushing on them, what clocks have ticked.
 - Scene context updates within a scene — when the situation shifts substantially.
+- Table updates whenever visible immediate state changes and players would
+  otherwise ask for repetition.
 
 The DM-only working documents (`foundation.md`, `plan.md`, `prep.md`) hold the full picture — secrets, possible end-states, what NPCs are *really* doing. The player-facing `context.md` holds only what the players have seen.
 

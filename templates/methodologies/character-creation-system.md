@@ -6,9 +6,10 @@ audience: players, dm
 
 # Character Creation — System Reference
 
-The mechanical layer for character creation. Read alongside [`character-creation.md`](character-creation.md), which is the *process* (what to do, in what order, with what creative pulls). This doc is the *rules* — the numbers, budgets, and what each tier means in play.
-
-For the underlying dice math, see [`/docs/design/mechanics.md`](../../docs/design/mechanics.md). This doc translates that math into starting-character allocations.
+The mechanical layer for character creation. Read alongside
+[`character-creation.md`](character-creation.md), which is the *process* (what
+to do, in what order, with what creative pulls). This doc is the *rules* — the
+numbers, budgets, and what each tier means in play.
 
 ## Species
 
@@ -40,7 +41,8 @@ The character.md `archetype` field is one short string — a working description
 
 ## Attributes
 
-Seven attributes (see [`/docs/design/mechanics.md`](../../docs/design/mechanics.md) for what each covers): `vitality`, `finesse`, `focus`, `resolve`, `attunement`, `ingenuity`, `presence`.
+Seven attributes: `vitality`, `finesse`, `focus`, `resolve`, `attunement`,
+`ingenuity`, `presence`.
 
 **Starting tier budget:**
 
@@ -126,13 +128,27 @@ Pick **3-5 items**. One must be a **signature item** — something specific to t
 
 You're describing items, not stat-blocking them. The DM decides if/when an item matters mechanically.
 
+Items may have free-text effect tags when that helps the table remember how
+they matter:
+
+```yaml
+effect_tags:
+  - "May justify pressure against exposed human-scale targets."
+  - "Can constrain a creature if the fiction supports getting the net around it."
+```
+
+The inventory CLI can store these tags with `--effect-tag`, but no command
+interprets them mechanically. They are prompts for honest play: cite them when
+they make sense, ignore them when they do not.
+
 ### CLI
 
 After `glass character new`, add inventory:
 
 ```bash
 glass character inventory-add <id> tuning-fork --qty 1
-glass character inventory-add <id> air-quality-reader --qty 1
+glass character inventory-add <id> resonance-laced-net --qty 1 \
+  --effect-tag "Can constrain a creature if the fiction supports getting the net around it."
 ```
 
 Item ids are short slugs; full descriptions live in the character's intro.md or the character.md notes section.
@@ -146,8 +162,8 @@ The character.md `tags` field holds a few short labels — `[tuner, ringside-bor
 Deliberately not in the system:
 
 - **Hit points by class** — there are no classes.
-- **Spell slots / abilities** — anything special is a skill check, possibly with the DM's approval to use a particular angle.
-- **Damage types / armor** — HP is a number; damage is whatever the DM narrates after a regress/collapse.
+- **Spell slots / abilities** — recurring techniques belong in signature moves, not a power list.
+- **Damage types / armor** — HP is a number; damage is coarse pressure impact plus narration.
 - **Currency / money** — narrate around it; if it matters, the DM tracks it as a tag.
 - **XP / leveling** — no advancement system at character creation. Multi-session arcs may add one.
 - **Saves / resistances** — covered by attribute checks under the relevant attribute.

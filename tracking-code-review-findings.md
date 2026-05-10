@@ -50,7 +50,7 @@ References: `src/cli/graph.py`, `src/cli/commands/entity.py`, `src/cli/commands/
 
 ### AOG-004 - Runtime metadata still lives in JSON state instead of Postgres
 
-Status: `deferred`
+Status: `done`
 
 The design says Postgres should hold turn, mode, scene, and queryable corpus metadata. The implementation still stores turn metadata, entity fallback cache, mode stack, and phase/runtime state in `state.json` / `aog-state.json`.
 
@@ -58,7 +58,7 @@ Impact: the system remains partly file-backed and hard to query consistently; ol
 
 Likely direction: add migrations and CLI boundaries for turns, modes, scenes, phase history, and graph mirror status; keep markdown as prose, not metadata storage.
 
-Deferral: not changed in this pass. Moving runtime source-of-truth metadata from JSON files into Postgres needs a schema and migration design so bootstrap/resume semantics stay coherent across existing campaigns.
+Resolution: added Postgres-backed `campaign_runtime_states` and structured `turns` tables. `state.json` is now a derived cache/export when Postgres is configured, while no-DB tests/dev keep the file fallback. Bootstrap phase writes are synced into the same runtime row, and `aog campaign bootstrap/run/resume` applies migrations before orchestration.
 
 References: `src/cli/commands/turn.py`, `src/cli/commands/turns.py`, `src/cli/entities.py`, `src/orchestrator/store.py`.
 
@@ -163,3 +163,15 @@ Likely direction: rebuild tests around the campaign workspace layout, Postgres-b
 Resolution: replaced the obsolete `content/sessions` CLI tests with current campaign-root tests and added a runner test for next-speaker queue behavior.
 
 References: `tests/test_cli.py`.
+
+### AOG-012 - Public transcript should not be a flat-file communication API
+
+Status: `done`
+
+The future viewer UI needs stable ordered events and turn metadata. Parsing an append-only markdown transcript as the primary data surface is brittle and makes filtering, polling, and rendering harder than necessary.
+
+Impact: the UI would have to scrape prose headers and inline event lines from a large flat file, and agents/context builders would keep treating markdown as the canonical corpus boundary.
+
+Resolution: `glass turn append` now writes structured rows to Postgres first and only then refreshes `transcript.md` as a derived compatibility export. `glass turns find` reads the structured store, `glass turns feed --after-turn N` exposes a polling-friendly viewer feed, and the orchestrator context builder reads recent turns from structured storage before falling back to the export.
+
+References: `migrations/006_runtime_state_and_turns.sql`, `src/cli/commands/turn.py`, `src/cli/commands/turns.py`, `src/orchestrator/store.py`, `src/webui/SPEC.md`.

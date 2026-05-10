@@ -18,8 +18,6 @@ Same TOC + supporting-files pattern used in the lore repo:
 campaigns/<id>/shared/vocabulary/
   index.md                  # TOC — all terms, brief entries, links to detail
   turn-verbs.md             # what kinds of turns players take
-  combat-moves.md           # attack, prepare, hold, retreat, etc.
-  social-moves.md           # negotiate, intimidate, persuade, etc.
   message-types.md          # the schema for `glass msg <type>`
   mechanical-terms.md       # advantage, push, momentum, attunement, ...
 ```
@@ -30,7 +28,11 @@ campaigns/<id>/shared/vocabulary/
 
 **In:** verbs and concepts that recur across many turns and benefit from being said the same way.
 
-**Not in:** **skills.** The skill system stays free-form (cribbed from Glass Frontier). A character can have a skill called anything; skill *tier* modifiers are codified, but skill *names* are author-chosen prose. Don't pre-enumerate.
+**Not in:** **skills or action verbs.** The skill system stays free-form
+(cribbed from Glass Frontier). A character can have a skill called anything;
+skill *tier* modifiers are codified, but skill *names* are author-chosen prose.
+Likewise, social and combat actions are described in prose; don't pre-enumerate
+canonical verbs.
 
 **Not in:** the Glass Frontier intent set verbatim. Several entries (`clarification`, `wrap`) are 1:1-AI-engine specific and don't translate to a five-person table. Trim and rename as the actual usage shows what matters. Likely starting set:
 

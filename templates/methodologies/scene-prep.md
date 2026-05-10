@@ -6,7 +6,10 @@ title: Scene Prep Methodology
 
 Third level of DM prep, beneath [`campaign-planning.md`](campaign-planning.md) (the world) and [`arc-creation.md`](arc-creation.md) (multi-scene pressure units). Scene prep is **what you bring to the next scene**.
 
-A scene is a typed unit of play — town, exploration, combat, social, investigation, travel/montage, wrap. The type determines the turn protocol (see [`/docs/design/modes.md`](../../../docs/design/modes.md)). One scene runs as long as it runs; there's no session boundary forcing it to end at the four-hour mark.
+A scene has a protocol/toolkit label. Use common labels when they fit
+(`scene-play`, `action`, `travel`, `montage`, `town`, `combat`, `chase`,
+`social-pressure`), but the list is not exhaustive. The label points the DM
+toward a turn protocol; it does not define every possible kind of scene.
 
 This methodology is invoked **before each new scene** in active play. The orchestrator can run it on demand or fold it into the DM's first turn of the scene. Light, short, re-readable.
 
@@ -17,7 +20,7 @@ The principle remains the same: **prep situations, not plots**. At the campaign 
 Before you write anything, scaffold the scene with:
 
 ```
-glass scene create <slug> --type <town|exploration|combat|social|investigation|travel|wrap>
+glass scene create <slug> --type <protocol-or-toolkit-label>
 ```
 
 The CLI creates `arcs/<active-arc>/scenes/<slug>/` with:
@@ -25,6 +28,14 @@ The CLI creates `arcs/<active-arc>/scenes/<slug>/` with:
 - `context.md` — player-facing scene framing.
 - `transcript.md` — empty; gets populated as the scene plays.
 - `audit.jsonl` — empty; populated by `glass` calls during the scene.
+
+It also resets the live public table at campaign root:
+
+- `table/index.md` — at-a-glance visible state.
+- `table/scene.md` — the scene kickoff description.
+- `table/handouts/` — in-game handouts.
+
+Everything else at `table/` root is freeform and created only when useful.
 
 If the scene belongs to a different arc, pass `--arc <arc-slug>` explicitly. The orchestrator picks up the new directory automatically; you don't manage it by hand.
 
@@ -63,6 +74,19 @@ You produce **two documents** in `arcs/<arc>/scenes/<slug>/`:
 - **`context.md`** (player-facing) — what the players see when the scene starts, and what stays in their CWD as `scene-context.md` while the scene runs. Locale, who's there, what's happening. No DM-only secrets, no prep, no hooks-not-yet-revealed.
 
 The prep has the full picture. The context has only what's framed for the table.
+The scene `summary.md` starts as a stub and is finalized by
+`glass scene end --summary`; do not use it as scene framing while play is still
+moving.
+
+You also update the live table when the scene begins:
+
+- Put the opening scene description in `table/scene.md`.
+- Keep `table/index.md` short and current: what is visible now, what files are
+  relevant, public trackers, immediate questions.
+- Add freeform table-root files only for immediate visible references players
+  are likely to need during play.
+- Put notices, pictures, maps, letters, diagrams, and other in-game handouts in
+  `table/handouts/`.
 
 `prep.md` has these sections:
 
@@ -99,9 +123,26 @@ Pointers from your curated lists. Which `antagonist: true` NPCs are pushing on t
 
 For each: one line. The detail lives in their existing entry; you read that during play if needed.
 
+If this may become an action scene, prep the honest tracker shape now: what
+numeric endpoint would players see, what hidden danger clock might tick, and
+what happens when each fills. Do not wait until the third action turn to decide
+what "winning" means. For pressure targets, also decide any known resistance:
+how hard the target is to affect, and whether it rarely reduces impact.
+
+If the pressure is supposed to survive this scene, use a durable clock instead
+of a scene tracker:
+
+```bash
+glass clock set <clock-id> --scope arc --anchor <arc-id> --max 5 --public
+```
+
 ### 6. Named things in play
 
-Pointers to artifacts, ships, instruments, relics that might surface — from `dm/notes/artifacts/` and `dm/notes/ships/`. Reach for the curated list. **This is the anti-drift defense in action**: when a scene calls for a notable item, you reach for *Splitfork* or the *Threshold hammer*, not "the ship" or "the sword." Per [`/docs/principles/resist-generic-drift.md`](../../../docs/principles/resist-generic-drift.md).
+Pointers to artifacts, ships, instruments, relics that might surface — from
+`dm/notes/artifacts/` and `dm/notes/ships/`. Reach for the curated list. **This
+is the anti-drift defense in action**: when a scene calls for a notable item,
+you reach for *Splitfork* or the *Threshold hammer*, not "the ship" or "the
+sword."
 
 If the scene requires a new named thing, draft a short stub here and migrate to the appropriate directory after the scene.
 
@@ -124,7 +165,7 @@ These are notes to yourself. The questions get answered through play — not by 
 - **The conclusion of the scene.** Conclusions are emergent.
 - **NPC dialogue.** One line of voice flavor max — improvise the rest at the table.
 - **The players' reactions or decisions.** Their jurisdiction.
-- **"How the scene ends."** The end belongs to play (per the closure design — see [`/docs/design/scene-ending.md`](../../../docs/design/scene-ending.md), deferred).
+- **"How the scene ends."** The end belongs to play.
 - **A new arc.** If a scene seems to want a new arc, note it for after — go through [`arc-creation.md`](arc-creation.md) deliberately, not in passing.
 
 If you find yourself authoring more than two pages, you're over-prepping. Stop, trim, leave room.
@@ -139,4 +180,5 @@ Single invocation, usually. When you've got the strong start, 3-5 possible direc
 
 `context.md` is the player-facing framing — the locale, the situation, who's here, what just happened. Players see it as `scene-context.md` in their CWD throughout the scene. Update it if the scene shifts substantially mid-play.
 
-Names everywhere — pull from the curated lists. Specificity always — per [`/docs/principles/resist-generic-drift.md`](../../../docs/principles/resist-generic-drift.md). Generic prep produces generic scenes; specific prep produces scenes worth a transcript.
+Names everywhere — pull from the curated lists. Specificity always. Generic
+prep produces generic scenes; specific prep produces scenes worth a transcript.

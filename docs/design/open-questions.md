@@ -8,7 +8,9 @@ These are different from [`scene-ending.md`](scene-ending.md): that doc has a wo
 
 ## Speaker Selection Beyond the Mode Default
 
-The mode determines the default speaker rule (initiative for combat, round-robin for exploration, DM-prompted for social, etc.). That handles the common case.
+The active protocol determines the default speaker rule (action order for
+quickfire scenes, round-robin for broad scene play, DM-prompted when needed,
+etc.). That handles the common case.
 
 The unsettled part is when the default isn't right. Real tables have moments where:
 

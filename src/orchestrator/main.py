@@ -153,6 +153,7 @@ def campaign_bootstrap(
     """
     from .campaign import CampaignSpace
 
+    _ensure_db_migrated(cli)
     _restart_api_daemon_for_run(cli)
 
     space = CampaignSpace.from_config(cli.config, campaign_id)
@@ -393,6 +394,35 @@ def _restart_api_daemon_for_run(cli: CliState) -> None:
     )
 
 
+def _ensure_db_migrated(cli: CliState) -> None:
+    from cli import db as _glass_db
+    from cli.config import load_config as _load_glass_config
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        toml_data = _load_glass_config()
+        if not _glass_db.postgres_configured(toml_data):
+            return
+        pg_config = _glass_db.load_pg_config(toml_data)
+        try:
+            with _glass_db.connect(pg_config) as conn:
+                actions = _glass_db.migrate(conn)
+        except Exception as exc:
+            raise click.ClickException(
+                f"failed to migrate Postgres runtime schema at "
+                f"{pg_config.describe()}: {exc}"
+            ) from exc
+        applied = [name for name, action in actions if action == "applied"]
+        if applied:
+            click.echo(f"      db: applied migrations {', '.join(applied)}")
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
+
+
 def _api_url(value: str | None) -> str:
     from cli.api_grants import DEFAULT_API_URL
 
@@ -491,6 +521,7 @@ def campaign_run(
     dry_run: bool,
 ) -> None:
     """Run the orchestration loop for a campaign."""
+    _ensure_db_migrated(cli)
     _restart_api_daemon_for_run(cli)
     state = cli.store.load(campaign_id)
     turns = _run_or_raise(cli, state, max_turns=max_turns, dry_run=dry_run, resume_failed=False)
@@ -509,6 +540,7 @@ def campaign_resume(
     dry_run: bool,
 ) -> None:
     """Resume a failed/paused/interrupted campaign."""
+    _ensure_db_migrated(cli)
     _restart_api_daemon_for_run(cli)
     state = cli.store.load(campaign_id)
     turns = _run_or_raise(cli, state, max_turns=max_turns, dry_run=dry_run, resume_failed=True)
@@ -518,10 +550,10 @@ def campaign_resume(
 @campaign.command("clean")
 @click.argument("campaign_id")
 @click.option("--state-only", is_flag=True,
-              help="Only delete runtime state files (state.json, transcript.md, "
-                   "audit.jsonl, scene-framing.md, per-agent turns/). Keeps the "
-                   "campaign workspace, DM/player content, arcs, lore, AND all "
-                   "DB rows + graph nodes.")
+              help="Only delete runtime state/cache (runtime DB rows, state.json, "
+                   "transcript export, audit.jsonl, scene-framing.md, per-agent turns/). "
+                   "Keeps the campaign workspace, DM/player content, arcs, lore, "
+                   "characters/messages/rolls, and graph nodes.")
 @click.option("--keep-workspace", is_flag=True,
               help="Drop DB rows + graph nodes but leave the filesystem campaign "
                    "workspace intact. For when you want to wipe persistence but "
@@ -553,7 +585,7 @@ def campaign_clean(
     if state_only:
         if not yes and not click.confirm(
             f"Clear runtime state for campaign {campaign_id!r}? "
-            "(workspace, DM/player content, arcs, lore, DB, graph all remain)"
+            "(workspace, DM/player content, arcs, lore, non-runtime DB rows, graph all remain)"
         ):
             raise click.Abort()
         cli.store.clear_state(campaign_id)

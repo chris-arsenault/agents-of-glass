@@ -25,12 +25,26 @@ _DEFAULT_TTL_SECONDS = 7200
 
 _PLAYER_ALLOWED: dict[str, set[str] | None] = {
     "character": None,
+    "clock": {"list", "show"},
     "msg": None,
     "roll": None,
-    "entity": {"neighborhood", "similar"},
+    "scene": {"tracker", "pressure"},
+    "table": {"current", "show"},
+    "entity": {
+        "neighborhood",
+        "similar",
+        "find",
+        "relations",
+        "between",
+        "edges",
+        "stance",
+        "claim",
+    },
     "note": {"write", "propose"},
+    "search": {"text", "semantic"},
     "turn": {"handoff"},
-    "turns": {"find"},
+    "turns": {"find", "feed"},
+    "summary": {"show"},
     "lore": {"list"},
 }
 

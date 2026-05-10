@@ -12,22 +12,26 @@ Strictly things that are already in the corpus:
 - Inlined mechanical events (dice rolls, HP changes, mode transitions)
 - Mode boundaries as visual scene breaks
 - Optional sidebar surfaces if/when those backlog items ship: the map, generated images, current scene framing
-- Session list (opt-in — operator marks a session "public" before/during the run)
+- Campaign/run list (opt-in — operator marks a campaign "public" before/during the run)
 
 What it does **not** show:
 
 - Agent prompts / role files
 - Orchestrator internals
 - Private journals, secret notes, DM-only messages, monster stat blocks
-- Anything outside what `glass turn append` has committed to the public transcript
+- Anything outside what `glass turn append` has committed to the structured public turn feed
 
 ## Architecture (Sketched)
 
 Per the [backlog entry](../../docs/backlog.md#live-session-website):
 
-- The orchestrator emits structured events to a write-side service (probably an S3-backed event log behind a Lambda) every time a turn appends, a mode transitions, an image is generated, dice rolls.
-- The frontend is a static SPA served from S3 + CloudFront that subscribes to the event log via WebSocket or polling.
-- Per-session URLs (`/sessions/<id>`); session list is opt-in.
+- The local source of truth is Postgres: `turns` for committed public turns,
+  `events` for structured emitted state changes, plus hard-state tables for
+  rolls/messages/characters. `glass turns feed --after-turn N` is the first
+  polling surface.
+- A later deploy can mirror those structured rows/events to a write-side service (probably an S3-backed event log behind a Lambda).
+- The frontend is a static SPA served from S3 + CloudFront that subscribes to the mirrored feed via WebSocket or polling.
+- Per-campaign URLs (`/campaigns/<id>`); public listing is opt-in.
 - Optional 30-second delay before public visibility — buys a sanity-check window without committing to "instant whatever the agents emit."
 
 ## Open When We Build
@@ -40,6 +44,6 @@ Per the [backlog entry](../../docs/backlog.md#live-session-website):
 
 ## Why It's Out of Scope for v1
 
-The transcript is the product; the webui is a viewer for the product. We need transcripts before the viewer means anything. Once the agentic loop produces sessions worth watching, the viewer becomes the showcase — but premature webui work risks shaping the corpus around presentation instead of the other way around.
+The public turn corpus is the product; the webui is a viewer for that corpus. Once the agentic loop produces sessions worth watching, the viewer becomes the showcase — but premature webui work risks shaping the corpus around presentation instead of the other way around.
 
-When we do pick this up, the first iteration is: render the markdown transcript with header styling and inlined event lines. Everything else is enhancement.
+When we do pick this up, the first iteration is: render `glass turns feed` rows with header styling and event lines. The markdown transcript export is for debugging and git history, not the UI data source.

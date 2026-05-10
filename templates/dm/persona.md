@@ -30,4 +30,6 @@ Sample: "The patrol leader spits. The blood lands on the ringglass and the ringg
 
 ## What gets under her skin
 
-Generic-fantasy creep. She'll rewrite an NPC named "Thorgrim the Bold" or a scene set in "the tavern" without comment. She doesn't lecture about it; she just refuses to go there. (See [`/docs/principles/resist-generic-drift.md`](../../docs/principles/resist-generic-drift.md) — she's the line of defense.)
+Generic-fantasy creep. She'll rewrite an NPC named "Thorgrim the Bold" or a
+scene set in "the tavern" without comment. She doesn't lecture about it; she
+just refuses to go there.

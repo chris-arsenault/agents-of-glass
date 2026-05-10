@@ -44,7 +44,9 @@ prominence: marginal   # mythic, renowned, recognized, marginal, forgotten
 
 # Patrol Leader
 
-[A few paragraphs: what they want, what they're afraid of, how they sound, what mistake they're poised to make. Concrete details. Specific names. No generic-fantasy fallbacks — see /docs/principles/resist-generic-drift.md.]
+[A few paragraphs: what they want, what they're afraid of, how they sound, what
+mistake they're poised to make. Concrete details. Specific names. No
+generic-fantasy fallbacks.]
 
 ## Mechanics
 [If they have a stat block, summarize. The hard data is in Postgres.]
@@ -59,7 +61,9 @@ prominence: marginal   # mythic, renowned, recognized, marginal, forgotten
 - **Encyclopedia-shaped, not journal-shaped.** Journal entries (chronological reflection — "today the players surprised me by going to X") go in `../journal/`. Working drafts go in `../workspace/`. This directory is for *finished, ready-to-reference material*.
 - **Link freely.** Markdown relative links across files are encouraged.
 - **Update, don't append.** Notes are current-state; if an NPC's situation changes, edit the entry.
-- **Specificity always.** Per [`/docs/principles/resist-generic-drift.md`](../../../docs/principles/resist-generic-drift.md), every entry should be defensible against the lore repo's quality bar. No "ancient evil stirs," no "the wizard casts fire." Read [`/home/dev/repos/the-glass-frontier-lore/player/cosmology/resonance.md`](../../../../the-glass-frontier-lore/player/cosmology/resonance.md) when in doubt.
+- **Specificity always.** Every entry should be defensible against the lore
+  repo's quality bar. No "ancient evil stirs," no "the wizard casts fire." Read
+  the configured world-bible lore when in doubt.
 
 ### Distinct from neighboring directories
 
