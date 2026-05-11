@@ -47,6 +47,11 @@ from ..messages import (
     require_recipient,
     roster,
 )
+from ..outcomes import (
+    append_outcome_section,
+    normalize_outcomes,
+    outcome_section,
+)
 from ..paths_resolve import (
     clean_relative_path,
     display_path,
@@ -99,7 +104,7 @@ _campaign_workspace = resolve_active_campaign_workspace
 
 @click.group()
 def arc() -> None:
-    """Arc lifecycle (DM-only): create, list, current."""
+    """Arc lifecycle (DM-only): create, close, list, current."""
 
 
 @arc.command("create")
@@ -169,3 +174,95 @@ def arc_activate(ctx: click.Context, arc_id: str) -> None:
         "path": str(arc_dir),
     }
     commit(paths, state, ctx, "arc.activate", command_params(arc_id=arc_id), result)
+
+
+@arc.command("close")
+@click.argument("arc_id", required=False)
+@click.option("--summary", default=None,
+              help="Arc/act summary written to arcs/<arc>/summary.md.")
+@click.option("--outcome", "outcome_values", multiple=True, required=True,
+              help="Repeat 1-2 times. In-universe act outcome/consequence bullet.")
+@click.pass_context
+def arc_close(
+    ctx: click.Context,
+    arc_id: str | None,
+    summary: str | None,
+    outcome_values: tuple[str, ...],
+) -> None:
+    require_dm()
+    workspace = _campaign_workspace()
+    paths = get_paths()
+    state = load_state(paths, workspace.campaign_id)
+
+    current_scene = _workspace.current_scene(workspace)
+    if current_scene:
+        raise GlassError(
+            "cannot close an arc while a scene is active; end the scene first"
+        )
+
+    if arc_id is None:
+        current_arc = _workspace.current_arc(workspace)
+        if not current_arc:
+            raise GlassError("no active arc to close; pass an arc id")
+        normalized_arc_id = str(current_arc["arc_id"])
+    else:
+        normalized_arc_id = _workspace.slugify(arc_id)
+
+    arc_dir = workspace.arc_dir(normalized_arc_id)
+    if not arc_dir.exists():
+        raise GlassError(f"arc {normalized_arc_id!r} does not exist")
+
+    outcome_lines = normalize_outcomes(outcome_values)
+    summary_path = _write_arc_summary(
+        workspace,
+        normalized_arc_id,
+        summary.strip() if summary else None,
+        outcome_lines,
+    )
+
+    closed_arcs = state.setdefault("closed_arcs", [])
+    if normalized_arc_id not in closed_arcs:
+        closed_arcs.append(normalized_arc_id)
+    if state.get("active_arc") == normalized_arc_id:
+        state["active_arc"] = None
+
+    queue_event(state, "dm", f"arc close: {normalized_arc_id}")
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "closed_arc": normalized_arc_id,
+        "summary_path": summary_path,
+        "outcomes": outcome_lines,
+        "active_arc": state.get("active_arc"),
+    }
+    commit(
+        paths,
+        state,
+        ctx,
+        "arc.close",
+        command_params(
+            arc_id=arc_id,
+            summary=summary,
+            outcomes=outcome_lines,
+        ),
+        result,
+    )
+
+
+def _write_arc_summary(
+    workspace: _workspace.CampaignWorkspace,
+    arc_id: str,
+    summary: str | None,
+    outcomes: list[str],
+) -> str:
+    arc_dir = workspace.arc_dir(arc_id)
+    arc_dir.mkdir(parents=True, exist_ok=True)
+    path = arc_dir / "summary.md"
+    header = f"# {arc_id} - summary\n\n"
+    if summary:
+        body = header + append_outcome_section(summary, outcomes)
+    elif path.exists():
+        body = append_outcome_section(path.read_text(encoding="utf-8"), outcomes)
+    else:
+        body = header + outcome_section(outcomes)
+    path.write_text(body.rstrip() + "\n", encoding="utf-8")
+    return display_path(path)

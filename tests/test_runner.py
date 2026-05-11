@@ -9,6 +9,8 @@ from click.testing import CliRunner
 from orchestrator import permissions
 from orchestrator.config import AogConfig, CapsConfig, ClaudeConfig
 from orchestrator.main import main as aog_main
+from orchestrator.main import _consume_review_stop
+from orchestrator.main import _next_mode_after_no_active_mode
 from orchestrator.runner import (
     Orchestrator,
     TurnFailure,
@@ -95,13 +97,41 @@ class OrchestratorQueueTests(unittest.TestCase):
         self.assertNotIn("bootstrap", result.output)
         self.assertNotIn("resume", result.output)
 
+    def test_campaign_run_exposes_review_stop_controls(self) -> None:
+        result = CliRunner().invoke(aog_main, ["campaign", "run", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("--skip-stops", result.output)
+        self.assertIn("--no-review-stops", result.output)
+
     def test_prelude_coordinator_mode_is_dm_only(self) -> None:
         self.assertEqual(speaker_order_for("prelude"), ("dm",))
+
+    def test_scene_prep_coordinator_mode_is_dm_only(self) -> None:
+        self.assertEqual(speaker_order_for("scene-prep"), ("dm",))
+
+    def test_intermission_mode_starts_with_full_table_order(self) -> None:
+        self.assertEqual(
+            speaker_order_for("intermission"),
+            ("dm", "tev", "sumi", "renno", "kit"),
+        )
+
+    def test_no_mode_active_lifecycle_alternates_intermission_and_scene_prep(self) -> None:
+        self.assertEqual(_next_mode_after_no_active_mode(None), "intermission")
+        self.assertEqual(_next_mode_after_no_active_mode("scene-play"), "intermission")
+        self.assertEqual(_next_mode_after_no_active_mode("action"), "intermission")
+        self.assertEqual(_next_mode_after_no_active_mode("intermission"), "scene-prep")
+
+    def test_review_stop_budget_consumes_finite_or_unlimited_stops(self) -> None:
+        self.assertEqual(_consume_review_stop(0), (False, 0))
+        self.assertEqual(_consume_review_stop(2), (True, 1))
+        self.assertEqual(_consume_review_stop(None), (True, None))
 
     def test_scene_play_has_expanded_default_budget(self) -> None:
         config = make_config(Path("/tmp/aog-test"))
 
         self.assertEqual(config.caps.budget_for("scene-play"), 120)
+        self.assertEqual(config.caps.budget_for("intermission"), 15)
         self.assertEqual(config.caps.budget_for("character-creation"), 12)
 
     def test_prepare_turn_peeks_next_speaker_without_consuming(self) -> None:
@@ -270,6 +300,9 @@ class OrchestratorQueueTests(unittest.TestCase):
                     / "prep.md"
                 ).exists()
             )
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("carry-forward note", turn_start)
+            self.assertIn("methodologies/closeout.md", turn_start)
 
     def test_projection_refresh_preserves_unsynced_projected_edits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -610,6 +643,71 @@ class OrchestratorQueueTests(unittest.TestCase):
                 result,
                 state.active_mode,
             )
+
+    def test_scene_prep_dm_turn_without_play_mode_fails_fast(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-prep",
+                initial_scene="opening-setup",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator)
+            result = TurnResult(
+                turn_id="c1-t0001",
+                agent=AGENTS_BY_ID["dm"],
+                turn_dir=campaign_root / "dm" / "turns" / "0001",
+                spawn_cwd=campaign_root,
+                prose="Prep notes only.",
+                dry_run=False,
+            )
+
+            with self.assertRaises(TurnFailure) as caught:
+                orchestrator._validate_scene_prep_dm_handoff(
+                    state,
+                    result,
+                    state.active_mode,
+                )
+            self.assertEqual(caught.exception.failure["reason"], "scene_prep_no_handoff")
+
+    def test_scene_prep_dm_turn_with_play_mode_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-prep",
+                initial_scene="opening-setup",
+                initial_budget=None,
+            )
+            previous = state.active_mode
+            state.mode_stack.append(
+                state.mode_stack[0].__class__(
+                    mode="scene-play",
+                    scene_id="opening",
+                    started_at=state.mode_stack[0].started_at,
+                    turn_budget_remaining=None,
+                )
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator)
+            result = TurnResult(
+                turn_id="c1-t0001",
+                agent=AGENTS_BY_ID["dm"],
+                turn_dir=campaign_root / "dm" / "turns" / "0001",
+                spawn_cwd=campaign_root,
+                prose="Scene starts.",
+                dry_run=False,
+            )
+
+            orchestrator._validate_scene_prep_dm_handoff(state, result, previous)
 
     def test_advance_action_order_delegates_to_postgres(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

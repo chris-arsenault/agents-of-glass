@@ -164,7 +164,7 @@ campaigns/<id>/                     # per-campaign runtime root
     plan.md                         # DM-only arc plan
     scenes/<scene-slug>/            # created by `glass scene create`
       context.md                    # PLAYER-FACING scene-level context
-      summary.md                    # finalized via `glass scene end --summary`
+      summary.md                    # finalized via `glass scene end --summary --outcome`
       prep.md                       # DM-only scene prep
       transcript.md                 # scene-level transcript export; Postgres turns are canonical
       audit.jsonl                   # operational audit log

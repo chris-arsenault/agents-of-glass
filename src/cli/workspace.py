@@ -581,7 +581,7 @@ def _scene_summary_stub(scene_id: str, scene_type: str) -> str:
     return (
         f"---\nscene_id: {scene_id}\nscene_type: {scene_type}\nstatus: stub\n---\n\n"
         f"# {scene_id} - summary\n\n"
-        "_Scene summary is finalized by `glass scene end --summary`._\n"
+        "_Scene summary is finalized by `glass scene end --summary --outcome`._\n"
     )
 
 

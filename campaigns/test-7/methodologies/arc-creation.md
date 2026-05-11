@@ -167,6 +167,17 @@ When does the arc end? In one short paragraph: name the conditions under which y
 
 You may also note the conditions under which you'd **abandon** the arc — the players obviated it, ignored it long enough that it ran its course off-screen, or pivoted to something the table cared more about. An arc that should have ended but didn't is a closure failure.
 
+When the arc/act closes, follow [`closeout.md`](closeout.md) in order, then call:
+
+```bash
+glass arc close <arc-id> --summary "..." --outcome "..."
+```
+
+Use one or two `--outcome` bullets. Write them in universe: what became true,
+what changed hands, who paid, who gained leverage, what scar or obligation now
+exists. Hidden mysteries can remain hidden, but the arc's core tension cannot
+close as "unknown"; commit to the consequence and impact.
+
 ## What you do NOT prep
 
 - **A scripted progression.** The players move; the arc reacts. The reverse is railroading.

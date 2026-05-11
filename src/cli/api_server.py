@@ -236,6 +236,8 @@ def _read_api_payload(path: str, query: dict[str, list[str]]) -> dict[str, Any] 
         return _campaign_summary_payload(campaign_id)
     if route == "live":
         return _campaign_live_payload(campaign_id, query)
+    if route in {"current-turn-output", "turn-output"}:
+        return _campaign_current_turn_output_payload(campaign_id, query)
     if route == "table":
         return _campaign_table_resource_payload(campaign_id)
     if route == "turns":
@@ -508,6 +510,182 @@ def _campaign_files_payload(
         "root": campaign_root.name,
         "files": files[:limit],
     }
+
+
+def _campaign_current_turn_output_payload(
+    campaign_id: str,
+    query: dict[str, list[str]],
+) -> dict[str, Any]:
+    campaign_root = _campaign_root(campaign_id)
+    max_bytes = _query_int(
+        query,
+        "max_bytes",
+        default=128_000,
+        minimum=1_024,
+        maximum=_MAX_FILE_BYTES,
+    )
+    payload: dict[str, Any] = {
+        "campaign_id": campaign_id,
+        "generated_at": _now_iso(),
+    }
+    try:
+        with db.connect(db.load_pg_config(load_config())) as conn:
+            state = db.runtime_state_get(conn, campaign_id)
+    except Exception as exc:
+        payload.update(_empty_current_turn_output(campaign_id))
+        payload["database_error"] = str(exc)
+        return payload
+    payload.update(
+        _current_turn_output_payload(
+            campaign_root,
+            runtime_state=state,
+            max_bytes=max_bytes,
+        )
+    )
+    return payload
+
+
+def _current_turn_output_payload(
+    campaign_root: Path,
+    *,
+    runtime_state: dict[str, Any] | None,
+    max_bytes: int,
+) -> dict[str, Any]:
+    campaign_id = campaign_root.name
+    if not runtime_state:
+        return _empty_current_turn_output(campaign_id)
+    status = str(runtime_state.get("aog_status") or runtime_state.get("status") or "")
+    if status != "running":
+        payload = _empty_current_turn_output(campaign_id)
+        payload["status"] = status
+        return payload
+
+    committed_turn = int(
+        runtime_state.get("aog_turn_number")
+        or runtime_state.get("turn_counter")
+        or 0
+    )
+    turn_number = committed_turn + 1
+    candidate = _current_turn_artifact(campaign_root, turn_number)
+    payload: dict[str, Any] = {
+        "active": True,
+        "status": status,
+        "turn_id": f"{campaign_id}-t{turn_number:04d}",
+        "turn_number": turn_number,
+        "speaker": None,
+        "role": None,
+        "turn_dir": None,
+        "stdout": "",
+        "stderr": "",
+        "stdout_bytes": 0,
+        "stderr_bytes": 0,
+        "stdout_truncated": False,
+        "stderr_truncated": False,
+        "updated_at": None,
+        "files": {
+            "stdout": None,
+            "stderr": None,
+        },
+    }
+    if candidate is None:
+        return payload
+
+    turn_dir, speaker, role = candidate
+    stdout_path = turn_dir / "agent-stdout.txt"
+    stderr_path = turn_dir / "agent-stderr.txt"
+    stdout_text, stdout_bytes, stdout_truncated, stdout_mtime = _read_tail_text(
+        stdout_path,
+        max_bytes=max_bytes,
+    )
+    stderr_text, stderr_bytes, stderr_truncated, stderr_mtime = _read_tail_text(
+        stderr_path,
+        max_bytes=max_bytes,
+    )
+    mtimes = [value for value in (stdout_mtime, stderr_mtime) if value is not None]
+    payload.update(
+        {
+            "speaker": speaker,
+            "role": role,
+            "turn_dir": turn_dir.relative_to(campaign_root).as_posix(),
+            "stdout": stdout_text,
+            "stderr": stderr_text,
+            "stdout_bytes": stdout_bytes,
+            "stderr_bytes": stderr_bytes,
+            "stdout_truncated": stdout_truncated,
+            "stderr_truncated": stderr_truncated,
+            "updated_at": _iso_from_timestamp(max(mtimes)) if mtimes else None,
+            "files": {
+                "stdout": stdout_path.relative_to(campaign_root).as_posix(),
+                "stderr": stderr_path.relative_to(campaign_root).as_posix(),
+            },
+        }
+    )
+    return payload
+
+
+def _empty_current_turn_output(campaign_id: str) -> dict[str, Any]:
+    return {
+        "active": False,
+        "status": None,
+        "turn_id": None,
+        "turn_number": None,
+        "speaker": None,
+        "role": None,
+        "turn_dir": None,
+        "stdout": "",
+        "stderr": "",
+        "stdout_bytes": 0,
+        "stderr_bytes": 0,
+        "stdout_truncated": False,
+        "stderr_truncated": False,
+        "updated_at": None,
+        "files": {
+            "stdout": None,
+            "stderr": None,
+        },
+    }
+
+
+def _current_turn_artifact(
+    campaign_root: Path,
+    turn_number: int,
+) -> tuple[Path, str, str] | None:
+    turn_name = f"{turn_number:04d}"
+    candidates: list[tuple[Path, str, str]] = []
+    dm_dir = campaign_root / "dm" / "turns" / turn_name
+    if dm_dir.is_dir():
+        candidates.append((dm_dir, "dm", "dm"))
+    players_dir = campaign_root / "players"
+    if players_dir.is_dir():
+        for player_dir in sorted(players_dir.iterdir(), key=lambda path: path.name):
+            turn_dir = player_dir / "turns" / turn_name
+            if turn_dir.is_dir():
+                candidates.append((turn_dir, player_dir.name, "player"))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: _path_latest_mtime(item[0]))
+
+
+def _path_latest_mtime(path: Path) -> float:
+    latest = path.stat().st_mtime
+    for child in path.iterdir():
+        try:
+            latest = max(latest, child.stat().st_mtime)
+        except OSError:
+            continue
+    return latest
+
+
+def _read_tail_text(path: Path, *, max_bytes: int) -> tuple[str, int, bool, float | None]:
+    if not path.exists() or not path.is_file() or path.is_symlink():
+        return "", 0, False, None
+    stat = path.stat()
+    size = stat.st_size
+    with path.open("rb") as handle:
+        if size > max_bytes:
+            handle.seek(size - max_bytes)
+        raw = handle.read(max_bytes)
+    return raw.decode("utf-8", errors="replace"), size, size > max_bytes, stat.st_mtime
 
 
 def _runtime_payload(conn: Any, campaign_id: str) -> dict[str, Any] | None:

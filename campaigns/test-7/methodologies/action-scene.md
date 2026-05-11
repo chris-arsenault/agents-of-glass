@@ -231,7 +231,8 @@ On an initiative DM turn, do one of these:
 
 DM turns are also quickfire. Do not reframe the whole scene every time. State
 what changed, make any NPC/hazard rolls you control, mutate hard state, and get
-out.
+out. Even here, bank one short carry-forward note in `dm/scratchpad.md`
+or write "no carry-forward change"; action pressure is not an exemption.
 
 ## Ending
 
@@ -239,6 +240,10 @@ End an action scene when its declared endpoint resolves: the enemy is defeated
 or flees, the duke grants entry, the escape clock fills, the hazard clock lands,
 or the tracker makes clear that the party cannot get what they wanted. Do not
 add one more twist after the tracker says the scene is over.
+
+Hard invariant: partial success is fine; an unresolved core endpoint is not.
+When the endpoint lands badly or only halfway, close on the consequence and
+impact instead of leaving the result open to interpretation.
 
 If a PC is reduced to 0 HP, they are out of the action, not automatically dead.
 The DM chooses the fictional consequence and records it if it should persist:
@@ -250,4 +255,6 @@ glass character consequence-add tev-pc-1 "Captured by the patrol" \
 
 If the scene pauses but the parent scene should continue, `glass mode end`
 returns to the parent mode. If the whole scene is over, use `glass scene end`
-with summary, beats, and XP as usual.
+with summary, 1-2 in-universe outcome bullets, beats, and XP as usual. Before
+that command, follow [`closeout.md`](closeout.md) and record each step in
+`dm/scratchpad.md`, even when the answer is "no change."

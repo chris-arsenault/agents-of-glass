@@ -12,9 +12,11 @@ Three nested levels of DM prep, plus bootstrap play:
 - **[`campaign-planning.md`](campaign-planning.md)** — the **world** level. Solo DM authoring during the `campaign_planning` phase. Outputs: the Question, the Scarcity, factions, NPCs (with antagonist flags), recurring creatures, named things (artifacts/ships/relics), locations, secrets, hooks, philosophy, the opening arc(s). The principle: **prep situations, not plots**. Authored.
 - **[`arc-creation.md`](arc-creation.md)** — the **multi-scene-pressure** level. Called from campaign-planning to author the opening arc(s), and re-invoked during active play whenever the DM formalizes a new arc. Outputs: stakes question, threats, clocks, possible end-states, nodes, what from the curated lists is in play, arc-specific secrets. **Shape, not script.** Authored.
 - **[`scene-prep.md`](scene-prep.md)** — the **single-scene** level. Run before each new scene in active play. Outputs: recap, strong start, 3-5 possible directions, NPCs/antagonists/creatures/named-things in play, secrets that might surface, open questions to be answered through play, and the opening player-agent-visible table state. Closely follows Sly Flourish's *Lazy Dungeon Master*. Authored.
+- **[`closeout.md`](closeout.md)** — the mandatory ordered workflow before `glass scene end` or `glass arc close`. Outputs: scratchpad closeout checklist, outcomes, consequence/state updates, NPC carry-forward, summaries, lore/journal decisions, quest beats, rewards. Authored.
 - **[`action-scene.md`](action-scene.md)** — quickfire contested scenes using action order and short in-world time. Combat, chase, and social pressure are toolkit examples, not an exhaustive mode list. Outputs: tight move/action/housekeeping turns, frequent checks without extra handoffs, public trackers/clocks, HP/effect consequences. Drafted.
 - **[`character-creation.md`](character-creation.md)** — the `character_creation` phase. DM writes a public campaign-intro; each player authors their character and a public intro entry; DM ratifies. Multi-agent.
 - **[`prelude-arc.md`](prelude-arc.md)** — the `prelude` bootstrap phase. DM runs a short two-scene first incident after character creation: one normal scene and one action scene, then a time jump into the main campaign.
+- **[`intermission.md`](intermission.md)** — the player-facing planning room between major sections. Mara sets broad tone, players name wants and requests, and the table captures collaborative mid- to long-term priorities before the next act.
 
 After the prelude, the campaign is `active` and the main opening arc begins.
 The prelude gives the party a first shared consequence before the campaign opens
@@ -51,7 +53,8 @@ Working shape (the actual content lands when we co-author):
 
 ## Status
 
-Campaign planning, arc creation, scene prep, scene play, action scenes,
-character creation, and the prelude arc are authored enough for first-play
-iteration. Arc creation and scene prep are intentionally separate from campaign
-planning so each can be re-invoked during active play when needed.
+Campaign planning, arc creation, scene prep, scene closeout, scene play, action
+scenes, character creation, the prelude arc, and intermission are authored
+enough for first-play iteration. Arc creation and scene prep are intentionally
+separate from campaign planning so each can be re-invoked during active play
+when needed.

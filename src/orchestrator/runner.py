@@ -698,6 +698,8 @@ class Orchestrator:
                 timeout=self.config.claude.turn_timeout_seconds,
                 stdout_prefix=prefix,
                 stderr_prefix=prefix + "(err) ",
+                stdout_capture_path=package.turn_dir / "agent-stdout.txt",
+                stderr_capture_path=package.turn_dir / "agent-stderr.txt",
             )
         except FileNotFoundError as exc:
             duration_seconds = time.monotonic() - turn_started
@@ -857,13 +859,22 @@ def _stream_subprocess(
     timeout: int,
     stdout_prefix: str,
     stderr_prefix: str,
+    stdout_capture_path: Path | None = None,
+    stderr_capture_path: Path | None = None,
 ) -> tuple[str, str, int, bool]:
     """Run a subprocess, streaming stdout/stderr to the operator's terminal
     line-by-line (with a prefix per agent), while also capturing the full
-    text for audit. Enforces a wall-clock timeout.
+    text for audit. If capture paths are provided, tee output to those files
+    as lines arrive so the local API can expose in-progress turn output.
+    Enforces a wall-clock timeout.
 
     Returns (stdout_text, stderr_text, returncode, timed_out).
     """
+    for capture_path in (stdout_capture_path, stderr_capture_path):
+        if capture_path is not None:
+            capture_path.parent.mkdir(parents=True, exist_ok=True)
+            capture_path.write_text("", encoding="utf-8")
+
     proc = subprocess.Popen(  # noqa: S603 — command is built deliberately above
         command,
         cwd=cwd,
@@ -877,23 +888,43 @@ def _stream_subprocess(
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
 
-    def pump(stream, sink, prefix, target_io):
+    def pump(stream, sink, prefix, target_io, capture_path):
+        capture_handle = None
         try:
+            if capture_path is not None:
+                capture_handle = capture_path.open("a", encoding="utf-8")
             for line in iter(stream.readline, ""):
                 sink.append(line)
+                if capture_handle is not None:
+                    capture_handle.write(line)
+                    capture_handle.flush()
                 target_io.write(prefix + line)
                 target_io.flush()
         finally:
+            if capture_handle is not None:
+                capture_handle.close()
             stream.close()
 
     out_thread = threading.Thread(
         target=pump,
-        args=(proc.stdout, stdout_chunks, stdout_prefix, sys.stdout),
+        args=(
+            proc.stdout,
+            stdout_chunks,
+            stdout_prefix,
+            sys.stdout,
+            stdout_capture_path,
+        ),
         daemon=True,
     )
     err_thread = threading.Thread(
         target=pump,
-        args=(proc.stderr, stderr_chunks, stderr_prefix, sys.stderr),
+        args=(
+            proc.stderr,
+            stderr_chunks,
+            stderr_prefix,
+            sys.stderr,
+            stderr_capture_path,
+        ),
         daemon=True,
     )
     out_thread.start()

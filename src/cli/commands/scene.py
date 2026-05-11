@@ -48,6 +48,11 @@ from ..messages import (
     require_recipient,
     roster,
 )
+from ..outcomes import (
+    append_outcome_section,
+    normalize_outcomes,
+    outcome_section,
+)
 from ..paths_resolve import (
     clean_relative_path,
     display_path,
@@ -158,6 +163,8 @@ def scene_create(
 @click.option("--beats", default=None,
               help="Newline-separated bullets appended to shared/quest-log.md, "
                    "tagged with the scene + arc.")
+@click.option("--outcome", "outcome_values", multiple=True, required=True,
+              help="Repeat 1-2 times. In-universe scene outcome/consequence bullet.")
 @click.option("--xp", "xp_spec", default=None,
               help="XP awards: 'tev=2,sumi=1,renno=3'. Calls character "
                    "award-xp per entry with reason=\"scene end: <scene_id>\".")
@@ -166,6 +173,7 @@ def scene_end_cmd(
     ctx: click.Context,
     summary: str | None,
     beats: str | None,
+    outcome_values: tuple[str, ...],
     xp_spec: str | None,
 ) -> None:
     """End the active scene + bundle wrap-up writes.
@@ -186,10 +194,23 @@ def scene_end_cmd(
         raise GlassError("no active scene to end")
     scene_id = current["scene_id"]
     arc_id = current["arc_id"]
+    outcome_lines = normalize_outcomes(outcome_values)
 
     summary_path: str | None = None
     if summary and summary.strip():
-        summary_path = _write_scene_summary(workspace, arc_id, scene_id, summary.strip())
+        summary_path = _write_scene_summary(
+            workspace,
+            arc_id,
+            scene_id,
+            append_outcome_section(summary.strip(), outcome_lines),
+        )
+    else:
+        summary_path = _append_scene_outcomes(
+            workspace,
+            arc_id,
+            scene_id,
+            outcome_lines,
+        )
 
     beat_lines: list[str] = []
     if beats:
@@ -254,6 +275,9 @@ def scene_end_cmd(
     except ValueError as exc:
         raise GlassError(str(exc)) from exc
 
+    state["active_scene"] = None
+    state["active_scene_arc"] = None
+    state["active_scene_type"] = None
     state["scene_closing_turns"] = None
     state["action_order"] = None
     trackers = state.get("scene_trackers")
@@ -283,13 +307,19 @@ def scene_end_cmd(
         "campaign_id": workspace.campaign_id,
         "ended_scene": ended,
         "summary_path": summary_path,
+        "outcomes": outcome_lines,
         "table_archive_path": table_archive_path,
         "beats_logged": beat_lines,
         "xp_awards": xp_awards,
     }
     commit(
         paths, state, ctx, "scene.end",
-        command_params(summary=summary, beats=beats, xp=xp_spec),
+        command_params(
+            summary=summary,
+            beats=beats,
+            outcomes=outcome_lines,
+            xp=xp_spec,
+        ),
         result,
     )
 
@@ -315,10 +345,10 @@ def scene_closing_down(
     Sets a countdown that surfaces in every subsequent TURN_START.md as
     "Scene closing — N rounds left" so players know to converge their
     threads. When the counter hits 0, agents see a "Final round" section
-    instead. The DM closes with `glass scene end`.
+    instead. The DM closes with `glass scene end --outcome`.
 
     The countdown is informational pressure, not a hard cap — the DM is
-    expected to actually call `glass scene end` when ready. The
+    expected to actually call `glass scene end --outcome` when ready. The
     methodology says imperfect closure beats a forever-running scene.
 
     Use `--rounds N` for the typical case (1 round = ~5 agent turns).
@@ -847,6 +877,26 @@ def _write_scene_summary(
     path = scene_dir / "summary.md"
     header = f"# {scene_id} - summary\n\n"
     path.write_text(header + body.rstrip() + "\n", encoding="utf-8")
+    return display_path(path)
+
+
+def _append_scene_outcomes(
+    workspace: _workspace.CampaignWorkspace,
+    arc_id: str | None,
+    scene_id: str,
+    outcomes: list[str],
+) -> str | None:
+    if not arc_id:
+        return None
+    scene_dir = workspace.scene_dir(arc_id, scene_id)
+    scene_dir.mkdir(parents=True, exist_ok=True)
+    path = scene_dir / "summary.md"
+    if path.exists():
+        existing = path.read_text(encoding="utf-8").rstrip()
+        body = append_outcome_section(existing, outcomes)
+    else:
+        body = f"# {scene_id} - summary\n\n{outcome_section(outcomes)}"
+    path.write_text(body.rstrip() + "\n", encoding="utf-8")
     return display_path(path)
 
 

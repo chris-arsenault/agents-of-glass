@@ -139,6 +139,9 @@ short-term state before ending your turn.
 
 Every DM turn should also include planning work. The agents only get one turn at a time, so use yours productively:
 
+- Bank at least one short carry-forward note in `dm/scratchpad.md`:
+  callback, NPC reaction, future pressure, next-scene thought, or explicit
+  "no carry-forward change."
 - Update `dm/scratchpad.md` with where the scene is heading, what the next beat is, what NPC reactions you're tracking.
 - Add or refine entries in `dm/notes/` (NPCs, threads, hooks) as the scene reveals new specificity.
 - Tick clocks in your tracking files if appropriate.
@@ -225,13 +228,24 @@ This gives every PC a single-shot closing turn. After the four rapid-response tu
 
 If the countdown goes past 0 and you still haven't ended, every TURN_START shows a "SCENE OVERRUN" warning. **Call `glass scene end` now even if it feels unfinished.** Imperfect closure beats a scene that runs forever. Whatever wasn't said can carry into the next scene as a hook.
 
+Hard invariant: partial outcomes are allowed; unresolved long-running mysteries
+are allowed. The core tension of the scene is not allowed to end as "unknown"
+or "intentionally unresolved." Assign consequence and impact in-world, even if
+the consequence is failure, cost, delay, debt, exposure, or a narrowed option.
+
 ### Bundling wrap-up into `glass scene end`
+
+Before calling `glass scene end`, follow
+[`closeout.md`](closeout.md). The closeout checklist is non-negotiable:
+record each step in `dm/scratchpad.md`, even when the answer is "no change."
 
 `glass scene end` takes flags so wrap-up is a single atomic call:
 
 ```bash
 glass scene end \
     --summary "Tev got the schematic. Senna is dead. The Council knows the party was at the substation." \
+    --outcome "The Reconnection schematic is now in Tev's hands." \
+    --outcome "The Council has enough witness evidence to move openly against Karet's Echo." \
     --beats "Senna died protecting the cache.
 Tev now carries the Reconnection schematic.
 The Displacement Council issued an arrest order for Karet's Echo." \
@@ -239,10 +253,11 @@ The Displacement Council issued an arrest order for Karet's Echo." \
 ```
 
 - `--summary` writes `arcs/<arc>/scenes/<scene>/summary.md` (corpus material; one or two paragraphs).
+- `--outcome` is required, repeatable 1-2 times, and records the scene's in-universe outcome/consequence for later reference.
 - `--beats` appends each line to `shared/quest-log.md` tagged with the scene + arc (party-visible canon).
 - `--xp` calls `glass character award-xp` for each entry (logged to xp_awards with reason="scene end: <scene_id>").
 
-You can also write any of those manually before ending — `glass quest beat <text>` for ad-hoc beats during the scene, `glass character award-xp` for spot awards mid-scene. Bundling at scene end is the convention; the manual paths are escape hatches.
+You can also write any of those manually before ending — `glass quest beat <text>` for ad-hoc beats during the scene, `glass character award-xp` for spot awards mid-scene. Bundling at scene end is the convention; the manual paths are escape hatches. The closeout workflow still runs either way.
 
 After ending, update the relevant arc/act and campaign summaries if the scene
 changed durable continuity:
@@ -296,7 +311,7 @@ The DM is the writer; players don't fire beats directly (use `glass msg instruct
 
 ## Awarding XP
 
-XP is the level-up currency: 10 XP per level, no max. The DM awards via `glass character award-xp` (with `--reason`) or, more commonly, bundled into `glass scene end --xp`.
+XP is the level-up currency: 10 XP per level, no max. The DM awards via `glass character award-xp` (with `--reason`) or, more commonly, bundled into `glass scene end` with `--xp`.
 
 ### Per-scene baseline
 

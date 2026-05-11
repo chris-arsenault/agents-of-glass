@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { create } from "zustand";
 
 import {
@@ -262,6 +263,18 @@ export function selectPlayerIds(state: SessionStore): string[] {
     .map((character) => character.player_id)
     .filter((id) => !state.playerOrder.includes(id));
   return [...state.playerOrder, ...extras].slice(0, 4);
+}
+
+/** Stable-reference hook for the resolved player id list. */
+export function usePlayerIds(): string[] {
+  const playerOrder = useSessionStore((state) => state.playerOrder);
+  const characters = useSessionStore((state) => state.characters);
+  return useMemo(() => {
+    const extras = characters
+      .map((character) => character.player_id)
+      .filter((id) => !playerOrder.includes(id));
+    return [...playerOrder, ...extras].slice(0, 4);
+  }, [characters, playerOrder]);
 }
 
 export function selectCharacterForPlayer(

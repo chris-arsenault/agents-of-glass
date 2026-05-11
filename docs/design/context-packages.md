@@ -143,7 +143,7 @@ generated into TURN_START.
 
 - `campaigns/<id>/context.md` / `summary.md` — campaign-level. Updates rarely.
 - `arcs/<arc>/context.md` / `summary.md` — arc/act-level. Updates per scene or two as the arc evolves.
-- `arcs/<arc>/scenes/<scene>/context.md` / `summary.md` — scene-level. The scene summary is finalized by `glass scene end --summary`.
+- `arcs/<arc>/scenes/<scene>/context.md` / `summary.md` — scene-level. The scene summary is finalized by `glass scene end --summary --outcome`.
 
 The DM authors each level using the relevant methodology — campaign-level during planning, arc-level during arc creation, scene-level during scene prep. Each has a corresponding DM-only working document (`dm/foundation.md`, `arcs/<arc>/plan.md`, `arcs/<arc>/scenes/<scene>/prep.md`) that holds the full picture; the player-facing `context.md` holds only what's been shown.
 

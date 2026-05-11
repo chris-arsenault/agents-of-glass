@@ -6,6 +6,7 @@ import type {
   LivePayload,
   SummaryPayload,
   TableResourcePayload,
+  TurnOutputPayload,
 } from "./types";
 
 async function getJson<T>(path: string): Promise<T> {
@@ -90,5 +91,11 @@ export function fetchCampaignFile(
   const params = new URLSearchParams({ path });
   return getJson<FileContent>(
     `/v1/campaigns/${encodedCampaign}/files?${params.toString()}`,
+  );
+}
+
+export function fetchTurnOutput(campaignId: string): Promise<TurnOutputPayload> {
+  return getJson<TurnOutputPayload>(
+    `/v1/campaigns/${encodeURIComponent(campaignId)}/turn-output`,
   );
 }

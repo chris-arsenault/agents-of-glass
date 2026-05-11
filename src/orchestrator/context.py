@@ -424,9 +424,10 @@ class ContextBuilder:
                 f"## SCENE OVERRUN ({overrun_turns} turn(s) past Final round)\n\n"
                 "**The closing countdown has expired.** The scene should "
                 "have ended already. **Call `glass scene end --summary "
-                "<text> --beats <bullets> --xp <awards>` now even if it "
-                "feels unfinished.** Imperfect closure beats a scene that "
-                "runs forever.\n\n"
+                "<text> --outcome <1-2 in-world outcomes> --beats <bullets> "
+                "--xp <awards>` now even if it feels unfinished.** Assign "
+                "consequence and impact for the scene's core tension; do not "
+                "close on an unknown.\n\n"
             )
         return (
             f"## SCENE OVERRUN ({overrun_turns} turn(s) past Final round)\n\n"
@@ -640,6 +641,10 @@ class ContextBuilder:
             "- `dm/foundation.md` is your working campaign-level framing.\n"
             "- `dm/scratchpad.md` is your current working notes. Edit it in place "
             "and commit it with `glass sync apply dm/scratchpad.md`.\n"
+            "- Every non-rapid DM turn must bank at least one private "
+            "carry-forward note in `dm/scratchpad.md`: a callback, NPC reaction, "
+            "future pressure, next-scene thought, or `no carry-forward change`. "
+            "Keep it short, but do it even during action scenes.\n"
             "- `dm/notes/` is your encyclopedia (NPCs, factions, monsters, "
             "locales, hooks, philosophy). Start at `dm/notes/index.md`.\n"
             "- `dm/journal/` is dated reflection. `dm/workspace/` is in-progress drafts.\n"
@@ -656,6 +661,8 @@ class ContextBuilder:
             "- `instructions/` holds binding tool/file behavior. Start at "
             "`instructions/index.md`.\n"
             "- `methodologies/` holds required ordered workflows by phase or mode.\n"
+            "- Before closing a scene or act, follow "
+            "[`methodologies/closeout.md`](methodologies/closeout.md) in order.\n"
             "- `srd/` holds public game rules. Start at `srd/index.md`.\n"
             "- `how-to/` holds optional player/DM craft examples.\n"
             "- `players/` shows you each player's authored content "
@@ -799,8 +806,8 @@ def _dm_tools() -> list[str]:
         "into shared/lore/ AND graph-upserts it (curate, don't bulk-copy)",
         "glass lore list / search",
         "glass note ratify / reject",
-        "glass arc create / activate / current / list",
-        "glass scene create / end",
+        "glass arc create / activate / current / list / close",
+        "glass scene create / end --outcome",
         "glass scene tracker set / tick / list",
         "glass scene pressure",
         "glass table current / show / write / append / snapshot",

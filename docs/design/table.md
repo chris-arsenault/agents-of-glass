@@ -77,8 +77,8 @@ Nested modes and subscene protocols keep the existing table. A combat, chase,
 or social-pressure exchange that erupts inside a scene should update the table,
 not replace it.
 
-`glass scene end` archives the final live table into the scene directory and
-replaces the live table with an inactive pointer.
+`glass scene end --outcome` archives the final live table into the scene
+directory and replaces the live table with an inactive pointer.
 
 Snapshots live under:
 

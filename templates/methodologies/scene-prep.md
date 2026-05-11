@@ -15,6 +15,23 @@ This methodology is invoked **before each new scene** in active play. The orches
 
 The principle remains the same: **prep situations, not plots**. At the campaign and arc level the unit is "the world is set up to react"; at the scene level the unit is "I have a strong start and a handful of things in play." Sly Flourish's *Lazy Dungeon Master* is the direct ancestor of this layer.
 
+## Command discipline
+
+When `scene-prep` is the active mode, use it as a DM-only handoff into actual
+table play. Before ending the turn, create the scene, commit the scene/table
+files, end `scene-prep`, and start the scene's actual play mode:
+
+```
+glass scene create <slug> --type <protocol-or-toolkit-label> --arc <arc-if-needed>
+glass sync apply arcs/<arc>/scenes/<slug> table
+glass mode end
+glass mode start <protocol-or-toolkit-label> <slug>
+```
+
+If the next act follows an intermission, read the intermission turns first and
+let player requests affect emphasis, rewards, unresolved threads, and what gets
+summarized rather than played. Do not treat requests as binding outcomes.
+
 ## Scaffolding the scene directory
 
 Before you write anything, scaffold the scene with:
@@ -81,8 +98,8 @@ You produce **two documents** in `arcs/<arc>/scenes/<slug>/`:
 
 The prep has the full picture. The context has only what's framed for the table.
 The scene `summary.md` starts as a stub and is finalized by
-`glass scene end --summary`; do not use it as scene framing while play is still
-moving.
+`glass scene end --summary --outcome`; do not use it as scene framing while
+play is still moving.
 
 You also update the live table when the scene begins:
 

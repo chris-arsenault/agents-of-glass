@@ -929,12 +929,15 @@ Recipients are `dm`, `party`, or a player id.
                     "end",
                     "--summary",
                     "The scene closes.",
+                    "--outcome",
+                    "The warrant is now the party's chosen burden.",
                     "--beats",
                     "The party commits to the warrant.",
                 ],
                 dm_env,
             )
             self.assertIn("ended_scene: opening", ended.output)
+            self.assertIn("The warrant is now the party's chosen burden.", ended.output)
 
             root = tmp_path / "campaigns" / "c1"
             quest_log = (root / "shared" / "quest-log.md").read_text(encoding="utf-8")
@@ -944,6 +947,8 @@ Recipients are `dm`, `party`, or a player id.
                 root / "arcs" / "first-arc" / "scenes" / "opening" / "summary.md"
             ).read_text(encoding="utf-8")
             self.assertIn("The scene closes.", summary)
+            self.assertIn("## Outcomes", summary)
+            self.assertIn("The warrant is now the party's chosen burden.", summary)
             shown_summary = invoke_ok(
                 runner,
                 ["summary", "show", "scene", "opening", "--arc", "first-arc"],
@@ -970,6 +975,32 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn(
                 "No scene is currently active",
                 (root / "table" / "index.md").read_text(encoding="utf-8"),
+            )
+
+            closed = invoke_ok(
+                runner,
+                [
+                    "arc",
+                    "close",
+                    "first-arc",
+                    "--summary",
+                    "The opening act closes around the warrant.",
+                    "--outcome",
+                    "The warrant enters party history as a public commitment.",
+                    "--outcome",
+                    "The Council has a reason to answer them.",
+                ],
+                dm_env,
+            )
+            self.assertIn("closed_arc: first-arc", closed.output)
+            arc_summary = (
+                root / "arcs" / "first-arc" / "summary.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("The opening act closes around the warrant.", arc_summary)
+            self.assertIn("## Outcomes", arc_summary)
+            self.assertIn(
+                "The warrant enters party history as a public commitment.",
+                arc_summary,
             )
 
 

@@ -299,3 +299,23 @@ export interface FileListPayload {
   files: FileEntry[];
   sections?: FileSectionCount[];
 }
+
+export interface TurnOutputPayload {
+  active: boolean;
+  campaign_id: string;
+  files: { stderr: string | null; stdout: string | null };
+  generated_at: string;
+  role: string | null;
+  speaker: string | null;
+  status: string;
+  stderr: string;
+  stderr_bytes: number;
+  stderr_truncated: boolean;
+  stdout: string;
+  stdout_bytes: number;
+  stdout_truncated: boolean;
+  turn_dir: string | null;
+  turn_id: number | null;
+  turn_number: number | null;
+  updated_at: string | null;
+}

@@ -57,7 +57,7 @@ The DM's framing prose lands in the scene's `context.md` (player-facing) and is 
 
 Three categories:
 
-- **Resolution** — the DM judges the scene's natural endpoint has come, calls `glass scene end`.
+- **Resolution** — the DM judges the scene's natural endpoint has come, calls `glass scene end` with concrete outcome bullets.
 - **Budget exhaustion** — hard turn cap hit; orchestrator forces an end. (Closure design deferred — see [`scene-ending.md`](scene-ending.md).)
 - **Mode shift** — the situation has changed enough that a different mode applies. DM may push a nested mode (combat erupting inside a town scene) or end the scene and start a new one with `glass scene create`.
 

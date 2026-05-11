@@ -11,6 +11,7 @@ from unittest.mock import patch
 from cli import db as _db
 from cli.api_grants import mint_grant, validate_grant
 from cli.api_server import (
+    _current_turn_output_payload,
     _file_content_payload,
     _file_entry_matches_section,
     _file_section_counts,
@@ -112,6 +113,52 @@ class GlassApiProxyTests(unittest.TestCase):
         )
         with self.assertRaises(GlassError):
             _parse_created_id_cursor("not-a-cursor")
+
+    def test_current_turn_output_returns_only_running_turn_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            campaign_root = Path(tmp) / "campaigns" / "c1"
+            turn_dir = campaign_root / "players" / "tev" / "turns" / "0005"
+            turn_dir.mkdir(parents=True)
+            (turn_dir / "agent-stdout.txt").write_text(
+                "thinking line one\nthinking line two\n",
+                encoding="utf-8",
+            )
+            (turn_dir / "agent-stderr.txt").write_text("warning line\n", encoding="utf-8")
+
+            running = _current_turn_output_payload(
+                campaign_root,
+                runtime_state={
+                    "aog_status": "running",
+                    "turn_counter": 4,
+                },
+                max_bytes=512,
+            )
+
+            self.assertTrue(running["active"])
+            self.assertEqual(running["turn_id"], "c1-t0005")
+            self.assertEqual(running["turn_number"], 5)
+            self.assertEqual(running["speaker"], "tev")
+            self.assertEqual(running["role"], "player")
+            self.assertEqual(running["turn_dir"], "players/tev/turns/0005")
+            self.assertEqual(
+                running["stdout"],
+                "thinking line one\nthinking line two\n",
+            )
+            self.assertEqual(running["stderr"], "warning line\n")
+
+            ready = _current_turn_output_payload(
+                campaign_root,
+                runtime_state={
+                    "aog_status": "ready",
+                    "turn_counter": 5,
+                },
+                max_bytes=512,
+            )
+
+            self.assertFalse(ready["active"])
+            self.assertIsNone(ready["turn_id"])
+            self.assertEqual(ready["stdout"], "")
+            self.assertEqual(ready["stderr"], "")
 
     def test_player_grant_allows_player_surface_and_rejects_db(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

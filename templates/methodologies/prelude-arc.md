@@ -78,6 +78,10 @@ must have a player-visible endpoint and at least one honest tracker. Two or
 three action rounds is the target. Use a small tracker: usually 3-6 segments or
 an HP/resistance value that can resolve fast.
 
+Hard invariant: the prelude can leave hooks and hidden mysteries, but the
+visible crisis must not close on an unknown. If the party partially succeeds or
+fails, assign the consequence and impact before ending the scene or arc.
+
 ## Build the Arc
 
 Before creating the prelude, check and remember the current main opening arc:
@@ -130,10 +134,10 @@ glass mode start scene-play prelude-opening
 
 Run the scene tightly. Use the table to prevent repeat clarification. When the
 scene has produced a shared decision, a conflict, or a clear next pressure,
-close it:
+follow [`closeout.md`](closeout.md), then close it:
 
 ```bash
-glass scene end --summary "..." --beats "..."
+glass scene end --summary "..." --outcome "..." --beats "..."
 glass mode end
 ```
 
@@ -162,10 +166,11 @@ glass turn initiative
 ```
 
 Use [`action-scene.md`](action-scene.md). Keep turns short. Do not add a twist
-after the tracker resolves. Close the scene when the endpoint resolves:
+after the tracker resolves. Follow [`closeout.md`](closeout.md), then close the
+scene when the endpoint resolves:
 
 ```bash
-glass scene end --summary "..." --beats "..."
+glass scene end --summary "..." --outcome "..." --beats "..."
 glass mode end
 ```
 
@@ -201,6 +206,8 @@ should not require a third prelude scene.
 - No new long arc spawned inside the prelude.
 - No hidden "real plot" that invalidates the players' prelude choices.
 - No third scene. Summarize and jump.
+- No unresolved close on the prelude's core tension. Hidden mysteries can
+  survive; the visible crisis must receive consequence and impact.
 
 ## Done Criteria
 
@@ -209,14 +216,16 @@ End the `prelude` mode only when:
 - both scenes have ended with `glass scene end`
 - both scene modes have ended with `glass mode end`
 - the prelude arc summary says what happened and what remains true
+- the prelude arc has 1-2 in-universe outcome bullets via `glass arc close`
 - `summary.md` or `shared/quest-log.md` carries any campaign-visible fallout
 - `dm/scratchpad.md` records party chemistry, friction, standout hooks, and
   carry-forward concerns
 - the final turn names the time jump into the main campaign
 
-Then call:
+Follow [`closeout.md`](closeout.md) for the act closeout first. Then call:
 
 ```bash
+glass arc close prelude --summary "..." --outcome "..."
 glass mode end
 ```
 

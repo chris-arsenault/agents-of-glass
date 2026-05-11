@@ -24,6 +24,7 @@ glass arc create <slug>                        # creates arcs/<slug>/ with plan.
 glass arc activate <slug>                      # set active_arc for future scene creation
 glass arc current                              # which arc is active
 glass arc list
+glass arc close [<slug>] --outcome <text>      # closes arc/act with 1-2 outcome bullets
 
 glass scene create <slug> --type <label>       # creates arcs/<active-arc>/scenes/<slug>/
                                                # label is a protocol/toolkit slug; custom allowed
@@ -32,7 +33,8 @@ glass scene create <slug> --type <label>       # creates arcs/<active-arc>/scene
                                                # use --arc <slug> to attach to a non-active arc
 glass scene current
 glass scene list [--arc <slug>]
-glass scene end                                # archives table, ends the active scene
+glass scene end --outcome <text>               # archives table, ends the active scene
+                                               # --outcome is repeatable, max 2 bullets
 glass table current                            # show live player-agent-visible table location/files
 glass table show [path]                        # read player-agent-visible table file/dir
 glass table write <path> --body <md>           # DM only; replace table file

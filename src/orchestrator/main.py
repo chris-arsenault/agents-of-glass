@@ -119,6 +119,7 @@ def _run_campaign_lifecycle(
     max_creation_turns: int,
     max_prelude_turns: int,
     max_active_turns: int | None,
+    review_stop_budget: int | None,
     skip_character_creation: bool,
     skip_prelude: bool,
     dry_run: bool,
@@ -244,36 +245,41 @@ def _run_campaign_lifecycle(
         cm_state = cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
     click.secho("[5/5] Active campaign", fg="green")
     active_state = cli.store.load(campaign_id)
-    if not active_state.has_active_mode:
-        started = _start_next_active_mode(cli, campaign_id=campaign_id)
-        if started:
-            active_state = cli.store.load(campaign_id)
-        else:
-            active_state.mark_ready()
-            cli.store.save(active_state)
-            click.echo("      no active mode; no arc is available for automatic setup")
-            click.echo()
-            click.secho(
-                f"Campaign '{campaign_id}' is ready.",
-                fg="green",
-            )
-            click.echo("Runtime state: Postgres runtime row")
+    turns_remaining = max_active_turns
+    while True:
+        if turns_remaining is not None and turns_remaining <= 0:
+            click.echo("      active turn cap reached")
             return
 
-    if active_state.has_active_mode:
+        if not active_state.has_active_mode:
+            started = _start_next_active_mode(cli, campaign_id=campaign_id)
+            if started:
+                active_state = cli.store.load(campaign_id)
+            else:
+                active_state.mark_ready()
+                cli.store.save(active_state)
+                click.echo("      no active mode; no arc is available for automatic setup")
+                click.echo()
+                click.secho(
+                    f"Campaign '{campaign_id}' is ready.",
+                    fg="green",
+                )
+                click.echo("Runtime state: Postgres runtime row")
+                return
+
         mode_at_start = active_state.active_mode.mode
-        run_limit = max_active_turns
+        run_limit = turns_remaining
         auto_end_intermission = False
         if mode_at_start == MODE_INTERMISSION:
             remaining = active_state.active_mode.turn_budget_remaining
             if remaining is None:
                 remaining = cli.config.caps.budget_for(MODE_INTERMISSION) or 15
-            if max_active_turns is None:
+            if turns_remaining is None:
                 run_limit = remaining
                 auto_end_intermission = True
             else:
-                run_limit = min(max_active_turns, remaining)
-                auto_end_intermission = max_active_turns >= remaining
+                run_limit = min(turns_remaining, remaining)
+                auto_end_intermission = turns_remaining >= remaining
         turns = _run_or_raise(
             cli,
             active_state,
@@ -281,8 +287,11 @@ def _run_campaign_lifecycle(
             dry_run=dry_run,
             resume_failed=True,
         )
+        if turns_remaining is not None:
+            turns_remaining -= turns
+
+        after = cli.store.load(campaign_id)
         if mode_at_start == MODE_INTERMISSION:
-            after = cli.store.load(campaign_id)
             if (
                 auto_end_intermission
                 and after.has_active_mode
@@ -297,10 +306,33 @@ def _run_campaign_lifecycle(
                 )
                 after = cli.store.load(campaign_id)
             click.echo(f"      ran {turns} intermission turn(s)")
+            if turns_remaining is not None and turns_remaining <= 0:
+                click.echo("      active turn cap reached")
+                return
+            if after.has_active_mode:
+                return
             if not after.has_active_mode:
+                should_continue, review_stop_budget = _consume_review_stop(
+                    review_stop_budget
+                )
+                if should_continue:
+                    click.echo("      skipped review stop after intermission")
+                    active_state = after
+                    continue
                 click.echo("      intermission complete; next run will start scene prep")
-            return
+                return
+
         click.echo(f"      ran {turns} active-play turn(s)")
+        if turns_remaining is not None and turns_remaining <= 0:
+            click.echo("      active turn cap reached")
+            return
+        if after.has_active_mode:
+            return
+        should_continue, review_stop_budget = _consume_review_stop(review_stop_budget)
+        if should_continue:
+            click.echo("      skipped active-play review stop")
+            active_state = after
+            continue
         return
 
 
@@ -347,6 +379,19 @@ def _next_mode_after_no_active_mode(latest_turn_mode: str | None) -> str:
     if (latest_turn_mode or "").lower() == MODE_INTERMISSION:
         return MODE_SCENE_PREP
     return MODE_INTERMISSION
+
+
+def _consume_review_stop(review_stop_budget: int | None) -> tuple[bool, int | None]:
+    """Return whether to continue past this review stop and the new budget.
+
+    `None` means unlimited review-stop skipping for this run. Non-negative
+    integers are consumed one stop at a time.
+    """
+    if review_stop_budget is None:
+        return True, None
+    if review_stop_budget <= 0:
+        return False, review_stop_budget
+    return True, review_stop_budget - 1
 
 
 def _latest_turn_mode(cli: CliState, campaign_id: str) -> str | None:
@@ -997,6 +1042,25 @@ def campaign_prepare_turn(cli: CliState, campaign_id: str | None) -> None:
     help="Turns to run in active play once bootstrap phases are complete.",
 )
 @click.option(
+    "--skip-stops",
+    "skip_review_stops",
+    type=click.IntRange(min=0),
+    default=0,
+    show_default=True,
+    help=(
+        "Number of active-play review stops to auto-continue past. "
+        "Use 1 to run intermission and continue into the next act."
+    ),
+)
+@click.option(
+    "--no-review-stops",
+    is_flag=True,
+    help=(
+        "Do not stop at active-play review boundaries during this run. "
+        "Use with --max-turns for a bounded overnight run."
+    ),
+)
+@click.option(
     "--max-planning-turns",
     type=int,
     default=15,
@@ -1033,6 +1097,8 @@ def campaign_run(
     cli: CliState,
     campaign_id: str | None,
     max_turns: int | None,
+    skip_review_stops: int,
+    no_review_stops: bool,
     max_planning_turns: int,
     max_creation_turns: int,
     max_prelude_turns: int,
@@ -1049,6 +1115,7 @@ def campaign_run(
         max_creation_turns=max_creation_turns,
         max_prelude_turns=max_prelude_turns,
         max_active_turns=max_turns,
+        review_stop_budget=None if no_review_stops else skip_review_stops,
         skip_character_creation=skip_character_creation,
         skip_prelude=skip_prelude,
         dry_run=dry_run,
