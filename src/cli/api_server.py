@@ -194,6 +194,9 @@ def _invoke_glass(args: list[str], claim: dict[str, Any]) -> dict[str, Any]:
             "GLASS_TURN_ID": str(claim["turn_id"]),
         }
     )
+    workspace_reader_user = claim.get("workspace_reader_user")
+    if isinstance(workspace_reader_user, str) and workspace_reader_user:
+        env["GLASS_WORKSPACE_READER_USER"] = workspace_reader_user
     runner = CliRunner()
     with _invoke_lock, _pushd(workspace_root):
         raw = runner.invoke(glass_main, args, env=env, prog_name="glass")

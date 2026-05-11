@@ -76,7 +76,7 @@ def resolve_active_campaign(
     if not campaigns_dir.exists():
         raise FileNotFoundError(
             f"No campaigns directory at {campaigns_dir}; "
-            "create one with `aog campaign bootstrap`"
+            "create one with `aog campaign run <id>`"
         )
 
     latest: Path | None = None
@@ -87,7 +87,7 @@ def resolve_active_campaign(
     if latest is None:
         raise FileNotFoundError(
             f"No campaigns found under {campaigns_dir}; "
-            "create one with `aog campaign bootstrap`"
+            "create one with `aog campaign run <id>`"
         )
     return CampaignWorkspace(latest.name, latest)
 

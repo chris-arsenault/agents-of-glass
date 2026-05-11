@@ -166,7 +166,7 @@ glass turn rapid-round <prompt>             # DM only; short response from each 
 glass turns find [--scene X] [--speaker Y] [--mode Z] [--turn-id N] [--text Q]
 glass turns feed [--after-turn N] [--limit N]   # structured public viewer feed
 glass search text <query> [--type turn|markdown]
-glass search semantic <query> [--type turn|markdown]  # vector surface, lexical fallback until embeddings exist
+glass search semantic <query> [--type turn|markdown]  # vector search over embedded chunks
 glass search reindex [--turns-only]             # DM only
 glass tarot current [actor]
 glass tarot list [--actor <actor>] [--all]
@@ -174,7 +174,24 @@ glass tarot draw <actor> [--turns N]             # DM only
 glass summary show campaign|arc|act|scene [id]
 glass summary write campaign|arc|act|scene [id] --body <markdown>
 glass summary append campaign|arc|act|scene [id] --body <markdown>
+glass sync apply [path-or-directory ...]          # commit projected markdown edits
 ```
+
+`glass sync apply` commits markdown edits from the projected workspace to the
+canonical campaign. With paths, files are committed directly and directories
+recurse over markdown files:
+
+```
+glass sync apply players/tev/public/intro.md
+glass sync apply arcs/prelude table
+glass sync apply
+```
+
+With no paths, it commits changed writable markdown files from the current
+projection. Successful markdown writes are registered with the persistence
+facade, so searchable markdown and entity graph side effects stay centralized.
+The legacy `--from scratch/sync.json` manifest form remains supported for rare
+generated batches.
 
 ## Environment
 

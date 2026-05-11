@@ -254,6 +254,9 @@ tier modifier is used; otherwise it defaults to `fool` (-2) — the character is
 unskilled and the check is harder. This makes skill choice meaningful without
 requiring a fixed taxonomy.
 
+Starting PCs have exactly three trained skills: one `artisan` and two
+`apprentice`. Higher tiers are earned through play, not assigned at creation.
+
 ## Momentum
 
 A per-character integer that's clamped to `[-2, +3]`. It accumulates from check outcomes and feeds back into future check totals.
@@ -277,6 +280,7 @@ character_id: karrith
 player_id: tev
 name: "Karrith Veyl"
 archetype: "Lapsed Tuner"
+organization_role: "outside specialist on retainer"
 pronouns: he/him
 attributes:
   vitality: standard
@@ -287,10 +291,9 @@ attributes:
   ingenuity: advanced
   presence: standard
 skills:
-  resonance-tuning: virtuoso
-  climbing: artisan
+  resonance-tuning: artisan
+  climbing: apprentice
   diplomacy: apprentice
-  shooting: fool
 momentum:
   current: 0
   floor: -2
@@ -299,7 +302,10 @@ hp:
   current: 8
   max: 10
 inventory:
-  - { id: kite-cord, qty: 1 }
+  - id: ringglass-baton
+    qty: 1
+    effect_tags:
+      - "Favored weapon; may justify pressure against close threats."
   - id: tuning-fork-resonator
     qty: 1
     effect_tags:
@@ -349,8 +355,10 @@ Every roll is logged in Postgres with full context. This is non-negotiable — d
 
 Deliberately omitted (would be added only if a real session demands them):
 
-- **Hit dice / class systems** — characters don't have classes, just an archetype string.
-- **Spells / abilities as discrete items** — anything special a character does is just a skill check, possibly with the DM's approval to use a particular angle.
+- **Fixed class lists / class packages** — characters do have a class-like archetype string, but there is no closed list of classes and no package of class mechanics.
+- **Fixed spell lists** — spell-like resonance techniques belong in signature
+  moves, not a closed spell catalog. They still resolve through fiction, rolls,
+  pressure, and table judgment.
 - **Damage types / armor** — HP is a number; damage is coarse pressure impact plus narration.
 - **XP / leveling** — irrelevant for one-session experiments. Revisit if multi-session arcs become a real thing.
 - **Currency** — narrate around it. If money matters, the DM tracks it as a tag on the character or a note on the locale.

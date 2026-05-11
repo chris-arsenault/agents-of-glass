@@ -22,7 +22,7 @@ from ..campaign import (
     pg_connection,
     resolve_active_campaign_workspace,
 )
-from ..config import REPO_ROOT, Paths, get_paths, load_config
+from ..config import REPO_ROOT, Paths, get_paths
 from ..constants import (
     ATTRIBUTE_TIERS,
     ATTRIBUTES,
@@ -119,36 +119,18 @@ def turns_find(
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            records = _db.turn_list(
-                conn,
-                campaign_id=campaign_id,
-                scene=scene,
-                speaker=speaker,
-                mode=mode_name,
-                turn_id=turn_id,
-                text=text_query,
-                limit=limit,
-                latest=turn_id is None,
-            )
-    else:
-        records = list(state.get("turns", []))
-        if scene:
-            records = [record for record in records if record["scene_id"] == scene]
-        if speaker:
-            records = [record for record in records if record["speaker"] == speaker]
-        if mode_name:
-            records = [record for record in records if record["mode"] == mode_name]
-        if turn_id is not None:
-            records = [record for record in records if record["turn_id"] == turn_id]
-        if text_query:
-            needle = text_query.casefold()
-            records = [
-                record for record in records
-                if needle in _turn_search_text(record).casefold()
-            ]
-        records = records[-limit:]
+    with pg_connection() as conn:
+        records = _db.turn_list(
+            conn,
+            campaign_id=campaign_id,
+            scene=scene,
+            speaker=speaker,
+            mode=mode_name,
+            turn_id=turn_id,
+            text=text_query,
+            limit=limit,
+            latest=turn_id is None,
+        )
     result = {"turns": records, "count": len(records)}
     append_audit(
         paths,
@@ -181,19 +163,13 @@ def turns_feed(ctx: click.Context, after_turn: int, limit: int) -> None:
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            turns = _db.turn_list(
-                conn,
-                campaign_id=campaign_id,
-                after_turn=after_turn,
-                limit=limit,
-            )
-    else:
-        turns = [
-            turn for turn in state.get("turns", [])
-            if int(turn.get("turn_id", 0)) > after_turn
-        ][:limit]
+    with pg_connection() as conn:
+        turns = _db.turn_list(
+            conn,
+            campaign_id=campaign_id,
+            after_turn=after_turn,
+            limit=limit,
+        )
     events = [
         {
             "event_type": "turn.committed",

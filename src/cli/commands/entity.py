@@ -186,10 +186,7 @@ def _mirror_entity_to_graph(
 @click.argument("entity_id")
 @click.pass_context
 def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
-    """Show an entity's outgoing edges, incoming edges, and sections.
-
-    Prefers FalkorDB; falls back to JSON state if the graph is unreachable.
-    """
+    """Show an entity's outgoing edges, incoming edges, and sections."""
     from .. import graph as _graph
 
     paths = get_paths()
@@ -197,35 +194,18 @@ def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
     state = load_state(paths, campaign_id)
 
     config = _graph.load_falkor_config(load_config())
-    if _graph.is_available(config):
-        try:
-            with _graph.connect(config) as g:
-                payload = _graph.neighborhood(
-                    g, entity_id, campaign_id=campaign_id
-                )
-        except Exception as exc:
-            payload = {"found": False, "error": str(exc)}
-        if payload.get("found"):
-            result = {**payload, "source": "falkordb", "target": config.describe()}
-            append_audit(
-                paths, state, ctx, "entity.neighborhood",
-                command_params(entity_id=entity_id), result,
+    if not _graph.is_available(config):
+        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+    try:
+        with _graph.connect(config) as g:
+            payload = _graph.neighborhood(
+                g, entity_id, campaign_id=campaign_id
             )
-            emit(result)
-            return
-
-    # Fallback: JSON state.
-    entity_record = state.get("entities", {}).get(entity_id)
-    if not entity_record:
-        known = ", ".join(sorted(state.get("entities", {}))) or "none"
-        raise GlassError(f"unknown entity {entity_id!r}; known entities: {known}")
-    result = {
-        "entity_id": entity_id,
-        "entity": entity_record,
-        "outgoing": entity_record.get("edges", []),
-        "incoming": [],
-        "source": "json-fallback",
-    }
+    except Exception as exc:
+        raise GlassError(f"falkordb neighborhood failed: {exc}") from exc
+    if not payload.get("found"):
+        raise GlassError(f"unknown entity {entity_id!r} in graph")
+    result = {**payload, "source": "falkordb", "target": config.describe()}
     append_audit(
         paths, state, ctx, "entity.neighborhood",
         command_params(entity_id=entity_id), result,

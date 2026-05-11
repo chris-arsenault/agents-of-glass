@@ -3,8 +3,8 @@
 A campaign workspace lives at `campaigns/<id>/` and is populated by copying
 the `templates/` tree at campaign-bootstrap time. Bootstrap phase fields
 (init / campaign_planning / character_creation / prelude / active) live in
-the runtime state row when Postgres is configured, with `state.json` kept only
-as the no-Postgres fallback.
+the Postgres runtime state row. `state.json` is a stale legacy path only and
+is removed when touched.
 
 This module is the home for the campaign workspace lifecycle. It does NOT
 own the per-session/per-scene state machine (that's `store.py`/`state.py`),
@@ -16,7 +16,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-import json
 import shutil
 
 from .config import AogConfig
@@ -102,10 +101,10 @@ class CampaignManager:
         }
         self._write_state(space, initial_state)
 
-        # Apply Unix permissions to the freshly-copied workspace so player
-        # agents (running as their own users) can only see what they should.
-        # Falls through silently if provisioning hasn't been run; the
-        # orchestrator then runs everyone as the current operator user.
+        # Apply Unix permissions to the freshly-copied workspace so isolated
+        # agent users can only see what they should.
+        # Falls through silently if provisioning hasn't been run; local
+        # non-isolated development then runs agents as the operator user.
         permissions.apply_campaign_permissions(space.campaign_dir)
 
         return space
@@ -123,7 +122,7 @@ class CampaignManager:
         space = CampaignSpace.from_config(self.config, campaign_id)
         if not space.exists():
             return
-        # Subdirs under players/<id>/ are owned by aog-<player> with
+        # Subdirs under players/<id>/ are group-restricted for aog-<player> with
         # restrictive perms; the operator can't traverse or rmtree them
         # directly. Delegate to the root-privileged helper when
         # provisioning is set up.
@@ -133,15 +132,12 @@ class CampaignManager:
     # --- state lifecycle ---
 
     def load_state(self, campaign_id: str) -> dict[str, Any]:
-        space = CampaignSpace.from_config(self.config, campaign_id)
         state = self._load_state_from_postgres(campaign_id)
         if state is not None:
             return state
-        if not space.state_path.exists():
-            raise FileNotFoundError(
-                f"No campaign state found for {campaign_id!r} at {space.state_path}"
-            )
-        return json.loads(space.state_path.read_text(encoding="utf-8"))
+        raise FileNotFoundError(
+            f"No campaign state found for {campaign_id!r} in Postgres runtime state"
+        )
 
     def advance_phase(self, campaign_id: str, new_phase: str) -> dict[str, Any]:
         if new_phase not in PHASE_ORDER:
@@ -167,19 +163,13 @@ class CampaignManager:
     # --- internals ---
 
     def _write_state(self, space: CampaignSpace, state: dict[str, Any]) -> None:
-        if self._sync_state_to_postgres(state):
-            if space.state_path.exists():
-                space.state_path.unlink()
-            return
-        tmp = space.state_path.with_suffix(space.state_path.suffix + ".tmp")
-        tmp.write_text(
-            json.dumps(state, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        tmp.replace(space.state_path)
+        self._sync_state_to_postgres(state)
+        for stale in (space.state_path, space.campaign_dir / "aog-state.json"):
+            if stale.exists():
+                stale.unlink()
 
-    def _sync_state_to_postgres(self, state: dict[str, Any]) -> bool:
-        """Keep campaign phase fields in the Postgres runtime row when enabled."""
+    def _sync_state_to_postgres(self, state: dict[str, Any]) -> None:
+        """Keep campaign phase fields in the Postgres runtime row."""
         import os
 
         from cli import db as _glass_db
@@ -190,13 +180,15 @@ class CampaignManager:
         try:
             toml_data = _load_glass_config()
             if not _glass_db.postgres_configured(toml_data):
-                return False
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
             pg_config = _glass_db.load_pg_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 existing = _glass_db.runtime_state_get(conn, state["campaign"]) or {}
                 merged = {**existing, **state}
                 _glass_db.runtime_state_upsert(conn, merged)
-            return True
         finally:
             if previous_config is None:
                 os.environ.pop("GLASS_CONFIG", None)
@@ -214,7 +206,10 @@ class CampaignManager:
         try:
             toml_data = _load_glass_config()
             if not _glass_db.postgres_configured(toml_data):
-                return None
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
             pg_config = _glass_db.load_pg_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 return _glass_db.runtime_state_get(conn, campaign_id)

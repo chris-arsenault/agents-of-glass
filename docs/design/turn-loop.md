@@ -51,7 +51,8 @@ While they write it, they may call `glass` tools:
 - `glass character consequence-add` / `consequence-list` / `consequence-resolve` — lasting fictional state that should not drift
 - `glass clock set` / `tick` / `list` / `show` / `resolve` — durable cross-scene pressure
 - `glass summary show` / `write` / `append` — authored continuity summaries at campaign, arc/act, and scene level
-- `glass note write` (DM canonical or workspace) or write to their journal directory (player private)
+- `glass sync apply [path-or-directory ...]` — commit projected markdown edits
+  from role-authorized document surfaces in one mutation
 - `glass entity upsert` (DM only)
 - `glass mode start` / `mode end` (DM only)
 - `glass entity neighborhood` / `relations` / `between` / `edges` /

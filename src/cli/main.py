@@ -31,6 +31,7 @@ from .commands.scene import scene
 from .commands.search import search_group
 from .commands.session import session
 from .commands.summary import summary
+from .commands.sync import sync
 from .commands.table import table
 from .commands.tarot import tarot
 from .commands.thread import thread
@@ -165,6 +166,7 @@ main.add_command(arc)
 main.add_command(scene)
 main.add_command(search_group)
 main.add_command(summary)
+main.add_command(sync)
 main.add_command(table)
 main.add_command(tarot)
 main.add_command(quest)

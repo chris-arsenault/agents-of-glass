@@ -1,4 +1,4 @@
-"""Foreground orchestration loop for `aog campaign bootstrap` / `aog campaign run`."""
+"""Foreground orchestration loop for `aog campaign run`."""
 
 from __future__ import annotations
 
@@ -10,10 +10,12 @@ import os
 import grp
 import pwd
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import threading
+import time
 
 from cli.api_grants import DEFAULT_API_URL, mint_grant
 from cli.api_server import ensure_background_server
@@ -22,7 +24,11 @@ from .config import AogConfig, config_env_value
 from .context import ContextBuilder, ContextPackage
 from .glass_bridge import GlassBridgeError
 from . import permissions
-from .projection import copy_turn_artifacts_to_canonical
+from .projection import (
+    copy_turn_artifacts_to_canonical,
+    unsynced_workspace_changes,
+    writable_probe_dirs,
+)
 from .state import AGENTS_BY_ID, Agent, SessionState, next_agent_for, utc_now
 from .store import SessionStore
 
@@ -41,6 +47,7 @@ class TurnResult:
     spawn_cwd: Path
     prose: str
     dry_run: bool
+    duration_seconds: float | None = None
     queued_speaker_entry: dict[str, Any] | None = None
     action_order_entry: dict[str, Any] | None = None
 
@@ -48,7 +55,7 @@ class TurnResult:
 _GLASS_COMMAND_LINE_RE = re.compile(
     r"^\s*>?\s*glass\s+"
     r"(roll|character|clock|summary|entity|search|tarot|lore|note|arc|"
-    r"scene|table|mode|turn|thread|msg|turns)\b"
+    r"scene|table|mode|turn|thread|msg|turns|sync)\b"
 )
 
 
@@ -95,53 +102,35 @@ class Orchestrator:
         return next_agent_for(state), {}, None, None
 
     def _peek_next_speaker_entry(self, campaign: str) -> dict[str, Any] | None:
-        checked_postgres, entry = self._peek_next_speaker_entry_from_postgres(campaign)
-        if checked_postgres:
-            return entry
-        path = self.store.glass_state_path(campaign)
-        if not path.exists():
-            return None
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
-        queue = raw.get("next_speakers")
-        if not isinstance(queue, list) or not queue:
-            return None
-        entry = queue[0]
-        if not isinstance(entry, dict):
-            entry = {"agent": entry}
-        return entry
+        return self._peek_next_speaker_entry_from_postgres(campaign)
 
     def _peek_next_speaker_entry_from_postgres(
         self, campaign: str
-    ) -> tuple[bool, dict[str, Any] | None]:
-        try:
-            from cli import db as _glass_db
-            from cli.config import load_config as _load_glass_config
+    ) -> dict[str, Any] | None:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
 
-            previous = os.environ.get("GLASS_CONFIG")
-            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
-            try:
-                toml_data = _load_glass_config()
-                if not _glass_db.postgres_configured(toml_data):
-                    return False, None
-                pg_config = _glass_db.load_pg_config(toml_data)
-                with _glass_db.connect(pg_config) as conn:
-                    return True, _glass_db.runtime_next_speaker_peek(conn, campaign)
-            finally:
-                if previous is None:
-                    os.environ.pop("GLASS_CONFIG", None)
-                else:
-                    os.environ["GLASS_CONFIG"] = previous
-        except Exception:
-            return False, None
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                return _glass_db.runtime_next_speaker_peek(conn, campaign)
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
 
     def _peek_action_order_entry(self, state: SessionState) -> dict[str, Any] | None:
         """Return the next initiative-order turn for the active scene, if any."""
-        checked_postgres, action_order = self._load_action_order_from_postgres(state)
-        if not checked_postgres:
-            action_order = self._load_action_order(state.campaign)
+        action_order = self._load_action_order_from_postgres(state)
         if not isinstance(action_order, dict):
             return None
         active = state.active_mode
@@ -167,168 +156,103 @@ class Orchestrator:
             "order": [str(agent) for agent in order],
         }
 
-    def _load_action_order(self, campaign: str) -> dict[str, Any] | None:
-        path = self.store.glass_state_path(campaign)
-        if not path.exists():
-            return None
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
-        action_order = raw.get("action_order")
-        return action_order if isinstance(action_order, dict) else None
-
     def _load_action_order_from_postgres(
         self, state: SessionState
-    ) -> tuple[bool, dict[str, Any] | None]:
-        try:
-            from cli import db as _glass_db
-            from cli.config import load_config as _load_glass_config
+    ) -> dict[str, Any] | None:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
 
-            previous = os.environ.get("GLASS_CONFIG")
-            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
-            try:
-                toml_data = _load_glass_config()
-                if not _glass_db.postgres_configured(toml_data):
-                    return False, None
-                pg_config = _glass_db.load_pg_config(toml_data)
-                with _glass_db.connect(pg_config) as conn:
-                    return True, _glass_db.action_order_get(
-                        conn,
-                        campaign_id=state.campaign,
-                        mode=state.active_mode.mode,
-                        scene_id=state.active_mode.scene_id,
-                    )
-            finally:
-                if previous is None:
-                    os.environ.pop("GLASS_CONFIG", None)
-                else:
-                    os.environ["GLASS_CONFIG"] = previous
-        except Exception:
-            return False, None
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                return _glass_db.action_order_get(
+                    conn,
+                    campaign_id=state.campaign,
+                    mode=state.active_mode.mode,
+                    scene_id=state.active_mode.scene_id,
+                )
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
 
     def _consume_next_speaker_entry(
         self, campaign: str, expected_entry: dict[str, Any]
     ) -> None:
-        if self._consume_next_speaker_entry_in_postgres(campaign, expected_entry):
-            return
-        path = self.store.glass_state_path(campaign)
-        if not path.exists():
-            return
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return
-        queue = raw.get("next_speakers")
-        if not isinstance(queue, list) or not queue:
-            return
-        entry = queue[0]
-        normalized = entry if isinstance(entry, dict) else {"agent": entry}
-        if normalized != expected_entry:
-            return
-        raw["next_speakers"] = queue[1:]
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
-        tmp.replace(path)
+        self._consume_next_speaker_entry_in_postgres(campaign, expected_entry)
 
     def _consume_next_speaker_entry_in_postgres(
         self, campaign: str, expected_entry: dict[str, Any]
     ) -> bool:
-        try:
-            from cli import db as _glass_db
-            from cli.config import load_config as _load_glass_config
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
 
-            previous = os.environ.get("GLASS_CONFIG")
-            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
-            try:
-                toml_data = _load_glass_config()
-                if not _glass_db.postgres_configured(toml_data):
-                    return False
-                pg_config = _glass_db.load_pg_config(toml_data)
-                with _glass_db.connect(pg_config) as conn:
-                    return _glass_db.runtime_next_speaker_consume(
-                        conn,
-                        campaign_id=campaign,
-                        expected_entry=expected_entry,
-                    )
-            finally:
-                if previous is None:
-                    os.environ.pop("GLASS_CONFIG", None)
-                else:
-                    os.environ["GLASS_CONFIG"] = previous
-        except Exception:
-            return False
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                return _glass_db.runtime_next_speaker_consume(
+                    conn,
+                    campaign_id=campaign,
+                    expected_entry=expected_entry,
+                )
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
 
     def _advance_action_order(
         self, campaign: str, expected_entry: dict[str, Any]
     ) -> None:
-        if self._advance_action_order_in_postgres(campaign, expected_entry):
-            return
-        path = self.store.glass_state_path(campaign)
-        if not path.exists():
-            return
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return
-        action_order = raw.get("action_order")
-        if not isinstance(action_order, dict):
-            return
-        if (
-            action_order.get("mode") != expected_entry.get("mode")
-            or action_order.get("scene_id") != expected_entry.get("scene_id")
-        ):
-            return
-        order = action_order.get("order")
-        if not isinstance(order, list) or not order:
-            return
-        cursor = int(action_order.get("cursor", 0)) % len(order)
-        if str(order[cursor]) != expected_entry.get("agent"):
-            return
-        cursor += 1
-        if cursor >= len(order):
-            cursor = 0
-            action_order["round"] = int(action_order.get("round", 1)) + 1
-        action_order["cursor"] = cursor
-        raw["action_order"] = action_order
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
-        tmp.replace(path)
+        self._advance_action_order_in_postgres(campaign, expected_entry)
 
     def _advance_action_order_in_postgres(
         self, campaign: str, expected_entry: dict[str, Any]
     ) -> bool:
-        try:
-            from cli import db as _glass_db
-            from cli.config import load_config as _load_glass_config
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
 
-            previous = os.environ.get("GLASS_CONFIG")
-            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
-            try:
-                toml_data = _load_glass_config()
-                if not _glass_db.postgres_configured(toml_data):
-                    return False
-                pg_config = _glass_db.load_pg_config(toml_data)
-                with _glass_db.connect(pg_config) as conn:
-                    advanced = _glass_db.action_order_advance(
-                        conn,
-                        campaign_id=campaign,
-                        mode=str(expected_entry.get("mode")),
-                        scene_id=str(expected_entry.get("scene_id")),
-                        expected_agent=str(expected_entry.get("agent")),
-                    )
-                return advanced is not None
-            finally:
-                if previous is None:
-                    os.environ.pop("GLASS_CONFIG", None)
-                else:
-                    os.environ["GLASS_CONFIG"] = previous
-        except Exception:
-            return False
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                advanced = _glass_db.action_order_advance(
+                    conn,
+                    campaign_id=campaign,
+                    mode=str(expected_entry.get("mode")),
+                    scene_id=str(expected_entry.get("scene_id")),
+                    expected_agent=str(expected_entry.get("agent")),
+                )
+            return advanced is not None
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
 
     def run_loop(
         self,
@@ -340,7 +264,7 @@ class Orchestrator:
     ) -> int:
         if state.status == "failed" and not resume_failed:
             raise TurnFailure(
-                f"Campaign {state.campaign} is failed; use `aog campaign resume`.",
+                f"Campaign {state.campaign} is failed; use `aog campaign run`.",
                 state.failure or {"reason": "failed"},
             )
         if state.status in {"failed", "interrupted", "running", "paused"} and resume_failed:
@@ -386,6 +310,7 @@ class Orchestrator:
                 spawn_cwd=package.spawn_cwd,
                 prose=prose,
                 dry_run=True,
+                duration_seconds=0.0,
                 queued_speaker_entry=queued_entry,
                 action_order_entry=action_entry,
             )
@@ -402,20 +327,49 @@ class Orchestrator:
         active = state.active_mode
         command_lines = _tool_transcript_lines(result.prose)
         if command_lines:
-            raise TurnFailure(
-                "turn output included glass command transcript lines instead of executing them.",
+            self._append_turn_warning(
+                state,
+                result,
                 {
-                    "reason": "turn_output_contains_tool_transcript",
-                    "turn_id": result.turn_id,
-                    "speaker": result.agent.id,
-                    "turn_dir": str(result.turn_dir),
-                    "lines": command_lines,
-                    "hint": (
-                        "Run required `glass` commands during the turn. Do not "
-                        "write command transcripts into the public prose file."
+                    "reason": "turn_output_contains_glass_command_lines",
+                    "message": (
+                        "turn output included Glass command-looking lines; "
+                        "commands are audited separately, but prose is still committed"
                     ),
+                    "lines": command_lines,
                 },
             )
+        if not result.dry_run:
+            try:
+                unsynced_changes = unsynced_workspace_changes(
+                    result.spawn_cwd,
+                    result.agent,
+                )
+            except Exception as exc:
+                self._append_turn_warning(
+                    state,
+                    result,
+                    {
+                        "reason": "workspace_sync_check_failed",
+                        "message": "could not inspect projected workspace for unsynced edits",
+                        "error": repr(exc),
+                    },
+                )
+            else:
+                if unsynced_changes:
+                    self._append_turn_warning(
+                        state,
+                        result,
+                        {
+                            "reason": "workspace_has_unsynced_markdown",
+                            "message": (
+                                "projected workspace has markdown edits that were not "
+                                "committed with glass sync apply"
+                            ),
+                            "changes": unsynced_changes,
+                            "count": len(unsynced_changes),
+                        },
+                    )
 
         # The agent's TURN.md (or the dry-run synthetic prose) is what we
         # commit. glass turn append owns the transcript header; we just hand
@@ -463,6 +417,11 @@ class Orchestrator:
                 "mode": active.mode,
                 "scene_id": active.scene_id,
                 "dry_run": result.dry_run,
+                "duration_seconds": (
+                    round(result.duration_seconds, 3)
+                    if result.duration_seconds is not None
+                    else None
+                ),
             },
         )
         self._tick_closing_countdown(state.campaign)
@@ -475,6 +434,27 @@ class Orchestrator:
         synced = self.store.sync_from_glass(state)
         state.__dict__.update(synced.__dict__)
         self._validate_prelude_dm_handoff(state, result, active)
+
+    def _append_turn_warning(
+        self,
+        state: SessionState,
+        result: TurnResult,
+        warning: dict[str, Any],
+    ) -> None:
+        payload = {
+            "event": "turn.warning",
+            "turn_id": result.turn_id,
+            "turn_number": state.turn_number + 1,
+            "speaker": result.agent.id,
+            "role": result.agent.role,
+            "turn_dir": str(result.turn_dir),
+            "severity": "warning",
+            **warning,
+        }
+        self.store.append_audit(state.campaign, payload)
+        reason = str(payload.get("reason") or "turn_warning")
+        message = str(payload.get("message") or reason)
+        print(f"Warning: {result.turn_id}: {message}", flush=True)
 
     def _validate_prelude_dm_handoff(
         self,
@@ -527,46 +507,29 @@ class Orchestrator:
         below 0 indicates an overrun that the methodology flags as a hard
         backstop ("end the scene now even if it feels unfinished").
         """
-        if self._tick_closing_countdown_in_postgres(campaign):
-            return
-        path = self.store.glass_state_path(campaign)
-        if not path.exists():
-            return
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return
-        val = raw.get("scene_closing_turns")
-        if val is None:
-            return
-        raw["scene_closing_turns"] = int(val) - 1
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
-        tmp.replace(path)
+        self._tick_closing_countdown_in_postgres(campaign)
 
     def _tick_closing_countdown_in_postgres(self, campaign: str) -> bool:
-        try:
-            from cli import db as _glass_db
-            from cli.config import load_config as _load_glass_config
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
 
-            previous = os.environ.get("GLASS_CONFIG")
-            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
-            try:
-                toml_data = _load_glass_config()
-                if not _glass_db.postgres_configured(toml_data):
-                    return False
-                pg_config = _glass_db.load_pg_config(toml_data)
-                with _glass_db.connect(pg_config) as conn:
-                    return _glass_db.runtime_scene_closing_tick(conn, campaign)
-            finally:
-                if previous is None:
-                    os.environ.pop("GLASS_CONFIG", None)
-                else:
-                    os.environ["GLASS_CONFIG"] = previous
-        except Exception:
-            return False
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                return _glass_db.runtime_scene_closing_tick(conn, campaign)
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
 
     def _invoke_agent(
         self,
@@ -586,10 +549,11 @@ class Orchestrator:
             f"Write your final public prose to {turn_output_ref} and exit."
         )
 
-        # Agents run in a read-only projection. `glass` uses the local API so
-        # file reads can come from the projection while mutations land in the
-        # canonical campaign tree.
+        # Agents run in an actor-owned projection. `glass` uses the local API
+        # so file reads can come from the projection while mutations land in
+        # the canonical campaign tree.
         target_user = permissions.player_user_for(agent.id)
+        _assert_actor_workspace_ready(package, target_user=target_user)
         glass_api_url = ensure_background_server(
             url=os.environ.get("GLASS_API_URL", DEFAULT_API_URL),
             config_path=config_env_value(self.config),
@@ -603,6 +567,7 @@ class Orchestrator:
             turn_id=package.turn_id,
             ttl_seconds=max(self.config.claude.turn_timeout_seconds + 600, 3600),
             workspace_root=package.spawn_cwd,
+            workspace_reader_user=target_user,
         )
         glass_api_grant_file: Path | None = None
         if target_user is not None:
@@ -614,30 +579,37 @@ class Orchestrator:
                 turn_id=package.turn_id,
             )
 
-        command: list[str] = []
+        actor_command: list[str] = []
         preserved_env: list[str] = []
-        if target_user is not None:
-            command.extend([
-                "sudo",
-                "-n",
-                "-u", target_user,
-                "--",
-                "env",
-                f"PATH={_player_path()}",
-            ])
 
-        command.append("claude")
+        actor_command.append("claude")
         if self.config.claude.model:
-            command.extend(["--model", self.config.claude.model])
+            actor_command.extend(["--model", self.config.claude.model])
         claude_debug_path = package.agent_turn_dir / "claude-debug.log"
         claude_debug_ref = _agent_path(claude_debug_path, package.spawn_cwd)
-        command.extend([
+        actor_command.extend([
             "-p",
             prompt,
             "--dangerously-skip-permissions",
             "--debug-file",
             claude_debug_ref,
         ])
+        command = actor_command
+        if target_user is not None:
+            command = [
+                "sudo",
+                "-n",
+                "-u",
+                target_user,
+                "--",
+                "env",
+                f"PATH={_player_path()}",
+                "bash",
+                "-lc",
+                'umask 0007; exec "$@"',
+                "bash",
+                *actor_command,
+            ]
 
         env = os.environ.copy()
         env.update(
@@ -679,6 +651,7 @@ class Orchestrator:
         )
         _write_json(debug_path, debug_payload)
 
+        turn_started = time.monotonic()
         try:
             stdout_text, stderr_text, returncode, timed_out = _stream_subprocess(
                 command,
@@ -689,11 +662,19 @@ class Orchestrator:
                 stderr_prefix=prefix + "(err) ",
             )
         except FileNotFoundError as exc:
+            duration_seconds = time.monotonic() - turn_started
             debug_payload["phase"] = "spawn_failed"
             debug_payload["exception"] = repr(exc)
             debug_payload["resolved_executable"] = shutil.which(command[0])
+            debug_payload["duration_seconds"] = round(duration_seconds, 3)
             debug_payload["paths_after"] = _turn_path_debug(package)
             _write_json(debug_path, debug_payload)
+            _print_turn_duration(
+                agent,
+                package,
+                duration_seconds,
+                status="spawn failed",
+            )
             raise TurnFailure(
                 "Claude CLI was not found on PATH.",
                 {
@@ -702,12 +683,18 @@ class Orchestrator:
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
                     "debug_path": str(debug_path),
+                    "duration_seconds": round(duration_seconds, 3),
                 },
             ) from exc
+        duration_seconds = time.monotonic() - turn_started
+        status = "timed out" if timed_out else f"exit {returncode}"
+        _print_turn_duration(agent, package, duration_seconds, status=status)
 
+        _normalize_actor_projection(package, target_user=target_user)
         copy_turn_artifacts_to_canonical(
             projection=package.projection,
             canonical_turn_dir=package.turn_dir,
+            reader_user=target_user,
         )
         _write_process_capture(package.turn_dir, stdout_text, stderr_text)
         debug_payload.update(
@@ -715,6 +702,7 @@ class Orchestrator:
                 "phase": "after_subprocess",
                 "returncode": returncode,
                 "timed_out": timed_out,
+                "duration_seconds": round(duration_seconds, 3),
                 "stdout_bytes": len(stdout_text.encode("utf-8")),
                 "stderr_bytes": len(stderr_text.encode("utf-8")),
                 "stdout_preview": _preview(stdout_text),
@@ -734,6 +722,7 @@ class Orchestrator:
                     "turn_dir": str(package.turn_dir),
                     "timeout_seconds": self.config.claude.turn_timeout_seconds,
                     "debug_path": str(debug_path),
+                    "duration_seconds": round(duration_seconds, 3),
                     "stdout_bytes": debug_payload["stdout_bytes"],
                     "stderr_bytes": debug_payload["stderr_bytes"],
                 },
@@ -749,15 +738,16 @@ class Orchestrator:
                     "turn_dir": str(package.turn_dir),
                     "exit_code": returncode,
                     "debug_path": str(debug_path),
+                    "duration_seconds": round(duration_seconds, 3),
                     "stdout_bytes": debug_payload["stdout_bytes"],
                     "stderr_bytes": debug_payload["stderr_bytes"],
                     "stderr_preview": debug_payload["stderr_preview"],
                 },
             )
 
-        prose = _collect_prose(package.agent_turn_output_path, stdout_text)
+        prose = _collect_prose(package.turn_output_path, stdout_text)
         if not prose:
-            output_debug = _path_debug(package.agent_turn_output_path)
+            output_debug = _turn_path_debug(package)
             raise TurnFailure(
                 f"Turn {package.turn_id} produced no prose.",
                 {
@@ -767,11 +757,12 @@ class Orchestrator:
                     "turn_dir": str(package.turn_dir),
                     "debug_path": str(debug_path),
                     "exit_code": returncode,
+                    "duration_seconds": round(duration_seconds, 3),
                     "stdout_bytes": debug_payload["stdout_bytes"],
                     "stderr_bytes": debug_payload["stderr_bytes"],
                     "stdout_preview": debug_payload["stdout_preview"],
                     "stderr_preview": debug_payload["stderr_preview"],
-                    "turn_output_path": str(package.agent_turn_output_path),
+                    "turn_output_path": str(package.turn_output_path),
                     "turn_output": output_debug,
                 },
             )
@@ -782,6 +773,7 @@ class Orchestrator:
             spawn_cwd=package.spawn_cwd,
             prose=prose,
             dry_run=False,
+            duration_seconds=duration_seconds,
             queued_speaker_entry=queued_entry,
             action_order_entry=action_entry,
         )
@@ -969,6 +961,180 @@ def _env_value_debug(key: str, value: str | None) -> str | None:
     if any(marker in key.upper() for marker in secret_markers):
         return "<set>" if value else "<empty>"
     return value
+
+
+def _print_turn_duration(
+    agent: Agent,
+    package: ContextPackage,
+    duration_seconds: float,
+    *,
+    status: str,
+) -> None:
+    print(
+        f"--- {agent.display_name} completed turn {package.turn_number} "
+        f"in {_format_duration(duration_seconds)} ({status}) ---",
+        flush=True,
+    )
+
+
+def _format_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    remaining = seconds - (minutes * 60)
+    return f"{minutes}m {remaining:04.1f}s"
+
+
+def _assert_actor_workspace_ready(
+    package: ContextPackage,
+    *,
+    target_user: str | None,
+) -> None:
+    """Prove the actor can create/edit/delete files in writable surfaces."""
+
+    if target_user is not None:
+        _assert_actor_owns_path(package.spawn_cwd, target_user=target_user)
+        _assert_actor_owns_path(package.agent_turn_dir, target_user=target_user)
+
+    probe_dirs = [package.agent_turn_dir, package.projection.scratch_dir]
+    probe_dirs.extend(writable_probe_dirs(package.spawn_cwd, package.agent))
+    seen: set[Path] = set()
+    unique_probe_dirs: list[Path] = []
+    for probe_dir in probe_dirs:
+        resolved = probe_dir.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique_probe_dirs.append(probe_dir)
+
+    probe_refs = [
+        _agent_path(probe_dir, package.spawn_cwd)
+        for probe_dir in unique_probe_dirs
+    ]
+    probe_name = ".aog-write-probe"
+    probe_files = [probe_dir / probe_name for probe_dir in unique_probe_dirs]
+    script = "\n".join(
+        ["set -eu"]
+        + [
+            "\n".join(
+                [
+                    f"probe_dir={shlex.quote(probe_ref)}",
+                    f"probe_file=\"$probe_dir/{probe_name}\"",
+                    'probe_tmp="$probe_file.tmp"',
+                    'rm -f "$probe_file" "$probe_tmp"',
+                    'printf "%s\\n" first > "$probe_file"',
+                    'printf "%s\\n" second > "$probe_tmp"',
+                    'mv "$probe_tmp" "$probe_file"',
+                    'test "$(cat "$probe_file")" = "second"',
+                    'chmod 700 "$probe_file"',
+                ]
+            )
+            for probe_ref in probe_refs
+        ]
+    )
+    command = ["bash", "-lc", script]
+    if target_user is not None:
+        command = ["sudo", "-n", "-u", target_user, "--", *command]
+
+    result = subprocess.run(
+        command,
+        cwd=package.spawn_cwd,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise TurnFailure(
+            "actor workspace write probe failed before spawn.",
+            {
+                "reason": "actor_workspace_write_probe_failed",
+                "turn_id": package.turn_id,
+                "target_user": target_user,
+                "spawn_cwd": str(package.spawn_cwd),
+                "turn_dir": str(package.agent_turn_dir),
+                "probe_dirs": [str(path) for path in unique_probe_dirs],
+                "command": command,
+                "exit_code": result.returncode,
+                "stdout": result.stdout[-2000:],
+                "stderr": result.stderr[-2000:],
+                "paths": _turn_path_debug(package),
+            },
+        )
+
+    _normalize_actor_projection(package, target_user=target_user)
+    unreadable: list[dict[str, str]] = []
+    for probe_file in probe_files:
+        try:
+            if probe_file.read_text(encoding="utf-8").strip() != "second":
+                unreadable.append({"path": str(probe_file), "error": "unexpected content"})
+        except OSError as exc:
+            unreadable.append({"path": str(probe_file), "error": repr(exc)})
+    for probe_file in probe_files:
+        try:
+            probe_file.unlink()
+        except OSError:
+            pass
+    if unreadable:
+        raise TurnFailure(
+            "operator could not read actor-created workspace probe files.",
+            {
+                "reason": "actor_workspace_operator_read_probe_failed",
+                "turn_id": package.turn_id,
+                "target_user": target_user,
+                "spawn_cwd": str(package.spawn_cwd),
+                "probe_files": unreadable,
+                "paths": _turn_path_debug(package),
+            },
+        )
+
+
+def _normalize_actor_projection(
+    package: ContextPackage,
+    *,
+    target_user: str | None,
+) -> None:
+    permissions.apply_projection_permissions(
+        package.spawn_cwd,
+        actor_user=target_user,
+    )
+
+
+def _assert_actor_owns_path(path: Path, *, target_user: str) -> None:
+    try:
+        expected_uid = pwd.getpwnam(target_user).pw_uid
+    except KeyError as exc:
+        raise TurnFailure(
+            "target Unix user is missing.",
+            {
+                "reason": "target_user_missing",
+                "target_user": target_user,
+                "path": str(path),
+            },
+        ) from exc
+    try:
+        st = path.stat()
+    except OSError as exc:
+        raise TurnFailure(
+            "actor-owned projection path is not statable by the operator.",
+            {
+                "reason": "actor_projection_stat_failed",
+                "target_user": target_user,
+                "path": str(path),
+                "error": repr(exc),
+            },
+        ) from exc
+    if st.st_uid != expected_uid:
+        raise TurnFailure(
+            "projection path is not owned by the spawned actor.",
+            {
+                "reason": "actor_projection_owner_mismatch",
+                "target_user": target_user,
+                "path": str(path),
+                "expected_uid": expected_uid,
+                "actual_uid": st.st_uid,
+                "actual_user": _name_for_uid(st.st_uid),
+                "mode": oct(st.st_mode & 0o7777),
+            },
+        )
 
 
 def _turn_path_debug(package: ContextPackage) -> dict[str, Any]:

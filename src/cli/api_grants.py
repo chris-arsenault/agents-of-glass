@@ -44,7 +44,8 @@ _PLAYER_ALLOWED: dict[str, set[str] | None] = {
     "search": {"text", "semantic"},
     "turn": {"handoff"},
     "turns": {"find", "feed"},
-    "summary": {"show"},
+    "summary": {"show", "append"},
+    "sync": {"apply"},
     "tarot": {"current", "list"},
     "lore": {"list"},
 }
@@ -63,6 +64,7 @@ def mint_grant(
     turn_id: str,
     ttl_seconds: int = _DEFAULT_TTL_SECONDS,
     workspace_root: Path | str | None = None,
+    workspace_reader_user: str | None = None,
 ) -> str:
     """Create and persist a short-lived API grant."""
 
@@ -83,6 +85,8 @@ def mint_grant(
     }
     if workspace_root is not None:
         grants[token]["workspace_root"] = str(workspace_root)
+    if workspace_reader_user is not None:
+        grants[token]["workspace_reader_user"] = workspace_reader_user
     _write_store(path, data)
     return token
 

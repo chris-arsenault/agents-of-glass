@@ -162,7 +162,8 @@ POSTGRES_TABLES: tuple[tuple[str, tuple[str, ...], str], ...] = (
         (
             "chunk_id", "campaign_id", "source_type", "source_id",
             "visibility", "owner_actor", "path", "title", "body", "metadata",
-            "embedding", "updated_at",
+            "embedding_vector", "embedding_model", "embedding_provider",
+            "embedding_dim", "embedded_at", "updated_at",
         ),
         "source_type, source_id, chunk_id",
     ),

@@ -78,17 +78,7 @@ def load_pg_config(toml_data: dict[str, Any] | None = None) -> PgConfig:
 
 
 def postgres_configured(toml_data: dict[str, Any] | None = None) -> bool:
-    """True when the runtime should use Postgres-backed state.
-
-    Tests and tiny local smoke runs often provide only [paths]; those keep the
-    file-backed fallback. Real runs use [postgres] or explicit libpq env vars
-    such as PGHOST/PGDATABASE.
-    """
-    override = os.environ.get("AOG_STATE_BACKEND", "").strip().lower()
-    if override == "file":
-        return False
-    if override == "postgres":
-        return True
+    """True when Postgres connection details are configured."""
     if isinstance((toml_data or {}).get("postgres"), dict):
         return True
     return any(os.environ.get(name) for name in ("PGHOST", "PGDATABASE"))
@@ -2039,14 +2029,24 @@ def search_chunk_upsert(
     body: str,
     metadata: dict[str, Any] | None = None,
     embedding: list[float] | None = None,
+    embedding_model: str | None = None,
+    embedding_provider: str | None = None,
 ) -> None:
+    embedding_dim = len(embedding) if embedding is not None else None
+    embedding_vector = _vector_literal(embedding) if embedding is not None else None
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO search_chunks (
                 chunk_id, campaign_id, source_type, source_id, visibility,
-                owner_actor, path, title, body, metadata, embedding, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, now())
+                owner_actor, path, title, body, metadata, embedding_vector,
+                embedding_model, embedding_provider, embedding_dim, embedded_at,
+                updated_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb,
+                CASE WHEN %s::text IS NULL THEN NULL ELSE %s::vector END,
+                %s, %s, %s, CASE WHEN %s::text IS NULL THEN NULL ELSE now() END, now()
+            )
             ON CONFLICT (chunk_id) DO UPDATE SET
                 source_type = EXCLUDED.source_type,
                 source_id = EXCLUDED.source_id,
@@ -2056,7 +2056,11 @@ def search_chunk_upsert(
                 title = EXCLUDED.title,
                 body = EXCLUDED.body,
                 metadata = EXCLUDED.metadata,
-                embedding = EXCLUDED.embedding,
+                embedding_vector = EXCLUDED.embedding_vector,
+                embedding_model = EXCLUDED.embedding_model,
+                embedding_provider = EXCLUDED.embedding_provider,
+                embedding_dim = EXCLUDED.embedding_dim,
+                embedded_at = EXCLUDED.embedded_at,
                 updated_at = now()
             """,
             (
@@ -2070,7 +2074,12 @@ def search_chunk_upsert(
                 title,
                 body,
                 json.dumps(metadata or {}),
-                embedding,
+                embedding_vector,
+                embedding_vector,
+                embedding_model,
+                embedding_provider,
+                embedding_dim,
+                embedding_vector,
             ),
         )
 
@@ -2155,6 +2164,71 @@ def search_query(
         }
         for row in rows
     ]
+
+
+def search_query_semantic(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    query: str,
+    query_embedding: list[float],
+    role_kind: str,
+    actor: str,
+    source_type: str | None = None,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    where = [
+        "campaign_id = %s",
+        "embedding_vector IS NOT NULL",
+        "embedding_dim = %s",
+    ]
+    params: list[Any] = [campaign_id, len(query_embedding)]
+    if role_kind == "player":
+        where.append(
+            "(visibility = 'public' OR (visibility = 'private' AND owner_actor = %s))"
+        )
+        params.append(actor)
+    if source_type:
+        where.append("source_type = %s")
+        params.append(source_type)
+
+    query_vector = _vector_literal(query_embedding)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT chunk_id, source_type, source_id, visibility, owner_actor,
+                   path, title, body, metadata,
+                   1 - (embedding_vector <=> %s::vector) AS rank,
+                   embedding_model, embedding_provider
+            FROM search_chunks
+            WHERE {' AND '.join(where)}
+            ORDER BY embedding_vector <=> %s::vector, updated_at DESC
+            LIMIT %s
+            """,
+            [query_vector, *params, query_vector, limit],
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "chunk_id": row[0],
+            "source_type": row[1],
+            "source_id": row[2],
+            "visibility": row[3],
+            "owner_actor": row[4],
+            "path": row[5],
+            "title": row[6],
+            "preview": _preview_text(row[7], query),
+            "metadata": row[8] or {},
+            "rank": float(row[9] or 0),
+            "embedding_model": row[10],
+            "embedding_provider": row[11],
+        }
+        for row in rows
+    ]
+
+
+def _vector_literal(values: list[float]) -> str:
+    return "[" + ",".join(format(float(value), ".9g") for value in values) + "]"
 
 
 def _preview_text(body: str, query: str, *, limit: int = 300) -> str:

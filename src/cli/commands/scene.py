@@ -22,7 +22,7 @@ from ..campaign import (
     pg_connection,
     resolve_active_campaign_workspace,
 )
-from ..config import REPO_ROOT, Paths, get_paths, load_config
+from ..config import REPO_ROOT, Paths, get_paths
 from ..constants import (
     ATTRIBUTE_TIERS,
     ATTRIBUTES,
@@ -257,18 +257,17 @@ def scene_end_cmd(
             for key, value in trackers.items()
             if not isinstance(value, dict) or value.get("scene_id") != scene_id
         }
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            _db.scene_tracker_delete_scene(
-                conn,
-                campaign_id=campaign_id,
-                scene_id=scene_id,
-            )
-            _db.action_order_clear_scene(
-                conn,
-                campaign_id=campaign_id,
-                scene_id=scene_id,
-            )
+    with pg_connection() as conn:
+        _db.scene_tracker_delete_scene(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+        )
+        _db.action_order_clear_scene(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+        )
     queue_event(
         state, role.actor,
         f"scene end: {ended}"
@@ -411,21 +410,20 @@ def scene_tracker_set(
         "updated_at": now_iso(),
         "updated_by": role.actor,
     }
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            tracker = _db.scene_tracker_upsert(
-                conn,
-                campaign_id=campaign_id,
-                tracker_id=tracker_key,
-                scene_id=scene_id,
-                label=label or tracker_key,
-                value=tracker["value"],
-                max_value=max_value,
-                resistance=resistance,
-                impact_resistance=impact_resistance,
-                visibility="public" if public else "dm",
-                actor=role.actor,
-            )
+    with pg_connection() as conn:
+        tracker = _db.scene_tracker_upsert(
+            conn,
+            campaign_id=campaign_id,
+            tracker_id=tracker_key,
+            scene_id=scene_id,
+            label=label or tracker_key,
+            value=tracker["value"],
+            max_value=max_value,
+            resistance=resistance,
+            impact_resistance=impact_resistance,
+            visibility="public" if public else "dm",
+            actor=role.actor,
+        )
     state.setdefault("scene_trackers", {})[tracker_key] = tracker
     queue_event(state, role.actor, _tracker_summary("tracker set", tracker))
     result = {"tracker": tracker}
@@ -459,29 +457,18 @@ def scene_tracker_tick(ctx: click.Context, tracker_id: str, delta: int) -> None:
     state = load_state(paths, campaign_id)
     tracker_key = slugify(tracker_id)
     trackers = state.setdefault("scene_trackers", {})
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            try:
-                tracker, before, after = _db.scene_tracker_tick(
-                    conn,
-                    campaign_id=campaign_id,
-                    tracker_id=tracker_key,
-                    delta=delta,
-                    actor=role.actor,
-                )
-            except LookupError:
-                raise GlassError(f"unknown scene tracker {tracker_key!r}") from None
-        max_value = int(tracker.get("max", 0))
-    else:
-        tracker = trackers.get(tracker_key)
-        if not isinstance(tracker, dict):
-            raise GlassError(f"unknown scene tracker {tracker_key!r}")
-        before = int(tracker.get("value", 0))
-        max_value = int(tracker.get("max", 0))
-        after = clamp(before + delta, 0, max_value)
-        tracker["value"] = after
-        tracker["updated_at"] = now_iso()
-        tracker["updated_by"] = role.actor
+    with pg_connection() as conn:
+        try:
+            tracker, before, after = _db.scene_tracker_tick(
+                conn,
+                campaign_id=campaign_id,
+                tracker_id=tracker_key,
+                delta=delta,
+                actor=role.actor,
+            )
+        except LookupError:
+            raise GlassError(f"unknown scene tracker {tracker_key!r}") from None
+    max_value = int(tracker.get("max", 0))
     trackers[tracker_key] = tracker
     sign = f"{delta:+d}"
     queue_event(
@@ -523,29 +510,13 @@ def scene_tracker_list(ctx: click.Context, all_scenes: bool) -> None:
     state = load_state(paths, campaign_id)
     role = current_role()
     active_scene_id = _active_tracker_scene_id(state, required=False)
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            trackers = _db.scene_tracker_list(
-                conn,
-                campaign_id=campaign_id,
-                scene_id=None if all_scenes else active_scene_id,
-                visibility="public" if role.kind == "player" else None,
-            )
-    else:
-        trackers = []
-        for tracker in state.get("scene_trackers", {}).values():
-            if not isinstance(tracker, dict):
-                continue
-            if (
-                not all_scenes
-                and active_scene_id
-                and tracker.get("scene_id") != active_scene_id
-            ):
-                continue
-            if role.kind == "player" and not bool(tracker.get("public", True)):
-                continue
-            trackers.append(tracker)
-        trackers.sort(key=lambda item: str(item.get("tracker_id", "")))
+    with pg_connection() as conn:
+        trackers = _db.scene_tracker_list(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=None if all_scenes else active_scene_id,
+            visibility="public" if role.kind == "player" else None,
+        )
     result = {"trackers": trackers, "count": len(trackers)}
     append_audit(
         paths,
@@ -595,19 +566,14 @@ def scene_pressure(
     scene_id = _active_tracker_scene_id(state)
     target_key = slugify(target_id)
     trackers = state.setdefault("scene_trackers", {})
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            tracker = _db.scene_tracker_get(
-                conn,
-                campaign_id=campaign_id,
-                tracker_id=target_key,
-            )
-        if tracker is None:
-            raise GlassError(f"unknown scene tracker {target_key!r}")
-    else:
-        tracker = trackers.get(target_key)
-        if not isinstance(tracker, dict):
-            raise GlassError(f"unknown scene tracker {target_key!r}")
+    with pg_connection() as conn:
+        tracker = _db.scene_tracker_get(
+            conn,
+            campaign_id=campaign_id,
+            tracker_id=target_key,
+        )
+    if tracker is None:
+        raise GlassError(f"unknown scene tracker {target_key!r}")
     if tracker.get("scene_id") != scene_id:
         raise GlassError(
             f"scene tracker {target_key!r} belongs to scene {tracker.get('scene_id')!r}"
@@ -729,15 +695,14 @@ def scene_pressure(
     tracker["value"] = after
     tracker["updated_at"] = now_iso()
     tracker["updated_by"] = role.actor
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            tracker = _db.scene_tracker_set_value(
-                conn,
-                campaign_id=campaign_id,
-                tracker_id=target_key,
-                value=after,
-                actor=role.actor,
-            )
+    with pg_connection() as conn:
+        tracker = _db.scene_tracker_set_value(
+            conn,
+            campaign_id=campaign_id,
+            tracker_id=target_key,
+            value=after,
+            actor=role.actor,
+        )
     trackers[target_key] = tracker
 
     label = tracker.get("label", target_key)

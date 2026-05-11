@@ -1,15 +1,14 @@
 """Per-turn context generation.
 
 The canonical campaign tree remains under campaigns/<id>/, but agents are
-spawned inside a per-turn read-only projection under .glass-cwd/. The projection
-uses the same relative paths as the canonical tree and contains only the files
-the actor may read. Persistent mutations must go through `glass`; direct writes
-inside the projection are limited to scratch and the current turn output.
+spawned inside a per-turn projection under .glass-cwd/. The projection uses the
+same relative paths as the canonical tree and contains only the files the actor
+may read. Role-authorized document surfaces are writable drafts; persistent
+mutations still go through `glass`.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +29,7 @@ from .store import SessionStore
 class ContextPackage:
     turn_id: str
     turn_number: int
+    agent: Agent
     campaign_root: Path         # canonical campaigns/<id>/
     spawn_cwd: Path             # per-turn projected campaign workspace; agent's cwd
     projection: ProjectionPaths
@@ -75,7 +75,7 @@ class ContextBuilder:
         if not campaign_root.exists():
             raise FileNotFoundError(
                 f"Campaign workspace does not exist at {campaign_root}; "
-                "run `aog campaign bootstrap <id>` first."
+                "run `aog campaign run <id>` first."
             )
 
         spawn_cwd = projection_root_for(
@@ -107,6 +107,7 @@ class ContextBuilder:
         return ContextPackage(
             turn_id=turn_id,
             turn_number=turn_number,
+            agent=agent,
             campaign_root=campaign_root,
             spawn_cwd=spawn_cwd,
             projection=projection,
@@ -131,28 +132,17 @@ class ContextBuilder:
         turn_meta: dict[str, Any] | None = None,
     ) -> str:
         active = state.active_mode
-        recent_turns = self._recent_turns(state, max_turns=6)
         scene_framing_path = _agent_path(
             self.store.scene_framing_path(state.campaign), spawn_cwd
         )
         transcript_path = _agent_path(self.store.transcript_path(state.campaign), spawn_cwd)
-        recent_turns_guidance = (
-            "Prior character-creation turns are intentionally not embedded. "
-            "During Round 1, build from your persona, the setting, the party "
-            "organization, public lore, and the SRD; do not optimize around "
-            "previous players' character-design turns. During Round 2, read "
-            "`players/*/public/intro.md` as the methodology directs.\n\n"
-            if active.mode == "character-creation"
-            else (
-                f"Full transcript at `{transcript_path}`. "
-                "Last few turns embedded for convenience. For older detail, use "
-                "`glass search text`, `glass search semantic`, or "
-                "`glass turns find --text` instead of asking another agent to "
-                "repeat known history.\n\n"
-            )
-        )
         turn_output_ref = _agent_path(turn_output_path, spawn_cwd)
         table_section = self._table_section(agent, spawn_cwd)
+        scene_summary_section = self._scene_summary_section(state, agent, spawn_cwd)
+        history_lookup_section = self._history_lookup_section(
+            state,
+            transcript_path=transcript_path,
+        )
 
         if agent.role == "dm":
             persona_pointer = "dm/persona.md"
@@ -213,7 +203,7 @@ class ContextBuilder:
                 "if a real decision depends on the answer, then write the public "
                 "turn prose and exit. Do not hand off merely to move dice around. "
                 "If public scene trackers are present, treat their numbers as "
-                "canonical.\n\n"
+                "authoritative.\n\n"
                 f"- Order: `{order}`\n"
                 f"- Round: `{action_order.get('round', 1)}`\n"
                 f"- Current slot: `{action_order.get('agent')}`\n\n"
@@ -237,7 +227,11 @@ class ContextBuilder:
             f"{creative_section}"
             "## Output contract\n\n"
             f"Write your final public turn prose to **`{turn_output_ref}`** "
-            "and exit. Full rules: `instructions/output-contract.md`.\n\n"
+            "and exit. Target 200-500 words for a normal full turn. Public "
+            "prose is the creative summary of the visible story beat; use "
+            "table, scene summary, messages, character state, notes, and the "
+            "command audit for durable state. Full rules: "
+            "`instructions/output-contract.md`.\n\n"
             "## Message bus — drain on turn start\n\n"
             "First action of every full turn: read unread messages.\n\n"
             "```\n"
@@ -252,12 +246,11 @@ class ContextBuilder:
             "active mode/table/scene framing. Use `instructions/` for tool and "
             "file behavior, `methodologies/` for required sequences, `srd/` "
             "for public rules, and `how-to/` for optional examples.\n\n"
-            "## Working directory\n\n"
-            "Your `cwd` is a read-only projection of the campaign workspace. "
-            "All campaign paths below are relative to this directory and match "
-            "the canonical campaign paths. Read files normally. Use `glass` "
-            "for persistent writes; direct edits here only affect this turn's "
-            "projection, with `scratch/` available for drafts.\n\n"
+            "## Authoring Surface\n\n"
+            "Read and edit the workspace-relative files named in this turn. "
+            "Commit authored markdown with `glass sync apply <path-or-directory> ...`, "
+            "or run `glass sync apply` to commit changed writable markdown files. "
+            "Use purpose-built `glass` commands for hard state.\n\n"
             f"{table_section}"
             "## Scene framing\n\n"
             f"Legacy scene framing is at `{scene_framing_path}`. Prefer the "
@@ -267,17 +260,15 @@ class ContextBuilder:
             "- `summary.md` — running campaign continuity summary\n"
             "- `arcs/<arc>/summary.md` and `arcs/<arc>/scenes/<scene>/summary.md` — arc/act and scene summaries\n"
             "- `shared/campaign-framing.md` / `shared/quest-log.md` / `shared/party-knowledge.md`\n"
-            "- `shared/clocks.md` — public durable clocks; arc-local public clocks are also projected to `arcs/<arc>/clocks.md`\n"
+            "- `shared/clocks.md` — public durable clocks; arc-local public clocks also appear at `arcs/<arc>/clocks.md`\n"
             "- `shared/lore/` — campaign canon (curated subset of the world bible)\n"
             "- `instructions/` — binding tool/file instructions; start at `instructions/index.md`\n"
             "- `methodologies/` — required workflows by mode/phase\n"
             "- `srd/` — public game rules; start at `srd/index.md`\n"
             "- `how-to/` — optional player/DM craft examples; start at `how-to/index.md`\n\n"
-            "## Recent turns\n\n"
-            f"{recent_turns_guidance}"
-            "```markdown\n"
-            f"{recent_turns}"
-            "```\n\n"
+            f"{scene_summary_section}"
+            "## History lookup\n\n"
+            f"{history_lookup_section}"
             f"{workspace_section}\n\n"
             f"{world_lore_section}\n"
             "## Your tools\n\n"
@@ -474,13 +465,98 @@ class ContextBuilder:
             f"{role_line}\n\n"
         )
 
-    def _recent_turns(self, state: SessionState, max_turns: int) -> str:
+    def _history_lookup_section(
+        self,
+        state: SessionState,
+        *,
+        transcript_path: str,
+    ) -> str:
         if state.active_mode.mode == "character-creation":
             return (
-                "_Character-creation turn excerpt omitted to keep first-pass "
-                "character concepts independent._"
+                "Prior character-creation turns are intentionally not embedded. "
+                "During Round 1, build from your persona, the setting, the party "
+                "organization, public lore, and the SRD; do not optimize around "
+                "previous players' character-design turns. During Round 2, read "
+                "`players/*/public/intro.md` as the methodology directs.\n\n"
             )
-        return self.store.recent_turns_markdown(state.campaign, limit=max_turns)
+        scene = state.active_mode.scene_id
+        return (
+            "Recent full turn narration is intentionally not embedded in "
+            "TURN_START. Use the table and scene summary first. If you need "
+            "exact wording or older detail, query it deliberately instead of "
+            "asking another agent to repeat known history.\n\n"
+            f"- Full transcript: `{transcript_path}`\n"
+            f"- Current-scene lookup: `glass turns find --scene {scene} --text \"<query>\"`\n"
+            "- Broader lookup: `glass search text \"<query>\"` or "
+            "`glass search semantic \"<query>\"`\n\n"
+        )
+
+    def _scene_summary_section(
+        self,
+        state: SessionState,
+        agent: Agent,
+        spawn_cwd: Path,
+    ) -> str:
+        active = state.active_mode
+        path = self._active_scene_summary_path(state)
+        if path is None:
+            return (
+                "## Scene Summary\n\n"
+                "No active scene summary file was found. Use the table and "
+                "targeted history lookup instead of asking for repeats.\n\n"
+            )
+        campaign_root = self.config.campaigns_dir / state.campaign
+        summary_ref = _agent_path(projected_path(campaign_root, spawn_cwd, path), spawn_cwd)
+        try:
+            body = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            body = ""
+        body = body or "_No scene summary has been written yet._"
+        body = _trim_context_markdown(body, max_chars=4000)
+
+        if active.mode in {"scene-play", "action", "combat", "chase", "social-pressure"}:
+            if agent.role == "dm":
+                maintenance = (
+                    "Before ending your turn, keep this compact continuity "
+                    "surface useful for the next actor. Append 2-4 sentences "
+                    "or bullets when the scene changes; rewrite/reformat with "
+                    "`glass summary write scene --body ...` when the running "
+                    "summary becomes noisy."
+                )
+            else:
+                maintenance = (
+                    "Before ending your turn, append 2-4 sentences or bullets "
+                    "to the active scene summary with "
+                    "`glass summary append scene --body ...`. The purpose is "
+                    "compact continuity for the next actor: what changed, what "
+                    "is now true, what someone is aiming at, or what question "
+                    "is live."
+                )
+        else:
+            maintenance = "Use this as compact scene continuity when relevant."
+
+        return (
+            "## Scene Summary\n\n"
+            f"Compact current-scene continuity lives at `{summary_ref}`. "
+            f"{maintenance}\n\n"
+            "```markdown\n"
+            f"{body}\n"
+            "```\n\n"
+        )
+
+    def _active_scene_summary_path(self, state: SessionState) -> Path | None:
+        scene_id = state.active_mode.scene_id
+        if not scene_id or scene_id == "none":
+            return None
+        campaign_root = self.config.campaigns_dir / state.campaign
+        matches = sorted(
+            (campaign_root / "arcs").glob(f"*/scenes/{scene_id}/summary.md")
+        )
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            return matches[0]
+        return None
 
     def _public_trackers_section(self, state: SessionState) -> str:
         trackers = self._public_trackers(state)
@@ -490,7 +566,7 @@ class ContextBuilder:
             "## Public scene trackers",
             "",
             "These are DM-maintained scene counters and pressure targets. Treat "
-            "the numbers as canonical.",
+            "the numbers as authoritative.",
             "",
         ]
         for tracker in trackers:
@@ -508,58 +584,37 @@ class ContextBuilder:
         return "\n".join(lines) + "\n\n"
 
     def _public_trackers(self, state: SessionState) -> list[dict[str, Any]]:
-        db_trackers = self._public_trackers_from_postgres(state)
-        if db_trackers is not None:
-            return db_trackers
-        path = self.store.glass_state_path(state.campaign)
-        if not path.exists():
-            return []
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return []
-        trackers = raw.get("scene_trackers")
-        if not isinstance(trackers, dict):
-            return []
-        active_scene = state.active_mode.scene_id
-        visible = [
-            tracker
-            for tracker in trackers.values()
-            if isinstance(tracker, dict)
-            and tracker.get("scene_id") == active_scene
-            and bool(tracker.get("public", True))
-        ]
-        return sorted(visible, key=lambda item: str(item.get("tracker_id", "")))
+        return self._public_trackers_from_postgres(state)
 
     def _public_trackers_from_postgres(
         self, state: SessionState
-    ) -> list[dict[str, Any]] | None:
-        try:
-            from cli import db as _glass_db
-            from cli.config import load_config as _load_glass_config
-            from .config import config_env_value
+    ) -> list[dict[str, Any]]:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+        from .config import config_env_value
 
-            previous = os.environ.get("GLASS_CONFIG")
-            os.environ["GLASS_CONFIG"] = config_env_value(self.config)
-            try:
-                toml_data = _load_glass_config()
-                if not _glass_db.postgres_configured(toml_data):
-                    return None
-                pg_config = _glass_db.load_pg_config(toml_data)
-                with _glass_db.connect(pg_config) as conn:
-                    return _glass_db.scene_tracker_list(
-                        conn,
-                        campaign_id=state.campaign,
-                        scene_id=state.active_mode.scene_id,
-                        visibility="public",
-                    )
-            finally:
-                if previous is None:
-                    os.environ.pop("GLASS_CONFIG", None)
-                else:
-                    os.environ["GLASS_CONFIG"] = previous
-        except Exception:
-            return None
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                return _glass_db.scene_tracker_list(
+                    conn,
+                    campaign_id=state.campaign,
+                    scene_id=state.active_mode.scene_id,
+                    visibility="public",
+                )
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
 
     def _dm_workspace_section(self, mode: str) -> str:
         methodology = _methodology_for_mode(mode)
@@ -579,15 +634,16 @@ class ContextBuilder:
             "## DM workspace\n\n"
             "- `dm/persona.md` is who you are.\n"
             "- `dm/foundation.md` is your working campaign-level framing.\n"
-            "- `dm/scratchpad.md` is your current working notes — persist updates "
-            "with `glass note write dm/scratchpad.md` or draft in `scratch/` first.\n"
+            "- `dm/scratchpad.md` is your current working notes. Edit it in place "
+            "and commit it with `glass sync apply dm/scratchpad.md`.\n"
             "- `dm/notes/` is your encyclopedia (NPCs, factions, monsters, "
             "locales, hooks, philosophy). Start at `dm/notes/index.md`.\n"
             "- `dm/journal/` is dated reflection. `dm/workspace/` is in-progress drafts.\n"
             "- `dm/secret/` is DM-only truth. `dm/intake/` is unratified player drafts.\n"
-            "- This workspace is projected read-only. Use `scratch/` for drafts, "
-            "then `glass note write`, `glass table write`, `glass lore upsert`, "
-            "or another `glass` command to persist changes.\n"
+            "- Writable document surfaces include `arcs/`, `table/`, `shared/`, "
+            "and DM note/workspace directories. Edit files at their relative "
+            "paths, then commit them with "
+            "`glass sync apply <path-or-directory> ...`.\n"
             "- `table/` is the public short-term table state: `index.md`, "
             "`scene.md`, `handouts/`, and any freeform root markdown files "
             "that prevent repeated clarification questions.\n"
@@ -621,20 +677,22 @@ class ContextBuilder:
         return (
             "## Player workspace\n\n"
             f"- `{base}/persona.md` is who you are at the table.\n"
-            f"- `{base}/signature-moves.md` starts with one simple recurring "
-            "move at level 1 and gains more slots as the character levels. "
+            f"- `{base}/signature-moves.md` starts with one simple, "
+            "pressure-ready recurring move at level 1 and gains more slots as "
+            "the character levels. "
             "Use `glass character signature-status` and "
             "`glass character signature-add` to update it; direct note writes "
             "to this file are rejected. These are narrative consistency tools, "
             "not guaranteed powers.\n"
-            f"- `{base}/scratchpad.md` is your current working notes — persist "
-            "updates with `glass note write scratchpad.md` or draft in `scratch/` first.\n"
+            f"- `{base}/scratchpad.md` is your current working notes. Edit it in "
+            f"place and commit it with `glass sync apply {base}/scratchpad.md`.\n"
             f"- `{base}/public/` is **party-readable**: drop intros, relationships, "
             "the cached character display, and any party-shared artifacts here. "
-            "Use `glass note write public/<file>.md ...` to persist them.\n"
+            f"Edit these files in place, then commit with `glass sync apply {base}/public`.\n"
             f"- `{base}/secrets/` is **DM-readable, party-private**: optional "
-            "hidden-knowledge files. Use `glass note write secrets/<file>.md ...` "
-            "and `glass msg secret dm` to flag it for the DM.\n"
+            "hidden-knowledge files. Edit them in place, commit with "
+            f"`glass sync apply {base}/secrets`, and use `glass msg secret dm` "
+            "to flag it for the DM.\n"
             f"- `{base}/notes/` is your personal encyclopedia "
             f"(start at `{base}/notes/index.md`). "
             f"`{base}/journal/` is dated reflection. "
@@ -645,9 +703,10 @@ class ContextBuilder:
             "- `table/` is the public short-term table state. Read it before "
             "asking the DM to repeat room, scene, NPC, monster, or immediate "
             "status information.\n"
-            "- This workspace is projected read-only. Use `scratch/` for drafts, "
-            "then `glass note write` or another allowed `glass` command to "
-            "persist changes.\n"
+            "- Your own player document directories are writable. Commit markdown edits with "
+            f"`glass sync apply {base}/notes {base}/journal {base}/drafts` "
+            "or run `glass sync apply` to commit all changed writable markdown. "
+            "Use purpose-built `glass` commands for hard state.\n"
             "- `instructions/` holds binding tool/file behavior. Start at "
             "`instructions/index.md`.\n"
             "- `methodologies/` holds required ordered workflows by phase or mode.\n"
@@ -686,6 +745,15 @@ def _agent_path(path: Path, spawn_cwd: Path) -> str:
         return str(path)
 
 
+def _trim_context_markdown(markdown: str, *, max_chars: int) -> str:
+    if len(markdown) <= max_chars:
+        return markdown
+    return (
+        markdown[:max_chars].rstrip()
+        + "\n\n_[truncated in TURN_START; read the file for full summary]_"
+    )
+
+
 def _clear_stale_turn_artifacts(turn_dir: Path) -> None:
     for name in (
         "out.md",
@@ -711,6 +779,7 @@ def _dm_tools() -> list[str]:
         "glass character consequence-add / consequence-list / consequence-resolve",
         "glass clock set / tick / list / show / resolve",
         "glass summary show / write / append",
+        "glass sync apply [path-or-directory ...]",
         "glass entity neighborhood / relations / between / edges / stance / find",
         "glass entity link / unlink / query / stats / upsert / ratify-claim",
         "glass search text / semantic / reindex",
@@ -722,7 +791,7 @@ def _dm_tools() -> list[str]:
         "glass lore import <world-bible-path> [--as <name>] — copies a world-bible entry "
         "into shared/lore/ AND graph-upserts it (curate, don't bulk-copy)",
         "glass lore list / search",
-        "glass note write / ratify / reject",
+        "glass note ratify / reject",
         "glass arc create / activate / current / list",
         "glass scene create / end",
         "glass scene tracker set / tick / list",
@@ -745,11 +814,11 @@ def _player_tools() -> list[str]:
         "glass character signature-status / signature-add (your character only)",
         "glass character consequence-list",
         "glass clock list / show",
-        "glass summary show",
+        "glass summary show / append scene",
+        "glass sync apply [path-or-directory ...]",
         "glass entity neighborhood / relations / between / edges / stance / similar / find / claim",
         "glass search text / semantic",
         "glass tarot current / list",
-        "glass note write (your own public/secrets/notes/journal/drafts files)",
         "glass note propose",
         "glass msg <type> <recipient> <body>",
         "glass turn handoff",

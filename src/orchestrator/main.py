@@ -104,78 +104,37 @@ def api_status(url: str | None) -> None:
 
 @main.group()
 def campaign() -> None:
-    """Manage campaigns: bootstrap, list, show, run, resume, clear."""
+    """Manage campaigns: run, inspect, checkpoint, and clear."""
 
 
-@campaign.command("bootstrap")
-@click.argument("campaign_id")
-@click.option(
-    "--max-planning-turns",
-    type=int,
-    default=15,
-    show_default=True,
-    help="Safety net only. The DM ends the planning mode when they're done.",
-)
-@click.option(
-    "--max-creation-turns",
-    type=int,
-    default=30,
-    show_default=True,
-    help="Safety net only. The DM ends character_creation when both rounds are done.",
-)
-@click.option(
-    "--max-prelude-turns",
-    type=int,
-    default=35,
-    show_default=True,
-    help="Safety net only. The DM ends prelude after the two-scene shakedown.",
-)
-@click.option(
-    "--skip-character-creation",
-    is_flag=True,
-    help="Stop after campaign planning. Useful when you want to inspect the planning output.",
-)
-@click.option(
-    "--skip-prelude",
-    is_flag=True,
-    help="Stop after character creation without running the bootstrap prelude.",
-)
-@click.option(
-    "--dry-run",
-    is_flag=True,
-    help="Build context and commit synthetic turns without invoking Claude.",
-)
-@click.pass_obj
-def campaign_bootstrap(
+def _run_campaign_lifecycle(
     cli: CliState,
-    campaign_id: str,
+    campaign_id: str | None,
+    *,
     max_planning_turns: int,
     max_creation_turns: int,
     max_prelude_turns: int,
+    max_active_turns: int | None,
     skip_character_creation: bool,
     skip_prelude: bool,
     dry_run: bool,
 ) -> None:
-    """Bootstrap a campaign end-to-end.
+    """Create or continue a campaign from durable phase/mode state."""
 
-    Idempotent: if the workspace already exists, resume from the current
-    phase. Phases that have already completed (have a completed_at in
-    phase_history) are skipped. Phases that started but didn't finish
-    are picked up where they left off (the orchestrator's create_session
-    is idempotent w.r.t. mode-stack pushes).
-
-    Steps:
-      1. Create or resume campaigns/<id>/.
-      2. Invoke DM in campaign-planning mode.
-      3. Character creation (skip with --skip-character-creation).
-      4. Prelude shakedown: one normal scene, one action scene.
-      5. Advance to active play.
-    """
     from .campaign import CampaignSpace
 
     _ensure_operator_groups_active()
     _ensure_db_migrated(cli)
+    _ensure_falkor_reachable(cli)
     _restart_api_daemon_for_run(cli)
+
+    if campaign_id is None:
+        campaign_id = cli.store.latest_campaign()
+        if campaign_id is None:
+            raise click.ClickException(
+                "campaign id required when no campaign exists; "
+                "run `aog campaign run <campaign-id>`"
+            )
 
     space = CampaignSpace.from_config(cli.config, campaign_id)
     if space.exists():
@@ -196,186 +155,111 @@ def campaign_bootstrap(
         except (FileExistsError, FileNotFoundError) as exc:
             raise click.ClickException(str(exc))
     click.echo(f"      workspace: {space.campaign_dir}")
-    click.echo(f"      state:     Postgres runtime row (file fallback: {space.state_path})")
+    click.echo("      state:     Postgres runtime row")
 
     # Phase 2: campaign planning
-    if _phase_completed(cm_state, PHASE_PLANNING):
-        click.secho("[2/5] Campaign planning already complete; skipping.", fg="yellow")
-    else:
-        click.secho(
-            f"[2/5] Invoking DM for campaign planning (max {max_planning_turns} turns)",
-            fg="cyan",
-        )
-        if cm_state["phase"] != PHASE_PLANNING:
-            cli.campaign_manager.advance_phase(campaign_id, PHASE_PLANNING)
-        state = cli.store.create_session(
-            campaign=campaign_id,
-            initial_mode="campaign-planning",
-            initial_scene="planning",
-        )
-        click.echo(f"      campaign: {state.campaign}")
-        try:
-            turns_run = cli.orchestrator.run_loop(
-                state,
-                max_turns=max_planning_turns,
-                dry_run=dry_run,
-                resume_failed=False,
-            )
-        except TurnFailure as exc:
-            detail = json.dumps(exc.failure, indent=2, sort_keys=True)
-            raise click.ClickException(
-                f"campaign planning failed: {exc}\n{detail}"
-            ) from exc
-        _require_bootstrap_mode_ended(
-            cli,
-            campaign_id=campaign_id,
-            mode_name="campaign-planning",
-            scene_id="planning",
-            phase_label="campaign planning",
-            turns_run=turns_run,
-        )
-        click.echo(f"      DM produced {turns_run} planning turn(s)")
-        click.echo(f"      transcript: {cli.store.transcript_path(state.campaign)}")
-        click.echo(f"      DM workspace: {space.campaign_dir / 'dm'}")
-        checkpoint = _checkpoint_or_raise(
-            cli,
-            campaign_id,
-            label="after-campaign-planning",
-        )
-        click.echo(f"      checkpoint: {checkpoint['checkpoint_id']}")
-        cm_state = cli.campaign_manager.load_state(campaign_id)  # refresh
+    cm_state = _run_bootstrap_phase(
+        cli,
+        campaign_id=campaign_id,
+        cm_state=cm_state,
+        phase_name=PHASE_PLANNING,
+        mode_name="campaign-planning",
+        scene_id="planning",
+        phase_label="campaign planning",
+        step_label="[2/5] Campaign planning",
+        start_message=f"[2/5] Invoking DM for campaign planning (max {max_planning_turns} turns)",
+        max_turns=max_planning_turns,
+        checkpoint_label="after-campaign-planning",
+        next_phase=PHASE_CHARACTER_CREATION,
+        dry_run=dry_run,
+        validate=None,
+    )
 
     # Phase 3: character creation
     if skip_character_creation:
-        if cm_state["phase"] != PHASE_CHARACTER_CREATION:
-            cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
         click.secho("[3/5] Character creation skipped (--skip-character-creation).",
                     fg="yellow")
         click.echo()
         click.secho(
-            f"Campaign '{campaign_id}' bootstrapped through campaign_planning.",
+            f"Campaign '{campaign_id}' advanced through campaign_planning.",
             fg="green",
         )
         click.echo(f"Next phase: {PHASE_CHARACTER_CREATION}")
-        click.echo(f"Runtime state: Postgres runtime row (file fallback: {space.state_path})")
+        click.echo("Runtime state: Postgres runtime row")
         return
-    elif _phase_completed(cm_state, PHASE_CHARACTER_CREATION):
-        click.secho("[3/5] Character creation already complete; skipping.", fg="yellow")
-    else:
-        click.secho(
+    cm_state = _run_bootstrap_phase(
+        cli,
+        campaign_id=campaign_id,
+        cm_state=cm_state,
+        phase_name=PHASE_CHARACTER_CREATION,
+        mode_name="character-creation",
+        scene_id="character-creation",
+        phase_label="character creation",
+        step_label="[3/5] Character creation",
+        start_message=(
             f"[3/5] Invoking players + DM for character creation "
-            f"(max {max_creation_turns} turns)",
-            fg="cyan",
-        )
-        if cm_state["phase"] != PHASE_CHARACTER_CREATION:
-            cli.campaign_manager.advance_phase(campaign_id, PHASE_CHARACTER_CREATION)
-        creation_state = cli.store.create_session(
-            campaign=campaign_id,
-            initial_mode="character-creation",
-            initial_scene="character-creation",
-        )
-        try:
-            creation_turns = cli.orchestrator.run_loop(
-                creation_state,
-                max_turns=max_creation_turns,
-                dry_run=dry_run,
-                resume_failed=False,
-            )
-        except TurnFailure as exc:
-            detail = json.dumps(exc.failure, indent=2, sort_keys=True)
-            raise click.ClickException(
-                f"character creation failed: {exc}\n{detail}"
-            ) from exc
-        _require_bootstrap_mode_ended(
-            cli,
-            campaign_id=campaign_id,
-            mode_name="character-creation",
-            scene_id="character-creation",
-            phase_label="character creation",
-            turns_run=creation_turns,
-        )
-        if not dry_run:
-            _validate_character_creation_complete(cli, campaign_id)
-        click.echo(f"      ran {creation_turns} character-creation turn(s)")
-        click.echo(f"      transcript: {cli.store.transcript_path(creation_state.campaign)}")
-        checkpoint = _checkpoint_or_raise(
-            cli,
-            campaign_id,
-            label="after-character-creation",
-        )
-        click.echo(f"      checkpoint: {checkpoint['checkpoint_id']}")
-        cm_state = cli.campaign_manager.load_state(campaign_id)
+            f"(max {max_creation_turns} turns)"
+        ),
+        max_turns=max_creation_turns,
+        checkpoint_label="after-character-creation",
+        next_phase=PHASE_PRELUDE,
+        dry_run=dry_run,
+        validate=_validate_character_creation_complete,
+    )
 
     # Phase 4: prelude shakedown
     if skip_prelude:
-        if cm_state["phase"] != PHASE_PRELUDE:
-            cli.campaign_manager.advance_phase(campaign_id, PHASE_PRELUDE)
         click.secho("[4/5] Prelude skipped (--skip-prelude).", fg="yellow")
         click.echo()
         click.secho(
-            f"Campaign '{campaign_id}' bootstrapped through character_creation.",
+            f"Campaign '{campaign_id}' advanced through character_creation.",
             fg="green",
         )
         click.echo(f"Next phase: {PHASE_PRELUDE}")
-        click.echo(f"Runtime state: Postgres runtime row (file fallback: {space.state_path})")
+        click.echo("Runtime state: Postgres runtime row")
         return
-    if _phase_completed(cm_state, PHASE_PRELUDE):
-        click.secho("[4/5] Prelude already complete; skipping.", fg="yellow")
-    else:
-        click.secho(
-            f"[4/5] Running bootstrap prelude (max {max_prelude_turns} turns)",
-            fg="cyan",
-        )
-        if cm_state["phase"] != PHASE_PRELUDE:
-            cli.campaign_manager.advance_phase(campaign_id, PHASE_PRELUDE)
-        prelude_state = cli.store.create_session(
-            campaign=campaign_id,
-            initial_mode="prelude",
-            initial_scene="prelude",
-        )
-        try:
-            prelude_turns = cli.orchestrator.run_loop(
-                prelude_state,
-                max_turns=max_prelude_turns,
-                dry_run=dry_run,
-                resume_failed=False,
-            )
-        except TurnFailure as exc:
-            detail = json.dumps(exc.failure, indent=2, sort_keys=True)
-            raise click.ClickException(
-                f"prelude failed: {exc}\n{detail}"
-            ) from exc
-        _require_bootstrap_mode_ended(
-            cli,
-            campaign_id=campaign_id,
-            mode_name="prelude",
-            scene_id="prelude",
-            phase_label="prelude",
-            turns_run=prelude_turns,
-        )
-        click.echo(f"      ran {prelude_turns} prelude turn(s)")
-        click.echo(f"      transcript: {cli.store.transcript_path(prelude_state.campaign)}")
-        checkpoint = _checkpoint_or_raise(
-            cli,
-            campaign_id,
-            label="after-prelude",
-        )
-        click.echo(f"      checkpoint: {checkpoint['checkpoint_id']}")
-        cm_state = cli.campaign_manager.load_state(campaign_id)
+    cm_state = _run_bootstrap_phase(
+        cli,
+        campaign_id=campaign_id,
+        cm_state=cm_state,
+        phase_name=PHASE_PRELUDE,
+        mode_name="prelude",
+        scene_id="prelude",
+        phase_label="prelude",
+        step_label="[4/5] Prelude",
+        start_message=f"[4/5] Running bootstrap prelude (max {max_prelude_turns} turns)",
+        max_turns=max_prelude_turns,
+        checkpoint_label="after-prelude",
+        next_phase=PHASE_ACTIVE,
+        dry_run=dry_run,
+        validate=None,
+    )
 
     # Phase 5: active campaign handoff
-    if cm_state["phase"] != PHASE_ACTIVE:
-        cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
-    click.secho("[5/5] Campaign ready for active play", fg="green")
-    click.echo("      DM creates the next scene via glass scene create;")
-    click.echo("      operator drives via aog campaign run.")
+    if cm_state.get("phase") != PHASE_ACTIVE:
+        cm_state = cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
+    click.secho("[5/5] Active campaign", fg="green")
+    active_state = cli.store.load(campaign_id)
+    if active_state.has_active_mode:
+        turns = _run_or_raise(
+            cli,
+            active_state,
+            max_turns=max_active_turns,
+            dry_run=dry_run,
+            resume_failed=True,
+        )
+        click.echo(f"      ran {turns} active-play turn(s)")
+        return
+    active_state.mark_ready()
+    cli.store.save(active_state)
+    click.echo("      no active mode; DM creates the next scene via glass scene create")
 
     click.echo()
     click.secho(
-        f"Campaign '{campaign_id}' bootstrapped through prelude.",
+        f"Campaign '{campaign_id}' is ready.",
         fg="green",
     )
-    click.echo(f"Runtime state: Postgres runtime row (file fallback: {space.state_path})")
+    click.echo("Runtime state: Postgres runtime row")
 
 
 def _phase_completed(cm_state: dict, phase_name: str) -> bool:
@@ -384,6 +268,188 @@ def _phase_completed(cm_state: dict, phase_name: str) -> bool:
         if entry.get("phase") == phase_name and "completed_at" in entry:
             return True
     return False
+
+
+def _run_bootstrap_phase(
+    cli: CliState,
+    *,
+    campaign_id: str,
+    cm_state: dict,
+    phase_name: str,
+    mode_name: str,
+    scene_id: str,
+    phase_label: str,
+    step_label: str,
+    start_message: str,
+    max_turns: int,
+    checkpoint_label: str,
+    next_phase: str,
+    dry_run: bool,
+    validate,
+) -> dict:
+    if _phase_completed(cm_state, phase_name):
+        click.secho(f"{step_label} already complete; skipping.", fg="yellow")
+        return cm_state
+
+    finalized = _finalize_ended_bootstrap_phase(
+        cli,
+        campaign_id=campaign_id,
+        cm_state=cm_state,
+        phase_name=phase_name,
+        mode_name=mode_name,
+        scene_id=scene_id,
+        phase_label=phase_label,
+        checkpoint_label=checkpoint_label,
+        next_phase=next_phase,
+        dry_run=dry_run,
+        validate=validate,
+    )
+    if finalized is not None:
+        return finalized
+
+    click.secho(start_message, fg="cyan")
+    if cm_state.get("phase") != phase_name:
+        cm_state = cli.campaign_manager.advance_phase(campaign_id, phase_name)
+    state = cli.store.create_session(
+        campaign=campaign_id,
+        initial_mode=mode_name,
+        initial_scene=scene_id,
+    )
+    try:
+        turns_run = cli.orchestrator.run_loop(
+            state,
+            max_turns=max_turns,
+            dry_run=dry_run,
+            resume_failed=True,
+        )
+    except TurnFailure as exc:
+        detail = json.dumps(exc.failure, indent=2, sort_keys=True)
+        raise click.ClickException(f"{phase_label} failed: {exc}\n{detail}") from exc
+    _require_bootstrap_mode_ended(
+        cli,
+        campaign_id=campaign_id,
+        mode_name=mode_name,
+        scene_id=scene_id,
+        phase_label=phase_label,
+        turns_run=turns_run,
+    )
+    if validate is not None and not dry_run:
+        validate(cli, campaign_id)
+    click.echo(f"      ran {turns_run} {phase_label} turn(s)")
+    click.echo(f"      transcript: {cli.store.transcript_path(state.campaign)}")
+    return _checkpoint_and_advance_bootstrap_phase(
+        cli,
+        campaign_id=campaign_id,
+        checkpoint_label=checkpoint_label,
+        next_phase=next_phase,
+    )
+
+
+def _finalize_ended_bootstrap_phase(
+    cli: CliState,
+    *,
+    campaign_id: str,
+    cm_state: dict,
+    phase_name: str,
+    mode_name: str,
+    scene_id: str,
+    phase_label: str,
+    checkpoint_label: str,
+    next_phase: str,
+    dry_run: bool,
+    validate,
+) -> dict | None:
+    """Recover after a bootstrap mode ended but phase finalization stopped."""
+
+    if cm_state.get("phase") != phase_name:
+        return None
+    if _phase_completed(cm_state, phase_name):
+        return None
+
+    try:
+        runtime_state = cli.store.load(campaign_id)
+    except Exception:
+        return None
+    if any(
+        frame.mode == mode_name and frame.scene_id == scene_id
+        for frame in runtime_state.mode_stack
+    ):
+        return None
+    if not _bootstrap_mode_has_turns(
+        cli,
+        campaign_id=campaign_id,
+        mode_name=mode_name,
+        scene_id=scene_id,
+    ):
+        return None
+
+    if validate is not None and not dry_run:
+        try:
+            validate(cli, campaign_id)
+        except click.ClickException:
+            return None
+
+    click.secho(
+        f"{phase_label} mode already ended; finalizing phase.",
+        fg="yellow",
+    )
+    return _checkpoint_and_advance_bootstrap_phase(
+        cli,
+        campaign_id=campaign_id,
+        checkpoint_label=checkpoint_label,
+        next_phase=next_phase,
+    )
+
+
+def _checkpoint_and_advance_bootstrap_phase(
+    cli: CliState,
+    *,
+    campaign_id: str,
+    checkpoint_label: str,
+    next_phase: str,
+) -> dict:
+    runtime_state = cli.store.load(campaign_id)
+    runtime_state.mark_ready()
+    cli.store.save(runtime_state)
+    checkpoint = _checkpoint_or_raise(
+        cli,
+        campaign_id,
+        label=checkpoint_label,
+    )
+    click.echo(f"      checkpoint: {checkpoint['checkpoint_id']}")
+    return cli.campaign_manager.advance_phase(campaign_id, next_phase)
+
+
+def _bootstrap_mode_has_turns(
+    cli: CliState,
+    *,
+    campaign_id: str,
+    mode_name: str,
+    scene_id: str,
+) -> bool:
+    from cli import db as _glass_db
+    from cli.config import load_config as _load_glass_config
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        toml_data = _load_glass_config()
+        pg_config = _glass_db.load_pg_config(toml_data)
+        with _glass_db.connect(pg_config) as conn:
+            turns = _glass_db.turn_list(
+                conn,
+                campaign_id=campaign_id,
+                scene=scene_id,
+                mode=mode_name,
+                limit=1,
+                latest=True,
+            )
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
+    return bool(turns)
 
 
 def _require_bootstrap_mode_ended(
@@ -503,8 +569,8 @@ def _ensure_operator_groups_active() -> None:
         f"{', '.join(missing)}.\n"
         "Start a fresh login shell, or run through sudo so groups are "
         "recomputed, for example:\n"
-        f"  with-cred -- sudo -n -u {operator} -g {operator} "
-        f"{aog_bin} campaign bootstrap <campaign-id>"
+        f"  sudo -n -u {operator} -g {operator} {aog_bin} campaign run "
+        "<campaign-id>"
     )
 
 
@@ -533,7 +599,10 @@ def _ensure_db_migrated(cli: CliState) -> None:
     try:
         toml_data = _load_glass_config()
         if not _glass_db.postgres_configured(toml_data):
-            return
+            raise click.ClickException(
+                "Postgres runtime is required. Configure [postgres] in "
+                "agents-of-glass.toml or set libpq environment variables."
+            )
         pg_config = _glass_db.load_pg_config(toml_data)
         try:
             with _glass_db.connect(pg_config) as conn:
@@ -546,6 +615,27 @@ def _ensure_db_migrated(cli: CliState) -> None:
         applied = [name for name, action in actions if action == "applied"]
         if applied:
             click.echo(f"      db: applied migrations {', '.join(applied)}")
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
+
+
+def _ensure_falkor_reachable(cli: CliState) -> None:
+    from cli import graph as _glass_graph
+    from cli.config import load_config as _load_glass_config
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        toml_data = _load_glass_config()
+        falkor_config = _glass_graph.load_falkor_config(toml_data)
+        if not _glass_graph.is_available(falkor_config):
+            raise click.ClickException(
+                f"FalkorDB graph is required and is not reachable at "
+                f"{falkor_config.describe()}."
+            )
     finally:
         if previous_config is None:
             os.environ.pop("GLASS_CONFIG", None)
@@ -701,6 +791,8 @@ def campaign_reconcile(cli: CliState, campaign_id: str, repair: bool) -> None:
 @click.pass_obj
 def campaign_prepare_turn(cli: CliState, campaign_id: str | None) -> None:
     """Build the next turn's TURN_START context without invoking the agent."""
+    _ensure_db_migrated(cli)
+    _ensure_falkor_reachable(cli)
     state = cli.store.load(campaign_id)
     package = cli.orchestrator.prepare_turn(state)
     click.echo(f"prepared {package.turn_id}")
@@ -711,48 +803,75 @@ def campaign_prepare_turn(cli: CliState, campaign_id: str | None) -> None:
 
 @campaign.command("run")
 @click.argument("campaign_id", required=False)
-@click.option("--max-turns", type=int, default=None, help="Turns to run in this invocation.")
+@click.option(
+    "--max-turns",
+    type=int,
+    default=None,
+    help="Turns to run in active play once bootstrap phases are complete.",
+)
+@click.option(
+    "--max-planning-turns",
+    type=int,
+    default=15,
+    show_default=True,
+    help="Safety net only. The DM ends campaign planning when done.",
+)
+@click.option(
+    "--max-creation-turns",
+    type=int,
+    default=30,
+    show_default=True,
+    help="Safety net only. The DM ends character creation when done.",
+)
+@click.option(
+    "--max-prelude-turns",
+    type=int,
+    default=35,
+    show_default=True,
+    help="Safety net only. The DM ends prelude when done.",
+)
+@click.option(
+    "--skip-character-creation",
+    is_flag=True,
+    help="Stop after campaign planning. Useful for inspecting planning output.",
+)
+@click.option(
+    "--skip-prelude",
+    is_flag=True,
+    help="Stop after character creation without running the bootstrap prelude.",
+)
 @click.option("--dry-run", is_flag=True, help="Synthetic turns without Claude.")
 @click.pass_obj
 def campaign_run(
     cli: CliState,
     campaign_id: str | None,
     max_turns: int | None,
+    max_planning_turns: int,
+    max_creation_turns: int,
+    max_prelude_turns: int,
+    skip_character_creation: bool,
+    skip_prelude: bool,
     dry_run: bool,
 ) -> None:
-    """Run the orchestration loop for a campaign."""
-    _ensure_operator_groups_active()
-    _ensure_db_migrated(cli)
-    _restart_api_daemon_for_run(cli)
-    state = cli.store.load(campaign_id)
-    turns = _run_or_raise(cli, state, max_turns=max_turns, dry_run=dry_run, resume_failed=False)
-    click.echo(f"ran {turns} turn(s)")
+    """Create or continue a campaign from its durable phase/mode state."""
 
-
-@campaign.command("resume")
-@click.argument("campaign_id", required=False)
-@click.option("--max-turns", type=int, default=None, help="Turns to run in this invocation.")
-@click.option("--dry-run", is_flag=True, help="Synthetic turns without Claude.")
-@click.pass_obj
-def campaign_resume(
-    cli: CliState,
-    campaign_id: str | None,
-    max_turns: int | None,
-    dry_run: bool,
-) -> None:
-    """Resume a failed/paused/interrupted campaign."""
-    _ensure_operator_groups_active()
-    _ensure_db_migrated(cli)
-    _restart_api_daemon_for_run(cli)
-    state = cli.store.load(campaign_id)
-    turns = _run_or_raise(cli, state, max_turns=max_turns, dry_run=dry_run, resume_failed=True)
-    click.echo(f"resumed and ran {turns} turn(s)")
+    _run_campaign_lifecycle(
+        cli,
+        campaign_id,
+        max_planning_turns=max_planning_turns,
+        max_creation_turns=max_creation_turns,
+        max_prelude_turns=max_prelude_turns,
+        max_active_turns=max_turns,
+        skip_character_creation=skip_character_creation,
+        skip_prelude=skip_prelude,
+        dry_run=dry_run,
+    )
 
 
 @campaign.command("clean")
 @click.argument("campaign_id")
 @click.option("--state-only", is_flag=True,
-              help="Only delete runtime state/cache (runtime DB rows, file-fallback state, "
+              help="Only delete runtime state/cache (runtime DB rows, stale JSON state, "
                    "transcript export, audit.jsonl, scene-framing.md, per-agent turns/). "
                    "Keeps the campaign workspace, DM/player content, arcs, lore, "
                    "characters/messages/rolls, and graph nodes.")
@@ -913,6 +1032,7 @@ def _reconcile_campaign(
 ) -> dict[str, object]:
     from . import permissions as _permissions
     from cli import db as _glass_db
+    from cli import graph as _glass_graph
     from cli.config import load_config as _load_glass_config
 
     campaign_dir = cli.config.campaigns_dir / campaign_id
@@ -940,9 +1060,10 @@ def _reconcile_campaign(
     try:
         toml_data = _load_glass_config()
         postgres_configured = _glass_db.postgres_configured(toml_data)
+        check("postgres.configured", postgres_configured, "required")
+        check("state.json.absent", not state_path.exists(), str(state_path))
+        check("aog-state.json.absent", not aog_state_path.exists(), str(aog_state_path))
         if postgres_configured:
-            check("state.json.absent", not state_path.exists(), str(state_path))
-            check("aog-state.json.absent", not aog_state_path.exists(), str(aog_state_path))
             pg_config = _glass_db.load_pg_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 runtime = _glass_db.runtime_state_get(conn, campaign_id)
@@ -971,10 +1092,8 @@ def _reconcile_campaign(
                     encoding="utf-8",
                 )
                 repaired.append("transcript.md")
-        else:
-            check("state.json", state_path.exists(), str(state_path))
-            check("aog-state.json", aog_state_path.exists(), str(aog_state_path))
-            check("postgres.configured", False, "using file fallback")
+        falkor_config = _glass_graph.load_falkor_config(toml_data)
+        check("falkordb.reachable", _glass_graph.is_available(falkor_config), falkor_config.describe())
     finally:
         if previous_config is None:
             os.environ.pop("GLASS_CONFIG", None)

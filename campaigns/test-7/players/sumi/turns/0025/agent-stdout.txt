@@ -1,0 +1,3 @@
+Turn outputs aren't a durable surface — the orchestrator reads `out.md` directly from the workspace. The file is in place; banters are on the bus.
+
+Turn 25 written to `players/sumi/turns/0025/out.md`. Drova writes a third graduated-certainty line into the day-page (year-mark + Hab-Meridian carry-form + carrier has not opened); the re-dip of the pen is the visible motion. Hand stays on the rim, head stays down. Banters sent to tev and renno; nothing to kit or the DM.

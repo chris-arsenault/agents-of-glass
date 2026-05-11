@@ -6,10 +6,16 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from cli import db as _db
 from cli.api_grants import mint_grant, validate_grant
 from cli.api_server import _invoke_glass, ensure_background_server
+from cli.config import get_paths, load_config
 from cli.errors import GlassError
+from cli.local_env import load_repo_env
+from cli.state import default_state, save_state
+from orchestrator import permissions
 
 
 def free_port() -> int:
@@ -18,7 +24,36 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def initialize_postgres_state(config: Path, campaign_id: str) -> None:
+    load_repo_env()
+    previous = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = str(config)
+    try:
+        toml_data = load_config()
+        pg_config = _db.load_pg_config(toml_data)
+        with _db.connect(pg_config) as conn:
+            _db.migrate(conn)
+            _db.delete_campaign_data(conn, campaign_id)
+        save_state(get_paths(), default_state(campaign_id))
+    finally:
+        if previous is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous
+
+
 class GlassApiProxyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._provisioned_patch = patch.object(
+            permissions,
+            "has_provisioned_users",
+            return_value=False,
+        )
+        self._provisioned_patch.start()
+
+    def tearDown(self) -> None:
+        self._provisioned_patch.stop()
+
     def test_player_grant_allows_player_surface_and_rejects_db(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             campaigns = Path(tmp) / "campaigns"
@@ -39,6 +74,7 @@ class GlassApiProxyTests(unittest.TestCase):
             validate_grant(campaigns, token, ["tarot", "current"])
             validate_grant(campaigns, token, ["tarot", "list"])
             validate_grant(campaigns, token, ["entity", "relations", "duke"])
+            validate_grant(campaigns, token, ["sync", "apply", "--from", "scratch/sync.json"])
             validate_grant(
                 campaigns,
                 token,
@@ -59,7 +95,22 @@ class GlassApiProxyTests(unittest.TestCase):
             (campaigns / "c1").mkdir(parents=True)
             config = root / "agents-of-glass.toml"
             config.write_text(
-                f'[paths]\ncontent = "{root / "templates"}"\ncampaigns = "{campaigns}"\n',
+                f"""
+[postgres]
+host = "192.168.66.3"
+port = 5432
+database = "agents_of_glass"
+user = "agents_of_glass_app"
+
+[falkordb]
+host = "192.168.66.3"
+port = 16379
+graph = "agents_of_glass"
+
+[paths]
+content = "{root / "templates"}"
+campaigns = "{campaigns}"
+""".lstrip(),
                 encoding="utf-8",
             )
             url = ensure_background_server(
@@ -103,36 +154,34 @@ class GlassApiProxyTests(unittest.TestCase):
             campaigns = root / "campaigns"
             campaign_root = campaigns / "c1"
             campaign_root.mkdir(parents=True)
-            (campaign_root / "state.json").write_text(
-                json.dumps(
-                    {
-                        "schema_version": 5,
-                        "campaign": "c1",
-                        "status": "active",
-                        "turn_counter": 0,
-                        "mode_stack": [],
-                        "pending_events": [],
-                        "note_intake": [],
-                        "entities": {},
-                        "threads": {},
-                        "turns": [],
-                        "next_speakers": [],
-                        "action_order": None,
-                        "scene_trackers": {},
-                        "scene_closing_turns": None,
-                    }
-                )
-                + "\n",
+            projection = root / ".glass-cwd" / "c1" / "0001-tev"
+            (projection / "players" / "tev" / "public").mkdir(parents=True)
+            (projection / "players" / "tev" / "public" / "intro.md").write_text(
+                "hello from projection\n",
                 encoding="utf-8",
             )
-            projection = root / ".glass-cwd" / "c1" / "0001-tev"
-            (projection / "scratch").mkdir(parents=True)
-            (projection / "scratch" / "intro.md").write_text("hello from projection\n")
+            os.chmod(projection / "players" / "tev" / "public" / "intro.md", 0)
             config = root / "agents-of-glass.toml"
             config.write_text(
-                f'[paths]\ncontent = "{root / "templates"}"\ncampaigns = "{campaigns}"\n',
+                f"""
+[postgres]
+host = "192.168.66.3"
+port = 5432
+database = "agents_of_glass"
+user = "agents_of_glass_app"
+
+[falkordb]
+host = "192.168.66.3"
+port = 16379
+graph = "agents_of_glass"
+
+[paths]
+content = "{root / "templates"}"
+campaigns = "{campaigns}"
+""".lstrip(),
                 encoding="utf-8",
             )
+            initialize_postgres_state(config, "c1")
             token = mint_grant(
                 campaigns,
                 campaign_id="c1",
@@ -142,20 +191,29 @@ class GlassApiProxyTests(unittest.TestCase):
                 turn_id="c1-t0001",
                 ttl_seconds=60,
                 workspace_root=projection,
+                workspace_reader_user="aog-tev",
             )
             claim = validate_grant(
                 campaigns,
                 token,
-                ["note", "write", "public/intro.md", "--from", "scratch/intro.md"],
+                ["sync", "apply", "players/tev/public/intro.md"],
             )
             old_config = os.environ.get("GLASS_CONFIG")
             os.environ["GLASS_CONFIG"] = str(config)
             try:
-                result = _invoke_glass(
-                    ["note", "write", "public/intro.md", "--from", "scratch/intro.md"],
-                    claim,
-                )
+                with patch("cli.commands.sync.subprocess.run") as run:
+                    run.return_value = subprocess.CompletedProcess(
+                        args=[],
+                        returncode=0,
+                        stdout=b"hello from projection\n",
+                        stderr=b"",
+                    )
+                    result = _invoke_glass(
+                        ["sync", "apply", "players/tev/public/intro.md"],
+                        claim,
+                    )
             finally:
+                os.chmod(projection / "players" / "tev" / "public" / "intro.md", 0o600)
                 if old_config is None:
                     os.environ.pop("GLASS_CONFIG", None)
                 else:

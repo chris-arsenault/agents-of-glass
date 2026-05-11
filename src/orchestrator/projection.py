@@ -1,13 +1,16 @@
-"""Per-turn read-only campaign workspace projections.
+"""Per-turn actor-owned campaign workspace projections.
 
 Agents are good at reading files directly, so each turn gets a campaign-shaped
 workspace containing only the files that actor may see. The relative paths are
-the same as the canonical campaign tree; persistent mutations go through
-`glass`, not filesystem writes into this projection.
+the same as the canonical campaign tree. The spawned actor owns the projection,
+but persistent mutations still go through `glass`, not direct writes to the
+canonical campaign tree.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -18,11 +21,12 @@ from . import permissions
 from .state import Agent
 
 
-READONLY_DIR_MODE = 0o555
-READONLY_FILE_MODE = 0o444
-WRITABLE_DIR_MODE = 0o777
+READONLY_DIR_MODE = 0o550
+READONLY_FILE_MODE = 0o440
+WRITABLE_DIR_MODE = 0o2770
 PROJECTION_PARENT_DIR_MODE = 0o710
-WRITABLE_FILE_MODE = 0o666
+WRITABLE_FILE_MODE = 0o660
+PROJECTION_MANIFEST = ".glass-projection-manifest.json"
 
 _TOP_LEVEL_FILES = {
     "README.md",
@@ -41,6 +45,7 @@ _PUBLIC_DIRS = {
 }
 _SKIP_FILE_NAMES = {
     ".glass-grants.json",
+    PROJECTION_MANIFEST,
     "aog-state.json",
     "state.json",
     "audit.jsonl",
@@ -108,7 +113,7 @@ def build_projection(
     canonical_turn_start_path: Path,
     canonical_turn_output_path: Path,
 ) -> ProjectionPaths:
-    """Create a fresh read-only projection for one actor turn."""
+    """Create a fresh actor-owned projection for one actor turn."""
 
     root = projection_root_for(
         config,
@@ -131,25 +136,34 @@ def build_projection(
         if _directory_visible(rel, agent, current_turn_dir_rel):
             (root / rel).mkdir(parents=True, exist_ok=True)
 
+    manifest: dict[str, str] = {}
     for rel, source in sorted(_iter_files(campaign_root), key=lambda item: item[0]):
         if not _file_visible(rel, agent, current_turn_start_rel):
             continue
         target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         _copy_file(source, target, campaign_root=campaign_root)
+        if target.exists() and target.is_file():
+            manifest[str(rel)] = _hash_file(target)
 
     projected_turn_dir = root / current_turn_dir_rel
     projected_turn_dir.mkdir(parents=True, exist_ok=True)
     scratch_dir = root / "scratch"
     scratch_dir.mkdir(parents=True, exist_ok=True)
     _prepare_tool_runtime_files(root)
+    _write_projection_manifest(root, manifest)
+    _ensure_authoring_surfaces(root, agent)
 
     _make_readonly(root)
+    _make_authoring_surfaces_writable(root, agent)
     _make_writable_tree(projected_turn_dir)
     _make_writable_tree(scratch_dir)
     _make_writable_tree(root / ".claude")
-    os.chmod(root / ".mcp.json", WRITABLE_FILE_MODE)
-    permissions.apply_projection_permissions(root)
+    _chmod_if_possible(root / ".mcp.json", WRITABLE_FILE_MODE)
+    permissions.apply_projection_permissions(
+        root,
+        actor_user=permissions.player_user_for(agent.id),
+    )
 
     return ProjectionPaths(
         root=root,
@@ -164,6 +178,7 @@ def copy_turn_artifacts_to_canonical(
     *,
     projection: ProjectionPaths,
     canonical_turn_dir: Path,
+    reader_user: str | None = None,
 ) -> None:
     """Copy generated turn artifacts from projection back to canonical storage."""
 
@@ -173,7 +188,7 @@ def copy_turn_artifacts_to_canonical(
             continue
         target = canonical_turn_dir / name
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
+        _copy_artifact(source, target, reader_user=reader_user)
 
 
 def refresh_projection_from_canonical(
@@ -207,6 +222,7 @@ def refresh_projection_from_canonical(
     projected_turn_dir = root / current_turn_dir_rel
 
     _make_owner_writable(root)
+    manifest = _load_projection_manifest(root)
     for rel, _source in sorted(_iter_dirs(campaign_root), key=lambda item: item[0]):
         if _directory_visible(rel, agent, current_turn_dir_rel):
             (root / rel).mkdir(parents=True, exist_ok=True)
@@ -217,16 +233,78 @@ def refresh_projection_from_canonical(
         if rel.parts and rel.parts[0] == "scratch":
             continue
         target = root / rel
+        source_hash = _hash_file(source)
+        old_hash = manifest.get(str(rel))
+        if target.exists() and target.is_file():
+            target_hash = _hash_file(target)
+            if target_hash == source_hash:
+                manifest[str(rel)] = source_hash
+                continue
+            if old_hash is None or target_hash != old_hash:
+                continue
         target.parent.mkdir(parents=True, exist_ok=True)
         _copy_file(source, target, campaign_root=campaign_root)
+        manifest[str(rel)] = source_hash
 
     _prepare_tool_runtime_files(root)
+    _write_projection_manifest(root, manifest)
+    _ensure_authoring_surfaces(root, agent)
     _make_readonly(root)
+    _make_authoring_surfaces_writable(root, agent)
     _make_writable_tree(projected_turn_dir)
     _make_writable_tree(scratch_dir)
     _make_writable_tree(root / ".claude")
-    os.chmod(root / ".mcp.json", WRITABLE_FILE_MODE)
-    permissions.apply_projection_permissions(root)
+    _chmod_if_possible(root / ".mcp.json", WRITABLE_FILE_MODE)
+    permissions.apply_projection_permissions(
+        root,
+        actor_user=permissions.player_user_for(agent.id),
+    )
+
+
+def unsynced_workspace_changes(
+    projection_root: Path,
+    agent: Agent,
+) -> list[dict[str, str]]:
+    """Return writable projected markdown whose content is not in the manifest.
+
+    The projection manifest records the hash of files copied in at turn start
+    and files successfully committed through `glass sync apply`. Anything under
+    a role-authorized document surface that differs from that manifest is a
+    deterministic unsynced workspace edit.
+    """
+
+    root = projection_root
+    if not root.exists() or not root.is_dir():
+        return []
+    manifest = _load_projection_manifest(root)
+    changes: list[dict[str, str]] = []
+
+    seen: set[str] = set()
+    for path in sorted(root.rglob("*.md")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root)
+        if not _is_syncable_authoring_path(rel, root=root, agent=agent):
+            continue
+        rel_text = str(rel)
+        seen.add(rel_text)
+        current_hash = _hash_file(path)
+        manifest_hash = manifest.get(rel_text)
+        if manifest_hash is None:
+            changes.append({"path": rel_text, "status": "new"})
+        elif manifest_hash != current_hash:
+            changes.append({"path": rel_text, "status": "modified"})
+
+    for rel_text in sorted(set(manifest) - seen):
+        rel = Path(rel_text)
+        if rel.suffix.lower() != ".md":
+            continue
+        if not _is_syncable_authoring_path(rel, root=root, agent=agent):
+            continue
+        if not (root / rel).exists():
+            changes.append({"path": rel_text, "status": "deleted"})
+
+    return changes
 
 
 def _iter_dirs(root: Path) -> list[tuple[Path, Path]]:
@@ -347,13 +425,132 @@ def _prepare_tool_runtime_files(root: Path) -> None:
         mcp_path.write_text("{}\n", encoding="utf-8")
 
 
+def _load_projection_manifest(root: Path) -> dict[str, str]:
+    path = root / PROJECTION_MANIFEST
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    files = raw.get("files", raw)
+    if not isinstance(files, dict):
+        return {}
+    return {str(key): str(value) for key, value in files.items() if isinstance(value, str)}
+
+
+def _write_projection_manifest(root: Path, manifest: dict[str, str]) -> None:
+    path = root / PROJECTION_MANIFEST
+    path.write_text(
+        json.dumps({"files": manifest}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _hash_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 def _make_readonly(root: Path) -> None:
     for path in root.rglob("*"):
         if path.is_dir():
-            os.chmod(path, READONLY_DIR_MODE)
+            _chmod_if_possible(path, READONLY_DIR_MODE)
         else:
-            os.chmod(path, READONLY_FILE_MODE)
-    os.chmod(root, READONLY_DIR_MODE)
+            _chmod_if_possible(path, READONLY_FILE_MODE)
+    _chmod_if_possible(root, READONLY_DIR_MODE)
+
+
+def writable_probe_dirs(root: Path, agent: Agent) -> list[Path]:
+    """Directories where the actor must be able to create/edit temp files.
+
+    These include writable document trees plus parents of writable singleton
+    files. Atomic editors create sibling temp files, so a writable file with a
+    read-only parent is not actually writable in practice.
+    """
+
+    dirs, files = _authoring_surfaces(root, agent)
+    probes = list(dirs)
+    probes.extend(path.parent for path in files)
+    return sorted({path for path in probes if path.exists()})
+
+
+def _make_authoring_surfaces_writable(root: Path, agent: Agent) -> None:
+    dirs, files = _authoring_surfaces(root, agent)
+    for directory in dirs:
+        if not directory.exists():
+            continue
+        _make_writable_tree(directory)
+    for path in files:
+        _chmod_if_possible(path.parent, WRITABLE_DIR_MODE)
+        if path.exists():
+            try:
+                os.chmod(path, WRITABLE_FILE_MODE)
+            except OSError:
+                pass
+
+
+def _ensure_authoring_surfaces(root: Path, agent: Agent) -> None:
+    dirs, files = _authoring_surfaces(root, agent)
+    for directory in dirs:
+        directory.mkdir(parents=True, exist_ok=True)
+    for path in files:
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _authoring_surfaces(root: Path, agent: Agent) -> tuple[list[Path], list[Path]]:
+    if agent.role == "dm":
+        dirs = [
+            root / "arcs",
+            root / "table",
+            root / "shared",
+            root / "dm" / "workspace",
+            root / "dm" / "notes",
+            root / "dm" / "journal",
+            root / "dm" / "secret",
+            root / "dm" / "intake",
+        ]
+        files = [
+            root / "context.md",
+            root / "summary.md",
+            root / "dm" / "scratchpad.md",
+            root / "dm" / "foundation.md",
+        ]
+        return dirs, files
+
+    base = root / "players" / agent.id
+    dirs = [base / item for item in _PLAYER_OWN_DIRS]
+    files = [base / "scratchpad.md"]
+    return dirs, files
+
+
+def _is_syncable_authoring_path(rel: Path, *, root: Path, agent: Agent) -> bool:
+    if rel.is_absolute() or any(part == ".." for part in rel.parts):
+        return False
+    if rel.suffix.lower() != ".md":
+        return False
+    if any(part.startswith(".") for part in rel.parts):
+        return False
+    if rel.parts and rel.parts[0] == "scratch":
+        return False
+    if _is_turn_path(rel):
+        return False
+    if rel.name in {"transcript.md", "audit.jsonl"}:
+        return False
+
+    dirs, files = _authoring_surfaces(root, agent)
+    dir_rels = [path.relative_to(root) for path in dirs]
+    file_rels = [path.relative_to(root) for path in files]
+    if rel in file_rels:
+        return True
+    return any(_path_is_relative_to(rel, directory) for directory in dir_rels)
+
+
+def _path_is_relative_to(path: Path, parent: Path) -> bool:
+    return path == parent or path.parts[: len(parent.parts)] == parent.parts
 
 
 def _make_owner_writable(root: Path) -> None:
@@ -386,6 +583,32 @@ def _make_writable_tree(root: Path) -> None:
         os.chmod(root, WRITABLE_DIR_MODE if root.is_dir() else WRITABLE_FILE_MODE)
     except OSError:
         pass
+
+
+def _chmod_if_possible(path: Path, mode: int) -> None:
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass
+
+
+def _copy_artifact(source: Path, target: Path, *, reader_user: str | None) -> None:
+    try:
+        shutil.copy2(source, target)
+        return
+    except PermissionError:
+        if reader_user is None:
+            raise
+
+    import subprocess
+
+    result = subprocess.run(
+        ["sudo", "-n", "-u", reader_user, "--", "cat", str(source)],
+        check=True,
+        capture_output=True,
+    )
+    target.write_bytes(result.stdout)
+    os.chmod(target, 0o600)
 
 
 def _current_turn_dir_rel(agent: Agent, turn_number: int) -> Path:

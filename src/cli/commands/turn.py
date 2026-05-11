@@ -14,6 +14,7 @@ from typing import Any
 import click
 
 from .. import db as _db
+from .. import embeddings as _embeddings
 from .. import workspace as _workspace
 from ..campaign import (
     active_campaign_id,
@@ -22,7 +23,7 @@ from ..campaign import (
     pg_connection,
     resolve_active_campaign_workspace,
 )
-from ..config import REPO_ROOT, Paths, get_paths, load_config
+from ..config import REPO_ROOT, Paths, get_paths
 from ..constants import (
     ATTRIBUTE_TIERS,
     ATTRIBUTES,
@@ -181,68 +182,75 @@ def turn_append(
         "turn_number_in_scene": turn_number_in_scene,
         "visibility": "public",
     }
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            turn_number_in_scene = (
-                _db.turn_count(
-                    conn,
-                    campaign_id=state["campaign"],
-                    scene=resolved_scene,
-                )
-                + 1
-            )
-            record = _db.turn_insert(
+    search_title = (
+        f"Turn {turn_id} - {speaker_id} "
+        f"({resolved_mode}, {resolved_scene})"
+    )
+    embedded = _embeddings.embed_text(
+        _embeddings.embedding_text(title=search_title, body=body),
+        kind="document",
+    )
+    with pg_connection() as conn:
+        turn_number_in_scene = (
+            _db.turn_count(
                 conn,
                 campaign_id=state["campaign"],
-                turn_id=turn_id,
-                session_id=state["campaign"],
-                scene_id=resolved_scene,
-                mode=resolved_mode,
-                speaker=speaker_id,
-                role=resolved_role,
-                character_id=character_id,
-                source_path=str(source),
-                prose=body,
-                event_summaries=[event["summary"] for event in flushed],
-                events=flushed,
-                markdown=turn_markdown,
-                created_at=ts,
-                arc_id=arc_id,
-                scene_type=scene_type,
-                turn_number_in_scene=turn_number_in_scene,
-                visibility="public",
+                scene=resolved_scene,
             )
-            _db.event_insert_many(
-                conn,
-                campaign_id=state["campaign"],
-                scene_id=resolved_scene,
-                turn_id=turn_id,
-                events=flushed,
-            )
-            _db.search_chunk_upsert(
-                conn,
-                chunk_id=f"{state['campaign']}:turn:{turn_id}",
-                campaign_id=state["campaign"],
-                source_type="turn",
-                source_id=str(turn_id),
-                visibility="public",
-                owner_actor=None,
-                path=str(source),
-                title=(
-                    f"Turn {turn_id} - {speaker_id} "
-                    f"({resolved_mode}, {resolved_scene})"
-                ),
-                body=body,
-                metadata={
-                    "turn_id": turn_id,
-                    "speaker": speaker_id,
-                    "role": resolved_role,
-                    "mode": resolved_mode,
-                    "scene_id": resolved_scene,
-                    "arc_id": arc_id,
-                },
-            )
-            conn.commit()
+            + 1
+        )
+        record = _db.turn_insert(
+            conn,
+            campaign_id=state["campaign"],
+            turn_id=turn_id,
+            session_id=state["campaign"],
+            scene_id=resolved_scene,
+            mode=resolved_mode,
+            speaker=speaker_id,
+            role=resolved_role,
+            character_id=character_id,
+            source_path=str(source),
+            prose=body,
+            event_summaries=[event["summary"] for event in flushed],
+            events=flushed,
+            markdown=turn_markdown,
+            created_at=ts,
+            arc_id=arc_id,
+            scene_type=scene_type,
+            turn_number_in_scene=turn_number_in_scene,
+            visibility="public",
+        )
+        _db.event_insert_many(
+            conn,
+            campaign_id=state["campaign"],
+            scene_id=resolved_scene,
+            turn_id=turn_id,
+            events=flushed,
+        )
+        _db.search_chunk_upsert(
+            conn,
+            chunk_id=f"{state['campaign']}:turn:{turn_id}",
+            campaign_id=state["campaign"],
+            source_type="turn",
+            source_id=str(turn_id),
+            visibility="public",
+            owner_actor=None,
+            path=str(source),
+            title=search_title,
+            body=body,
+            metadata={
+                "turn_id": turn_id,
+                "speaker": speaker_id,
+                "role": resolved_role,
+                "mode": resolved_mode,
+                "scene_id": resolved_scene,
+                "arc_id": arc_id,
+            },
+            embedding=embedded.vectors[0],
+            embedding_model=embedded.model,
+            embedding_provider=embedded.provider,
+        )
+        conn.commit()
 
     # Derived compatibility export. The structured row above is the canonical
     # communication surface for queries and the future viewer UI.
@@ -425,22 +433,21 @@ def turn_initiative(
         "created_at": now_iso(),
         "created_by": role.actor,
     }
-    if _db.postgres_configured(load_config()):
-        with pg_connection() as conn:
-            persisted = _db.action_order_upsert(
-                conn,
-                campaign_id=campaign_id,
-                mode=str(current["mode"]),
-                scene_id=str(current["scene_id"]),
-                label=label,
-                order=order,
-                rolls=public_rolls,
-                actor=role.actor,
-            )
-        state["action_order"] = {
-            key: persisted[key]
-            for key in ("mode", "scene_id", "label", "round", "cursor", "order", "rolls")
-        } | {"created_at": persisted["created_at"], "created_by": role.actor}
+    with pg_connection() as conn:
+        persisted = _db.action_order_upsert(
+            conn,
+            campaign_id=campaign_id,
+            mode=str(current["mode"]),
+            scene_id=str(current["scene_id"]),
+            label=label,
+            order=order,
+            rolls=public_rolls,
+            actor=role.actor,
+        )
+    state["action_order"] = {
+        key: persisted[key]
+        for key in ("mode", "scene_id", "label", "round", "cursor", "order", "rolls")
+    } | {"created_at": persisted["created_at"], "created_by": role.actor}
 
     order_summary = ", ".join(
         f"{item['agent']}({item['total']})" for item in public_rolls

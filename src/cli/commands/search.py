@@ -8,6 +8,7 @@ from typing import Any, Iterable
 import click
 
 from .. import db as _db
+from .. import embeddings as _embeddings
 from ..campaign import active_campaign_id, pg_connection, resolve_active_campaign_workspace
 from ..config import get_paths
 from ..errors import GlassError
@@ -48,12 +49,7 @@ def search_semantic(
     source_type: str | None,
     limit: int,
 ) -> None:
-    """Semantic-search surface.
-
-    The backing table has an embedding column, but embeddings are not populated
-    until an embedding provider is configured. Until then this command uses the
-    same bounded full-text index and labels the result as lexical fallback.
-    """
+    """Vector semantic search over indexed visible content."""
     _run_search(ctx, query, source_type=source_type, limit=limit, semantic=True)
 
 
@@ -72,67 +68,88 @@ def search_reindex(ctx: click.Context, turns_only: bool) -> None:
     state = load_state(paths, campaign_id)
     workspace = resolve_active_campaign_workspace()
     with pg_connection() as conn:
+        turns = _db.turn_list(conn, campaign_id=campaign_id, limit=100000)
+
+    turn_chunks = [
+        {
+            "chunk_id": f"{campaign_id}:turn:{turn['turn_id']}",
+            "campaign_id": campaign_id,
+            "source_type": "turn",
+            "source_id": str(turn["turn_id"]),
+            "visibility": turn.get("visibility") or "public",
+            "owner_actor": None,
+            "path": turn.get("source_path"),
+            "title": (
+                f"Turn {turn['turn_id']} - {turn['speaker']} "
+                f"({turn['mode']}, {turn['scene_id']})"
+            ),
+            "body": turn.get("prose") or "",
+            "metadata": {
+                "turn_id": turn["turn_id"],
+                "speaker": turn.get("speaker"),
+                "role": turn.get("role"),
+                "mode": turn.get("mode"),
+                "scene_id": turn.get("scene_id"),
+                "arc_id": turn.get("arc_id"),
+            },
+        }
+        for turn in turns
+    ]
+    markdown_chunks: list[dict[str, Any]] = []
+    if not turns_only:
+        for item in _iter_indexable_markdown(workspace.root):
+            text = item["path"].read_text(encoding="utf-8")
+            markdown_chunks.append(
+                {
+                    "chunk_id": f"{campaign_id}:markdown:{item['rel']}",
+                    "campaign_id": campaign_id,
+                    "source_type": "markdown",
+                    "source_id": str(item["rel"]),
+                    "visibility": item["visibility"],
+                    "owner_actor": item["owner_actor"],
+                    "path": str(item["rel"]),
+                    "title": _markdown_title(text, str(item["rel"])),
+                    "body": text,
+                    "metadata": {"path": str(item["rel"])},
+                }
+            )
+    chunks = turn_chunks + markdown_chunks
+    embedded = _embed_chunks(chunks)
+
+    with pg_connection() as conn:
         deleted_turns = _db.search_chunks_delete_source(
             conn,
             campaign_id=campaign_id,
             source_type="turn",
         )
-        turns = _db.turn_list(conn, campaign_id=campaign_id, limit=100000)
-        for turn in turns:
-            _db.search_chunk_upsert(
-                conn,
-                chunk_id=f"{campaign_id}:turn:{turn['turn_id']}",
-                campaign_id=campaign_id,
-                source_type="turn",
-                source_id=str(turn["turn_id"]),
-                visibility=turn.get("visibility") or "public",
-                owner_actor=None,
-                path=turn.get("source_path"),
-                title=(
-                    f"Turn {turn['turn_id']} - {turn['speaker']} "
-                    f"({turn['mode']}, {turn['scene_id']})"
-                ),
-                body=turn.get("prose") or "",
-                metadata={
-                    "turn_id": turn["turn_id"],
-                    "speaker": turn.get("speaker"),
-                    "role": turn.get("role"),
-                    "mode": turn.get("mode"),
-                    "scene_id": turn.get("scene_id"),
-                    "arc_id": turn.get("arc_id"),
-                },
-            )
         deleted_files = 0
-        indexed_files = 0
         if not turns_only:
             deleted_files = _db.search_chunks_delete_source(
                 conn,
                 campaign_id=campaign_id,
                 source_type="markdown",
             )
-            for item in _iter_indexable_markdown(workspace.root):
-                text = item["path"].read_text(encoding="utf-8")
-                _db.search_chunk_upsert(
-                    conn,
-                    chunk_id=f"{campaign_id}:markdown:{item['rel']}",
-                    campaign_id=campaign_id,
-                    source_type="markdown",
-                    source_id=str(item["rel"]),
-                    visibility=item["visibility"],
-                    owner_actor=item["owner_actor"],
-                    path=str(item["rel"]),
-                    title=_markdown_title(text, str(item["rel"])),
-                    body=text,
-                    metadata={"path": str(item["rel"])},
-                )
-                indexed_files += 1
+        for chunk, vector in zip(chunks, embedded.vectors):
+            _db.search_chunk_upsert(
+                conn,
+                **chunk,
+                embedding=vector,
+                embedding_model=embedded.model,
+                embedding_provider=embedded.provider,
+            )
         conn.commit()
     result = {
         "campaign_id": campaign_id,
         "turns_indexed": len(turns),
-        "markdown_indexed": indexed_files,
+        "markdown_indexed": len(markdown_chunks),
         "deleted": {"turn": deleted_turns, "markdown": deleted_files},
-        "semantic_embeddings": "not-populated",
+        "semantic_embeddings": {
+            "status": "populated",
+            "model": embedded.model,
+            "provider": embedded.provider,
+            "dimensions": embedded.dimensions,
+            "count": len(embedded.vectors),
+        },
     }
     append_audit(
         paths,
@@ -157,21 +174,42 @@ def _run_search(
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     role = current_role()
-    with pg_connection() as conn:
-        matches = _db.search_query(
-            conn,
-            campaign_id=campaign_id,
-            query=query,
-            role_kind=role.kind,
-            actor=role.actor,
-            source_type=source_type,
-            limit=limit,
-        )
+    embedding_info: dict[str, Any] | None = None
+    if semantic:
+        query_embedding = _embeddings.embed_text(query, kind="query")
+        embedding_info = {
+            "status": "query-embedded",
+            "model": query_embedding.model,
+            "provider": query_embedding.provider,
+            "dimensions": query_embedding.dimensions,
+        }
+        with pg_connection() as conn:
+            matches = _db.search_query_semantic(
+                conn,
+                campaign_id=campaign_id,
+                query=query,
+                query_embedding=query_embedding.vectors[0],
+                role_kind=role.kind,
+                actor=role.actor,
+                source_type=source_type,
+                limit=limit,
+            )
+    else:
+        with pg_connection() as conn:
+            matches = _db.search_query(
+                conn,
+                campaign_id=campaign_id,
+                query=query,
+                role_kind=role.kind,
+                actor=role.actor,
+                source_type=source_type,
+                limit=limit,
+            )
     result = {
         "campaign_id": campaign_id,
         "query": query,
         "mode": "semantic" if semantic else "text",
-        "semantic_embeddings": "lexical-fallback" if semantic else None,
+        "semantic_embeddings": embedding_info,
         "matches": matches,
         "count": len(matches),
     }
@@ -184,6 +222,14 @@ def _run_search(
         result,
     )
     emit(result)
+
+
+def _embed_chunks(chunks: list[dict[str, Any]]) -> _embeddings.EmbeddingBatch:
+    texts = [
+        _embeddings.embedding_text(title=chunk["title"], body=chunk["body"])
+        for chunk in chunks
+    ]
+    return _embeddings.embed_texts(texts, kind="document")
 
 
 def _iter_indexable_markdown(root: Path) -> Iterable[dict[str, Any]]:

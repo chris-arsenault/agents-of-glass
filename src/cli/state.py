@@ -1,11 +1,10 @@
 """Runtime state IO + audit + events.
 
-One runtime state record per campaign. When Postgres is configured it is the
-canonical store and no `state.json` runtime cache is written. Without
-Postgres, the CLI falls back to a local `state.json` for tests and standalone
-development. Layout under campaigns/<id>/:
+One runtime state record per campaign. Postgres is the required canonical
+store; `state.json` is not a supported runtime cache. Layout under
+campaigns/<id>/:
 
-  state.json          — file fallback only when Postgres is not configured
+  state.json          — stale legacy path only; removed on runtime saves
   transcript.md       — derived public transcript export
   audit.jsonl         — append-only command audit log
   scene-framing.md    — current scene framing (rewritten on scene start)
@@ -30,7 +29,7 @@ Schema (v5):
   note_intake:          list — DM intake queue
   entities:             dict — graph mirror cache
   threads:              dict — DM thread tracker
-  turns:                list — structured turn rows from Postgres or file fallback
+  turns:                list — structured turn rows mirrored from Postgres
   next_speakers:        list[{agent, rapid_prompt?}] — handoff queue
   action_order:         dict | None — persistent initiative order for action scenes
   scene_trackers:       dict — scene-local generic counters/clocks
@@ -41,6 +40,8 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -179,43 +180,46 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_state(paths: Paths, campaign_id: str) -> dict[str, Any]:
-    path = state_path(paths, campaign_id)
-    if _postgres_runtime_enabled():
-        state = _load_state_from_postgres(campaign_id)
-        if state is not None:
-            return normalize_state(state)
-        raise GlassError(f"no runtime state for campaign {campaign_id!r} in Postgres")
-    if not path.exists():
-        raise GlassError(f"no state for campaign {campaign_id!r} at {path}")
-    return normalize_state(json.loads(path.read_text(encoding="utf-8")))
+    _require_postgres_runtime()
+    state = _load_state_from_postgres(campaign_id)
+    if state is not None:
+        return normalize_state(state)
+    raise GlassError(f"no runtime state for campaign {campaign_id!r} in Postgres")
 
 
 def state_exists(paths: Paths, campaign_id: str) -> bool:
-    if _postgres_runtime_enabled():
-        return _load_state_from_postgres(campaign_id) is not None
-    return state_path(paths, campaign_id).exists()
+    _require_postgres_runtime()
+    return _load_state_from_postgres(campaign_id) is not None
 
 
 def save_state(paths: Paths, state: dict[str, Any]) -> None:
     state = normalize_state(state)
     state["updated_at"] = now_iso()
-    if _postgres_runtime_enabled():
-        _save_state_to_postgres(state)
-        path = state_path(paths, state["campaign"])
-        if path.exists():
-            path.unlink()
-        return
-    campaign_id = state["campaign"]
-    directory = campaign_runtime_dir(paths, campaign_id)
-    directory.mkdir(parents=True, exist_ok=True)
-    path = state_path(paths, campaign_id)
-    tmp_path = path.with_suffix(".json.tmp")
-    tmp_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp_path.replace(path)
+    _require_postgres_runtime()
+    _save_state_to_postgres(state)
+    _remove_stale_runtime_json(paths, state["campaign"])
 
 
 def _postgres_runtime_enabled() -> bool:
     return _db.postgres_configured(load_config())
+
+
+def _require_postgres_runtime() -> None:
+    if not _postgres_runtime_enabled():
+        raise GlassError(
+            "Postgres runtime is required. Configure [postgres] in "
+            "agents-of-glass.toml or set libpq environment variables, then "
+            "run `glass db migrate`."
+        )
+
+
+def _remove_stale_runtime_json(paths: Paths, campaign_id: str) -> None:
+    for path in (
+        state_path(paths, campaign_id),
+        campaign_runtime_dir(paths, campaign_id) / "aog-state.json",
+    ):
+        if path.exists():
+            path.unlink()
 
 
 def _load_state_from_postgres(campaign_id: str) -> dict[str, Any] | None:
@@ -291,6 +295,7 @@ def commit(
     if save:
         save_state(paths, state)
     append_audit(paths, state, ctx, event, params, result)
+    _refresh_projection_committed_paths(paths, state, result)
     emit(result)
 
 
@@ -315,6 +320,127 @@ def inline_event_lines(events: list[dict[str, Any]]) -> list[str]:
 def current_mode_record(state: dict[str, Any]) -> dict[str, Any] | None:
     stack = state.get("mode_stack", [])
     return stack[-1] if stack else None
+
+
+def _refresh_projection_committed_paths(
+    paths: Paths,
+    state: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    """Mirror committed canonical files back into a projected cwd.
+
+    Agent-facing `glass` commands run in the per-turn projection but mutate the
+    canonical campaign tree. When a command result names committed files, keep
+    those paths in the projection and manifest aligned so the post-turn sync
+    checker does not report files that were already committed.
+    """
+
+    projection_root = Path.cwd().resolve()
+    manifest_path = projection_root / ".glass-projection-manifest.json"
+    if not manifest_path.exists() or paths.campaigns is None:
+        return
+
+    campaign_id = str(state.get("campaign") or "")
+    if not campaign_id:
+        return
+    campaign_root = campaign_runtime_dir(paths, campaign_id).resolve()
+    if projection_root == campaign_root:
+        return
+
+    rels = _committed_result_paths(result, campaign_root=campaign_root, campaign_id=campaign_id)
+    if not rels:
+        return
+
+    manifest = _load_projection_manifest_for_commit(manifest_path)
+    changed = False
+    for rel in sorted(rels):
+        source = campaign_root / rel
+        target = projection_root / rel
+        if not source.exists() or not source.is_file():
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            os.chmod(target, 0o660)
+        except OSError:
+            pass
+        else:
+            manifest[str(rel)] = _hash_file_for_commit(source)
+            changed = True
+    if changed:
+        manifest_path.write_text(
+            json.dumps({"files": manifest}, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+
+def _committed_result_paths(
+    value: Any,
+    *,
+    campaign_root: Path,
+    campaign_id: str,
+) -> set[Path]:
+    paths: set[Path] = set()
+
+    def visit(item: Any) -> None:
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if key == "path" and isinstance(child, str):
+                    rel = _result_path_to_campaign_rel(
+                        child,
+                        campaign_root=campaign_root,
+                        campaign_id=campaign_id,
+                    )
+                    if rel is not None:
+                        paths.add(rel)
+                else:
+                    visit(child)
+        elif isinstance(item, list):
+            for child in item:
+                visit(child)
+
+    visit(value)
+    return paths
+
+
+def _result_path_to_campaign_rel(
+    text: str,
+    *,
+    campaign_root: Path,
+    campaign_id: str,
+) -> Path | None:
+    if not text:
+        return None
+    raw = Path(text)
+    try:
+        if raw.is_absolute():
+            return raw.resolve().relative_to(campaign_root)
+        if len(raw.parts) >= 2 and raw.parts[0] == "campaigns" and raw.parts[1] == campaign_id:
+            return Path(*raw.parts[2:])
+    except ValueError:
+        return None
+    return None
+
+
+def _load_projection_manifest_for_commit(path: Path) -> dict[str, str]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    files = raw.get("files", raw)
+    if not isinstance(files, dict):
+        return {}
+    return {str(key): str(value) for key, value in files.items() if isinstance(value, str)}
+
+
+def _hash_file_for_commit(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 def state_summary(state: dict[str, Any]) -> dict[str, Any]:

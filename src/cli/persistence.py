@@ -14,9 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from . import db as _db
+from . import embeddings as _embeddings
 from .campaign import pg_connection
 from .config import Paths, load_config
 from .entities import markdown_title, parse_frontmatter, upsert_entity_from_path
+from .errors import GlassError
 from .ids import slugify
 from .paths_resolve import display_path
 
@@ -97,7 +99,10 @@ class CampaignPersistence:
 
     def _index_markdown(self, path: Path, text: str) -> dict[str, Any]:
         if not _db.postgres_configured(load_config()):
-            return {"status": "skipped", "reason": "postgres-not-configured"}
+            raise GlassError(
+                "Postgres search index is required. Configure [postgres] in "
+                "agents-of-glass.toml or set libpq environment variables."
+            )
         try:
             rel = path.resolve().relative_to(self.campaign_root.resolve())
         except ValueError:
@@ -107,6 +112,10 @@ class CampaignPersistence:
 
         visibility, owner = _visibility_for_path(rel)
         title = _markdown_title(text, str(rel))
+        embedded = _embeddings.embed_text(
+            _embeddings.embedding_text(title=title, body=text),
+            kind="document",
+        )
         with pg_connection() as conn:
             _db.search_chunk_upsert(
                 conn,
@@ -120,6 +129,9 @@ class CampaignPersistence:
                 title=title,
                 body=text,
                 metadata={"path": str(rel)},
+                embedding=embedded.vectors[0],
+                embedding_model=embedded.model,
+                embedding_provider=embedded.provider,
             )
             conn.commit()
         return {
@@ -128,6 +140,8 @@ class CampaignPersistence:
             "path": str(rel),
             "visibility": visibility,
             "owner_actor": owner,
+            "embedding_model": embedded.model,
+            "embedding_dim": embedded.dimensions,
         }
 
     def _is_entity_markdown(self, path: Path, text: str) -> bool:

@@ -85,10 +85,14 @@ known information. They should query bounded stores:
 - relationship recall: `glass entity relations`, `between`, `edges`, `stance`
 - actual-play influence recall: `glass tarot current` / `glass tarot list`
 
-`glass search semantic` is the stable CLI shape for vector-backed recall. The
-current implementation uses the Postgres search index as lexical fallback until
-embeddings are populated. New committed turns are indexed at `glass turn append`;
-markdown search chunks are refreshed by `glass search reindex`.
+`glass search semantic` is vector-backed recall over Postgres `search_chunks`
+embeddings. New committed turns are embedded at `glass turn append`; markdown
+search chunks are embedded by CLI write facades and refreshed by
+`glass search reindex`. The default provider is the local OpenAI-compatible
+Nomic embedder at `192.168.66.3:5361`, returning 768-dimensional
+`nomic-ai/nomic-embed-text-v1.5` vectors. Postgres requires `pgvector`; vectors
+are stored as `vector(768)` and ranked with pgvector cosine distance using an
+HNSW index.
 
 ## Checkpoints And Restore
 
@@ -98,7 +102,7 @@ it snapshots every state surface that can change what agents see or remember.
 `aog campaign checkpoint <campaign-id>` captures:
 
 - the live campaign filesystem under `campaigns/<id>/`
-- all Postgres rows for the campaign, including `search_chunks.embedding`
+- all Postgres rows for the campaign, including `search_chunks.embedding_vector`
 - all FalkorDB graph nodes and edges tagged with the campaign id
 
 Checkpoints live outside agent discovery at

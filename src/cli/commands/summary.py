@@ -7,12 +7,17 @@ from pathlib import Path
 import click
 
 from .. import workspace as _workspace
-from ..campaign import active_campaign_id, resolve_active_campaign_workspace
+from ..campaign import (
+    active_campaign_id,
+    active_campaign_root,
+    resolve_active_campaign_workspace,
+)
 from ..config import get_paths
 from ..errors import GlassError
 from ..paths_resolve import display_path
-from ..role import require_dm
-from ..state import append_audit, commit, load_state, queue_event
+from ..persistence import CampaignPersistence
+from ..role import current_role
+from ..state import append_audit, commit, current_mode_record, load_state, queue_event
 from ..yaml_io import command_params, emit, read_body
 
 
@@ -120,13 +125,21 @@ def _write_summary(
     from_file: str | None,
     append: bool,
 ) -> None:
-    role = require_dm()
+    role = current_role()
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     workspace = resolve_active_campaign_workspace()
+    _assert_summary_write_allowed(
+        role,
+        state,
+        level,
+        target_id,
+        append=append,
+    )
     path = _summary_path(workspace, level, target_id, arc_id=arc_id)
     text = read_body(body, from_file).rstrip() + "\n"
+    _assert_summary_body_allowed(role, level, append=append, text=text)
     path.parent.mkdir(parents=True, exist_ok=True)
     if append and path.exists():
         existing = path.read_text(encoding="utf-8")
@@ -136,12 +149,19 @@ def _write_summary(
     else:
         path.write_text(text, encoding="utf-8")
         action = "summary.write"
+    persistence = CampaignPersistence(
+        paths=paths,
+        campaign_id=campaign_id,
+        campaign_root=active_campaign_root(),
+    )
+    persisted = persistence.register_markdown(path, state=state, graph=False)
     resolved_level = "arc" if level == "act" else level
     queue_event(state, role.actor, f"{action} {resolved_level} {display_path(path)}")
     result = {
         "level": resolved_level,
         "path": display_path(path),
         "bytes": len(path.read_bytes()),
+        "persistence": persisted.to_dict(),
     }
     commit(
         paths,
@@ -156,6 +176,41 @@ def _write_summary(
         ),
         result,
     )
+
+
+def _assert_summary_write_allowed(
+    role,
+    state: dict,
+    level: str,
+    target_id: str | None,
+    *,
+    append: bool,
+) -> None:
+    if role.can_do_anything or role.kind == "dm":
+        return
+    normalized = "arc" if level == "act" else level
+    if role.kind != "player" or not append or normalized != "scene":
+        raise GlassError(
+            "permission denied: players may only append to the active scene summary"
+        )
+    active = current_mode_record(state) or {}
+    active_scene = str(active.get("scene_id") or "")
+    requested = _workspace.slugify(target_id or active_scene)
+    if not active_scene or requested != _workspace.slugify(active_scene):
+        raise GlassError(
+            "permission denied: players may only append to the active scene summary"
+        )
+
+
+def _assert_summary_body_allowed(role, level: str, *, append: bool, text: str) -> None:
+    normalized = "arc" if level == "act" else level
+    if role.kind == "player" and append and normalized == "scene":
+        max_chars = 1500
+        if len(text.strip()) > max_chars:
+            raise GlassError(
+                "scene summary append is too long for a player turn "
+                f"({len(text.strip())}/{max_chars} chars); keep it to 2-4 sentences or bullets"
+            )
 
 
 def _summary_path(

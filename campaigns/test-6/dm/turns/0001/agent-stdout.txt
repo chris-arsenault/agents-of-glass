@@ -1,0 +1,1 @@
+Turn 1 complete. Foundation laid — Question (*What do you owe what you find?*), Scarcity (*Witnesses*), authorial stance, lore + web pulls, and the planning queue. Files committed: `dm/foundation.md`, `context.md`, `dm/scratchpad.md`. Public turn prose at `dm/turns/0001/out.md`. Org, factions, NPCs, locales, hooks, opening arc come next invocation.

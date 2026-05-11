@@ -69,7 +69,7 @@ These are protocols, not an exhaustive scene-kind list.
 
 | Protocol | Speaker selection | Fictional time per turn | Checks | Typical turn cap | Ends when |
 |----------|-------------------|-------------------------|--------|------------------|-----------|
-| **scene-play** | round-robin plus handoffs | minutes, hours, or days as needed | fewer; players roll when they judge uncertainty matters; DM rolls DM-side checks when needed | 12 | DM cuts to next scene, or no player has new action |
+| **scene-play** | round-robin plus handoffs | minutes, hours, or days as needed | fewer; players roll when they judge uncertainty matters; DM rolls DM-side checks when needed | 120 | DM cuts to next scene, or no player has new action |
 | **action** | action order rolled after DM layout | seconds or a few heartbeats | more common; players still choose their own rolls, DM-side checks stay on DM turns | 8 | a visible objective/tracker resolves |
 | **travel / montage** | one beat per player, in order | hours, days, or longer | none or one big check | 4 (one per player) | every PC contributed once |
 

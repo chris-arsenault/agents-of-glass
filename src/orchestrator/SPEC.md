@@ -6,7 +6,7 @@ For the full role this plays in the system, see [`../../docs/design/architecture
 
 This started as a spec. The current implementation is a v0 bootstrap predating the full hierarchy — paths get migrated as the build catches up:
 
-- target shape: scene state at `campaigns/<id>/arcs/<arc>/scenes/<scene>/state.json`;
+- runtime state in Postgres, with scene prose and operator artifacts on disk;
 - transcript, scene context, and audit files at `campaigns/<id>/arcs/<arc>/scenes/<scene>/`;
 - per-turn artifacts (`in.md`, `out.md`, agent stdout/stderr) under `dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`;
 - agents are spawned inside per-turn read-only campaign-shaped projections (`cwd = .glass-cwd/<campaign>/<turn>-<agent>/`);
@@ -28,26 +28,22 @@ The orchestrator package exposes two scripts:
 Campaign management (see [`/docs/design/game-start.md`](../../docs/design/game-start.md) for the bootstrap flow):
 
 ```
-aog campaign bootstrap <id>                 # IMPLEMENTED — full bootstrap end-to-end:
+aog campaign run [<id>]                     # IMPLEMENTED — phase-aware lifecycle driver:
                                             #   1. create campaigns/<id>/ from templates/
                                             #   2. invoke DM in campaign-planning mode (foundation + opening arc)
                                             #   3. run character creation
                                             #   4. run two-scene prelude shakedown
-                                            #   5. advance to active play
+                                            #   5. advance/run active play
                                             # flags: --max-planning-turns N, --max-creation-turns N,
-                                            #        --max-prelude-turns N, --skip-prelude, --dry-run
-aog campaign show <id>                      # IMPLEMENTED — print state.json
+                                            #        --max-prelude-turns N, --max-turns N,
+                                            #        --skip-prelude, --dry-run
+aog campaign show <id>                      # IMPLEMENTED — print runtime state summary
 aog campaign list                           # IMPLEMENTED — list all campaigns with phase
 aog campaign clear <id> [--yes]             # IMPLEMENTED — wipe campaign workspace
 aog campaign checkpoint <id> [--label text] # IMPLEMENTED — snapshot filesystem + Postgres + FalkorDB
 aog campaign checkpoints <id>               # IMPLEMENTED — list available checkpoints
 aog campaign restore <id> <checkpoint>      # IMPLEMENTED — restore all persistence surfaces
 aog campaign reconcile <id> [--repair]      # IMPLEMENTED — inspect/refresh disposable projections
-
-aog campaign plan [<id>]                    # planned — run the campaign_planning phase only
-aog campaign character-create [<id>]        # planned — run the character_creation phase only
-aog campaign run [<id>]                     # IMPLEMENTED — run active runtime state
-aog campaign resume [<id>]                  # IMPLEMENTED — resume failed/paused runtime state
 ```
 
 Scenes (regular play, after bootstrap):
@@ -73,19 +69,20 @@ Operator concerns only — no agent ever calls `aog`.
    Continuity compression lives in authored summary files (`summary.md` at
    campaign, arc/act, and scene levels); TURN_START points at those surfaces
    but does not generate its own summary prose.
-3. **Build the per-turn projection** under `.glass-cwd/<campaign>/<turn>-<agent>/`. It mirrors canonical relative paths but contains only actor-visible files. Projection files are read-only except `scratch/` and the current turn dir.
-4. **Mint a role-scoped `glass` grant**. The local API writes to the canonical campaign root while using the projection as cwd so `--from scratch/...` reads work.
-5. **Spawn `claude -p --dangerously-skip-permissions`** with `cwd` set to the projection. Set env vars: `GLASS_ROLE`, `GLASS_CAMPAIGN_ID`, `GLASS_CONFIG`, `GLASS_TURN_ID`, `AOG_TURN_START`, `AOG_TURN_OUTPUT`, `GLASS_API_URL`, and `GLASS_API_GRANT`/grant file as available. The prompt is short — it just says "Read $AOG_TURN_START and write to $AOG_TURN_OUTPUT".
-6. **Stream stdout/stderr** to the operator's terminal line-by-line, prefixed with `[<agent-id>]`. Full captures saved beside the agent's canonical turn files.
-7. **Wait** for the subprocess to exit (with timeout from `claude.turn_timeout_seconds`, default 3600s).
-8. **Copy turn artifacts back to canonical storage.** `out.md` and debug logs generated in the projection are copied to the canonical turn dir.
-9. **Process the agent's prose.** The agent must write public turn prose to
+3. **Build the per-turn projection** under `.glass-cwd/<campaign>/<turn>-<agent>/`. It mirrors canonical relative paths but contains only actor-visible files. The projection is chowned to the spawned actor; role-authorized document surfaces and the current turn dir are writable.
+4. **Probe workspace permissions.** Before Claude starts, run as the spawned actor and prove the current turn dir supports arbitrary create, edit, and delete operations. Fail fast if ownership, ACLs, or modes are wrong.
+5. **Mint a role-scoped `glass` grant**. The local API writes to the canonical campaign root while using the projection as cwd, so `glass sync apply` can commit projected document edits by their real relative paths.
+6. **Spawn `claude -p --dangerously-skip-permissions`** with `cwd` set to the projection. Set env vars: `GLASS_ROLE`, `GLASS_CAMPAIGN_ID`, `GLASS_CONFIG`, `GLASS_TURN_ID`, `AOG_TURN_START`, `AOG_TURN_OUTPUT`, `GLASS_API_URL`, and `GLASS_API_GRANT`/grant file as available. The prompt is short — it just says "Read $AOG_TURN_START and write to $AOG_TURN_OUTPUT".
+7. **Stream stdout/stderr** to the operator's terminal line-by-line, prefixed with `[<agent-id>]`. Full captures saved beside the agent's canonical turn files.
+8. **Wait** for the subprocess to exit (with timeout from `claude.turn_timeout_seconds`, default 3600s).
+9. **Copy turn artifacts back to canonical storage.** `out.md` and debug logs generated in the actor-owned projection are copied to the canonical turn dir.
+10. **Process the agent's prose.** The agent must write public turn prose to
    `out.md` at `AOG_TURN_OUTPUT`. If that file is missing or empty,
    the turn fails; stdout/stderr are operational debug captures, not public
    corpus. The orchestrator then calls `glass turn append`, which commits
    `turns.prose` in Postgres, links/inlines pending events, and refreshes
    campaign and scene markdown transcript exports.
-10. **Update orchestrator state** (turn number, mode budgets, last speaker). State persists to disk so resume works.
+10. **Update orchestrator state** (turn number, mode budgets, last speaker). State persists to Postgres so resume works.
 11. **Evaluate scene-end** conditions. Hard turn caps + DM voluntary `glass scene end` for v1.
 12. **Loop.**
 
@@ -122,9 +119,5 @@ and disposable projections/permissions.
 - Write to Postgres or FalkorDB except via the `glass` CLI (same rule that applies to agents).
 
 ## Open after the v0 build
-
-- Mode-end coordination (when DM calls `glass mode end`, the orchestrator needs to see that — same path as the future `glass` state store).
-- Replacing local `aog-state.json` with the Postgres-backed state boundary
-  described above.
 
 See [`docs/backlog.md`](../../docs/backlog.md) for the broader list.

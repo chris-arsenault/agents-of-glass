@@ -62,7 +62,7 @@ The DM's role prompt instructs them to do two things on every turn — not enfor
 1. **Player response and active scene upkeep.** Respond to what just happened. Narrate NPCs, environment, the consequences of player actions. Advance the current beat. The thing a real GM does at the table.
 2. **Mid- and long-term planning.** Look ahead. The party is heading toward the Keel — flesh out the harbormaster NPC who's currently a stub. The plot wants a complication two scenes from now — sketch it. The thread's beat-3 is approaching — write the seed.
 
-Both happen during the DM's turn. The first lands in the transcript as prose. The second lands in `agents/dm/workspace/` as drafts and in `agents/dm/canonical-notes/` as ratifications, via `glass note write` and `glass entity upsert`.
+Both happen during the DM's turn. The first lands in the transcript as prose. The second lands in projected paths such as `dm/workspace/`, `dm/notes/`, `shared/lore/`, `arcs/`, and `table/`, then is committed with `glass sync apply` or graph/lore commands as appropriate.
 
 This is how the DM stays ahead of the players. Without it, the world ends one scene past the present and the DM is reactive; with it, the DM is preparing material faster than the players can consume it. Real GMs do this between sessions; our DM does it inside each turn because we don't have between-sessions.
 
@@ -96,7 +96,7 @@ This is a feature, not a bug. It forces durable state into files instead of lett
 
 The full file layout — what each role can read, what each role can write, where the campaign-shared content lives — is in [`context-packages.md`](context-packages.md). Quick summary of the player vs DM split:
 
-- **Player private:** `persona.md` (who they are), `character.md` (their PC, cached from Postgres), `scratchpad.md` (current working notes persisted through `glass note write`), `notes/` (personal encyclopedia, journal-shaped subset), `journal/` (free-form dated reflection), `drafts/` (encyclopedia-shaped lore intended for DM proposal), and messages addressed specifically to them via `glass msg`. **Visible to the DM** — the DM can see what every player is writing.
+- **Player private:** `persona.md` (who they are), `character.md` (their PC, cached from Postgres), `scratchpad.md` (current working notes committed through `glass sync apply`), `notes/` (personal encyclopedia, journal-shaped subset), `journal/` (free-form dated reflection), `drafts/` (encyclopedia-shaped lore intended for DM proposal), and messages addressed specifically to them via `glass msg`. **Visible to the DM** — the DM can see what every player is writing.
 - **DM-only:** `persona.md` (who Mara is), `scratchpad.md`, `notes/` (encyclopedia of NPCs, monsters, locales, threads, philosophy — much larger than any player's), `journal/`, `workspace/` (in-progress drafts), `secret/` (DM-only truth), `intake/` (player-drafted lore awaiting ratification).
 - **Shared (campaign-wide):** campaign lore (encyclopedia-shaped, DM-canonized), quest log (DM-writable, all-readable), party knowledge (party-writable, all-readable), instruction surfaces, public table, scene framing, transcript.
 
@@ -104,8 +104,10 @@ The full file layout — what each role can read, what each role can write, wher
 
 Players draft lore in their `drafts/` directory and use `glass note` to push to the DM's intake. The DM canonizes (entry moves to the campaign's `shared/lore/`, graph upserted) or rejects.
 
-The orchestrator spawns each agent in a per-turn read-only projection of the
-campaign workspace; OS permissions remain a backstop on canonical files. See
+The orchestrator spawns each agent in a per-turn projection of the campaign
+workspace. Actors can edit writable document surfaces in that projection and
+commit them through `glass sync apply`; the canonical campaign tree stays
+operator-owned and is mutated through Glass. See
 [`context-packages.md`](context-packages.md) for the file structure and the
 isolation mechanism.
 
@@ -125,12 +127,14 @@ Roughly (refined in [`architecture.md`](architecture.md) and [`messaging.md`](me
 | `glass character consequence-*` | yes | read public; own/public read only |
 | `glass clock *` | yes | read public clocks |
 | `glass summary show` | yes | yes |
+| `glass summary append scene` | yes | yes; active scene only, capped |
+| `glass summary write` | yes | no |
 | `glass entity neighborhood` / `relations` / `between` / `edges` / `stance` / `find` / `similar` | yes | yes |
 | `glass entity claim` | yes | yes |
 | `glass entity upsert` / `link` / `unlink` / `query` / `ratify-claim` | yes | no |
 | `glass search text` / `semantic` | yes | yes |
 | `glass search reindex` | yes | no |
-| `glass note write` | yes (canonical + workspace) | yes (own journal) |
+| `glass sync apply` | yes (DM document surfaces) | yes (own document surfaces) |
 | `glass note propose` | no | yes |
 | `glass note ratify` | yes | no |
 | `glass mode start` / `mode end` | yes | no |

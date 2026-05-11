@@ -2,9 +2,9 @@
 
 Historically named "session" — kept for backward compat with the
 orchestrator's GlassBridge invocation. Each campaign now has exactly
-one runtime state record; when Postgres is configured, `state.json` is
-not written and remains only the no-Postgres fallback. The "session" concept
-is gone; what these commands manage is the campaign's runtime state.
+one runtime state record in Postgres. `state.json` is not a supported
+runtime cache. The "session" concept is gone; what these commands manage
+is the campaign's runtime state.
 """
 
 from __future__ import annotations
@@ -48,14 +48,14 @@ def session_new(ctx: click.Context, campaign: str, session_id_unused: str | None
     Writes the default runtime state, transcript.md export header, and an
     empty legacy scene-framing.md. The live public table is created/reset by
     `glass scene create`. Errors if the workspace doesn't exist (use
-    `aog campaign bootstrap` first).
+    `aog campaign run <id>` first).
     """
     paths = get_paths()
     runtime_dir = campaign_runtime_dir(paths, campaign)
     if not runtime_dir.exists():
         raise GlassError(
             f"campaign workspace does not exist at {runtime_dir}; "
-            "run `aog campaign bootstrap <id>` first"
+            "run `aog campaign run <id>` first"
         )
 
     existed = state_exists(paths, campaign)

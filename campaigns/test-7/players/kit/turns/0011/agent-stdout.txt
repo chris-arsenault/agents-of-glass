@@ -1,0 +1,7 @@
+Done. Turn 11 wrap:
+
+- **Updated `players/kit/public/relationships.md`** — added the watching-hands beat to Bren's Tek paragraph (mirror of Tev's text: count of four at every walkaround, then she looks away) and tightened the in-the-moment read so *gesture-meant-something* is on the page in Bren's voice. Tev's flicker (Tek's last fully-working sense moment) stays Tek's private fact.
+- **Sent banter to Tev** confirming the revision and what was kept private to her.
+- **Did not add a third relationship** — Bren's at the cap of two, and Drova is no longer orphan (both Tev and Renno point at her).
+- **Updated scratchpad** with end-of-Round-2 state from Bren's side.
+- Both files committed via `glass sync apply`. Public turn prose written to `players/kit/turns/0011/out.md`. Handed off to DM for round-end review.

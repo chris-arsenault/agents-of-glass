@@ -14,7 +14,7 @@ invocation. The agent's prompt is essentially:
 > Read `TURN_START.md` and take your turn.
 
 …spawned as `claude -p --dangerously-skip-permissions` with all tools
-available, inside a per-turn read-only projection of the campaign workspace.
+available, inside a per-turn projection of the campaign workspace.
 Role-specific mutation authority is enforced at the `glass` CLI/API boundary,
 not by Claude Code's permission system.
 
@@ -38,9 +38,14 @@ See [table/index.md](./table/index.md) for the at-a-glance state and
 [table/scene.md](./table/scene.md) for the scene kickoff. Current state: the
 patrol leader is up and angry; Karrith is exposed.
 
-## Recent turns
-Last few turns are embedded. Pull older detail with `glass search text ...`,
-`glass search semantic ...`, or `glass turns find ...`.
+## Scene Summary
+Compact scene continuity is embedded from `arcs/<arc>/scenes/<scene>/summary.md`.
+Players append 2-4 sentences or bullets per turn; the DM may rewrite/reformat it.
+
+## History Lookup
+Full turn narration is not embedded. Pull exact detail with
+`transcript.md`, `glass turns find ...`, `glass search text ...`, or
+`glass search semantic ...`.
 
 ## Messages waiting for you
 2 unread. Read with `glass msg read --since-checkpoint`.
@@ -54,7 +59,7 @@ turn sequence, `srd/` for public rules, and `how-to/` for optional examples.
 - glass character bulk-get / bulk-update (bulk-update your character only)
 - glass character set-hp / set-momentum / inventory-add (single-change convenience)
 - glass msg <type> <recipient> <body>
-- glass note write (your own public/secrets/notes/journal/drafts files)
+- glass sync apply [path-or-directory ...] (commit projected markdown edits)
 - glass entity neighborhood / similar (read-only graph queries)
 - glass turns find / feed ... (query past turns)
 
@@ -67,12 +72,13 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 
 ### Always-on for every agent (in TURN_START as content or near-pointer)
 - An embodied identity paragraph drawn from their `persona.md`
-- Their `scratchpad.md` (current working notes — persisted through `glass note write`)
+- Their `scratchpad.md` (current working notes — committed through `glass sync apply`)
 - Current mode + scene framing
 - Current public table: `table/index.md`, `table/scene.md`, and `table/handouts/`
 - Campaign framing
-- Campaign / arc / scene summaries as pointers, not embedded compression
-- Recent turns (last K, K depends on mode)
+- Compact active scene summary, embedded and capped
+- Campaign / arc summaries as pointers
+- Full recent turns are queryable, not embedded
 - Actual-play creative influence: one verse phrase plus current persisted tarot
   draw. This is omitted during non-play bootstrap/prep modes. Prelude
   coordinator turns omit it; the actual scene-play/action child turns can use
@@ -101,9 +107,8 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - Past turns from prior scenes (via `glass turns find ...`, including `--text`)
 - Current and historical tarot influences (via `glass tarot current` and
   `glass tarot list`)
-- Indexed prose search (`glass search text ...` and `glass search semantic ...`;
-  semantic currently falls back to the Postgres text index until embeddings are
-  populated)
+- Indexed prose search (`glass search text ...` and vector-backed
+  `glass search semantic ...`)
 - Their own journal directory
 - Entity graph (`glass entity neighborhood`, `relations`, `between`, `edges`,
   `stance`, `find`, `similar`; players can propose edges with
@@ -179,7 +184,6 @@ templates/                             # authored, stable input
     journal/  drafts/  inbox/
 
 campaigns/<id>/                        # per-campaign live root, copied from templates/
-  state.json                           # campaign phase + active arc/scene
   context.md                           # PLAYER-FACING campaign-level context
   summary.md                           # running campaign continuity summary
   dm/                                  # DM workspace mutates over campaign
@@ -234,17 +238,24 @@ relative path before the subprocess starts. The agent writes `out.md` in the
 projected turn dir; the orchestrator copies it back to canonical storage before
 committing the turn.
 
-Projected files are read-only. The only writable projected areas are the current
-turn dir and `scratch/`. Persistent mutations must go through `glass`:
-`glass note write`, `glass table write`, `glass character`, `glass scene`,
-`glass clock`, `glass entity`, etc. The local `glass` API runs commands against
-the canonical campaign while using the projection as the command cwd, so
-`--from scratch/foo.md` works without exposing extra canonical files.
+The projection is owned by the spawned actor. Projected files are writable only
+on role-authorized document surfaces and in the current turn dir; before Claude
+starts, the orchestrator proves the actor can create, edit, and delete arbitrary
+files in that current turn dir. Persistent mutations must go through `glass`:
+`glass sync apply` commits projected markdown edits, while `glass character`,
+`glass scene`, `glass clock`, `glass entity`, and related commands own hard
+state. The local `glass` API runs commands against the canonical campaign while
+using the projection as cwd, so agents can author at normal relative paths
+without seeing extra canonical files.
 
-Unix users still matter: players run as dedicated users (`aog-tev`,
-`aog-sumi`, `aog-renno`, `aog-kit`) via `sudo -u`, and canonical campaign files
-retain restrictive permissions as a backstop. The projection removes the
-dependency on delicate group propagation for normal reads, and the `glass`
+Unix users still matter: spawned agents run as dedicated users (`aog-mara`,
+`aog-tev`, `aog-sumi`, `aog-renno`, `aog-kit`) via `sudo -u`, while the
+orchestrator remains the operator process. Projection trees are actor-owned and
+grouped to the operator's primary group; this lets the operator/API read and
+refresh projected files without relying on the operator shell having refreshed
+supplementary groups. The canonical campaign tree remains operator-owned;
+agents never use it as their filesystem surface. The projection removes the
+dependency on canonical campaign permissions for normal reads, and the `glass`
 boundary removes direct canonical writes from agent turns.
 
 The principle: **do not trust agents to honor "don't read X" or "only mutate
@@ -258,16 +269,21 @@ The orchestrator runs in the foreground. When it spawns each agent invocation, i
 
 This is the operator's primary debugging tool during play — you can see the agent reading files, calling `glass` commands, doing web searches, and writing files in real time. The default per-turn timeout is 60 minutes (`claude.turn_timeout_seconds = 3600`), bumped from 5 minutes after the first inspection runs showed real DM work needs more breathing room.
 
-## Recent-Turns Window Policy
+## Turn History Policy
 
-For v1: include the entire current scene plus the last 2 scenes' turns, with older scenes available via summary index plus on-demand `glass turns find` queries. Token budget is not the v1 concern; **context quality** is — too much old text drowns out the current scene; too little loses continuity.
+For v1: do not embed full turn narration in TURN_START. The active scene
+summary is the always-on compression surface; raw turns stay available via
+`transcript.md`, `glass turns find`, `glass search text`, and
+`glass search semantic`. Token budget is a real concern because every actor has
+to cold-start context on each turn.
 
 The recent/context split is orchestrator-maintained:
 
-- **Recent turns** are full prose, included directly.
-- **Older turns** are available through `glass turns find`, `glass search text`,
-  and `glass search semantic`. Campaign/arc/scene `summary.md` files are
-  authored continuity compression, not generated into TURN_START.
+- **Scene summary** is compact authored continuity, included directly.
+- **Raw turns** are available through `transcript.md`, `glass turns find`,
+  `glass search text`, and `glass search semantic`.
+- **Campaign/arc summaries** remain authored continuity compression and are
+  read as files or through `glass summary show`.
 
 Embeddings are a search-index concern, not a prompt-dump concern. The goal is
 bounded retrieval, not loading the whole campaign into each cold agent start.

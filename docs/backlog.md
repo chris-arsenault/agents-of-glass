@@ -112,22 +112,14 @@ Do next:
   and flags Glass-created files that were not visible in the projection when
   later turn steps needed them.
 
-### DM Mutation Discipline
+### Agent Mutation Discipline
 
-The `test-4` bootstrap showed that the DM projection is read-only, but the DM
-process still runs as the operator user and can address canonical campaign paths
-outside the projection. Turn 2 also appeared to create canonical lore and graph
-state without matching `glass lore import` / `glass lore upsert` audit entries.
-That means the projection limits accidental writes, but it does not yet make
-Glass the single mutation choke point for the DM.
-
-Do next:
-
-- Run the DM under a restricted campaign role instead of the operator user, or
-  otherwise make canonical campaign files non-writable except by the Glass
-  daemon/API.
-- Keep the projected workspace as the agent's readable view, with only
-  `scratch/` and the current turn output/debug paths writable.
+Spawned agents, including the DM as `aog-mara`, run as isolated Unix users.
+They author files in the workspace and commit document edits through
+`glass sync apply`; hard state continues to go through dedicated `glass`
+commands. Continue auditing bootstrap runs for direct canonical writes or
+missing persistence side effects, especially around graph updates and lore
+imports.
 - Require all durable DM mutations to go through one Glass command/API surface;
   agents should not have to run separate commands to write markdown, update
   Postgres, upsert graph entities/edges, refresh text/semantic indexes, and

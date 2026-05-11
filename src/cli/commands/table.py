@@ -8,11 +8,16 @@ from typing import Any
 import click
 
 from .. import workspace as _workspace
-from ..campaign import active_campaign_id, resolve_active_campaign_workspace
+from ..campaign import (
+    active_campaign_id,
+    active_campaign_root,
+    resolve_active_campaign_workspace,
+)
 from ..errors import GlassError
 from ..config import get_paths
 from ..ids import now_iso
 from ..paths_resolve import clean_relative_path, display_path, ensure_under
+from ..persistence import CampaignPersistence
 from ..role import require_dm
 from ..state import append_audit, commit, load_state, queue_event
 from ..yaml_io import command_params, emit, read_body
@@ -91,10 +96,17 @@ def table_write(
     text = read_body(body, from_file)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+    persistence = CampaignPersistence(
+        paths=paths,
+        campaign_id=campaign_id,
+        campaign_root=active_campaign_root(),
+    )
+    persisted = persistence.register_markdown(path, state=state, graph=False)
     queue_event(state, role.actor, f"table write {display_path(path)}")
     result = {
         "path": display_path(path),
         "bytes": len(text.encode("utf-8")),
+        "persistence": persisted.to_dict(),
     }
     commit(
         paths,
@@ -132,10 +144,17 @@ def table_append(
             prefix = "\n"
     with path.open("a", encoding="utf-8") as handle:
         handle.write(prefix + text)
+    persistence = CampaignPersistence(
+        paths=paths,
+        campaign_id=campaign_id,
+        campaign_root=active_campaign_root(),
+    )
+    persisted = persistence.register_markdown(path, state=state, graph=False)
     queue_event(state, role.actor, f"table append {display_path(path)}")
     result = {
         "path": display_path(path),
         "bytes": len(text.encode("utf-8")),
+        "persistence": persisted.to_dict(),
     }
     commit(
         paths,

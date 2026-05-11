@@ -19,6 +19,7 @@ class ClaudeConfig:
 class CapsConfig:
     session_max_turns: int
     mode_default_max_turns: int
+    mode_scene_play_max_turns: int
     mode_combat_max_turns: int
     mode_travel_max_turns: int
 
@@ -26,6 +27,8 @@ class CapsConfig:
         normalized = mode.lower()
         if normalized == "worldbuilding":
             return None
+        if normalized == "scene-play":
+            return self.mode_scene_play_max_turns
         if normalized == "combat":
             return self.mode_combat_max_turns
         if normalized in {"travel", "travel/montage", "montage"}:
@@ -55,7 +58,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "path": "../the-glass-frontier-lore",
     },
     "claude": {
-        "model": "claude-opus-4-7",
+        "model": "claude-sonnet-4-6",
         # 60 minutes per turn. The DM in campaign-planning mode reads the
         # methodology, persona, world bible, does web search for the
         # anti-sameness pulls, and writes 8+ files per invocation. Tight
@@ -67,6 +70,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "caps": {
         "session_max_turns": 200,
         "mode_default_max_turns": 12,
+        "mode_scene_play_max_turns": 120,
         "mode_combat_max_turns": 8,
         "mode_travel_max_turns": 4,
     },
@@ -128,6 +132,9 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
         caps=CapsConfig(
             session_max_turns=int(caps.get("session_max_turns", 200)),
             mode_default_max_turns=int(caps.get("mode_default_max_turns", 12)),
+            mode_scene_play_max_turns=int(
+                caps.get("mode_scene_play_max_turns", 120)
+            ),
             mode_combat_max_turns=int(caps.get("mode_combat_max_turns", 8)),
             mode_travel_max_turns=int(caps.get("mode_travel_max_turns", 4)),
         ),

@@ -142,9 +142,9 @@ glass character bulk-get|bulk-update
 glass character new|get|set-hp|set-momentum|inventory-add|inventory-rm
 glass character signature-status|signature-add
 glass character consequence-add|consequence-list|consequence-resolve
-glass note write <kind> <id> <file.md>
 glass note propose <file.md>          # player → DM intake
 glass note ratify <id>                # DM accepts proposal
+glass sync apply [path-or-directory ...]   # commit projected markdown edits
 glass entity upsert <file.md>         # markdown → graph
 glass entity neighborhood|relations|between|edges|stance|find|similar
 glass entity claim <src> <REL> <dst>  # propose relationship, DM ratifies
@@ -180,7 +180,7 @@ directly instead of handing to a player just to request dice. See
 ## Data Flow Per Turn
 
 1. Orchestrator decides whose turn it is (mode-dependent — see [`modes.md`](modes.md)).
-2. Orchestrator writes the agent's per-turn `in.md` into that agent's canonical campaign turn directory, then builds a read-only projected workspace containing only files that actor may see (same relative paths as the campaign root).
+2. Orchestrator writes the agent's per-turn `in.md` into that agent's canonical campaign turn directory, then builds an actor-owned projected workspace containing only files that actor may see (same relative paths as the campaign root).
 3. Orchestrator spawns `claude -p "Read <turn-start path> and take your turn."` with CWD set to the projection and a role-scoped `glass` grant.
 4. Agent runs its own tool loop. May call `glass roll`, `glass entity neighborhood`, `glass character set-hp`, `glass msg`, etc. — each call is logged to the audit trail.
 5. Agent emits prose (their turn) and exits.
@@ -201,13 +201,13 @@ are copied in.
 
 **The model:**
 
-- The DM runs as the current operator user (`dev`) — full access to the campaign workspace.
-- Each player agent has a dedicated Unix user: `aog-tev`, `aog-sumi`, `aog-renno`, `aog-kit`.
-- A shared group `aog-agents` contains all agents. Each player has their own primary group (`aog-tev`, etc.) that includes `dev` so the DM can read player private content via group membership.
-- Canonical campaign workspace files retain restrictive ownership/mode bits as a backstop. DM-only files: `dev:dev` mode `0700/0600`. Shared content: `dev:aog-agents` mode `2750/0640`. Per-player private: `aog-<player>:aog-<player>` mode `2750/0640` (player rw, dev r via group, others none).
+- The orchestrator/operator runs as the operator user (`dev` in local development).
+- Spawned agent processes run as dedicated Unix users: `aog-mara` for the DM, plus `aog-tev`, `aog-sumi`, `aog-renno`, and `aog-kit` for players.
+- A shared group `aog-agents` contains all agents. Each actor also has a primary group matching their Unix user. Projection roots are owned by the actor and grouped to the operator's primary group, so the spawned actor can work in the projection while the operator/API can inspect and refresh it without depending on refreshed supplementary groups.
+- Canonical campaign workspace files stay operator-owned. Agents do not get direct filesystem authority over `campaigns/<id>/`; durable mutation goes through Glass commands and the local Glass API.
 - Per-turn artifacts live under the spawning agent's canonical campaign directory (`dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`) and are also present at the same relative path in the projection for the subprocess.
-- Projected files are read-only except `scratch/` and the current projected turn dir. Persistent mutations go through `glass`, whose local API uses the projection as cwd for `--from scratch/...` inputs but writes to the canonical campaign root.
-- Player invocations spawn via `sudo -u aog-<player>` (NOPASSWD per a sudoers entry installed at provisioning time).
+- Each projection root is owned by the spawned actor (`aog-mara`, `aog-tev`, etc.). Read-only projection material is read-only to the actor but writable by the operator group so the API can refresh same-turn canonical changes; role-authorized document surfaces plus the current projected turn dir are writable to the actor. The current turn dir must pass a create/edit/delete probe as that actor before Claude starts. Persistent mutations go through `glass`: document edits are committed with `glass sync apply`, while hard state uses purpose-built CLI commands. The local API uses the projection as cwd but writes to the canonical campaign root.
+- Agent invocations spawn via `sudo -u aog-<actor>` (NOPASSWD per a sudoers entry installed at provisioning time).
 
 **Operator setup (run once):**
 
@@ -215,9 +215,9 @@ are copied in.
 sudo bash scripts/provision-agents.sh
 ```
 
-This creates the Unix users + groups, adds the operator (`SUDO_USER`) to all relevant groups, installs `/usr/local/bin/aog-permset` (the privileged helper that the orchestrator calls via sudo to chown/chmod new campaign workspaces), and writes a sudoers rule at `/etc/sudoers.d/agents-of-glass`.
+This creates the Unix users + groups, adds the operator (`SUDO_USER`) to all relevant groups, installs `/usr/local/bin/aog-permset` (the privileged helper that the orchestrator calls via sudo to chown/chmod actor-owned projections), grants `aog-agents` read access to the sibling Glass Frontier lore repository when present, and writes a sudoers rule at `/etc/sudoers.d/agents-of-glass`.
 
-**Graceful fallback:** if provisioning hasn't been run, the orchestrator detects this (`permissions.has_provisioned_users()`) and falls through silently — no chowns happen, all agents run as the operator. The projection still limits the ordinary workspace view, but it is not a hard security boundary without Unix users.
+The required agent users are `aog-mara`, `aog-tev`, `aog-sumi`, `aog-renno`, and `aog-kit`. If any are missing, Unix isolation is not considered provisioned.
 
 ## What Lives Where (Quick Reference)
 
@@ -236,7 +236,7 @@ This creates the Unix users + groups, adds the operator (`SUDO_USER`) to all rel
 | Tarot influences | Postgres `tarot_influences` |
 | Beat advancement | FalkorDB (graph edges) + turn event summaries |
 | Mode transitions | Postgres runtime state + event summaries |
-| Scene trackers / initiative | Postgres when configured + state export fallback |
+| Scene trackers / initiative | Postgres |
 
 ## Configuration
 
@@ -266,7 +266,6 @@ agents-of-glass/
   templates/              # authored input — copied into campaigns/<id>/ on creation
     dm/, players/, shared/, instructions/, methodologies/, srd/, how-to/
   campaigns/<id>/         # per-campaign live state — see game-start.md and context-packages.md
-    state.json
     context.md            # player-facing campaign-level
     table/                # public short-term scene state
     dm/, players/, shared/, instructions/, methodologies/, srd/, how-to/

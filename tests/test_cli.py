@@ -1,10 +1,13 @@
+import os
 import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
+from cli import db as _db
 from cli.commands.character import (
     _append_signature_move,
     _inventory_add,
@@ -13,11 +16,16 @@ from cli.commands.character import (
     _render_public_character_mirror,
     _signature_move_names,
     _signature_move_slots,
+    _validate_starting_skill_budget,
 )
 from cli.config import Paths
+from cli.config import get_paths, load_config
 from cli.errors import GlassError
+from cli.local_env import load_repo_env
+from cli.embeddings import EmbeddingBatch
 from cli.main import main
 from cli.messages import load_message_types
+from cli.state import load_state
 
 
 def make_env(tmp_path: Path, campaign_id: str = "c1") -> dict[str, str]:
@@ -29,6 +37,17 @@ def make_env(tmp_path: Path, campaign_id: str = "c1") -> dict[str, str]:
     config = tmp_path / "agents-of-glass.toml"
     config.write_text(
         f"""
+[postgres]
+host = "192.168.66.3"
+port = 5432
+database = "agents_of_glass"
+user = "agents_of_glass_app"
+
+[falkordb]
+host = "192.168.66.3"
+port = 16379
+graph = "agents_of_glass"
+
 [paths]
 templates = "{templates}"
 campaigns = "{campaigns}"
@@ -36,7 +55,37 @@ campaigns = "{campaigns}"
         + "\n",
         encoding="utf-8",
     )
+    reset_postgres_runtime(config, campaign_id)
     return {"GLASS_CONFIG": str(config), "GLASS_CAMPAIGN_ID": campaign_id}
+
+
+def reset_postgres_runtime(config: Path, campaign_id: str) -> None:
+    load_repo_env()
+    previous = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = str(config)
+    try:
+        toml_data = load_config()
+        pg_config = _db.load_pg_config(toml_data)
+        with _db.connect(pg_config) as conn:
+            _db.migrate(conn)
+            _db.delete_campaign_data(conn, campaign_id)
+    finally:
+        if previous is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous
+
+
+def runtime_state(env: dict[str, str]) -> dict:
+    previous = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
+    try:
+        return load_state(get_paths(), env["GLASS_CAMPAIGN_ID"])
+    finally:
+        if previous is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous
 
 
 def invoke_ok(runner: CliRunner, args: list[str], env: dict[str, str]):
@@ -56,6 +105,32 @@ class GlassCliTests(unittest.TestCase):
             _normalize_goals(("Only one.",))
         with self.assertRaises(GlassError):
             _normalize_goals(("one", "two", "three", "four"))
+
+    def test_starting_skill_budget_requires_two_apprentice_one_artisan(self) -> None:
+        _validate_starting_skill_budget(
+            {
+                "low-angle document reading": "artisan",
+                "dockyard talk": "apprentice",
+                "route weather guessing": "apprentice",
+            }
+        )
+
+        with self.assertRaises(GlassError):
+            _validate_starting_skill_budget(
+                {
+                    "low-angle document reading": "virtuoso",
+                    "dockyard talk": "artisan",
+                    "route weather guessing": "apprentice",
+                }
+            )
+
+        with self.assertRaises(GlassError):
+            _validate_starting_skill_budget(
+                {
+                    "low-angle document reading": "artisan",
+                    "dockyard talk": "apprentice",
+                }
+            )
 
     def test_character_public_mirror_has_consistent_canonical_fields(self) -> None:
         body = _render_public_character_mirror(
@@ -239,7 +314,7 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertIn("current_mode: scene-play", mode.output)
 
-            state = json.loads((tmp_path / "campaigns" / "c1" / "state.json").read_text())
+            state = runtime_state(env)
             self.assertEqual(state["mode_stack"][-1]["mode"], "scene-play")
 
             ended = invoke_ok(runner, ["mode", "end"], {**env, "GLASS_ROLE": "dm"})
@@ -323,6 +398,172 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("## Turn 1 - dm (dm) - scene-play, opening", transcript)
             self.assertIn("Mara frames the scene.", transcript)
 
+    def test_sync_apply_commits_projected_paths_and_directories(self) -> None:
+        fake_embedding = EmbeddingBatch(
+            vectors=[[1.0] + [0.0] * 767],
+            model="test-embedding",
+            provider="test",
+            dimensions=768,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["arc", "create", "opening"], dm_env)
+            with runner.isolated_filesystem(temp_dir=tmp_path):
+                (Path("dm") / "workspace").mkdir(parents=True)
+                (Path("dm") / "workspace" / "sync-note.md").write_text(
+                    "DM note from projected workspace.\n",
+                    encoding="utf-8",
+                )
+                (Path("table")).mkdir()
+                (Path("table") / "index.md").write_text(
+                    "Visible table update.\n",
+                    encoding="utf-8",
+                )
+                (Path("arcs") / "opening").mkdir(parents=True)
+                (Path("arcs") / "opening" / "plan.md").write_text(
+                    "Projected arc plan.\n",
+                    encoding="utf-8",
+                )
+                Path("summary.md").write_text(
+                    "Campaign summary update.\n",
+                    encoding="utf-8",
+                )
+                with patch("cli.embeddings.embed_text", return_value=fake_embedding):
+                    result = invoke_ok(
+                        runner,
+                        [
+                            "sync",
+                            "apply",
+                            "dm/workspace/sync-note.md",
+                            "table",
+                            "arcs/opening",
+                            "summary.md",
+                        ],
+                        dm_env,
+                    )
+
+            self.assertIn("count: 4", result.output)
+            root = tmp_path / "campaigns" / "c1"
+            self.assertEqual(
+                (root / "dm" / "workspace" / "sync-note.md").read_text(encoding="utf-8"),
+                "DM note from projected workspace.\n",
+            )
+            self.assertEqual(
+                (root / "table" / "index.md").read_text(encoding="utf-8"),
+                "Visible table update.\n",
+            )
+            self.assertEqual(
+                (root / "arcs" / "opening" / "plan.md").read_text(encoding="utf-8"),
+                "Projected arc plan.\n",
+            )
+            self.assertEqual(
+                (root / "summary.md").read_text(encoding="utf-8"),
+                "Campaign summary update.\n",
+            )
+            indexed = invoke_ok(
+                runner,
+                ["search", "text", "Visible table update", "--type", "markdown"],
+                dm_env,
+            )
+            self.assertIn("table/index.md", indexed.output)
+
+    def test_table_write_refreshes_projected_manifest_path(self) -> None:
+        fake_embedding = EmbeddingBatch(
+            vectors=[[1.0] + [0.0] * 767],
+            model="test-embedding",
+            provider="test",
+            dimensions=768,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            with runner.isolated_filesystem(temp_dir=tmp_path):
+                Path(".glass-projection-manifest.json").write_text(
+                    json.dumps({"files": {"table/index.md": "old-hash"}}),
+                    encoding="utf-8",
+                )
+                Path("table").mkdir()
+                (Path("table") / "index.md").write_text(
+                    "stale projected edit\n",
+                    encoding="utf-8",
+                )
+                with patch("cli.embeddings.embed_text", return_value=fake_embedding):
+                    invoke_ok(
+                        runner,
+                        [
+                            "table",
+                            "write",
+                            "table/index.md",
+                            "--body",
+                            "canonical table\n",
+                        ],
+                        dm_env,
+                    )
+
+                self.assertEqual(
+                    (Path("table") / "index.md").read_text(encoding="utf-8"),
+                    "canonical table\n",
+                )
+                manifest = json.loads(
+                    Path(".glass-projection-manifest.json").read_text(encoding="utf-8")
+                )
+                self.assertNotEqual(manifest["files"]["table/index.md"], "old-hash")
+
+    def test_semantic_search_ranks_by_embeddings(self) -> None:
+        def fake_embed_text(text: str, *, kind: str, config=None) -> EmbeddingBatch:
+            lowered = text.lower()
+            vector = [0.0] * 768
+            vector[0 if "castle" in lowered else 1] = 1.0
+            return EmbeddingBatch(
+                vectors=[vector],
+                model="test-embedding",
+                provider="test",
+                dimensions=768,
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            castle_turn = tmp_path / "castle.md"
+            castle_turn.write_text("The castle gate opens for the party.", encoding="utf-8")
+            river_turn = tmp_path / "river.md"
+            river_turn.write_text("The river barge slips into fog.", encoding="utf-8")
+
+            with patch("cli.embeddings.embed_text", side_effect=fake_embed_text):
+                invoke_ok(
+                    runner,
+                    ["turn", "append", str(castle_turn), "--speaker", "dm"],
+                    dm_env,
+                )
+                invoke_ok(
+                    runner,
+                    ["turn", "append", str(river_turn), "--speaker", "dm"],
+                    dm_env,
+                )
+                result = invoke_ok(
+                    runner,
+                    ["search", "semantic", "castle access", "--type", "turn", "--limit", "2"],
+                    dm_env,
+                )
+
+            self.assertIn("mode: semantic", result.output)
+            self.assertIn("model: test-embedding", result.output)
+            self.assertLess(
+                result.output.find("castle gate"),
+                result.output.find("river barge"),
+            )
+
     def test_turn_initiative_persists_action_order(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -339,7 +580,7 @@ Recipients are `dm`, `party`, or a player id.
             )
 
             self.assertIn("action_order:", result.output)
-            state = json.loads((tmp_path / "campaigns" / "c1" / "state.json").read_text())
+            state = runtime_state(env)
             action_order = state["action_order"]
             self.assertEqual(action_order["mode"], "action")
             self.assertEqual(action_order["scene_id"], "ambush")
@@ -364,7 +605,7 @@ Recipients are `dm`, `party`, or a player id.
             activated = invoke_ok(runner, ["arc", "activate", "main-opening"], dm_env)
 
             self.assertIn("main-opening", activated.output)
-            state = json.loads((tmp_path / "campaigns" / "c1" / "state.json").read_text())
+            state = runtime_state(env)
             self.assertEqual(state["active_arc"], "main-opening")
 
     def test_scene_create_accepts_custom_type_and_trackers(self) -> None:
@@ -453,7 +694,7 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertIn("after: 2", ticked.output)
 
-            state = json.loads((tmp_path / "campaigns" / "c1" / "state.json").read_text())
+            state = runtime_state(env)
             self.assertEqual(state["active_scene_type"], "courtroom-standoff")
             self.assertEqual(state["scene_trackers"]["duke-permission"]["value"], 2)
             self.assertEqual(state["scene_trackers"]["duke-permission"]["resistance"], 2)
@@ -468,6 +709,60 @@ Recipients are `dm`, `party`, or a player id.
                 dm_env,
             )
             self.assertIn("after-korth", snapshot.output)
+
+    def test_players_can_append_only_to_active_scene_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["arc", "create", "first-arc"], dm_env)
+            invoke_ok(runner, ["scene", "create", "opening", "--type", "social"], dm_env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+
+            appended = invoke_ok(
+                runner,
+                [
+                    "summary",
+                    "append",
+                    "scene",
+                    "--body",
+                    "- Turn 2: Tev asks Inka what the packet means.",
+                ],
+                player_env,
+            )
+            self.assertIn("level: scene", appended.output)
+            summary = (
+                tmp_path / "campaigns" / "c1" / "arcs" / "first-arc"
+                / "scenes" / "opening" / "summary.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("Tev asks Inka", summary)
+
+            denied_write = runner.invoke(
+                main,
+                ["summary", "write", "scene", "--body", "replace"],
+                env=player_env,
+            )
+            self.assertNotEqual(denied_write.exit_code, 0)
+            self.assertIn("players may only append", denied_write.output)
+
+            denied_campaign = runner.invoke(
+                main,
+                ["summary", "append", "campaign", "--body", "not allowed"],
+                env=player_env,
+            )
+            self.assertNotEqual(denied_campaign.exit_code, 0)
+            self.assertIn("players may only append", denied_campaign.output)
+
+            denied_long = runner.invoke(
+                main,
+                ["summary", "append", "scene", "--body", "x" * 1501],
+                env=player_env,
+            )
+            self.assertNotEqual(denied_long.exit_code, 0)
+            self.assertIn("scene summary append is too long", denied_long.output)
 
     def test_arc_scene_quest_and_scene_end(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

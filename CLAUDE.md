@@ -45,7 +45,7 @@ pip install -e .                              # install the local packages
 glass --help                                  # in-play tool surface
 aog --help                                    # operator CLI
 
-# One-time security setup (creates Unix users for player agents, sudoers rule):
+# One-time security setup (creates Unix users for all agents, sudoers rule):
 sudo bash scripts/provision-agents.sh
 ```
 
@@ -53,12 +53,14 @@ sudo bash scripts/provision-agents.sh
 
 ## Security model
 
-Each turn runs in a read-only campaign-shaped projection containing only that
-actor's visible files. Persistent mutations go through `glass`. Player agents
-still run as dedicated Unix users as a backstop; the DM runs as the operator.
-See [`docs/design/architecture.md`](docs/design/architecture.md#process-isolation).
-Without provisioning, the projection remains useful for ordinary workspace
-shape, but it is not a hard security boundary.
+Each turn runs in an actor-owned campaign-shaped projection containing only
+that actor's visible files. Persistent mutations go through `glass`; the
+canonical `campaigns/` tree stays operator-owned. Spawned agents run as
+dedicated Unix users as a backstop: `aog-mara` for the DM and `aog-<player>`
+for players. The orchestrator/operator remains the operator user. See
+[`docs/design/architecture.md`](docs/design/architecture.md#process-isolation).
+Without provisioning, the workspace shape remains useful, but it is not a hard
+security boundary.
 
 ## Key reading order for new agents
 

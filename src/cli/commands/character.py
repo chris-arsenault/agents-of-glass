@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,7 @@ def character_new(
     for attribute_name in attributes:
         assert_attribute_name(attribute_name)
     skills = validate_key_values(skill_values, SKILL_TIERS, "skill")
+    _validate_starting_skill_budget(skills)
 
     with pg_connection() as conn:
         if _db.character_exists(conn, campaign_id, character_id):
@@ -317,6 +319,8 @@ def character_bulk_update(
             operations: list[str] = []
             updated = character
             set_fields = _normalize_character_set_fields(update["set"], updated)
+            if "skills" in set_fields and _is_character_creation_mode(state):
+                _validate_starting_skill_budget(set_fields["skills"])
             if set_fields:
                 updated = _db.character_update_fields(
                     conn,
@@ -1150,6 +1154,23 @@ def _normalize_goals(goals: tuple[str, ...]) -> list[str]:
     return normalized
 
 
+def _validate_starting_skill_budget(skills: dict[str, str]) -> None:
+    counts = Counter(skills.values())
+    expected = Counter({"apprentice": 2, "artisan": 1})
+    if counts == expected:
+        return
+    raise GlassError(
+        "character creation requires exactly 3 trained skills: "
+        "2 apprentice and 1 artisan. Do not list fool, virtuoso, or legend "
+        "skills at level 1; unlisted skills default to fool."
+    )
+
+
+def _is_character_creation_mode(state: dict[str, Any]) -> bool:
+    current = current_mode_record(state)
+    return bool(current and current.get("mode") == "character-creation")
+
+
 def _read_json_payload(text: str, label: str) -> Any:
     if not text.strip():
         raise GlassError(f"{label} JSON payload is empty")
@@ -1644,7 +1665,10 @@ def _render_signature_moves_header(character: dict[str, Any]) -> str:
         "# Signature Moves\n\n"
         "Start with one simple move at level 1. Add another slot at levels 3, "
         "5, 7, and 9, for five total slots by level 9. These are narrative "
-        "consistency tools, not powers with guaranteed mechanics.\n\n"
+        "consistency tools, not powers with guaranteed mechanics. A move "
+        "should be something active you can do under pressure, not just a tic, "
+        "trait, or possession. Spell-like resonance techniques are valid "
+        "signature moves.\n\n"
         "Use `glass character signature-status <character-id>` before adding "
         "a move, and `glass character signature-add <character-id> <name>` "
         "when repetition makes a move identity-defining.\n\n"

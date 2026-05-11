@@ -7,12 +7,13 @@ status: player-maintained
 
 Start with one simple move at level 1. Add another slot at levels 3, 5, 7, and
 9, for five total slots by level 9. These are recurring things your character
-leans on: spells, combat maneuvers, search habits, social tactics, chase
-techniques, rituals, or any other repeatable style.
+can actively do under pressure: spells, combat maneuvers, search techniques,
+social tactics, chase tricks, rituals, or any other repeatable move.
 
 Signature moves are narrative consistency tools, not powers with guaranteed
 mechanics. They help the table remember what you tend to do, and they give the
-DM something the world can learn about and react to.
+DM something the world can learn about and react to. Do not use this file for
+ordinary tics, traits, possessions, or backstory facts. Spell-like resonance techniques are valid signature moves.
 
 Use `glass character signature-status <character-id>` before adding a move, and
 `glass character signature-add <character-id> <name>` when repetition makes a

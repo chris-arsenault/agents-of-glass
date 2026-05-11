@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # aog-permset — root-privileged helper used by the orchestrator to set
-# ownership and modes on a freshly-created campaign workspace or a per-turn
-# ephemeral CWD.
+# ownership and modes on a per-turn ephemeral CWD.
 #
 # Installed by scripts/provision-agents.sh to /usr/local/bin/aog-permset.
 # Invoked via sudo by the orchestrator (sudoers entry permits NOPASSWD).
 #
 # Subcommands:
-#   campaign <campaign-dir>         apply campaign workspace permissions
-#   projection <projection-root>    apply projection parent permissions
+#   campaign <campaign-dir>         legacy no-op; campaigns stay operator-owned
+#   projection <projection-root> <actor-user>
+#                                   make projection actor-owned
 #   clean-workspace <campaign-dir>  rm -rf the campaign workspace (root)
 #
 # All paths are validated to be under expected roots before any chown/chmod
@@ -21,15 +21,15 @@ if [[ -z "$OPERATOR" ]]; then
     echo "aog-permset: SUDO_USER not set; refusing to run." >&2
     exit 1
 fi
-OPERATOR_GROUP="$(id -gn "$OPERATOR")"
-
 SHARED_GROUP="aog-agents"
-PLAYER_IDS=(tev sumi renno kit)
+DM_USER="aog-mara"
+AGENT_USERS=("$DM_USER" aog-tev aog-sumi aog-renno aog-kit)
+OPERATOR_GROUP="$(id -gn "$OPERATOR")"
 
 usage() {
     cat <<EOF
 Usage: $0 campaign <campaign-dir>
-       $0 projection <projection-root>
+       $0 projection <projection-root> <actor-user>
        $0 clean-workspace <campaign-dir>
 EOF
     exit 1
@@ -51,126 +51,13 @@ assert_path_safe() {
     fi
 }
 
-assert_player_id() {
-    local id="$1"
-    for known in "${PLAYER_IDS[@]}"; do
-        if [[ "$id" == "$known" ]]; then return 0; fi
+assert_agent_user() {
+    local user="$1"
+    for known in "${AGENT_USERS[@]}"; do
+        if [[ "$user" == "$known" ]]; then return 0; fi
     done
-    echo "aog-permset: unknown player id: $id" >&2
+    echo "aog-permset: unknown agent user: $user" >&2
     exit 1
-}
-
-# Apply ownership + mode to a path, treating dirs and files appropriately.
-# Args: owner group dir-mode file-mode path [path ...]
-apply_perms() {
-    local owner="$1" group="$2" dirmode="$3" filemode="$4"
-    shift 4
-    for target in "$@"; do
-        if [[ ! -e "$target" ]]; then continue; fi
-        chown "$owner:$group" "$target"
-        if [[ -d "$target" ]]; then
-            chmod "$dirmode" "$target"
-        else
-            chmod "$filemode" "$target"
-        fi
-    done
-}
-
-apply_perms_recursive() {
-    local owner="$1" group="$2" dirmode="$3" filemode="$4"
-    shift 4
-    for target in "$@"; do
-        if [[ ! -e "$target" ]]; then continue; fi
-        chown -R "$owner:$group" "$target"
-        find "$target" -type d -exec chmod "$dirmode" {} +
-        find "$target" -type f -exec chmod "$filemode" {} +
-    done
-}
-
-apply_nfs4_turns_acl() {
-    local turns_dir="$1"
-    local python_bin=""
-
-    if command -v python3 >/dev/null 2>&1; then
-        python_bin="$(command -v python3)"
-    elif command -v python >/dev/null 2>&1; then
-        python_bin="$(command -v python)"
-    else
-        return 0
-    fi
-
-    "$python_bin" - "$turns_dir" "$OPERATOR" <<'PY'
-import errno
-import os
-import pwd
-import struct
-import sys
-
-path, operator_name = sys.argv[1], sys.argv[2]
-
-try:
-    os.getxattr(path, "system.nfs4_acl_xdr")
-except OSError as exc:
-    if exc.errno in (errno.ENODATA, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", 95)):
-        sys.exit(0)
-    raise
-
-operator_uid = pwd.getpwnam(operator_name).pw_uid
-
-ACL_IS_DIR = 0x20000
-ALLOW = 0
-SPECIAL_WHO = 1
-OWNER = 1
-GROUP = 2
-EVERYONE = 3
-
-FILE_INHERIT = 0x01
-DIRECTORY_INHERIT = 0x02
-INHERIT_ONLY = 0x08
-IDENTIFIER_GROUP = 0x40
-OWNER_MODIFY_DIR = 0x1E01FF
-OWNER_MODIFY_FILE = 0x1E019F
-GROUP_MODIFY_DIR = 0x1200EF
-GROUP_MODIFY_FILE = 0x12008F
-EVERYONE_READ_ATTRS = 0x120088
-
-aces = [
-    # Split directory and file inheritance so turn dirs are traversable while
-    # in.md/out.md remain non-executable.
-    (ALLOW, DIRECTORY_INHERIT | INHERIT_ONLY,
-     SPECIAL_WHO, OWNER_MODIFY_DIR, OWNER),
-    (ALLOW, FILE_INHERIT | DIRECTORY_INHERIT | INHERIT_ONLY,
-     SPECIAL_WHO, OWNER_MODIFY_FILE, OWNER),
-    (ALLOW, 0, SPECIAL_WHO, OWNER_MODIFY_DIR, OWNER),
-
-    # Explicit operator ACE: player-created out.md must be readable by the
-    # orchestrator even before the operator's shell has refreshed group
-    # memberships after provisioning.
-    (ALLOW, DIRECTORY_INHERIT | INHERIT_ONLY,
-     0, OWNER_MODIFY_DIR, operator_uid),
-    (ALLOW, FILE_INHERIT | DIRECTORY_INHERIT | INHERIT_ONLY,
-     0, OWNER_MODIFY_FILE, operator_uid),
-
-    # Owning group ACE: player users can write in turn dirs the operator
-    # creates, and nested turn artifacts keep the same access model.
-    (ALLOW, IDENTIFIER_GROUP | DIRECTORY_INHERIT | INHERIT_ONLY,
-     SPECIAL_WHO, GROUP_MODIFY_DIR, GROUP),
-    (ALLOW, IDENTIFIER_GROUP | FILE_INHERIT | DIRECTORY_INHERIT | INHERIT_ONLY,
-     SPECIAL_WHO, GROUP_MODIFY_FILE, GROUP),
-    (ALLOW, IDENTIFIER_GROUP, SPECIAL_WHO, GROUP_MODIFY_DIR, GROUP),
-    (ALLOW, 0, SPECIAL_WHO, EVERYONE_READ_ATTRS, EVERYONE),
-]
-
-words = [ACL_IS_DIR, len(aces)]
-for ace in aces:
-    words.extend(ace)
-
-os.setxattr(
-    path,
-    "system.nfs4_acl_xdr",
-    struct.pack("!" + "I" * len(words), *words),
-)
-PY
 }
 
 # --- subcommands ---
@@ -180,112 +67,17 @@ cmd_campaign() {
     [[ -z "$campaign_dir" ]] && usage
     assert_path_safe "$campaign_dir"
 
-    # Top-level state.json and context.md
-    apply_perms "$OPERATOR" "$SHARED_GROUP" 0750 0640 \
-        "$campaign_dir/state.json" \
-        "$campaign_dir/context.md"
-
-    # DM-only tree
-    apply_perms_recursive "$OPERATOR" "$OPERATOR_GROUP" 0700 0600 \
-        "$campaign_dir/dm"
-
-    # Shared content — all agents read, operator writes
-    apply_perms_recursive "$OPERATOR" "$SHARED_GROUP" 2750 0640 \
-        "$campaign_dir/shared" \
-        "$campaign_dir/instructions" \
-        "$campaign_dir/methodologies" \
-        "$campaign_dir/srd" \
-        "$campaign_dir/how-to" \
-        "$campaign_dir/table"
-
-    # Arc directories are traversable by players for public context/summary
-    # files. DM-only planning files stay owner-only.
-    if [[ -d "$campaign_dir/arcs" ]]; then
-        chown -R "$OPERATOR:$SHARED_GROUP" "$campaign_dir/arcs"
-        find "$campaign_dir/arcs" -type d -exec chmod 2750 {} +
-        find "$campaign_dir/arcs" -type f -exec chmod 0640 {} +
-        find "$campaign_dir/arcs" -type f -name plan.md -exec chmod 0600 {} +
-    fi
-
-    # Per-player private dirs and files
-    for pid in "${PLAYER_IDS[@]}"; do
-        local pdir="$campaign_dir/players/$pid"
-        local puser="aog-$pid"
-        if [[ ! -d "$pdir" ]]; then continue; fi
-
-        # Private subdirs: players read their canonical files but do not
-        # write them directly. Durable mutations go through the glass API,
-        # which runs as the operator and records persistence/audit side
-        # effects before updating markdown.
-        apply_perms_recursive "$OPERATOR" "$puser" 2750 0640 \
-            "$pdir/journal" \
-            "$pdir/drafts" \
-            "$pdir/notes" \
-            "$pdir/inbox" \
-            "$pdir/secrets"
-
-        # turns/: operator owns so the orchestrator can always mkdir
-        # per-turn subdirs without depending on group membership; group
-        # is the player's primary group, setgid so files inherit it.
-        # Mode 2770 covers normal POSIX inheritance. On TrueNAS-style ZFS
-        # datasets mounted with nfs4acl, apply_nfs4_turns_acl adds explicit
-        # inheritable ACEs because chmod/setgid alone creates owner-only
-        # children.
-        if [[ -d "$pdir/turns" ]]; then
-            apply_perms_recursive "$OPERATOR" "$puser" 2770 0660 "$pdir/turns"
-            apply_nfs4_turns_acl "$pdir/turns"
-        fi
-
-        # Public subdir: players can read it directly; writes go through
-        # glass so player-facing prose, Postgres/search state, graph state,
-        # and audit stay in lockstep.
-        # This is where intro.md, relationships.md, the cached character.md
-        # display, and any other party-visible artifacts live.
-        if [[ -d "$pdir/public" ]]; then
-            apply_perms_recursive "$OPERATOR" "$SHARED_GROUP" 2750 0640 "$pdir/public"
-        fi
-
-        for f in persona.md scratchpad.md; do
-            if [[ -f "$pdir/$f" ]]; then
-                apply_perms "$OPERATOR" "$puser" 0640 0640 "$pdir/$f"
-            fi
-        done
-        if [[ -f "$pdir/signature-moves.md" ]]; then
-            apply_perms "$OPERATOR" "$puser" 0640 0640 "$pdir/signature-moves.md"
-        fi
-
-        # Player root dir: owner = OPERATOR, group = aog-agents, mode 0750
-        # (NO setgid). Operator-owned so the orchestrator (running as the
-        # operator) can always traverse it, even from a shell that hasn't
-        # picked up aog-agents in its effective groups yet (group lag from
-        # not having logged out + back in after provisioning). Group rx for
-        # other agents (all in aog-agents) so they can cd into public/.
-        # The player's own write access lives inside the provisioned
-        # subdirs (drafts/, journal/, notes/, inbox/, secrets/, public/,
-        # turns/), which are explicitly chowned to the player above.
-        # NOTE: explicit `g-s` because on ZFS+nfs4acl filesystems chmod
-        # 0750 does not clear the setgid bit.
-        chown "$OPERATOR:$SHARED_GROUP" "$pdir"
-        chmod g-s "$pdir"
-        chmod 0750 "$pdir"
-    done
-
-    # The players/ container itself: dev:aog-agents 2750 (all agents can
-    # traverse, only operator can change the player roster)
-    if [[ -d "$campaign_dir/players" ]]; then
-        chown "$OPERATOR:$SHARED_GROUP" "$campaign_dir/players"
-        chmod 2750 "$campaign_dir/players"
-    fi
-
-    # The campaign root itself
-    chown "$OPERATOR:$SHARED_GROUP" "$campaign_dir"
-    chmod 2750 "$campaign_dir"
+    # Campaign trees are deliberately operator-owned. Agents only see copied
+    # projections and mutate durable state through Glass.
+    return 0
 }
 
 cmd_projection() {
     local projection_root="${1:-}"
-    [[ -z "$projection_root" ]] && usage
+    local actor_user="${2:-}"
+    [[ -z "$projection_root" || -z "$actor_user" ]] && usage
     assert_path_safe "$projection_root"
+    assert_agent_user "$actor_user"
 
     case "$projection_root" in
         */.glass-cwd/*/*) ;;
@@ -299,6 +91,17 @@ cmd_projection() {
 
     chown "$OPERATOR:$SHARED_GROUP" "$glass_cwd_dir" "$campaign_projection_dir"
     chmod 0710 "$glass_cwd_dir" "$campaign_projection_dir"
+
+    chown -R "$actor_user:$OPERATOR_GROUP" "$projection_root"
+
+    # Some filesystems clear setgid during chown. Restore the mode classes
+    # projection.py established: owner-writable dirs/files are actor working
+    # surfaces; non-owner-writable paths are read-only to the actor but still
+    # writable by the operator group so the Glass API can refresh projections.
+    find "$projection_root" -type d -perm -0200 -exec chmod 2770 {} +
+    find "$projection_root" -type f -perm -0200 -exec chmod 0660 {} +
+    find "$projection_root" -type d ! -perm -0200 -exec chmod 0570 {} +
+    find "$projection_root" -type f ! -perm -0200 -exec chmod 0460 {} +
 }
 
 cmd_clean_workspace() {

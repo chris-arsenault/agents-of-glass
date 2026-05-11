@@ -1,8 +1,0 @@
-Turn 1 is laid down. Foundation persisted at `dm/foundation.md`; player-facing framing at `context.md`; the party's organization (The Dropline) authored in both DM-only (`dm/notes/organization.md`) and public (`shared/lore/organizations/dropline.md`) layers and graph-registered. Six grounding lore imports brought into `shared/lore/`. A public 4-segment `recognition-review` clock created. Public turn prose written to `dm/turns/0001/out.md`.
-
-The Question and Scarcity for the campaign: *Who answers the call when the system that was supposed to answer it can't anymore?* / **Answers**.
-
-Sources for the web pull:
-- [Norwich, CT shuts down volunteer fire department](https://www.wfsb.com/2026/02/10/city-norwich-shuts-down-historic-volunteer-fire-department-over-contract-dispute/)
-- [Franklin & Bannertown VFD contracts not renewed](https://www.mtairynews.com/news/blindsided-fire-department-loses-contract-in-closed-door-meeting/article_5f52bd5d-42c5-4dec-b3b0-c998e84dd12a.html)
-- [Cornersville TN entire department resigns](https://thelynchburgtimes.com/can-volunteer-fire-departments-endure/)

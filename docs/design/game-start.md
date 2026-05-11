@@ -12,7 +12,7 @@ For the campaign-level state machine, see [Phase state](#phase-state). For the o
 0. INIT (operator)
    aog campaign new <id>
    - Copy templates/ → campaigns/<id>/
-   - Write campaigns/<id>/state.json
+   - Create/update the Postgres runtime state row
    - Phase: → campaign_planning
 
 1. CAMPAIGN PLANNING (DM solo, 1-few invocations)
@@ -61,7 +61,7 @@ scene ends, the next scene starts when the DM is ready.
 
 ## Phase State
 
-Each campaign has `campaigns/<id>/state.json`:
+Each campaign has one Postgres runtime state row. Conceptually, it carries:
 
 ```json
 {
@@ -138,7 +138,6 @@ templates/                          # authored, stable; copied at campaign creat
   how-to/                           # optional player/DM examples and craft guidance
 
 campaigns/<id>/                     # per-campaign runtime root
-  state.json                        # campaign phase state
   context.md                        # PLAYER-FACING campaign-level context
   summary.md                        # running campaign continuity summary
   table/                            # public short-term state, reset per scene
@@ -176,14 +175,9 @@ Each campaign is **self-contained**: clone or move `campaigns/<id>/` and you hav
 ## Operator CLI Surface
 
 ```
-aog campaign new <id>                # init: copy templates, write state.json, advance to campaign_planning
+aog campaign run <id>                # create if needed, then advance from durable phase/mode state
 aog campaign show [<id>]             # show phase, active arc, active scene
 aog campaign list
-aog campaign plan [<id>]             # run the campaign_planning phase
-aog campaign character-create [<id>] # run the character_creation phase
-aog campaign bootstrap <id>          # run planning, character creation, and prelude
-aog campaign run [<id>]              # advance from current phase, doing whatever's next
-aog campaign resume [<id>]           # alias for `run`, framed for failure recovery
 aog campaign checkpoint <id> [--label <text>] # snapshot filesystem, Postgres, FalkorDB
 aog campaign checkpoints <id>        # list checkpoints
 aog campaign restore <id> <checkpoint-id>     # restore all persistence surfaces
@@ -205,7 +199,7 @@ There is no `aog session ...` — sessions don't exist. Scenes are the unit.
 Every phase and every scene is resumable mid-flight. State persists after every agent invocation. Failure semantics:
 
 - If an agent invocation fails (claude error, timeout, malformed output): the orchestrator stops. Scene-level state in `arcs/<arc>/scenes/<scene>/` reflects the last fully-committed turn. Campaign-level state is unchanged.
-- Operator inspects, fixes, runs `aog scene resume` (or `aog campaign resume` if no scene is active).
+- Operator inspects, fixes, runs `aog campaign run [<id>]`. The command reads durable phase/mode state and resumes the correct phase or active scene.
 - For structural failure: restore to an operator checkpoint. Checkpoints include
   the campaign filesystem, Postgres runtime/search/vector rows, and FalkorDB
   graph nodes/edges.
@@ -226,7 +220,7 @@ The DM-only working documents (`foundation.md`, `plan.md`, `prep.md`) hold the f
 
 ## What's Not Decided
 
-- **Exact `state.json` shape** — sketched above; the orchestrator pins it during build.
+- **Exact runtime state shape** — sketched above; the orchestrator pins it during build.
 - **Methodology content for character-creation** — still a stub; needs co-authoring.
 - **How `aog campaign new` handles re-creation if the campaign-id already exists.** Probably an error unless `--force`.
 - **Whether `glass scene end` is the only way to end a scene** or whether the orchestrator can force-end at a hard turn cap. (The latter is the deferred closure design — see [`scene-ending.md`](scene-ending.md).)
