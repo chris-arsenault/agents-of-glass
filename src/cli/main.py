@@ -80,7 +80,7 @@ def api() -> None:
 
 @api.command("serve")
 @click.option("--host", default="127.0.0.1", show_default=True)
-@click.option("--port", default=8765, show_default=True, type=int)
+@click.option("--port", default=26001, show_default=True, type=int)
 @click.option("--config", "config_path", type=click.Path())
 def api_serve(host: str, port: int, config_path: str | None) -> None:
     """Run the local glass API in the foreground."""

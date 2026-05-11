@@ -1,11 +1,17 @@
 # Table
 
-The table is the campaign's public short-term working memory.
+The table is the campaign's player-agent-visible short-term working memory.
+In this project, "public table" means "present in the player agents' projected
+CWD," not "everything a human web viewer may inspect."
 
 It exists to minimize avoidable actor transitions. Players should not need to
 spend turns asking the DM to repeat visible information they have already been
 given: room descriptions, obvious monster condition, scene stakes, where the
 exits are, what the duke's public posture is, or what handout was just shown.
+
+Human viewers of the web UI can inspect DM notes, lore, hooks, graph state, and
+other debug surfaces elsewhere. Those surfaces do **not** become table content
+unless the DM explicitly writes or links them under `campaigns/<id>/table/`.
 
 ## Shape
 
@@ -35,7 +41,7 @@ that prose files cannot solve.
 
 ## Boundary
 
-The table is public and immediate. It is not:
+The table is player-agent-visible and immediate. It is not:
 
 - durable campaign lore
 - a transcript
@@ -43,6 +49,9 @@ The table is public and immediate. It is not:
 - a character sheet
 - canonical numeric state
 - a DM secret notebook
+- a graph-derived list of "active" entities
+- a mirror of DM notes, hooks, NPC files, or monster files
+- a catch-all for everything the human viewer can browse
 
 Hard state still lives in the CLI/DB: rolls, HP, momentum, inventory, XP,
 action order, scene trackers, durable clocks, and character consequences. The
@@ -52,6 +61,12 @@ if there is a conflict.
 Secrets stay out of `table/` until they become visible. Use `dm/secret/`,
 `dm/notes/`, `dm/scratchpad.md`, hidden trackers, or the message bus for hidden
 state.
+
+The web UI's **Active Table** panel must render only `table/**` from the live
+campaign root. If a viewer wants to know which NPCs, monsters, routes, hooks, or
+handouts the player agents could see, the answer must be legible from
+`table/index.md`, `table/scene.md`, `table/handouts/**`, or another file in
+`table/`. Do not infer table visibility from graph rows or DM notes.
 
 ## Lifecycle
 

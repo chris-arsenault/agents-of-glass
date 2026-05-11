@@ -36,6 +36,10 @@ It also resets the live public table at campaign root:
 - `table/handouts/` — in-game handouts.
 
 Everything else at `table/` root is freeform and created only when useful.
+The table is the player-agent-visible board. It is not an automatic projection
+of DM notes, graph entities, hooks, NPC files, or monster files; if players
+should reason from one of those during the scene, place the visible part under
+`table/`.
 
 If the scene belongs to a different arc, pass `--arc <arc-slug>` explicitly.
 Write into the new scene directory, then commit the scene documents and table
@@ -89,6 +93,8 @@ You also update the live table when the scene begins:
   are likely to need during play.
 - Put notices, pictures, maps, letters, diagrams, and other in-game handouts in
   `table/handouts/`.
+- Do not rely on DM notes or graph state being "active" to put something on the
+  table; the table is exactly the files under `table/`.
 
 `prep.md` has these sections:
 

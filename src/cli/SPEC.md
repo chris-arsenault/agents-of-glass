@@ -33,8 +33,8 @@ glass scene create <slug> --type <label>       # creates arcs/<active-arc>/scene
 glass scene current
 glass scene list [--arc <slug>]
 glass scene end                                # archives table, ends the active scene
-glass table current                            # show live public table location/files
-glass table show [path]                        # read public table file/dir
+glass table current                            # show live player-agent-visible table location/files
+glass table show [path]                        # read player-agent-visible table file/dir
 glass table write <path> --body <md>           # DM only; replace table file
 glass table append <path> --body <md>          # DM only; append table file
 glass table snapshot [--label <text>]          # DM only; archive table snapshot

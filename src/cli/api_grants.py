@@ -18,7 +18,7 @@ from typing import Any
 from .errors import GlassError
 
 
-DEFAULT_API_URL = "http://127.0.0.1:8765"
+DEFAULT_API_URL = "http://127.0.0.1:26001"
 
 _GRANT_FILE = ".glass-grants.json"
 _DEFAULT_TTL_SECONDS = 7200

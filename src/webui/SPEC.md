@@ -1,49 +1,62 @@
 # `webui` — Spec
 
-A read-only public website that streams a running session as the agents play. Deployed to the operator's AWS account. Anyone with the URL can watch the four players and the DM take their turns, see the rolls, see mode transitions, see the messages they choose to surface.
+A read-only campaign viewer for the operator and anyone the operator lets watch.
+It is not a player-agent projection. Human viewers may inspect the whole
+campaign workspace: DM notes, lore, messages, narrations, table files, graph
+state, and operational debug surfaces as the UI grows.
 
-**Status:** Not started. This directory exists as a home for the spec until we pick it up. See [`/docs/backlog.md`](../../docs/backlog.md) for where this sits in the priority order — current recommendation is map → image gen → live site, in that order.
+## Visibility Model
 
-## What It Shows
+There are two different visibility questions, and the UI must not blur them:
 
-Strictly things that are already in the corpus:
+1. **What can the human viewer inspect?** Potentially everything in the campaign
+   workspace and backing stores. The viewer is an observation/debug surface.
+2. **What did the player agents have visibility into?** Only what was projected
+   into their per-turn CWD plus what their authorized `glass` commands could
+   read.
 
-- Per-turn prose with the orchestrator-supplied header (speaker, role, mode, scene, turn number, timestamp)
-- Inlined mechanical events (dice rolls, HP changes, mode transitions)
-- Mode boundaries as visual scene breaks
-- Optional sidebar surfaces if/when those backlog items ship: the map, generated images, current scene framing
-- Campaign/run list (opt-in — operator marks a campaign "public" before/during the run)
+The **Active Table** panel answers the second question for shared scene state.
+It renders only `campaigns/<id>/table/**`:
 
-What it does **not** show:
+- `table/index.md`
+- `table/scene.md`
+- `table/handouts/**`
+- freeform markdown files under `table/`
 
-- Agent prompts / role files
-- Orchestrator internals
-- Private journals, secret notes, DM-only messages, monster stat blocks
-- Anything outside what `glass turn append` has committed to the structured public turn feed
+Do not populate Active Table from graph entities, DM notes, hooks, NPC notes,
+monster files, messages, transcript text, clocks, rolls, or the viewer's file
+browser. Those may be visible elsewhere in the web UI, but they are not on the
+player-agent table unless the DM explicitly puts or links them under `table/`.
 
-## Architecture (Sketched)
+## Current Local Architecture
 
-Per the [backlog entry](../../docs/backlog.md#live-session-website):
+- REST API: `src/cli/api_server.py`, under `/v1/campaigns/<id>/...`.
+- Frontend: `frontend/`, Vite/React.
+- Local helper: `scripts/run-webui-local.sh`, which starts both services in the
+  mapped Docker port range.
+- Source of truth:
+  - Postgres for turns, messages, rolls, characters, hard state, and runtime.
+  - Markdown for campaign files.
+  - FalkorDB for graph mirrors of authored lore/notes.
 
-- The local source of truth is Postgres: `turns` for committed public turns,
-  `events` for structured emitted state changes, plus hard-state tables for
-  rolls/messages/characters. `glass turns feed --after-turn N` is the first
-  polling surface.
-- A later deploy can mirror those structured rows/events to a write-side service (probably an S3-backed event log behind a Lambda).
-- The frontend is a static SPA served from S3 + CloudFront that subscribes to the mirrored feed via WebSocket or polling.
-- Per-campaign URLs (`/campaigns/<id>`); public listing is opt-in.
-- Optional 30-second delay before public visibility — buys a sanity-check window without committing to "instant whatever the agents emit."
+## Viewer Surfaces
 
-## Open When We Build
+- **DM row:** current scene/play DM surface. This is the counterpart to Active
+  Table, not a document browser. It may show active clocks, scene trackers,
+  explicit beats, current scene prep cues, DM-facing tarot, live hooks, and
+  recent play-control events. It should not become a long-term journal, lore, or
+  file-reading surface.
+- **Active Table:** only the player-agent table directory, as defined above.
+- **Narrations:** turn rows in turn order.
+- **Messages:** message bus rows.
+- **File browser / DM notes / lore:** inspection surfaces for human viewers,
+  not evidence that a player agent saw the file.
+- **Graph summaries:** coherence/debug surfaces, not table state unless a table
+  file links or summarizes the relevant entity.
 
-- **Tech stack.** Static SPA (TS/React/Vite, mirroring `the-glass-frontier`'s client) or a Python-served alternative? Lean TS/React if we want anything resembling the Glass Frontier client experience; Python if we want one stack across the project.
-- **Real-time-ish vs delayed.** 30-second buffer or instant?
-- **Auth model.** Public + unlisted (share-link), or fully discoverable? Default unlisted.
-- **Image and map rendering.** Inline or sidebar? Depends on the map and image-gen backlog items shipping first.
-- **AWS region / deployment specifics.** Operator's account.
+## Deployment Notes
 
-## Why It's Out of Scope for v1
-
-The public turn corpus is the product; the webui is a viewer for that corpus. Once the agentic loop produces sessions worth watching, the viewer becomes the showcase — but premature webui work risks shaping the corpus around presentation instead of the other way around.
-
-When we do pick this up, the first iteration is: render `glass turns feed` rows with header styling and event lines. The markdown transcript export is for debugging and git history, not the UI data source.
+A later hosted version can mirror the same resources to a service behind
+CloudFront or another static host. That deployment decision must preserve the
+visibility model above: broad human inspection is allowed, but Active Table is
+still exactly the player-agent table construct.

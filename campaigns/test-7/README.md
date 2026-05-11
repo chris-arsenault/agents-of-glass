@@ -20,7 +20,7 @@ templates/
   methodologies/           binding ordered workflows by mode/phase
   srd/                     public game rules for players and DMs
   how-to/                  optional player/DM examples and craft guidance
-  table/                   public short-term table state (reset per scene)
+  table/                   player-agent-visible short-term table state (reset per scene)
     index.md               at-a-glance board
     scene.md               scene kickoff description
     handouts/              in-game handouts

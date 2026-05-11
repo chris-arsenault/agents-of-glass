@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import threading
 import time
 import urllib.error
@@ -18,6 +19,7 @@ from click.testing import CliRunner
 
 from . import db
 from . import graph as graph_db
+from . import workspace as workspace_db
 from .api_grants import DEFAULT_API_URL, validate_grant
 from .config import get_paths, load_config
 from .errors import GlassError
@@ -66,7 +68,7 @@ def ensure_background_server(
 
     parsed = urllib.parse.urlparse(url)
     host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 8765
+    port = parsed.port or 26001
     _server = HTTPServer((host, port), _GlassApiHandler)
     _server_thread = threading.Thread(
         target=_server.serve_forever,
@@ -82,7 +84,7 @@ def ensure_background_server(
 def serve_forever(
     *,
     host: str = "127.0.0.1",
-    port: int = 8765,
+    port: int = 26001,
     config_path: str | None = None,
 ) -> None:
     if config_path:
@@ -292,6 +294,7 @@ def _campaign_summary_payload(campaign_id: str) -> dict[str, Any]:
         "scene_trackers": [],
         "tarot": [],
         "graph": _graph_payload(campaign_id),
+        "dm_surface": _campaign_dm_surface_payload(campaign_id),
     }
     try:
         config = load_config()
@@ -314,6 +317,7 @@ def _campaign_summary_payload(campaign_id: str) -> dict[str, Any]:
                 active_only=False,
                 limit=100,
             )
+            payload["dm_surface"] = _campaign_dm_surface_payload(campaign_id)
     except Exception as exc:
         payload["database_error"] = str(exc)
     return payload
@@ -396,6 +400,7 @@ def _campaign_live_payload(
                     active_only=False,
                     limit=100,
                 )
+                payload["dm_surface"] = _campaign_dm_surface_payload(campaign_id)
     except Exception as exc:
         payload["database_error"] = str(exc)
     return payload
@@ -484,13 +489,14 @@ def _campaign_files_payload(
         return _file_content_payload(campaign_root, raw_path)
     section = _first_query_value(query, "section")
     prefix = _first_query_value(query, "prefix")
-    limit = _query_int(query, "limit", default=100, minimum=1, maximum=1000)
+    include_all = _query_bool(query, "all", default=False)
+    limit = _query_int(query, "limit", default=100, minimum=1, maximum=5000)
     files = _file_tree_payload(campaign_root)
     if section:
         files = [entry for entry in files if _file_entry_matches_section(entry, section)]
     elif prefix:
         files = [entry for entry in files if entry["path"].startswith(prefix)]
-    else:
+    elif not include_all:
         return {
             "campaign_id": campaign_id,
             "root": campaign_root.name,
@@ -878,9 +884,90 @@ def _campaign_table_payload(campaign_root: Path) -> dict[str, Any]:
             if path.name in {"index.md", "scene.md"}:
                 continue
             if _is_readable_campaign_file(campaign_root, path):
-                files.append(_file_entry(campaign_root, path))
+                files.append({**_file_entry(campaign_root, path), "content": _read_text(path)})
         payload["files"] = files
     return payload
+
+
+def _campaign_dm_surface_payload(campaign_id: str) -> dict[str, Any]:
+    campaign_root = _campaign_root(campaign_id)
+    current = _current_scene_payload(campaign_root)
+    return {
+        "current_scene": current,
+        "beats": _quest_beats(campaign_root / "shared" / "quest-log.md", limit=12),
+        "files": _dm_play_files(campaign_root, current),
+    }
+
+
+def _current_scene_payload(campaign_root: Path) -> dict[str, Any] | None:
+    workspace = workspace_db.CampaignWorkspace(campaign_root.name, campaign_root)
+    try:
+        current = workspace_db.current_scene(workspace)
+    except Exception:
+        return None
+    if not current:
+        return None
+    raw_path = current.get("path")
+    path = None
+    if raw_path:
+        with contextlib.suppress(ValueError):
+            path = Path(raw_path).relative_to(campaign_root).as_posix()
+    return {
+        "arc_id": current.get("arc_id"),
+        "scene_id": current.get("scene_id"),
+        "scene_type": current.get("scene_type"),
+        "path": path,
+    }
+
+
+_QUEST_BEAT_RE = re.compile(r"^\s*[-*]\s+(?:\[([^\]]+)\]\s*)?(.+?)\s*$")
+
+
+def _quest_beats(path: Path, *, limit: int) -> list[dict[str, Any]]:
+    if not path.exists() or not path.is_file():
+        return []
+    beats: list[dict[str, Any]] = []
+    for line in _read_text(path).splitlines():
+        match = _QUEST_BEAT_RE.match(line)
+        if not match:
+            continue
+        tag, text = match.groups()
+        arc_id: str | None = None
+        scene_id: str | None = None
+        if tag:
+            parts = [part for part in tag.split(":") if part]
+            if parts:
+                arc_id = parts[0]
+            if len(parts) > 1:
+                scene_id = parts[1]
+        beats.append(
+            {
+                "text": text,
+                "arc_id": arc_id,
+                "scene_id": scene_id,
+                "source_path": "shared/quest-log.md",
+            }
+        )
+    return beats[-limit:]
+
+
+def _dm_play_files(
+    campaign_root: Path,
+    current: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if not current:
+        return []
+    scene_path = current.get("path")
+    if not scene_path:
+        return []
+    files: list[dict[str, Any]] = []
+    for name in ("prep.md",):
+        path = campaign_root / scene_path / name
+        if _is_readable_campaign_file(campaign_root, path):
+            files.append(
+                {**_file_entry(campaign_root, path), "content": _read_text(path)}
+            )
+    return files
 
 
 def _optional_file_payload(path: Path) -> dict[str, Any] | None:

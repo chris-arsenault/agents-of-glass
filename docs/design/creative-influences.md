@@ -39,7 +39,8 @@ Initial source anchors:
 
 The verse phrase is not persisted. It is deterministic per campaign, actor, and
 turn number so rerendered turn starts are stable. It is debug context only:
-viewers may eventually see it in debug output, but it is not public table state
+viewers may eventually see it in debug output, but it is not
+player-agent-visible table state
 and should not be quoted or announced unless it naturally belongs in the turn.
 
 The instruction is deliberately vague: let the phrase influence word choice,

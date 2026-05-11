@@ -10,8 +10,17 @@ const envPlayerOrder = import.meta.env.VITE_PLAYER_ORDER?.split(",")
   .map((value: string) => value.trim())
   .filter(Boolean);
 
+function defaultApiBaseUrl(): string {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  const protocol = window.location.protocol || "http:";
+  const hostname = window.location.hostname || "127.0.0.1";
+  return `${protocol}//${hostname}:26001`;
+}
+
 const defaults: AppConfig = {
-  apiBaseUrl: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8765",
+  apiBaseUrl: defaultApiBaseUrl(),
   defaultCampaignId: import.meta.env.VITE_DEFAULT_CAMPAIGN_ID || "test-7",
   pollIntervalMs: Number(import.meta.env.VITE_POLL_INTERVAL_MS || 120000),
   playerOrder: envPlayerOrder?.length

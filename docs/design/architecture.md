@@ -40,16 +40,29 @@ All prose lives in markdown, in three layers:
   and `how-to/`. These are copied from templates into each campaign so runtime
   agents have local binding tool instructions, workflows, public rules, and
   optional examples. See [`instruction-surface.md`](instruction-surface.md).
-- **Public table** — `campaigns/<id>/table/`. The immediate visible table
-  state for the current scene: `index.md`, `scene.md`, `handouts/`, plus any
-  freeform table-root markdown files the DM creates to avoid repeated
-  clarification turns. Reset on scene create, archived on scene end. See
-  [`table.md`](table.md).
+- **Public table** — `campaigns/<id>/table/`. The immediate shared state that
+  player agents can see in their projected CWD: `index.md`, `scene.md`,
+  `handouts/`, plus any freeform table-root markdown files the DM creates to
+  avoid repeated clarification turns. Reset on scene create, archived on scene
+  end. The table is not a graph query, DM-note mirror, or "everything visible in
+  the web UI"; see [`table.md`](table.md).
 - **Personal notes** — agent-private. Player journals (free-form, may have subdirectories) and the DM workspace (planning drafts, in-progress NPCs). **Journal-shaped, not encyclopedia-shaped.** For thinking; not the canonical record.
 
 Plus derived transcript exports for human review and git history. The public turn corpus itself is structured Postgres rows (see [`../principles/transcripts-as-corpus.md`](../principles/transcripts-as-corpus.md)).
 
 Markdown is human-diffable, version-controllable, and the natural medium for narrative content.
+
+### Viewer Visibility Is Not Player-Agent Visibility
+
+The web UI is allowed to be an operator/audience inspection surface for the
+whole campaign. It may show DM notes, lore, graph data, messages, and raw
+campaign files. That broad viewer access must not be used to decide what the
+player agents could see.
+
+Player-agent visibility is defined by the per-turn projected CWD and the
+role-authorized `glass` commands. The UI's Active Table panel is a specialized
+view of that model: it renders only `campaigns/<id>/table/**`, because that is
+the shared board projected into every player turn.
 
 ### 2. FalkorDB — the coherence layer
 

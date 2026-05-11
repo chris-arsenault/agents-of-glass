@@ -27,7 +27,15 @@ public prose.
 The public turn can include OOC player voice and IC character narration when
 both matter. Keep OOC brief and useful; long bus summaries, tool summaries,
 private planning, and conditional branches belong in messages, scratchpads,
-table state, or the scene summary.
+table state, or the scene summary. When the turn is primarily scene play,
+let the visible fiction carry most of the prose and tuck any table-process
+notes after the beat.
+
+When a character would naturally speak, a line or two of dialogue often reads
+better than explaining the same intent from outside. Use dialogue for offers,
+refusals, questions, warnings, commitments, and small character tells when it
+fits the scene. It does not need to be clever or long; one plain line in the
+character's register is often enough.
 
 If you make rolls or state changes during the turn, narrate the visible outcome
 in the public prose. The `glass` commands leave their own audit trail; your

@@ -140,7 +140,7 @@ templates/                          # authored, stable; copied at campaign creat
 campaigns/<id>/                     # per-campaign runtime root
   context.md                        # PLAYER-FACING campaign-level context
   summary.md                        # running campaign continuity summary
-  table/                            # public short-term state, reset per scene
+  table/                            # player-agent-visible short-term state, reset per scene
     index.md                        # at-a-glance board
     scene.md                        # scene kickoff description
     handouts/                       # in-game handouts
@@ -208,7 +208,7 @@ Phase transitions are **explicit, not automatic**. The DM declares planning comp
 
 ## Why This Hierarchy
 
-Each level has its own player-facing context document because the *zoom level* matters. A player in a scene needs scene framing (immediate), arc context (mid-term stakes), and campaign framing (long-term world state) — three levels of focus, all on every turn. The live `table/` sits beside those documents as the short-term public board: current visible state, scene kickoff, handouts, and freeform immediate references. The DM authors each separately because they update at different cadences:
+Each level has its own player-facing context document because the *zoom level* matters. A player in a scene needs scene framing (immediate), arc context (mid-term stakes), and campaign framing (long-term world state) — three levels of focus, all on every turn. The live `table/` sits beside those documents as the short-term player-agent-visible board: current visible state, scene kickoff, handouts, and freeform immediate references. The DM authors each separately because they update at different cadences:
 
 - Campaign context updates rarely — when a major faction shift, a region change, a thread advances dramatically.
 - Arc context updates per scene or two — what the players have learned, who's pushing on them, what clocks have ticked.
@@ -217,6 +217,12 @@ Each level has its own player-facing context document because the *zoom level* m
   otherwise ask for repetition.
 
 The DM-only working documents (`foundation.md`, `plan.md`, `prep.md`) hold the full picture — secrets, possible end-states, what NPCs are *really* doing. The player-facing `context.md` holds only what the players have seen.
+
+The human web viewer can inspect DM-only working documents through debug/file
+surfaces. That does not make those documents player-agent visible. If viewers
+want to know what was on the player agents' table, they should look at
+`campaigns/<id>/table/**` and its scene archives, not at graph entities or DM
+notes.
 
 ## What's Not Decided
 

@@ -17,6 +17,7 @@ import type {
   FileEntry,
   GraphSnapshot,
   LiveCursors,
+  DmSurfacePayload,
   MessageRecord,
   RollRecord,
   RuntimeState,
@@ -31,7 +32,13 @@ const maxTurns = 100;
 const maxMessages = 400;
 const maxEvents = 300;
 const maxRolls = 200;
+const emptyFiles: FileEntry[] = [];
 const emptyTable: TablePayload = { index: null, scene: null, files: [] };
+const emptyDmSurface: DmSurfacePayload = {
+  current_scene: null,
+  beats: [],
+  files: [],
+};
 const emptyGraph: GraphSnapshot = {
   available: false,
   target: "",
@@ -62,6 +69,7 @@ interface SessionStore {
   tarot: TarotRecord[];
   graph: GraphSnapshot;
   table: TablePayload;
+  dmSurface: DmSurfacePayload;
   cursors: LiveCursors;
   fileLists: Record<string, FileEntry[]>;
   selectedFile: FileContent | null;
@@ -95,6 +103,7 @@ export const useSessionStore = create<SessionStore>((set, get) => {
     tarot: [],
     graph: emptyGraph,
     table: emptyTable,
+    dmSurface: emptyDmSurface,
     cursors: initialCursors,
     fileLists: {},
     selectedFile: null,
@@ -120,6 +129,7 @@ export const useSessionStore = create<SessionStore>((set, get) => {
           tarot: summary.tarot,
           graph: summary.graph,
           table: table.table,
+          dmSurface: summary.dm_surface ?? emptyDmSurface,
           turns: live.turns,
           messages: live.messages,
           events: live.events,
@@ -139,8 +149,15 @@ export const useSessionStore = create<SessionStore>((set, get) => {
       const { campaignId, cursors } = get();
       set({ isPolling: true, error: null });
       try {
-        const live = await fetchLive(campaignId, cursors);
+        const live = await fetchLive(campaignId, cursors, {
+          includeState: true,
+        });
         set((state) => ({
+          runtime: live.runtime ?? state.runtime,
+          clocks: live.clocks ?? state.clocks,
+          sceneTrackers: live.scene_trackers ?? state.sceneTrackers,
+          tarot: live.tarot ?? state.tarot,
+          dmSurface: live.dm_surface ?? state.dmSurface,
           turns: mergeByKey(state.turns, live.turns, "turn_id", maxTurns),
           messages: mergeByKey(
             state.messages,
@@ -177,6 +194,7 @@ export const useSessionStore = create<SessionStore>((set, get) => {
           tarot: live.tarot ?? summary.tarot,
           graph: summary.graph,
           table: table.table,
+          dmSurface: live.dm_surface ?? summary.dm_surface ?? emptyDmSurface,
           turns: mergeByKey(state.turns, live.turns, "turn_id", maxTurns),
           messages: mergeByKey(
             state.messages,
@@ -228,7 +246,7 @@ export const useSessionStore = create<SessionStore>((set, get) => {
 });
 
 export function selectActiveFiles(state: SessionStore): FileEntry[] {
-  return state.fileLists[state.activeSection] ?? [];
+  return state.fileLists[state.activeSection] ?? emptyFiles;
 }
 
 export function selectLatestDmTurn(

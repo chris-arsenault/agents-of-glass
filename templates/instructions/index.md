@@ -18,7 +18,7 @@ Use how-to files only as optional craft guidance.
 - [`workspace-authoring.md`](workspace-authoring.md) — how to read workspace
   files and persist authored documents through `glass`.
 - [`message-bus.md`](message-bus.md) — required message read and message types.
-- [`table.md`](table.md) — how to use the public short-term table.
+- [`table.md`](table.md) — how to use the player-agent-visible short-term table.
 - [`recall-and-search.md`](recall-and-search.md) — how to retrieve old context.
 - [`glass-cli.md`](glass-cli.md) — tool authority and command families.
 - [`character-state.md`](character-state.md) — character rows, inventory, HP,

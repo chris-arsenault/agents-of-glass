@@ -58,7 +58,7 @@ def start_daemon(
 
     parsed = urllib.parse.urlparse(url)
     host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 8765
+    port = parsed.port or 26001
     command = [
         sys.executable,
         "-m",

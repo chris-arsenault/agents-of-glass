@@ -78,6 +78,10 @@ visible condition, a route sketch in prose, the duke's current public posture,
 or any other table state worth checking before asking for repetition. Use
 `table/handouts/` only for in-game handouts.
 
+Do not assume an NPC, monster, hook, graph entity, or DM note is on the player
+table just because it exists elsewhere. For action play, if it affects player
+decisions and is visible, put the visible state under `table/`.
+
 Every action scene needs at least one honest tracker. Some trackers count up:
 morale breaking, an alert clock filling, a gate opening. Some trackers are
 pressure targets that count down: HP, the duke's resistance, distance to a

@@ -74,7 +74,8 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - An embodied identity paragraph drawn from their `persona.md`
 - Their `scratchpad.md` (current working notes — committed through `glass sync apply`)
 - Current mode + scene framing
-- Current public table: `table/index.md`, `table/scene.md`, and `table/handouts/`
+- Current public table: `table/index.md`, `table/scene.md`, `table/handouts/`,
+  and any other files under `table/`
 - Campaign framing
 - Compact active scene summary, embedded and capped
 - Campaign / arc summaries as pointers
@@ -151,6 +152,12 @@ short-term public board for the current scene: `index.md` for at-a-glance
 state, `scene.md` for the kickoff description, `handouts/` for in-game
 handouts, and freeform table-root markdown files for whatever visible immediate
 reference would prevent repeated clarification turns.
+
+This is the same boundary the web UI's Active Table uses. The viewer may expose
+DM notes, graph entities, hooks, messages, lore, and other campaign files in
+other panes, but those are inspection surfaces. A player agent has table
+visibility only when the relevant information is present under `table/` in its
+projected CWD.
 
 Format and update cadence are intentionally not pre-specified beyond the methodology guidance — see [`/docs/backlog.md`](../backlog.md). We codify further after first sessions show what's useful.
 

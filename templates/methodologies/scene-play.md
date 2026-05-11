@@ -34,7 +34,8 @@ There is no script. Within your turn, you do whatever the scene calls for. A typ
 - **Drain the bus.** Follow [`instructions/message-bus.md`](../instructions/message-bus.md).
 - **Notice creative influence.** In actual play, TURN_START may include a
   verse phrase and current tarot. Use them as minor creative texture; they are
-  not mechanics and do not outrank the table or your character.
+  not mechanics and do not outrank the table or your character. Let them color
+  the turn quietly instead of naming them in public prose.
 - **Look at the table.** Follow [`instructions/table.md`](../instructions/table.md).
 - **Look at the world.** Read `shared/lore/`, recent transcript turns, your character file, other PCs' `players/<id>/public/intro.md`. Open whatever images, maps, or notes are relevant.
 - **Look at summaries and clocks.** Use `summary.md`, arc/scene `summary.md`
@@ -55,6 +56,9 @@ There is no script. Within your turn, you do whatever the scene calls for. A typ
 - **Take any rolls you decide are needed.** Use the roll authority in [`srd/checks.md`](../srd/checks.md).
 - **Send messages or ask questions.** Use the message bus; batch minor things.
 - **Write your turn narration.** Follow [`instructions/output-contract.md`](../instructions/output-contract.md).
+  Keep the visible fiction near the front. If someone in the scene would
+  naturally speak, look for a concise in-character line before summarizing
+  their intent from outside.
 - **Optional handoff.** Run `glass turn handoff <agent_id>` if the next agent should not be next-in-rotation.
 
 You don't have to do all of these every turn. You don't have to do them in this order. The list is a menu.

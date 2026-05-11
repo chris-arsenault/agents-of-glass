@@ -12,7 +12,7 @@ Markdown owns:
 
 - campaign, arc, and scene `context.md`
 - campaign, arc, and scene `summary.md`
-- public table files under `table/`
+- player-agent-visible table files under `table/`
 - shared lore prose under `shared/lore/`
 - quest log, party knowledge, instructions, methodologies, SRD, how-to guidance
 - DM notes/workspace/secret files
@@ -50,6 +50,10 @@ orchestrator captures each agent's `out.md`, then commits it through
 `glass turn append`. The per-agent `out.md`, stdout, stderr, and debug logs are
 operational artifacts. The viewer UI and future narrative-weaving passes should
 read `glass turns feed` / Postgres, not scrape agent turn folders.
+
+The viewer UI may also inspect markdown files directly for debugging and
+audience context. That broad inspection does not change table visibility:
+Active Table is still only `campaigns/<id>/table/**`.
 
 ## FalkorDB
 

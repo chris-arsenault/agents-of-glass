@@ -15,6 +15,10 @@ drift and documents that try to serve incompatible readers.
   character sheet, public table/campaign context, and lore their player can
   reference.
 
+Here, "public table" has a precise runtime meaning: files under `table/` that
+are projected into player-agent CWDs. Human web viewers may inspect more than a
+character or player agent can see.
+
 ## Document Types
 
 | Type | Runtime root | Target | Authority |

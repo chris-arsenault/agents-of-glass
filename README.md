@@ -32,7 +32,11 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 - [docs/backlog.md](docs/backlog.md) — active deferred work and larger out-of-scope systems
 - [src/cli/](src/cli/) — the `glass` CLI (in-play tool surface). Spec at [src/cli/SPEC.md](src/cli/SPEC.md).
 - [src/orchestrator/](src/orchestrator/) — the Python orchestrator + the `aog` operator CLI. Spec at [src/orchestrator/SPEC.md](src/orchestrator/SPEC.md).
-- [src/webui/](src/webui/) — read-only public live viewer (out of v1 scope; spec home only). See [src/webui/SPEC.md](src/webui/SPEC.md).
+- [frontend/](frontend/) and [src/webui/](src/webui/) — the read-only campaign
+  viewer. The viewer may expose the whole campaign workspace for operator and
+  audience inspection, but its **Active Table** surface is restricted to
+  `campaigns/<id>/table/**`, because that is the construct projected into
+  player-agent CWDs. See [src/webui/SPEC.md](src/webui/SPEC.md).
 - [templates/](templates/) — authored baseline content: personas, instructions, methodologies, SRD, how-to guidance, and character templates. Copied to a campaign at start. See [templates/README.md](templates/README.md).
 - `campaigns/<id>/` — runtime per-campaign root, created by `aog campaign new`. Mutates during play. Three-level player-facing context plus DM workspace plus per-arc and per-scene state. See [docs/design/game-start.md](docs/design/game-start.md).
 - [CLAUDE.md](CLAUDE.md) / [codex.md](codex.md) — agent instructions for AI assistants working in this repo.
@@ -40,4 +44,5 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 
 ## Status
 
-Pre-implementation. Repo skeleton is up; nothing runs yet.
+Active prototype. The orchestrator, CLI, persistence, and local web UI exist
+and are being exercised against `campaigns/test-7`.

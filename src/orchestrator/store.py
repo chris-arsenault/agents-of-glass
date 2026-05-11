@@ -8,7 +8,7 @@ at `campaigns/<id>/`. This module owns:
   campaigns/<id>/transcript.md    — derived public transcript export
   campaigns/<id>/audit.jsonl      — append-only audit log
   campaigns/<id>/scene-framing.md — current scene framing
-  campaigns/<id>/table/           — current public short-term table state
+  campaigns/<id>/table/           — current player-agent-visible short-term table state
   campaigns/<id>/<agent>/turns/<NNNN>/ — per-turn artifacts
 
 The class is named `SessionStore` only to limit churn in the orchestrator

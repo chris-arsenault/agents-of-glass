@@ -26,15 +26,38 @@ export interface FileContent extends FileEntry {
 
 export interface TableFile {
   path: string;
+  name?: string;
+  section?: string;
   title: string;
   content: string;
+  size?: number;
   updated_at: string;
 }
 
 export interface TablePayload {
   index: TableFile | null;
   scene: TableFile | null;
-  files: FileEntry[];
+  files: TableFile[];
+}
+
+export interface DmSurfaceScene {
+  arc_id: string | null;
+  scene_id: string;
+  scene_type: string | null;
+  path: string | null;
+}
+
+export interface DmSurfaceBeat {
+  text: string;
+  arc_id: string | null;
+  scene_id: string | null;
+  source_path: string;
+}
+
+export interface DmSurfacePayload {
+  current_scene: DmSurfaceScene | null;
+  beats: DmSurfaceBeat[];
+  files: TableFile[];
 }
 
 export interface RuntimeTurnsSummary {
@@ -157,17 +180,28 @@ export interface EventRecord {
 }
 
 export interface RollRecord {
+  campaign_id?: string;
   roll_id: string;
   scene_id: string | null;
+  session_id?: string;
   character_id: string;
   actor: string;
   skill: string;
+  skill_modifier?: number;
+  skill_tier?: string;
   attribute: string;
+  attribute_modifier?: number;
+  attribute_tier?: string;
   risk: string;
   dice: number[];
   total: number;
   target: number;
+  target_id?: string | null;
   margin: number;
+  metadata?: Record<string, unknown>;
+  momentum_delta?: number;
+  momentum_in?: number;
+  momentum_out?: number;
   outcome: string;
   created_at: string;
 }
@@ -186,10 +220,13 @@ export interface TarotRecord {
 
 export interface GraphEntity {
   id?: string;
+  uid?: string;
   title?: string;
   type?: string;
   status?: string;
+  prominence?: string;
   file_path?: string;
+  tags?: string[];
 }
 
 export interface GraphEdge {
@@ -230,6 +267,7 @@ export interface SummaryPayload {
   scene_trackers: SceneTrackerRecord[];
   tarot: TarotRecord[];
   graph: GraphSnapshot;
+  dm_surface: DmSurfacePayload;
   database_error?: string;
 }
 
@@ -245,6 +283,7 @@ export interface LivePayload {
   clocks?: ClockRecord[];
   scene_trackers?: SceneTrackerRecord[];
   tarot?: TarotRecord[];
+  dm_surface?: DmSurfacePayload;
   database_error?: string;
 }
 

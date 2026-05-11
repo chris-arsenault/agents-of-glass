@@ -20,7 +20,7 @@ templates/
   methodologies/           binding ordered workflows by mode/phase
   srd/                     public game rules for players and DMs
   how-to/                  optional player/DM examples and craft guidance
-  table/                   public short-term table state (reset per scene)
+  table/                   player-agent-visible short-term table state (reset per scene)
     index.md               at-a-glance board
     scene.md               scene kickoff description
     handouts/              in-game handouts
@@ -62,9 +62,12 @@ The orchestrator copies `templates/` into a per-campaign root at campaign creati
 - **How-to-shaped** (optional examples and craft guidance) — `how-to/`.
 - **Encyclopedia-shaped** (frontmatter + prose + sections, FalkorDB-mirrored when canonized) — `shared/lore/`, players' `drafts/`, players' `notes/`, DM's `notes/`.
 - **Journal-shaped** (free-form, no schema) — players' `journal/` and `scratchpad.md`, DM's `journal/` and `scratchpad.md` and `workspace/` and `secret/` and `intake/`.
-- **Table-shaped** (short, current, player-visible) — `table/index.md`,
-  `table/scene.md`, `table/handouts/`, and any freeform markdown files at
-  `table/` root that prevent repeated clarification questions.
+- **Table-shaped** (short, current, player-agent-visible) —
+  `table/index.md`, `table/scene.md`, `table/handouts/`, and any freeform
+  markdown files at `table/` root that prevent repeated clarification
+  questions. This is the material projected to player CWDs and shown in the web
+  UI's Active Table. DM notes, hooks, lore, graph entities, and messages are
+  separate surfaces even when human viewers can inspect them elsewhere.
 - **Summary-shaped** (authored continuity compression) — `summary.md` at
   campaign, arc/act, and scene level. These are summaries of what remains true,
   not immediate scene boards.

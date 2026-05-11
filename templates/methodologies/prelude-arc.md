@@ -119,6 +119,8 @@ glass scene create prelude-opening --type scene-play --arc prelude
 
 Write the player-facing scene framing in `arcs/prelude/scenes/prelude-opening/context.md`.
 Write the visible board in `table/scene.md` and `table/index.md`.
+The visible board is exactly the player-agent table directory, not the DM's
+notes or graph state.
 
 Then start play:
 

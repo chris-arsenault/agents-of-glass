@@ -1,4 +1,4 @@
-"""Public table-state commands."""
+"""Player-agent-visible table-state commands."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from ..yaml_io import command_params, emit, read_body
 
 @click.group()
 def table() -> None:
-    """Current public table state: index, scene kickoff, and handouts."""
+    """Current player-agent-visible table state: index, scene, and handouts."""
 
 
 @table.command("current")
@@ -56,7 +56,7 @@ def table_current(ctx: click.Context) -> None:
 @click.argument("path_text", required=False, default="index.md")
 @click.pass_context
 def table_show(ctx: click.Context, path_text: str) -> None:
-    """Read a public table file."""
+    """Read a player-agent-visible table file."""
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -84,7 +84,7 @@ def table_show(ctx: click.Context, path_text: str) -> None:
 def table_write(
     ctx: click.Context, path_text: str, body: str | None, from_file: str | None
 ) -> None:
-    """DM-only: replace a public table file."""
+    """DM-only: replace a player-agent-visible table file."""
     role = require_dm()
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -126,7 +126,7 @@ def table_write(
 def table_append(
     ctx: click.Context, path_text: str, body: str | None, from_file: str | None
 ) -> None:
-    """DM-only: append to a public table file."""
+    """DM-only: append to a player-agent-visible table file."""
     role = require_dm()
     paths = get_paths()
     campaign_id = active_campaign_id()

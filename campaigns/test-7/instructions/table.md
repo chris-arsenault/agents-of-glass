@@ -6,8 +6,8 @@ authority: binding
 
 # Public Table Instructions
 
-The public table is the current short-term visible scene state. It exists to
-reduce clarification turns.
+The public table is the current short-term visible scene state in the
+player-agent CWD. It exists to reduce clarification turns.
 
 The table root is `table/`:
 
@@ -29,6 +29,13 @@ Ask the DM only when the table is absent, ambiguous, newly relevant, or secret.
 
 Update the table before ending your turn when visible short-term state changed.
 Do not put secrets in `table/`.
+
+Only material under `table/` is on the active table. Human viewers may inspect
+DM notes, hooks, lore, graph entities, messages, and other files elsewhere in
+the web UI; that does not make those files player-agent-visible table state.
+If the players should reason from it as shared scene information, summarize it
+or link it from `table/index.md`, `table/scene.md`, `table/handouts/`, or a
+freeform table markdown file.
 
 Use:
 

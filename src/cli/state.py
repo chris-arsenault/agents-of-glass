@@ -8,7 +8,7 @@ campaigns/<id>/:
   transcript.md       — derived public transcript export
   audit.jsonl         — append-only command audit log
   scene-framing.md    — current scene framing (rewritten on scene start)
-  table/              — current public short-term table state
+  table/              — current player-agent-visible short-term table state
   dm/turns/<NNNN>/    — DM's per-turn artifacts (in.md, out.md, stdout, stderr)
   players/<id>/turns/<NNNN>/ — that player's per-turn artifacts
 

@@ -66,7 +66,17 @@ export function fetchFileSection(
   section: string,
 ): Promise<FileListPayload> {
   const encodedCampaign = encodeURIComponent(campaignId);
-  const params = new URLSearchParams({ section, limit: "200" });
+  const params = new URLSearchParams({ section, limit: "1000" });
+  return getJson<FileListPayload>(
+    `/v1/campaigns/${encodedCampaign}/files?${params.toString()}`,
+  );
+}
+
+export function fetchCampaignFiles(
+  campaignId: string,
+): Promise<FileListPayload> {
+  const encodedCampaign = encodeURIComponent(campaignId);
+  const params = new URLSearchParams({ all: "1", limit: "5000" });
   return getJson<FileListPayload>(
     `/v1/campaigns/${encodedCampaign}/files?${params.toString()}`,
   );

@@ -225,9 +225,13 @@ protocol only after transcripts show repeated drift or awkwardness.
 
 ---
 
-## Live Session Website
+## Hosted Campaign Viewer
 
-**What:** A read-only public website that streams the session transcript as it's generated. Deployed to the user's AWS account. Anyone with the URL can watch the four agents play in real time, see the dice roll, see the map (if the map idea ships), see the images (if that idea ships), see the mode transitions and the budget pressure.
+**What:** A read-only hosted version of the campaign viewer. Deployed to the
+user's AWS account. Anyone with the URL can watch the four agents play in real
+time, inspect the campaign artifact surfaces the operator chooses to expose,
+see dice rolls, maps/images if those ship, mode transitions, messages, and the
+active table.
 
 **Why it matters:**
 - Watching is the whole appeal for an audience. The transcript is *good* on its own, but a live unfolding session has narrative tension that a static log doesn't.
@@ -235,10 +239,17 @@ protocol only after transcripts show repeated drift or awkwardness.
 - It's a portfolio surface — "here's what an agentic TTRPG looks like" with a permalink, not an asciinema.
 
 **Sketch of integration:**
-- The orchestrator emits structured events to a small write-side service (probably an S3-backed event log behind a Lambda) every time a turn appends, a mode transitions, an image is generated, dice roll.
-- The frontend is a static SPA (served from S3 + CloudFront) that subscribes to the event log via WebSocket or polling.
-- The site only displays what's *already in the transcript* — no agent context, no prompts, no orchestrator internals. Everything visible to the audience is also corpus.
-- Per-session URLs (`/sessions/<id>`); session list is opt-in (the user marks a session "public" before/during the run).
+- The orchestrator/API emits or mirrors structured resources to a small
+  write-side service (probably an S3-backed event log behind a Lambda) when
+  turns, messages, table files, rolls, and other viewer surfaces change.
+- The frontend is a static SPA (served from S3 + CloudFront) that subscribes to
+  the mirrored resources via WebSocket or polling.
+- The site may expose more than the transcript, including DM notes and lore, if
+  the operator wants that inspection surface.
+- The **Active Table** remains special: it displays only the player-agent table
+  construct, `campaigns/<id>/table/**`. Do not fill it from graph rows, DM
+  notes, hooks, NPC files, messages, rolls, or transcript text.
+- Per-campaign URLs (`/campaigns/<id>`); listing is opt-in.
 
 **What's not figured out:**
 - Real-time-ish vs strictly post-hoc. A 30-second delay buys us a sanity-check window before agent output goes public; instant streaming feels more alive but commits us to whatever the agents emit.
