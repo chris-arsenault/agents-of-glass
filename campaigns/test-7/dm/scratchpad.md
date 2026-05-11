@@ -421,10 +421,108 @@ I will set the `lift-window` tracker when scene 2 opens, not before.
 
 The handoff goes to tev next on default rotation. I am not queuing.
 
+## Turn 28 note — DM after Inka's second answer
+
+Inka answered Fei's question about carrying a word for Eshil.
+The answer was no — *he knew what he wanted to leave, I'm not in
+it* — and the weight: she has been carrying this since the fourth
+morning after Den died, four months, without putting it down.
+That is the whole of what the bench has to give.
+
+The lamp is at *seven*. First light is the next dip or the one
+after. Mereth has not come out.
+
+The apron now has everything it needs to decide. The page has
+three lines. The hab-knot read and wind read are in the room.
+The decision is ready to be made. The rotation returns to tev.
+
+### What I'm watching for
+
+- Does anyone — Fei, Drova, Tek, Bren — name the decision?
+  Fei is at the bench with the answer in hand and the space
+  unchanged. Drova has her pen. Tek has her hand on the rim.
+  Bren is standing-beside, not yet.
+- Does anyone ask Inka directly what she thinks is in it?
+  If yes, I commit to the river-stone as her guess
+  (not as fact — as her widow's read of the shape of the object
+  through waxed paper after four months of carrying).
+- Does the office door move before the decision lands?
+  If yes, Mereth decides for them. That is a real outcome.
+- Does Drova write a fourth line, or leave it where it is?
+
+### Closure signal check
+
+- Stake resolved? Not yet. Decision pending.
+- Party decided to leave? No.
+- Clock run out? No (no hard clock on scene 1).
+- Scene yielded everything? Close. The apron has all
+  the information. One more rotation, maybe two, before the
+  decision either lands or Mereth pre-empts it.
+
+I am NOT calling closing-down yet. The natural close is
+the decision itself. Let the rotation run.
+
+### What I'd reach for if the apron asks
+
+- Inka's guess (river-stone, the unspoken apology) — only if
+  directly asked.
+- The original refusal-log internal note — only if Drova pulls
+  the archive shelf-box.
+- Mereth at the door — if the decision stalls past the lamp
+  hitting first light.
+
 ## Mug status
 
-Off the desk for the first time in three turns. Refilled. Apron
-quiet. First light any minute.
+Off the table. First light has come.
+
+## Turn 31 note — DM after the third loop closes
+
+First light. Lamp hit six. The stamp rhythm in the office stopped.
+Called `glass scene closing-down --rounds 2` (10 turns). The apron
+has everything; the crew has two full rotations to land the decision
+before scene end.
+
+What landed this turn (DM):
+- Lamp dip to six = first light, window open
+- Office stamp stops = manifest done, Mereth about to emerge
+- Inka still on the bench, hands on the packet, has not stood
+- Scene summary and table updated
+
+### What I'm watching for in the final 2 rounds
+
+- Does anyone name the carry? Drova said "I do not have a refusal."
+  Tek is at the spar-end. Bren is standing-beside. Fei is at the
+  bench. One of them needs to say the word or reach for the packet.
+- Does Mereth come out before they decide? If the countdown hits
+  zero and no decision has landed, Mereth decides. She will carry it
+  — she would have carried it from the start. The cost is that the
+  crew learns what kind of crew they are from Mereth's action, not
+  their own.
+- Does anyone ask Inka what she thinks is in it? If yes, the
+  river-stone guess surfaces (widow's register, not committed as fact).
+- Does Drova pull the shelf-box? If yes, internal note surfaces:
+  *advocate's request inconsistent with subject's standing; no harm
+  visible in carry, no good visible either.*
+
+### Closing procedure (when decision lands or timer hits 0)
+
+Phase 2 rapid-round prompt:
+  "your character's last action, line, or image as this scene closes"
+
+Then:
+```
+glass scene end \
+  --summary "..." \
+  --beats "..." \
+  --xp tev=2,sumi=2,renno=2,kit=2
+```
+
+Beats to log:
+- The crew's carry decision (whatever form it takes)
+- Inka's packet in the Splitfork's hold (or not) — the physical beat
+
+XP baseline: 2 each (normal scene, meaningful participation all four).
+Adjust up to 3 for whoever lands the deciding word/action.
 
 ## Turn 18 note — DM check-in after four player turns
 
@@ -585,6 +683,152 @@ not moved. Lamp dipped a second time on Inka's last sentence —
   language. Not committed yet — surfaces only if asked, and even
   then only as *her guess*, in widow's register. The actual
   contents are still uncommitted.
-- The original refusal-log internal note. Still atomic.
-- Mereth — at the door if the apron runs out of room to decide,
-  or at first light, whichever comes first.
+- The original refusal-log internal note. Still atomic (not surfaced).
+- Mereth — now out. She read the room. Set the stamp on the ledge.
+  Went to the spar-end. Is waiting.
+
+## Turn 36 — DM final round
+
+Mereth came out. Halvi with her, manifest board. Mereth read the apron:
+Drova pens down, Tek at haul line, Bren at clip point, Fei at four paces,
+Inka still on the bench. She set the office stamp on the ledge — not on
+the page — and went to the spar-end. Said nothing. Waiting.
+
+Rapid-round queued: all four players get "last action, line, or image
+as this scene closes."
+
+After rapid-round drains, call:
+```
+glass scene end \
+  --summary "..." \
+  --beats "The crew's carry decision for Inka Vell's packet / Inka's packet in the Splitfork's hold" \
+  --xp tev=2,sumi=2,renno=2,kit=2
+```
+
+Whoever reaches for the stamp or says the word gets +1 XP.
+
+Scene-end summary to write:
+The Splitfork crew worked Inka Vell's packet through the refusal-log on
+the apron before first light — Drova establishing no claim against the
+prior refusal, Fei naming the calendar window, Tek and Bren at their
+structural positions. Mereth came out of the office at first light to find
+the crew ready. The carry was made. (Or: Mereth made the call herself —
+depending on what the rapid-round surfaces.)
+
+## Turn 45 — prelude-action open
+
+prelude-opening closed (event_053506186fc6 confirms). XP awarded: tev=3,
+sumi=3 (Drova got the deciding stamp), renno=2, kit=2.
+
+prelude-action is now live. Mode: action. Tracker: signal-window, 3/3.
+
+### Scene setup
+
+The haul line went slack. Fei's cuffs read contact-warm at the south
+approach corridor. Han Pellow arrives at the gate with an amended forecast:
+shear-edge front now 25 minutes out (was 90). Three signal windows remain
+before the Splitfork commits to approach without ground contact.
+
+### Tracker
+
+signal-window: 3 — drains 1 per full round. Zero = Splitfork unreachable.
+
+### Exit condition
+
+Signal reaches Mereth with enough time to adjust course.
+**Clean**: all three beats land → Mereth adjusts, clean run.
+**Partial**: 1-2 beats → Mereth gets something, makes her own call (carry a
+consequence into the time jump: cargo shift, late arrival, or a rough line).
+**None**: signal doesn't get through → Splitfork enters the shear zone
+without warning (consequence: unknown, not fatal, but something carried
+forward — Mereth's judgment about what she flew into, and what she'll say
+about the ground crew when she comes back).
+
+### PC beats to watch for
+
+- Bren reads the shear trajectory. She has the departure arc and the
+  approach wind. If she reads it, Fei gets a message worth sending.
+- Fei uses the listener cuffs to reach the Splitfork's resonance channel.
+  The cuffs are warm; the signal will work if range holds. Tek's spar-array
+  rig is what extends range past the standard cuff limit.
+- Tek rigs the south spar-array. Six weeks since service. Probably fine;
+  if she rolls, let the dice land.
+- Drova handles Han Pellow. This is the hardest role: dock master protocol
+  says call back the kite via dock horn. But dock horn recall is a 4-minute
+  process that eats the first signal window. If Drova buys the crew the
+  listener-signal window instead, she's bypassing dock protocol with social
+  authority she may not technically have. Interesting friction.
+
+### What I am holding
+
+- Whether the signal gets through is a roll result. I do not pre-decide.
+- Han Pellow's dock horn option: available if Drova doesn't intercept him.
+  Horn recall is slower but official. Listener signal is faster but
+  unofficial. The tension is real.
+- What Mereth will say when the kite comes back — holding until after the
+  scene resolves.
+- The packet's contents are still uncommitted.
+
+### After prelude-action ends
+
+`glass scene end --summary "..." --beats "..." --xp`
+Beats: the signal outcome (clean/partial/none) and what it carries forward.
+XP: 2 each (normal participation). +1 for whoever drives the decisive
+moment (likely Fei on the signal attempt or Drova on Han Pellow intercept).
+
+Then: close the prelude arc, time-jump to main campaign, call
+`glass mode end` twice (action → scene-play → prelude).
+
+Arc summary append: note the prelude's two beats (carry decision, signal
+outcome) and what they carry forward.
+
+## Turn 60 — Prelude closed
+
+Prelude is done. Both scenes formally ended. Mode stack is clear.
+XP totals after prelude: tek=6, drova=5, fei=5, bren=4.
+
+### What the prelude established
+
+- **The carry:** Den Vell's packet is in the hold. Eshil Caur will receive it.
+  The crew decided without Mereth in the room — that is the shape they showed.
+- **The signal:** Mereth has a heading. She acted on it. Whether Bren's
+  corridor held is not something the dock can answer until the kite comes back.
+- **What the tic-tracer did:** Tek pulled it out in the open during the crisis.
+  No one asked. The crisis left no room. That is now on the table — not spoken,
+  but witnessed. Filing this.
+- **Drova's exception:** Section 4, subsection 8, listener-window. She filed
+  it correctly after Pellow named it. The dock record and her notation point at
+  each other. If Mereth's heading shift is ever questioned, there is a procedure
+  on file. Drova knows this. Whether she finds that reassuring is open.
+- **Fei's drop log:** Four glyphs. "The Splitfork's channel came in clean —
+  Mereth's signature present, already tracking the shift before contact."
+  Fei logged what she heard, not what she hoped. That matters.
+
+### Threads now live going into campaign proper
+
+1. Mereth returns. What she flew into — what she says about the crew,
+   about Fei's signal, about the corridor — is the first real test of
+   what the prelude established.
+2. Eshil Caur's reception of Den Vell's letter. Nineteen years. The crew
+   doesn't know what arrives on the other end.
+3. The tic-tracer in the open. Drova did not ask. Others may remember.
+4. Drova's listener-window supplement. Pellow knows the correct procedure
+   and knows Drova cited the wrong sequence. That exchange is on his log.
+5. The Mernhab diagnostic question is still Fei's. The cuffs held; the last
+   working pair is still working.
+6. The Wednesday/Tuesday Shear gap is untouched. Save it.
+
+### What I'm holding
+
+Same as before. No additions.
+
+### Campaign proper — what comes next
+
+Time jump forward (probably weeks to months — Mereth's run, the kite
+back, the dock returned to routine). New arc: campaign proper. First
+scene TBD. I want to open on the Splitfork docked, normal day, and
+let Mereth's word about the corridor drop into routine work. Or open
+on receipt of Eshil Caur's response. Or open on Velsk Tarn's next
+drop. Waiting to see what the players lean toward.
+
+Mug goes back on the table.

@@ -95,6 +95,49 @@ def invoke_ok(runner: CliRunner, args: list[str], env: dict[str, str]):
     return result
 
 
+def create_test_character(
+    runner: CliRunner,
+    env: dict[str, str],
+    *,
+    player: str = "tev",
+    character_id: str = "vel",
+    name: str = "Vel Arannis",
+) -> None:
+    invoke_ok(
+        runner,
+        [
+            "character",
+            "new",
+            character_id,
+            "--player",
+            player,
+            "--name",
+            name,
+            "--species",
+            "human",
+            "--culture",
+            "Sithari",
+            "--archetype",
+            "resonance knight",
+            "--org-role",
+            "field witness",
+            "--bio",
+            "Keeps doors open for people who cannot be seen asking.",
+            "--goal",
+            "Get Mara safe passage.",
+            "--goal",
+            "Pay down the route debt.",
+            "--skill",
+            "spar reading=artisan",
+            "--skill",
+            "line work=apprentice",
+            "--skill",
+            "dock talk=apprentice",
+        ],
+        {**env, "GLASS_ROLE": f"player:{player}"},
+    )
+
+
 class GlassCliTests(unittest.TestCase):
     def test_character_goal_validation_requires_two_or_three_goals(self) -> None:
         self.assertEqual(_normalize_goals(("Find Rin.", "Pay the debt.")), [
@@ -270,6 +313,85 @@ class GlassCliTests(unittest.TestCase):
         self.assertEqual(change["qty_after"], 3)
         self.assertEqual(inventory[0]["qty"], 3)
         self.assertEqual(inventory[0]["effect_tags"], ["official", "forged"])
+
+    def test_character_bulk_get_all_lists_characters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env, player="tev", character_id="vel")
+            create_test_character(
+                runner,
+                env,
+                player="sumi",
+                character_id="drova",
+                name="Drova Korvanis",
+            )
+
+            result = invoke_ok(runner, ["character", "bulk-get", "--all"], env)
+
+            self.assertIn("count: 2", result.output)
+            self.assertIn("character_id: vel", result.output)
+            self.assertIn("character_id: drova", result.output)
+
+    def test_character_mutations_refresh_public_mirror(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env, player="tev", character_id="vel")
+
+            invoke_ok(runner, ["character", "award-xp", "vel", "2"], dm_env)
+            mirror_path = (
+                tmp_path
+                / "campaigns"
+                / "c1"
+                / "players"
+                / "tev"
+                / "public"
+                / "character.md"
+            )
+            self.assertIn("**Level:** 1 (2 XP)", mirror_path.read_text(encoding="utf-8"))
+
+            with patch("cli.commands.roll.random.SystemRandom") as system_random:
+                system_random.return_value.randint.side_effect = [6, 6]
+                invoke_ok(
+                    runner,
+                    [
+                        "roll",
+                        "spar reading",
+                        "ingenuity",
+                        "--risk",
+                        "controlled",
+                        "--character",
+                        "vel",
+                    ],
+                    {**env, "GLASS_ROLE": "player:tev"},
+                )
+
+            mirror = mirror_path.read_text(encoding="utf-8")
+            self.assertIn("**Level:** 1 (2 XP)", mirror)
+            self.assertIn("**Momentum:** 2 (-2 to 3)", mirror)
+
+    def test_character_mirror_does_not_queue_turn_event(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env, player="tev", character_id="vel")
+            before_count = len(runtime_state(env)["pending_events"])
+
+            invoke_ok(
+                runner,
+                ["character", "mirror", "vel"],
+                {**env, "GLASS_ROLE": "player:tev"},
+            )
+
+            self.assertEqual(len(runtime_state(env)["pending_events"]), before_count)
 
     def test_message_types_load_from_instruction_headings_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

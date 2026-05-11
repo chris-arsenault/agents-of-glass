@@ -1,0 +1,3 @@
+The turn output is written and the scene summary has been appended. The `glass sync apply` not finding changed files is expected — the out.md write was handled directly, and the summary append is already committed through the glass command.
+
+Drova's turn is complete: after her failed intercept at the horn cabinet, she returned to the lectern and invoked the correct protocol — Section 4, subsection 8, Listener window exception — to create a documentary record naming Mereth's heading shift as an authorized advisory transmission rather than a recall violation. The notation is filed, not presented to Pellow; the two records now point at each other, which is the quiet protection Drova could offer from the ledger side.

@@ -22,6 +22,7 @@ from ..campaign import (
     pg_connection,
     resolve_active_campaign_workspace,
 )
+from ..character_projection import write_public_character_mirror
 from ..config import REPO_ROOT, Paths, get_paths, load_config
 from ..constants import (
     ATTRIBUTE_TIERS,
@@ -201,6 +202,9 @@ def roll(
                 delta=skill_xp_delta,
             )
         conn.commit()
+        updated_character = _db.character_get(conn, campaign_id, character_id)
+        if updated_character is None:
+            raise GlassError(f"unknown character {character_id!r}") from None
 
     target_suffix = f" -> {target_id}" if target_id else ""
     summary = (
@@ -217,6 +221,11 @@ def roll(
     roll_row["skill_xp_before"] = skill_xp_before
     roll_row["skill_xp_after"] = skill_xp_after
     roll_row["skill_bumped_to"] = skill_bumped_to
+    roll_row["character_mirror"] = write_public_character_mirror(
+        paths,
+        campaign_id,
+        updated_character,
+    )
     commit(
         paths,
         state,
@@ -231,5 +240,4 @@ def roll(
         ),
         roll_row,
     )
-
 

@@ -1,9 +1,6 @@
----
-scene_id: prelude-opening
-scene_type: scene-play
-status: stub
----
-
 # prelude-opening - summary
 
-_Scene summary is finalized by `glass scene end --summary`._
+The opening scene closed on Inka Vell's decision. After four months of carrying Den's last packet — and the full shape of the apron's structural windows named to her by the party — she stood, crossed to the lectern, and set the packet on the day-page inside the stamp's reach. Drova wrote the consignment notation and stamped it: carried. Mereth, at the spar-end and looking at the sky, said go. The haul line ran out. Splitfork left at first light with Den's letter in the cargo. Inka did not watch the kite leave.
+Tek ran the post-departure check at the spar-end — tic-tracer first, then by hand, the way she was taught before the meter existed. The tracer read quiet. She did not watch the kite leave.
+Drova returned the stamp to its ledge, counted to thirty for the ink to seat, and closed the day-page. She stood at the lectern with her hands flat on the closed record for a moment — the work done, nothing more to say about it — then took her hands back.
+Fei waited for the haul line to go quiet, then opened her tablet and read the four shorthand glyphs she had taken during the scene: two for Inka's hands, one for the stamp weight, one for the voice that said *carried.* She closed the tablet and crossed to stand alongside Inka in the same lamplight — present, done listening, not watching the kite leave.

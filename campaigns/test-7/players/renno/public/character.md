@@ -13,9 +13,9 @@ player_id: renno
 - **Archetype:** diffuse-state waystation listener
 - **Organization role:** waystation reader / first-pass scene clear
 - **Pronouns:** unspecified
-- **Level:** 1 (0 XP)
+- **Level:** 1 (5 XP)
 - **HP:** 8/8
-- **Momentum:** 0 (-2 to 3)
+- **Momentum:** 1 (-2 to 3)
 
 ## Bio
 
@@ -50,7 +50,6 @@ Fae listener on the Splitfork, raised on Mernhab before its decommissioning in 2
 - **mernhab-coherence-cuffs:** x1 — signature; old-hab tuning; fragile, irreplaceable; salvaged from Mernhab decommissioning, last working pair
 - **field-interpreter-tablet:** x1 — wax tablet and stylus; drop log in interpreter shorthand
 - **secondhand-resonance-meter:** x1 — gnomish-made handheld; secondhand and recently calibrated; rough cross-check on her own readings
-- **bitter-cold-concentrate:** x1 — small sealed flask; drinks it on the way back from diffuse, when her mouth doesn't fit right
 
 ## Tags
 

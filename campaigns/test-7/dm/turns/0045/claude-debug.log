@@ -1,0 +1,857 @@
+2026-05-11T04:14:05.877Z [DEBUG] MDM settings load completed in 1ms
+2026-05-11T04:14:05.918Z [DEBUG] Broken symlink or missing file encountered for settings.json at path: /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/.claude/settings.json
+2026-05-11T04:14:05.918Z [DEBUG] Broken symlink or missing file encountered for settings.json at path: /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/.claude/settings.local.json
+2026-05-11T04:14:05.918Z [DEBUG] Broken symlink or missing file encountered for settings.json at path: /etc/claude-code/managed-settings.json
+2026-05-11T04:14:05.919Z [DEBUG] CA certs: Config fallback - globalEnv keys: , settingsEnv keys: none
+2026-05-11T04:14:05.920Z [DEBUG] [init] configureGlobalMTLS starting
+2026-05-11T04:14:05.920Z [DEBUG] [init] configureGlobalMTLS complete
+2026-05-11T04:14:05.920Z [DEBUG] [init] configureGlobalAgents starting
+2026-05-11T04:14:05.920Z [DEBUG] CA certs: stores=bundled,system, extraCertsPath=undefined
+2026-05-11T04:14:05.921Z [DEBUG] CA certs: Loaded 145 bundled root certificates
+2026-05-11T04:14:05.951Z [DEBUG] CA certs: Loaded 586 system CA certificates
+2026-05-11T04:14:05.952Z [DEBUG] mTLS: Creating HTTPS agent with custom certificates
+2026-05-11T04:14:05.952Z [DEBUG] [init] configureGlobalAgents complete
+2026-05-11T04:14:05.954Z [DEBUG] Error log sink initialized
+2026-05-11T04:14:05.961Z [DEBUG] [STARTUP] Loading MCP configs...
+2026-05-11T04:14:05.965Z [ERROR] MCP config errors for /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/.mcp.json: ["Does not adhere to MCP server configuration schema"]
+2026-05-11T04:14:05.966Z [DEBUG] [STARTUP] Running setup()...
+2026-05-11T04:14:05.969Z [DEBUG] Loading skills from: managed=/etc/claude-code/.claude/skills, user=/home/aog-mara/.claude/skills, project=[]
+2026-05-11T04:14:05.970Z [DEBUG] Error log sink initialized
+2026-05-11T04:14:05.972Z [DEBUG] [claudeai-mcp] Fetching from https://api.anthropic.com/v1/mcp_servers?limit=1000
+2026-05-11T04:14:05.982Z [DEBUG] installed_plugins.json doesn't exist, returning empty V2 object
+2026-05-11T04:14:05.982Z [DEBUG] Found 0 plugins (0 enabled, 0 disabled)
+2026-05-11T04:14:05.982Z [DEBUG] getPluginSkills: Processing 0 enabled plugins
+2026-05-11T04:14:05.982Z [DEBUG] Registered 0 hooks from 0 plugins
+2026-05-11T04:14:05.983Z [DEBUG] Total plugin skills loaded: 0
+2026-05-11T04:14:05.983Z [DEBUG] Total plugin commands loaded: 0
+2026-05-11T04:14:05.983Z [DEBUG] Failed to stat directory /etc/claude-code/.claude/commands: ENOENT: no such file or directory, statx '/etc/claude-code/.claude/commands'
+2026-05-11T04:14:05.983Z [DEBUG] Failed to stat directory /home/aog-mara/.claude/commands: ENOENT: no such file or directory, statx '/home/aog-mara/.claude/commands'
+2026-05-11T04:14:05.983Z [DEBUG] Loaded 0 unique skills (0 unconditional, 0 conditional, managed: 0, user: 0, project: 0, additional: 0, legacy commands: 0)
+2026-05-11T04:14:05.983Z [DEBUG] getSkills returning: 0 skill dir commands, 0 plugin skills, 11 bundled skills, 0 builtin plugin skills
+2026-05-11T04:14:05.985Z [DEBUG] Failed to stat directory /etc/claude-code/.claude/agents: ENOENT: no such file or directory, statx '/etc/claude-code/.claude/agents'
+2026-05-11T04:14:05.985Z [DEBUG] Failed to stat directory /home/aog-mara/.claude/agents: ENOENT: no such file or directory, statx '/home/aog-mara/.claude/agents'
+2026-05-11T04:14:05.985Z [DEBUG] Total plugin agents loaded: 0
+2026-05-11T04:14:05.989Z [DEBUG] [STARTUP] setup() completed in 23ms
+2026-05-11T04:14:05.989Z [DEBUG] Cleared CA certificates cache
+2026-05-11T04:14:05.989Z [DEBUG] Cleared mTLS configuration cache
+2026-05-11T04:14:05.989Z [DEBUG] Cleared proxy agent cache
+2026-05-11T04:14:05.990Z [DEBUG] CA certs: stores=bundled,system, extraCertsPath=undefined
+2026-05-11T04:14:05.990Z [DEBUG] CA certs: Loaded 145 bundled root certificates
+2026-05-11T04:14:05.990Z [DEBUG] CA certs: Loaded 586 system CA certificates
+2026-05-11T04:14:05.990Z [DEBUG] mTLS: Creating HTTPS agent with custom certificates
+2026-05-11T04:14:05.991Z [DEBUG] [STARTUP] Loading commands and agents...
+2026-05-11T04:14:05.991Z [DEBUG] [ToolSearch:optimistic] mode=tst, ENABLE_TOOL_SEARCH=undefined, result=true
+2026-05-11T04:14:06.001Z [DEBUG] [STARTUP] Commands and agents loaded in 10ms
+2026-05-11T04:14:06.001Z [DEBUG] [LSP MANAGER] initializeLspServerManager() called
+2026-05-11T04:14:06.002Z [DEBUG] [LSP MANAGER] Created manager instance, state=pending
+2026-05-11T04:14:06.002Z [DEBUG] [LSP MANAGER] Starting async initialization (generation 1)
+2026-05-11T04:14:06.002Z [DEBUG] Starting background startup prefetches
+2026-05-11T04:14:06.002Z [DEBUG] [Bootstrap] Fetching
+2026-05-11T04:14:06.004Z [DEBUG] Passes: Using fresh cached eligibility data
+2026-05-11T04:14:06.005Z [DEBUG] [STARTUP] MCP configs resolved in 21ms (awaited at +43ms)
+2026-05-11T04:14:06.006Z [DEBUG] Total LSP servers loaded: 0
+2026-05-11T04:14:06.006Z [DEBUG] Initialized versioned plugins system with 0 plugins
+2026-05-11T04:14:06.007Z [DEBUG] [LSP SERVER MANAGER] getAllLspServers returned 0 server(s)
+2026-05-11T04:14:06.007Z [DEBUG] LSP manager initialized with 0 servers
+2026-05-11T04:14:06.007Z [DEBUG] Cleared CA certificates cache
+2026-05-11T04:14:06.007Z [DEBUG] Cleared mTLS configuration cache
+2026-05-11T04:14:06.007Z [DEBUG] Cleared proxy agent cache
+2026-05-11T04:14:06.007Z [DEBUG] CA certs: stores=bundled,system, extraCertsPath=undefined
+2026-05-11T04:14:06.007Z [DEBUG] CA certs: Loaded 145 bundled root certificates
+2026-05-11T04:14:06.007Z [DEBUG] CA certs: Loaded 586 system CA certificates
+2026-05-11T04:14:06.007Z [DEBUG] mTLS: Creating HTTPS agent with custom certificates
+2026-05-11T04:14:06.008Z [DEBUG] LSP server manager initialized successfully
+2026-05-11T04:14:06.008Z [DEBUG] LSP notification handlers registered successfully for all 0 server(s)
+2026-05-11T04:14:06.011Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:06.011Z [DEBUG] [Perfetto] initializePerfettoTracing called, env value: undefined
+2026-05-11T04:14:06.011Z [DEBUG] [3P telemetry] isTelemetryEnabled=false (CLAUDE_CODE_ENABLE_TELEMETRY=undefined)
+2026-05-11T04:14:06.062Z [DEBUG] Ripgrep first use test: PASSED (mode=embedded, path=/usr/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe)
+2026-05-11T04:14:06.065Z [DEBUG] rg error (signal=undefined, code=2, stderr: rg: /home/aog-mara/.claude/plugins/cache: IO error for operation on /home/aog-mara/.claude/plugins/cache: No such file or directory (os error 2)
+), 0 results
+2026-05-11T04:14:06.066Z [DEBUG] Git remote URL: null
+2026-05-11T04:14:06.066Z [DEBUG] No git remote URL found
+2026-05-11T04:14:06.293Z [DEBUG] Org fast mode: enabled
+2026-05-11T04:14:06.297Z [DEBUG] [Bootstrap] Fetch ok
+2026-05-11T04:14:06.298Z [DEBUG] [Bootstrap] Cache unchanged, skipping write
+2026-05-11T04:14:06.317Z [DEBUG] [auto-mode] verifyAutoModeGateAccess: enabledState=enabled disabledBySettings=false model=claude-sonnet-4-6 modelSupported=false disableFastModeBreakerFires=false carouselAvailable=false canEnterAuto=false
+2026-05-11T04:14:06.317Z [WARN] auto mode disabled: model claude-sonnet-4-6 does not support auto mode
+2026-05-11T04:14:06.317Z [DEBUG] [auto-mode] kickOutOfAutoIfNeeded applying: ctx.mode=bypassPermissions ctx.prePlanMode=undefined reason=model
+2026-05-11T04:14:06.318Z [DEBUG] [auto-mode] verifyAutoModeGateAccess setAvailable: true -> false
+2026-05-11T04:14:06.320Z [DEBUG] [claudeai-mcp] Fetched 4 servers
+2026-05-11T04:14:06.324Z [DEBUG] MCP server "claude.ai Tastebase": Initializing claude.ai proxy transport for server mcpsrv_01EGd7w4UqK9szMju4gy76N4
+2026-05-11T04:14:06.325Z [DEBUG] MCP server "claude.ai Tastebase": Using claude.ai proxy at https://mcp-proxy.anthropic.com/v1/mcp/mcpsrv_01EGd7w4UqK9szMju4gy76N4
+2026-05-11T04:14:06.325Z [DEBUG] MCP server "claude.ai Tastebase": claude.ai proxy transport created successfully
+2026-05-11T04:14:06.332Z [DEBUG] MCP server "claude.ai Tastebase": Starting connection with timeout of 30000ms
+2026-05-11T04:14:06.333Z [DEBUG] MCP server "claude.ai Google Calendar": Skipping connection (cached needs-auth)
+2026-05-11T04:14:06.334Z [DEBUG] MCP server "claude.ai Gmail": Skipping connection (cached needs-auth)
+2026-05-11T04:14:06.334Z [DEBUG] MCP server "claude.ai Google Drive": Skipping connection (cached needs-auth)
+2026-05-11T04:14:07.074Z [DEBUG] MCP server "claude.ai Tastebase": Successfully connected (transport: claudeai-proxy) in 750ms
+2026-05-11T04:14:07.074Z [DEBUG] MCP server "claude.ai Tastebase": Connection established with capabilities: {"hasTools":true,"hasPrompts":false,"hasResources":false,"hasResourceSubscribe":false,"serverVersion":{"name":"tastebase","version":"1.0.0"}}
+2026-05-11T04:14:07.074Z [DEBUG] [MCP] Server "claude.ai Tastebase" connected with subscribe=false
+2026-05-11T04:14:07.075Z [WARN] [3P telemetry] Event dropped (no event logger initialized): mcp_server_connection
+2026-05-11T04:14:07.444Z [DEBUG] Grove: Using fresh cached config
+2026-05-11T04:14:07.458Z [DEBUG] Watching for changes in setting files /home/aog-mara/.claude/settings.json...
+2026-05-11T04:14:07.918Z [DEBUG] [ScheduledTasks] scheduler start() — enabled=false, hasTasks=false
+2026-05-11T04:14:07.923Z [ERROR] MCP config errors for /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/.mcp.json: ["Does not adhere to MCP server configuration schema"]
+2026-05-11T04:14:07.923Z [DEBUG] installPluginsForHeadless: starting
+2026-05-11T04:14:07.926Z [DEBUG] Tool search disabled for model 'claude-haiku-4-5-20251001': model does not support tool_reference blocks. This feature is only available on Claude Sonnet 4+, Opus 4+, and newer models.
+2026-05-11T04:14:07.927Z [DEBUG] installPluginsForHeadless: no marketplaces declared
+2026-05-11T04:14:07.930Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:14:07.935Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:07.937Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:07.939Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:14:07.939Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:14:07.972Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:14:07.974Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:07.977Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=d1535895-594b-4e9b-a584-fc667fd138e1 source=generate_session_title
+2026-05-11T04:14:07.979Z [DEBUG] Failed to stat directory /etc/claude-code/.claude/output-styles: ENOENT: no such file or directory, statx '/etc/claude-code/.claude/output-styles'
+2026-05-11T04:14:07.979Z [DEBUG] Failed to stat directory /home/aog-mara/.claude/output-styles: ENOENT: no such file or directory, statx '/home/aog-mara/.claude/output-styles'
+2026-05-11T04:14:07.979Z [DEBUG] Total plugin output styles loaded: 0
+2026-05-11T04:14:07.987Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:14:07.987Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:14:07.988Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:14:07.988Z [DEBUG] Sending 10 skills via attachment (initial, 10 total sent)
+2026-05-11T04:14:07.988Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:14:07.992Z [DEBUG] [MCP] Retry: all remote servers connected, stopping
+2026-05-11T04:14:08.045Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:08.047Z [DEBUG] autocompact: tokens=1005 level=ok effectiveWindow=580000
+2026-05-11T04:14:08.050Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:14:08.051Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:14:08.051Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:08.051Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:08.052Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:14:08.052Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:14:08.053Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:14:08.053Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:08.055Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=c62e39fe-ec35-4476-ba59-baa24a9b947c source=sdk
+2026-05-11T04:14:08.057Z [DEBUG] [mcp-registry] Loaded 197 official MCP URLs (legacy)
+2026-05-11T04:14:08.791Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:14:09.531Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:14:10.799Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_01Hcf3E3LLCZmUGxTLgPKEhw permissionDecisionMs=6
+2026-05-11T04:14:10.817Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_01Hcf3E3LLCZmUGxTLgPKEhw outcome=ok durationMs=18
+2026-05-11T04:14:10.994Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:14:10.995Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:14:10.995Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:14:10.995Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:14:11.012Z [DEBUG] autocompact: tokens=20439 level=ok effectiveWindow=580000
+2026-05-11T04:14:11.014Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:14:11.015Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:14:11.016Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:11.016Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:11.017Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:14:11.017Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:14:11.018Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:14:11.019Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:11.022Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=ac26c4b8-1e58-4c77-9ed8-47e6c02df190 source=sdk
+2026-05-11T04:14:13.546Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:14:15.191Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_01QKfHhvrrAUuKyxihBQQtxb permissionDecisionMs=2
+2026-05-11T04:14:15.193Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_01QKfHhvrrAUuKyxihBQQtxb outcome=ok durationMs=2
+2026-05-11T04:14:15.653Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_01YXR2M4byzRaMPNmpq1RAKM permissionDecisionMs=2
+2026-05-11T04:14:15.655Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_01YXR2M4byzRaMPNmpq1RAKM outcome=ok durationMs=2
+2026-05-11T04:14:15.995Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_015dYKa2xB4GGTEK7AYYgd8p permissionDecisionMs=2
+2026-05-11T04:14:15.997Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_015dYKa2xB4GGTEK7AYYgd8p outcome=ok durationMs=2
+2026-05-11T04:14:16.054Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:14:16.054Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:14:16.054Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:14:16.055Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:14:16.081Z [DEBUG] autocompact: tokens=26753 level=ok effectiveWindow=580000
+2026-05-11T04:14:16.082Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:14:16.083Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:14:16.084Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:16.084Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:16.085Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:14:16.085Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:14:16.086Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:14:16.087Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:16.090Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=71fd35a1-b62d-4db9-b56c-2e1820954e5c source=sdk
+2026-05-11T04:14:17.620Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:14:20.136Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_015qYQTMTpUaxvv7MkMNmbtA permissionDecisionMs=1
+2026-05-11T04:14:20.138Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_015qYQTMTpUaxvv7MkMNmbtA outcome=ok durationMs=3
+2026-05-11T04:14:21.035Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_015oUA8rCBExZ9rdduAa8CqS permissionDecisionMs=1
+2026-05-11T04:14:21.037Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_015oUA8rCBExZ9rdduAa8CqS outcome=ok durationMs=2
+2026-05-11T04:14:21.390Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_01EpBgVLQmgQvfMHgx1v6QVP permissionDecisionMs=1
+2026-05-11T04:14:21.391Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:14:21.392Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:14:21.393Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:14:21.402Z [DEBUG] [API REQUEST] /v1/messages/count_tokens x-client-request-id=89d3c63c-338a-4586-8c7b-6e8f0f3a8d07 source=count_tokens
+2026-05-11T04:14:21.639Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_01EpBgVLQmgQvfMHgx1v6QVP outcome=ok durationMs=250
+2026-05-11T04:14:21.647Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:14:21.647Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:14:21.647Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:14:21.647Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:14:21.662Z [DEBUG] autocompact: tokens=37002 level=ok effectiveWindow=580000
+2026-05-11T04:14:21.663Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:14:21.665Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:14:21.665Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:21.666Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:21.666Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:14:21.667Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:14:21.668Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:14:21.668Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:21.672Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=6d601f6e-91ad-4d5f-ae25-36a4bd6b34e0 source=sdk
+2026-05-11T04:14:23.749Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:14:29.513Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01WwC4ULUAknsgThvT1MMyLX permissionDecisionMs=19
+2026-05-11T04:14:29.515Z [DEBUG] Creating shell snapshot for bash (/bin/bash)
+2026-05-11T04:14:29.516Z [DEBUG] Looking for shell config file: /home/aog-mara/.bashrc
+2026-05-11T04:14:29.517Z [DEBUG] Snapshots directory: /home/aog-mara/.claude/shell-snapshots
+2026-05-11T04:14:29.518Z [DEBUG] Creating snapshot at: /home/aog-mara/.claude/shell-snapshots/snapshot-bash-1778472869517-c9yh6e.sh
+2026-05-11T04:14:29.518Z [DEBUG] Execution timeout: 10000ms
+2026-05-11T04:14:29.605Z [DEBUG] Shell snapshot created successfully (3994 bytes)
+2026-05-11T04:14:29.607Z [DEBUG] No session environment scripts found
+2026-05-11T04:14:29.608Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:14:30.210Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01WwC4ULUAknsgThvT1MMyLX outcome=ok durationMs=697
+2026-05-11T04:14:30.219Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_0113uaTZTuwBTssxM38aeb6Y permissionDecisionMs=6
+2026-05-11T04:14:30.227Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:14:30.735Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_0113uaTZTuwBTssxM38aeb6Y outcome=ok durationMs=517
+2026-05-11T04:14:30.740Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:14:30.740Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:14:30.741Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:14:30.741Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:14:30.744Z [DEBUG] autocompact: tokens=40022 level=ok effectiveWindow=580000
+2026-05-11T04:14:30.745Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:14:30.746Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:14:30.747Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:30.748Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:30.748Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:14:30.748Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:14:30.749Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:14:30.750Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:30.753Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=73f5420f-ed6e-4de7-b0d4-c09ebc0b1ff3 source=sdk
+2026-05-11T04:14:32.071Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:14:40.651Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01SuywnHFBthSNFmpCaY5hKm permissionDecisionMs=17
+2026-05-11T04:14:40.654Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:14:41.246Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01SuywnHFBthSNFmpCaY5hKm outcome=ok durationMs=595
+2026-05-11T04:14:41.255Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01NbQTtAmfDXhULBhcXHqtAr permissionDecisionMs=6
+2026-05-11T04:14:41.268Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:14:41.821Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01NbQTtAmfDXhULBhcXHqtAr outcome=ok durationMs=566
+2026-05-11T04:14:41.828Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:14:41.828Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:14:41.828Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:14:41.828Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:14:41.831Z [DEBUG] autocompact: tokens=42102 level=ok effectiveWindow=580000
+2026-05-11T04:14:41.834Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:14:41.836Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:14:41.837Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:41.838Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:41.839Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:14:41.839Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:14:41.840Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:14:41.841Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:14:41.846Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=ca752346-21d8-4336-9fe3-2d600c5f9343 source=sdk
+2026-05-11T04:14:43.173Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:15:42.751Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01BSMDuKsdRLChTZov2LFaes permissionDecisionMs=15
+2026-05-11T04:15:42.757Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:15:43.364Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01BSMDuKsdRLChTZov2LFaes outcome=ok durationMs=613
+2026-05-11T04:15:43.371Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_01QdqdTmbccaJz7Ku841Gkwa permissionDecisionMs=2
+2026-05-11T04:15:43.376Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_01QdqdTmbccaJz7Ku841Gkwa outcome=ok durationMs=5
+2026-05-11T04:15:43.383Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:15:43.384Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:15:43.384Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:15:43.384Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:15:43.391Z [DEBUG] autocompact: tokens=47059 level=ok effectiveWindow=580000
+2026-05-11T04:15:43.394Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:15:43.396Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:15:43.397Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:15:43.398Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:15:43.399Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:15:43.399Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:15:43.400Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:15:43.401Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:15:43.406Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=ea698961-ab6a-47a0-9b18-0eaea8e7587d source=sdk
+2026-05-11T04:15:44.811Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:16:32.751Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01TmrYocGjyj48B9XiB1yG6L permissionDecisionMs=22
+2026-05-11T04:16:32.756Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:16:32.958Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01TmrYocGjyj48B9XiB1yG6L outcome=ok durationMs=207
+2026-05-11T04:16:33.924Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01UNKLGRs6AivrfkJUWaEdSE permissionDecisionMs=12
+2026-05-11T04:16:33.927Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:16:34.020Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01UNKLGRs6AivrfkJUWaEdSE outcome=ok durationMs=96
+2026-05-11T04:16:34.026Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:16:34.026Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:16:34.026Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:16:34.027Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:16:34.028Z [DEBUG] autocompact: tokens=50512 level=ok effectiveWindow=580000
+2026-05-11T04:16:34.031Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:16:34.033Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:16:34.034Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:16:34.034Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:16:34.035Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:16:34.035Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:16:34.036Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:16:34.037Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:16:34.042Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=6cccfc34-614c-4640-9142-e4b84df88b4e source=sdk
+2026-05-11T04:16:36.020Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:04.333Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01U5MKsCdYF3H7v16HFq9oZn permissionDecisionMs=16
+2026-05-11T04:17:04.345Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:04.810Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01U5MKsCdYF3H7v16HFq9oZn outcome=ok durationMs=477
+2026-05-11T04:17:05.293Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01V4DYE4Sx2VWqJGak1UehER permissionDecisionMs=12
+2026-05-11T04:17:05.296Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:05.543Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01V4DYE4Sx2VWqJGak1UehER outcome=ok durationMs=250
+2026-05-11T04:17:05.548Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:05.548Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:05.548Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:05.549Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:05.550Z [DEBUG] autocompact: tokens=53271 level=ok effectiveWindow=580000
+2026-05-11T04:17:05.552Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:05.553Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:05.554Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:05.554Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:05.555Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:05.555Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:05.556Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:05.557Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:05.561Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=6c5a9650-243d-43ac-9196-916256c41ff0 source=sdk
+2026-05-11T04:17:08.320Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:25.153Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01CYHQrtB4Gk192vUXATGYxo permissionDecisionMs=15
+2026-05-11T04:17:25.156Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:25.437Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01CYHQrtB4Gk192vUXATGYxo outcome=ok durationMs=284
+2026-05-11T04:17:25.446Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:25.447Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:25.447Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:25.448Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:25.450Z [DEBUG] autocompact: tokens=54413 level=ok effectiveWindow=580000
+2026-05-11T04:17:25.453Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:25.456Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:25.457Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:25.458Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:25.459Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:25.459Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:25.460Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:25.461Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:25.467Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=981aadc0-85af-497a-a2e8-02f3c3914179 source=sdk
+2026-05-11T04:17:27.262Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:27.775Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01SN3zvEN1bambKXumr4ymXr permissionDecisionMs=18
+2026-05-11T04:17:27.778Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:28.231Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01SN3zvEN1bambKXumr4ymXr outcome=ok durationMs=456
+2026-05-11T04:17:28.236Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:28.236Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:28.236Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:28.237Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:28.240Z [DEBUG] autocompact: tokens=54632 level=ok effectiveWindow=580000
+2026-05-11T04:17:28.242Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:28.244Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:28.245Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:28.245Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:28.246Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:28.246Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:28.247Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:28.247Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:28.251Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=0eaa62c4-12b9-4ba5-af10-fd71b47fa4d1 source=sdk
+2026-05-11T04:17:30.313Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:30.791Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01V8pHvuxM5C4jEkQjU8pyMk permissionDecisionMs=22
+2026-05-11T04:17:30.793Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:31.255Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01V8pHvuxM5C4jEkQjU8pyMk outcome=ok durationMs=464
+2026-05-11T04:17:31.260Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:31.260Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:31.260Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:31.260Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:31.262Z [DEBUG] autocompact: tokens=54766 level=ok effectiveWindow=580000
+2026-05-11T04:17:31.263Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:31.264Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:31.265Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:31.265Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:31.266Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:31.266Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:31.267Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:31.267Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:31.272Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=5d2b457c-1ea1-4442-9842-4019c45c2aa3 source=sdk
+2026-05-11T04:17:33.549Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:33.938Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01UigQP1B2JFE9Z7oP1tQ1Cn permissionDecisionMs=4
+2026-05-11T04:17:33.941Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:34.029Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01UigQP1B2JFE9Z7oP1tQ1Cn outcome=ok durationMs=91
+2026-05-11T04:17:34.033Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:34.033Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:34.033Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:34.034Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:34.035Z [DEBUG] autocompact: tokens=54869 level=ok effectiveWindow=580000
+2026-05-11T04:17:34.036Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:34.038Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:34.039Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:34.039Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:34.040Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:34.040Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:34.041Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:34.041Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:34.046Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=710a113d-40bc-4075-9e75-152467ec1f5f source=sdk
+2026-05-11T04:17:36.033Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:36.302Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01VLy9C5XQXtDjCN7Abmj3oY permissionDecisionMs=8
+2026-05-11T04:17:36.311Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:36.566Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01VLy9C5XQXtDjCN7Abmj3oY outcome=ok durationMs=264
+2026-05-11T04:17:36.570Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:36.570Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:36.570Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:36.570Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:36.572Z [DEBUG] autocompact: tokens=54985 level=ok effectiveWindow=580000
+2026-05-11T04:17:36.573Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:36.574Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:36.575Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:36.575Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:36.576Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:36.576Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:36.577Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:36.577Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:36.581Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=4b156a53-87dd-42b9-ae6d-9d30c513826d source=sdk
+2026-05-11T04:17:38.005Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:38.731Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_011adVjfMrfbMHfUDh8oPhPD permissionDecisionMs=22
+2026-05-11T04:17:38.734Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:39.190Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_011adVjfMrfbMHfUDh8oPhPD outcome=ok durationMs=459
+2026-05-11T04:17:39.195Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:39.195Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:39.195Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:39.196Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:39.197Z [DEBUG] autocompact: tokens=55136 level=ok effectiveWindow=580000
+2026-05-11T04:17:39.198Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:39.199Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:39.200Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:39.201Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:39.201Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:39.201Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:39.202Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:39.203Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:39.207Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=30f61379-ea30-4019-beac-0233bc99925e source=sdk
+2026-05-11T04:17:40.603Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:41.369Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01622DTdEhA8hdE4nPVEBp8c permissionDecisionMs=13
+2026-05-11T04:17:41.371Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:41.447Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01622DTdEhA8hdE4nPVEBp8c outcome=ok durationMs=78
+2026-05-11T04:17:41.449Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:41.449Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:41.449Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:41.450Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:41.450Z [DEBUG] autocompact: tokens=55289 level=ok effectiveWindow=580000
+2026-05-11T04:17:41.451Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:41.452Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:41.452Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:41.453Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:41.453Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:41.453Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:41.454Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:41.454Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:41.456Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=81c67fd3-5c1b-4f32-bf80-8c7bf0e4e86e source=sdk
+2026-05-11T04:17:42.910Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:43.300Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01EAzNy35Y5wJDFUhd4PyrLE permissionDecisionMs=4
+2026-05-11T04:17:43.303Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:43.390Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01EAzNy35Y5wJDFUhd4PyrLE outcome=ok durationMs=90
+2026-05-11T04:17:43.393Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:43.393Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:43.393Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:43.393Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:43.394Z [DEBUG] autocompact: tokens=55425 level=ok effectiveWindow=580000
+2026-05-11T04:17:43.395Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:43.396Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:43.396Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:43.396Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:43.397Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:43.397Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:43.397Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:43.398Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:43.400Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=95a937a8-11a7-4a69-95b0-58d7f0210d6b source=sdk
+2026-05-11T04:17:44.772Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:45.504Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01N6rXnEkDohPFMnj55iqgo8 permissionDecisionMs=16
+2026-05-11T04:17:45.507Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:45.601Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01N6rXnEkDohPFMnj55iqgo8 outcome=ok durationMs=97
+2026-05-11T04:17:45.604Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:45.604Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:45.604Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:45.604Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:45.605Z [DEBUG] autocompact: tokens=55575 level=ok effectiveWindow=580000
+2026-05-11T04:17:45.606Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:45.607Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:45.607Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:45.608Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:45.608Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:45.608Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:45.609Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:45.609Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:45.612Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=4411a390-d93b-4257-97c8-3a78a6d54b40 source=sdk
+2026-05-11T04:17:47.030Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:17:47.358Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01MEkQknXmmsJTSFBGPbcJZw permissionDecisionMs=2
+2026-05-11T04:17:47.359Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:17:47.430Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01MEkQknXmmsJTSFBGPbcJZw outcome=ok durationMs=72
+2026-05-11T04:17:47.433Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:17:47.433Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:17:47.433Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:17:47.433Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:17:47.434Z [DEBUG] autocompact: tokens=55966 level=ok effectiveWindow=580000
+2026-05-11T04:17:47.435Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:17:47.436Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:17:47.436Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:47.436Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:47.436Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:17:47.437Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:17:47.437Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:17:47.437Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:17:47.440Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=d02357e2-901a-412b-9a43-fc32c2a69a3b source=sdk
+2026-05-11T04:17:49.051Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:19:22.410Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01UgvXUJMkRVLpwD9rBnwWma permissionDecisionMs=30
+2026-05-11T04:19:22.414Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:19:22.514Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01UgvXUJMkRVLpwD9rBnwWma outcome=ok durationMs=104
+2026-05-11T04:19:22.524Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:19:22.524Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:19:22.525Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:19:22.526Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:19:22.528Z [DEBUG] autocompact: tokens=61370 level=ok effectiveWindow=580000
+2026-05-11T04:19:22.531Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:19:22.535Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:19:22.536Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:19:22.537Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:19:22.538Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:19:22.539Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:19:22.540Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:19:22.541Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:19:22.546Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=926146d6-90eb-4afa-92e4-05a54879f048 source=sdk
+2026-05-11T04:19:24.622Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:20:33.894Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01D6jkxgXVTzGL6MwDocDDcQ permissionDecisionMs=12
+2026-05-11T04:20:33.899Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:20:33.989Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01D6jkxgXVTzGL6MwDocDDcQ outcome=ok durationMs=95
+2026-05-11T04:20:33.998Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_014ZzAwN4WGnzqu4TiGRHKRE permissionDecisionMs=4
+2026-05-11T04:20:34.000Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:20:34.467Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_014ZzAwN4WGnzqu4TiGRHKRE outcome=ok durationMs=469
+2026-05-11T04:20:34.473Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:20:34.474Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:20:34.474Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:20:34.474Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:20:34.478Z [DEBUG] autocompact: tokens=65853 level=ok effectiveWindow=580000
+2026-05-11T04:20:34.481Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:20:34.483Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:20:34.484Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:20:34.485Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:20:34.486Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:20:34.486Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:20:34.487Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:20:34.488Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:20:34.494Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=2a463627-4050-4cfd-891f-d87779a621cf source=sdk
+2026-05-11T04:20:37.487Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:21:04.574Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01RnU5pvfGcbS7XiDhQAFsou permissionDecisionMs=10
+2026-05-11T04:21:04.578Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:21:05.163Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01RnU5pvfGcbS7XiDhQAFsou outcome=ok durationMs=589
+2026-05-11T04:21:05.172Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:21:05.172Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:21:05.172Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:21:05.173Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:21:05.176Z [DEBUG] autocompact: tokens=67236 level=ok effectiveWindow=580000
+2026-05-11T04:21:05.178Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:21:05.181Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:21:05.182Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:05.183Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:05.185Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:21:05.185Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:21:05.186Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:21:05.187Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:05.192Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=0f95cf79-6af8-4066-9156-8256a280c4b9 source=sdk
+2026-05-11T04:21:06.555Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:21:09.778Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01LsfSHk7937w5FmpPRGpj3D permissionDecisionMs=6
+2026-05-11T04:21:09.781Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:21:10.273Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01LsfSHk7937w5FmpPRGpj3D outcome=ok durationMs=495
+2026-05-11T04:21:10.278Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:21:10.278Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:21:10.278Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:21:10.278Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:21:10.280Z [DEBUG] autocompact: tokens=67605 level=ok effectiveWindow=580000
+2026-05-11T04:21:10.281Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:21:10.283Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:21:10.284Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:10.284Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:10.285Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:21:10.285Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:21:10.286Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:21:10.286Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:10.291Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=f15e9416-e65c-40c3-b027-da612ce10c3f source=sdk
+2026-05-11T04:21:12.100Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:21:12.596Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01GnUcnJgtERDZKMTBV4HMq4 permissionDecisionMs=9
+2026-05-11T04:21:12.598Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:21:12.800Z [WARN] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01GnUcnJgtERDZKMTBV4HMq4 outcome=error durationMs=204
+2026-05-11T04:21:12.800Z [DEBUG] Bash tool error (204ms): Shell command failed
+2026-05-11T04:21:12.804Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:21:12.805Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:21:12.805Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:21:12.805Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:21:12.806Z [DEBUG] autocompact: tokens=67790 level=ok effectiveWindow=580000
+2026-05-11T04:21:12.807Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:21:12.809Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:21:12.810Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:12.810Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:12.810Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:21:12.811Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:21:12.811Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:21:12.812Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:12.817Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=84acb001-c96e-4df6-b8f7-252712bbcdcd source=sdk
+2026-05-11T04:21:15.117Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:21:15.379Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01T9f39SUtc78eyjQmzQ8kBj permissionDecisionMs=5
+2026-05-11T04:21:15.380Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:21:15.770Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01T9f39SUtc78eyjQmzQ8kBj outcome=ok durationMs=391
+2026-05-11T04:21:15.774Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:21:15.774Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:21:15.774Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:21:15.775Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:21:15.776Z [DEBUG] autocompact: tokens=68080 level=ok effectiveWindow=580000
+2026-05-11T04:21:15.777Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:21:15.779Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:21:15.779Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:15.780Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:15.780Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:21:15.780Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:21:15.781Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:21:15.782Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:15.786Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=1e2878b4-ff3d-4122-831f-a10dfe819f56 source=sdk
+2026-05-11T04:21:17.842Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:21:17.859Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01QGSBV9cGiv1tN7NLWE7YZC permissionDecisionMs=5
+2026-05-11T04:21:17.861Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:21:18.466Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01QGSBV9cGiv1tN7NLWE7YZC outcome=ok durationMs=607
+2026-05-11T04:21:18.469Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:21:18.469Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:21:18.470Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:21:18.470Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:21:18.471Z [DEBUG] autocompact: tokens=68254 level=ok effectiveWindow=580000
+2026-05-11T04:21:18.472Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:21:18.474Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:21:18.474Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:18.475Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:18.475Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:21:18.475Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:21:18.476Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:21:18.477Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:21:18.482Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=27d0ef86-6323-44e1-9dcf-cadafd0cf25a source=sdk
+2026-05-11T04:21:19.955Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:21:44.902Z [DEBUG] Plugin autoupdate: checking installed plugins
+2026-05-11T04:22:11.836Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01WJmgJsTzbhdDCL71QUssLJ permissionDecisionMs=24
+2026-05-11T04:22:11.849Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:22:12.091Z [WARN] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01WJmgJsTzbhdDCL71QUssLJ outcome=error durationMs=254
+2026-05-11T04:22:12.091Z [DEBUG] Bash tool error (254ms): Shell command failed
+2026-05-11T04:22:12.099Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:22:12.099Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:22:12.099Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:22:12.100Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:22:12.102Z [DEBUG] autocompact: tokens=71072 level=ok effectiveWindow=580000
+2026-05-11T04:22:12.105Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:22:12.108Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:22:12.109Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:12.110Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:12.111Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:22:12.112Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:22:12.113Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:22:12.114Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:12.120Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=d7e234cb-c686-4a01-9160-08bcfd1fa1e8 source=sdk
+2026-05-11T04:22:13.812Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:22:13.917Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01Xrw5xoAGo4qjW7g1TWEHWN permissionDecisionMs=6
+2026-05-11T04:22:13.918Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:22:14.470Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01Xrw5xoAGo4qjW7g1TWEHWN outcome=ok durationMs=553
+2026-05-11T04:22:14.476Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:22:14.476Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:22:14.476Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:22:14.477Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:22:14.478Z [DEBUG] autocompact: tokens=70706 level=ok effectiveWindow=580000
+2026-05-11T04:22:14.480Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:22:14.481Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:22:14.482Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:14.483Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:14.483Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:22:14.483Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:22:14.484Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:22:14.485Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:14.490Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=bc53cc8b-4618-4ed1-9b85-75391a74a267 source=sdk
+2026-05-11T04:22:15.925Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:22:16.812Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_017qyv66oYfTqPDj1vbDi4ke permissionDecisionMs=3
+2026-05-11T04:22:16.815Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_017qyv66oYfTqPDj1vbDi4ke outcome=ok durationMs=3
+2026-05-11T04:22:16.866Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:22:16.866Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:22:16.866Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:22:16.867Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:22:16.872Z [DEBUG] autocompact: tokens=71015 level=ok effectiveWindow=580000
+2026-05-11T04:22:16.873Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:22:16.875Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:22:16.876Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:16.876Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:16.877Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:22:16.877Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:22:16.878Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:22:16.878Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:16.883Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=8b18a22b-4e37-4e5d-a965-2567819f6fcd source=sdk
+2026-05-11T04:22:18.669Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:22:28.980Z [INFO] [Stall] tool_dispatch_start tool=Write toolUseId=toolu_01WRSHCHZ1N1ZzZ4YXbmk4xt permissionDecisionMs=2
+2026-05-11T04:22:28.983Z [DEBUG] Preserving file permissions: 100660
+2026-05-11T04:22:28.983Z [DEBUG] Writing to temp file: /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/table/scene.md.tmp.3763774.1778473348983
+2026-05-11T04:22:28.987Z [DEBUG] Temp file written successfully, size: 2095 bytes
+2026-05-11T04:22:28.988Z [DEBUG] Applied original permissions to temp file
+2026-05-11T04:22:28.988Z [DEBUG] Renaming /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/table/scene.md.tmp.3763774.1778473348983 to /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/table/scene.md
+2026-05-11T04:22:28.988Z [DEBUG] File /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/table/scene.md written atomically
+2026-05-11T04:22:28.995Z [INFO] [Stall] tool_dispatch_end tool=Write toolUseId=toolu_01WRSHCHZ1N1ZzZ4YXbmk4xt outcome=ok durationMs=15
+2026-05-11T04:22:29.005Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:22:29.005Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:22:29.006Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:22:29.006Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:22:29.008Z [DEBUG] autocompact: tokens=71731 level=ok effectiveWindow=580000
+2026-05-11T04:22:29.010Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:22:29.012Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:22:29.013Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:29.013Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:29.014Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:22:29.014Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:22:29.015Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:22:29.016Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:29.021Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=3905192f-6b50-4cd8-84fb-4c6f0e46c857 source=sdk
+2026-05-11T04:22:30.733Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:22:30.990Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_01QkLn9jwhDxUGaACzzZsAwJ permissionDecisionMs=1
+2026-05-11T04:22:31.000Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_01QkLn9jwhDxUGaACzzZsAwJ outcome=ok durationMs=11
+2026-05-11T04:22:31.051Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:22:31.052Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:22:31.052Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:22:31.052Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:22:31.057Z [DEBUG] autocompact: tokens=71994 level=ok effectiveWindow=580000
+2026-05-11T04:22:31.058Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:22:31.060Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:22:31.061Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:31.061Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:31.062Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:22:31.062Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:22:31.063Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:22:31.064Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:31.069Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=97dfe7a8-908b-4773-a241-16c25fb5dedb source=sdk
+2026-05-11T04:22:32.939Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:22:35.497Z [INFO] [Stall] tool_dispatch_start tool=Edit toolUseId=toolu_01KTxwQoHndxw2M8kejq9P4F permissionDecisionMs=1
+2026-05-11T04:22:35.500Z [DEBUG] Preserving file permissions: 100660
+2026-05-11T04:22:35.500Z [DEBUG] Writing to temp file: /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/table/index.md.tmp.3763774.1778473355500
+2026-05-11T04:22:35.504Z [DEBUG] Temp file written successfully, size: 822 bytes
+2026-05-11T04:22:35.504Z [DEBUG] Applied original permissions to temp file
+2026-05-11T04:22:35.504Z [DEBUG] Renaming /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/table/index.md.tmp.3763774.1778473355500 to /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/table/index.md
+2026-05-11T04:22:35.505Z [DEBUG] File /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/table/index.md written atomically
+2026-05-11T04:22:35.506Z [INFO] [Stall] tool_dispatch_end tool=Edit toolUseId=toolu_01KTxwQoHndxw2M8kejq9P4F outcome=ok durationMs=9
+2026-05-11T04:22:35.534Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:22:35.535Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:22:35.535Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:22:35.535Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:22:35.537Z [DEBUG] autocompact: tokens=72379 level=ok effectiveWindow=580000
+2026-05-11T04:22:35.538Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:22:35.540Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:22:35.540Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:35.541Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:35.541Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:22:35.541Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:22:35.542Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:22:35.543Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:35.548Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=33626802-86a6-49e5-a899-70f794ad0808 source=sdk
+2026-05-11T04:22:37.057Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:22:41.011Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_015Xg7y2uRRP5Xqjcs6W6HhJ permissionDecisionMs=11
+2026-05-11T04:22:41.016Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:22:41.798Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_015Xg7y2uRRP5Xqjcs6W6HhJ outcome=ok durationMs=787
+2026-05-11T04:22:41.801Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:22:41.801Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:22:41.801Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:22:41.801Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:22:41.802Z [DEBUG] autocompact: tokens=72907 level=ok effectiveWindow=580000
+2026-05-11T04:22:41.802Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:22:41.803Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:22:41.803Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:41.804Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:41.804Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:22:41.804Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:22:41.805Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:22:41.805Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:41.807Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=bdbb96f4-6af8-4cc5-9d0b-96119cb48009 source=sdk
+2026-05-11T04:22:44.134Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:22:53.587Z [INFO] [Stall] tool_dispatch_start tool=Write toolUseId=toolu_018AL5iGi9LNfHnnfd6Ah66S permissionDecisionMs=2
+2026-05-11T04:22:53.589Z [DEBUG] Writing to temp file: /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/dm/turns/0045/out.md.tmp.3763774.1778473373589
+2026-05-11T04:22:53.592Z [DEBUG] Temp file written successfully, size: 1141 bytes
+2026-05-11T04:22:53.592Z [DEBUG] Renaming /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/dm/turns/0045/out.md.tmp.3763774.1778473373589 to /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/dm/turns/0045/out.md
+2026-05-11T04:22:53.593Z [DEBUG] File /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/dm/turns/0045/out.md written atomically
+2026-05-11T04:22:53.593Z [INFO] [Stall] tool_dispatch_end tool=Write toolUseId=toolu_018AL5iGi9LNfHnnfd6Ah66S outcome=ok durationMs=6
+2026-05-11T04:22:53.623Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:22:53.623Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:22:53.623Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:22:53.623Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:22:53.625Z [DEBUG] autocompact: tokens=73558 level=ok effectiveWindow=580000
+2026-05-11T04:22:53.626Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:22:53.627Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:22:53.628Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:53.629Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:53.629Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:22:53.629Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:22:53.630Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:22:53.630Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:53.635Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=75cbea9e-7f3f-4046-a9b7-afe48f376548 source=sdk
+2026-05-11T04:22:54.657Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:22:55.915Z [INFO] [Stall] tool_dispatch_start tool=Read toolUseId=toolu_014s9uq3Zto7fAFByDTzMdLf permissionDecisionMs=1
+2026-05-11T04:22:55.917Z [INFO] [Stall] tool_dispatch_end tool=Read toolUseId=toolu_014s9uq3Zto7fAFByDTzMdLf outcome=ok durationMs=2
+2026-05-11T04:22:55.975Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:22:55.975Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:22:55.975Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:22:55.975Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:22:55.979Z [DEBUG] autocompact: tokens=73624 level=ok effectiveWindow=580000
+2026-05-11T04:22:55.980Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:22:55.982Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:22:55.983Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:55.983Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:55.984Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:22:55.984Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:22:55.985Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:22:55.985Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:22:55.990Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=fd48bfe3-eb5f-4829-8980-ee0dbdcc31c5 source=sdk
+2026-05-11T04:22:57.899Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:23:14.254Z [WARN] [Stall] stream_idle_partial lastChunkAgeMs=15004 bytesTotal=11771 idleDeadlineMs=300000
+2026-05-11T04:23:22.270Z [INFO] [Stall] tool_dispatch_start tool=Edit toolUseId=toolu_016D8zZWGy4B3STsVfXskKH6 permissionDecisionMs=3
+2026-05-11T04:23:22.277Z [DEBUG] Preserving file permissions: 100660
+2026-05-11T04:23:22.277Z [DEBUG] Writing to temp file: /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/dm/scratchpad.md.tmp.3763774.1778473402277
+2026-05-11T04:23:22.281Z [DEBUG] Temp file written successfully, size: 35270 bytes
+2026-05-11T04:23:22.281Z [DEBUG] Applied original permissions to temp file
+2026-05-11T04:23:22.282Z [DEBUG] Renaming /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/dm/scratchpad.md.tmp.3763774.1778473402277 to /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/dm/scratchpad.md
+2026-05-11T04:23:22.282Z [DEBUG] File /home/dev/repos/agents-of-glass/.glass-cwd/test-7/0045-dm/dm/scratchpad.md written atomically
+2026-05-11T04:23:22.283Z [INFO] [Stall] tool_dispatch_end tool=Edit toolUseId=toolu_016D8zZWGy4B3STsVfXskKH6 outcome=ok durationMs=13
+2026-05-11T04:23:22.296Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:23:22.296Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:23:22.296Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:23:22.297Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:23:22.300Z [DEBUG] autocompact: tokens=74990 level=ok effectiveWindow=580000
+2026-05-11T04:23:22.303Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:23:22.306Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:23:22.307Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:23:22.308Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:23:22.309Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:23:22.309Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:23:22.310Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:23:22.311Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:23:22.316Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=e7a1cdfd-3519-464d-a96d-75268d4d2f21 source=sdk
+2026-05-11T04:23:25.058Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:23:25.426Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_016CcmZjoet61fezDRzBYv79 permissionDecisionMs=11
+2026-05-11T04:23:25.429Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:23:38.718Z [WARN] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_016CcmZjoet61fezDRzBYv79 outcome=error durationMs=13292
+2026-05-11T04:23:38.719Z [DEBUG] Bash tool error (13292ms): Shell command failed
+2026-05-11T04:23:38.724Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:23:38.724Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:23:38.724Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:23:38.724Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:23:38.726Z [DEBUG] autocompact: tokens=75144 level=ok effectiveWindow=580000
+2026-05-11T04:23:38.727Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:23:38.729Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:23:38.730Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:23:38.731Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:23:38.731Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:23:38.731Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:23:38.732Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:23:38.733Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:23:38.738Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=c919076b-cdcf-4531-b72d-6925893bb75f source=sdk
+2026-05-11T04:23:40.588Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:23:41.039Z [INFO] [Stall] tool_dispatch_start tool=Bash toolUseId=toolu_01X17vmUn9F8E5WXnqrdsJAi permissionDecisionMs=7
+2026-05-11T04:23:41.042Z [DEBUG] Spawning shell without login (-l flag skipped)
+2026-05-11T04:23:55.173Z [INFO] [Stall] tool_dispatch_end tool=Bash toolUseId=toolu_01X17vmUn9F8E5WXnqrdsJAi outcome=ok durationMs=14134
+2026-05-11T04:23:55.185Z [DEBUG] LSP Diagnostics: getLSPDiagnosticAttachments called
+2026-05-11T04:23:55.185Z [DEBUG] LSP Diagnostics: Checking registry - 0 pending
+2026-05-11T04:23:55.186Z [DEBUG] Hooks: Found 0 total hooks in registry
+2026-05-11T04:23:55.186Z [DEBUG] Hooks: checkForNewResponses returning 0 responses
+2026-05-11T04:23:55.197Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:23:55.197Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:23:55.200Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:23:55.204Z [DEBUG] [API REQUEST] /v1/messages/count_tokens x-client-request-id=ef57d0e9-bdbb-4ebe-b602-44a3fc64a2df source=count_tokens
+2026-05-11T04:23:55.490Z [DEBUG] autocompact: tokens=75836 level=ok effectiveWindow=580000
+2026-05-11T04:23:55.494Z [DEBUG] Dynamic tool loading: 0/26 deferred tools included
+2026-05-11T04:23:55.499Z [DEBUG] attribution header x-anthropic-billing-header: cc_version=2.1.126.4f5; cc_entrypoint=sdk-cli; cch=00000;
+2026-05-11T04:23:55.500Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:23:55.501Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:23:55.503Z [DEBUG] [API:request] Creating client, ANTHROPIC_CUSTOM_HEADERS present: false, has Authorization header: false
+2026-05-11T04:23:55.503Z [DEBUG] [API:auth] OAuth token check starting
+2026-05-11T04:23:55.504Z [DEBUG] [API:auth] OAuth token check complete
+2026-05-11T04:23:55.505Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:23:55.511Z [DEBUG] [API REQUEST] /v1/messages x-client-request-id=52ad6061-d489-49ce-ba43-f3146296a781 source=sdk
+2026-05-11T04:23:56.880Z [DEBUG] Stream started - received first chunk
+2026-05-11T04:24:04.617Z [DEBUG] Fast mode unavailable: Fast mode is not available in the Agent SDK
+2026-05-11T04:24:04.622Z [DEBUG] MCP server "claude.ai Tastebase": CLAUDEAI-PROXY connection closed after 597s (cleanly)
+2026-05-11T04:24:04.623Z [DEBUG] MCP server "claude.ai Tastebase": Cleared connection cache for reconnection
+2026-05-11T04:24:04.629Z [DEBUG] LSP server manager shut down successfully
+2026-05-11T04:24:04.631Z [DEBUG] Cleaned up session snapshot: /home/aog-mara/.claude/shell-snapshots/snapshot-bash-1778472869517-c9yh6e.sh

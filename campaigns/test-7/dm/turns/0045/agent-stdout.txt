@@ -1,0 +1,16 @@
+The files are synced. The action scene is now live with all supporting state written.
+
+The out.md is written. Here's what happened this turn:
+
+**Situation**: The prelude-opening scene was fully closed (confirmed by the scene-end event from turn 41). The players' rapid-round closing beats (turns 42–44) completed the scene's emotional close.
+
+**This turn (45)**: Started the prelude-action scene — the required second prelude scene. The Splitfork has just lifted, and a shear-edge front that was 90 minutes out is now 25. Three signal windows remain before the kite commits to approach without ground contact.
+
+**State changes made**:
+- `glass mode start action prelude-action` — action scene is live
+- `signal-window` tracker set at 3/3, drains once per full round
+- `table/scene.md` and `table/index.md` written with the full scene layout
+- Scene summary written with kickoff
+- Scratchpad updated with scene setup, PC beats to watch, holding-pattern items, and end procedure
+
+The public prose opens the crisis plainly and ends on "...what do you do?" per Mara's table habits.

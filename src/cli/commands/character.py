@@ -12,6 +12,11 @@ import click
 
 from .. import db as _db
 from ..campaign import active_campaign_id, pg_connection
+from ..character_projection import (
+    public_character_mirror_path as _public_character_mirror_path,
+    render_public_character_mirror as _render_public_character_mirror,
+    write_public_character_mirror as _write_public_character_mirror,
+)
 from ..config import Paths, get_paths
 from ..constants import ATTRIBUTE_TIERS, ATTRIBUTES, SKILL_TIERS
 from ..errors import GlassError
@@ -107,6 +112,7 @@ def character_new(
             hp_max=hp_max,
             tags=list(tags),
         )
+    mirror_result = _write_public_character_mirror(paths, campaign_id, record)
 
     queue_event(
         state,
@@ -119,7 +125,7 @@ def character_new(
         ctx,
         "character.new",
         command_params(character_id=character_id, player_id=player_id),
-        {"character": record},
+        {"character": record, "mirror": mirror_result},
     )
 
 
@@ -199,6 +205,7 @@ def character_bulk_get(
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     ids = _unique_nonempty(character_ids)
+    missing: list[str] = []
     if include_all and ids:
         raise GlassError("use either character ids or --all, not both")
     if not include_all and not ids:
@@ -209,7 +216,6 @@ def character_bulk_get(
             characters = _db.character_list(conn, campaign_id)
         else:
             characters = []
-            missing: list[str] = []
             for character_id in ids:
                 character = _db.character_get(conn, campaign_id, character_id)
                 if character is None:
@@ -257,12 +263,11 @@ def character_mirror(ctx: click.Context, character_id: str) -> None:
         character = _db.character_get(conn, campaign_id, character_id)
     if character is None:
         raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
-    role = assert_character_writable(character)
+    assert_character_writable(character)
     path = _public_character_mirror_path(paths, campaign_id, character)
     path.parent.mkdir(parents=True, exist_ok=True)
     body = _render_public_character_mirror(character)
     path.write_text(body, encoding="utf-8")
-    queue_event(state, role.actor, f"character mirror {character_id}")
     result = {
         "character_id": character_id,
         "path": display_path(path),
@@ -275,6 +280,7 @@ def character_mirror(ctx: click.Context, character_id: str) -> None:
         "character.mirror",
         command_params(character_id=character_id, path=result["path"]),
         result,
+        save=False,
     )
 
 
@@ -379,7 +385,14 @@ def character_bulk_update(
                 operations.append("signature_moves")
 
             mirror_result = None
-            if update["mirror"]:
+            should_mirror = bool(
+                update["mirror"]
+                or set_fields
+                or hp_delta is not None
+                or momentum is not None
+                or inventory_ops
+            )
+            if should_mirror:
                 mirror_result = _write_public_character_mirror(paths, campaign_id, updated)
                 operations.append("mirror")
 
@@ -556,6 +569,7 @@ def character_set_hp(ctx: click.Context, character_id: str, delta: int) -> None:
     sign = f"{delta:+d}"
     summary = f"{character_id} hp {sign} ({before} -> {after})"
     queue_event(state, role.actor, summary)
+    mirror_result = _write_public_character_mirror(paths, campaign_id, updated)
     result = {
         "character_id": character_id,
         "hp_before": before,
@@ -563,6 +577,7 @@ def character_set_hp(ctx: click.Context, character_id: str, delta: int) -> None:
         "applied_delta": after - before,
         "hp_after": after,
         "hp_max": updated["hp"]["max"],
+        "mirror": mirror_result,
     }
     commit(
         paths,
@@ -619,6 +634,7 @@ def character_award_xp(
     summary = f"{character_id} xp {sign} ({before} -> {after}, level {updated['level']})"
     queue_event(state, role.actor, summary)
     pending_levels = max(0, (after // 10) + 1 - int(updated["level"]))
+    mirror_result = _write_public_character_mirror(paths, campaign_id, updated)
     result = {
         "character_id": character_id,
         "xp_before": before,
@@ -627,6 +643,7 @@ def character_award_xp(
         "level": updated["level"],
         "pending_level_ups": pending_levels,
         "reason": reason,
+        "mirror": mirror_result,
     }
     commit(
         paths,
@@ -734,6 +751,7 @@ def character_level_up(
         )
     summary = ", ".join(parts)
     queue_event(state, role.actor, summary)
+    mirror_result = _write_public_character_mirror(paths, campaign_id, updated)
     result = {
         "character_id": character_id,
         "from_level": from_level,
@@ -746,6 +764,7 @@ def character_level_up(
         "momentum_ceiling_before": existing["momentum"]["ceiling"],
         "momentum_ceiling_after": updated["momentum"]["ceiling"],
         "pending_level_ups": max(0, (updated["xp"] // 10) + 1 - updated["level"]),
+        "mirror": mirror_result,
     }
     commit(
         paths,
@@ -784,6 +803,7 @@ def character_set_momentum(ctx: click.Context, character_id: str, value: int) ->
 
     summary = f"{character_id} momentum {before:+d} -> {after:+d}"
     queue_event(state, role.actor, summary)
+    mirror_result = _write_public_character_mirror(paths, campaign_id, updated)
     result = {
         "character_id": character_id,
         "momentum_before": before,
@@ -791,6 +811,7 @@ def character_set_momentum(ctx: click.Context, character_id: str, value: int) ->
         "momentum_after": after,
         "floor": updated["momentum"]["floor"],
         "ceiling": updated["momentum"]["ceiling"],
+        "mirror": mirror_result,
     }
     commit(
         paths,
@@ -861,6 +882,7 @@ def character_inventory_add(
         role.actor,
         f"{character_id} inventory +{qty} {item_id} ({before} -> {after})",
     )
+    mirror_result = _write_public_character_mirror(paths, campaign_id, updated)
     result = {
         "character_id": character_id,
         "item_id": item_id,
@@ -869,6 +891,7 @@ def character_inventory_add(
         "qty_after": after,
         "effect_tags": normalized_effect_tags,
         "inventory": updated["inventory"],
+        "mirror": mirror_result,
     }
     commit(
         paths,
@@ -924,6 +947,7 @@ def character_inventory_rm(
         role.actor,
         f"{character_id} inventory -{qty} {item_id} ({before} -> {after})",
     )
+    mirror_result = _write_public_character_mirror(paths, campaign_id, updated)
     result = {
         "character_id": character_id,
         "item_id": item_id,
@@ -932,6 +956,7 @@ def character_inventory_rm(
         "applied_delta": after - before,
         "qty_after": after,
         "inventory": updated["inventory"],
+        "mirror": mirror_result,
     }
     commit(
         paths,
@@ -1450,92 +1475,6 @@ def _string_list(value: Any) -> list[str]:
         if text:
             strings.append(text)
     return strings
-
-
-def _public_character_mirror_path(
-    paths: Paths,
-    campaign_id: str,
-    character: dict[str, Any],
-) -> Path:
-    return (
-        paths.campaigns
-        / campaign_id
-        / "players"
-        / str(character["player_id"])
-        / "public"
-        / "character.md"
-    )
-
-
-def _write_public_character_mirror(
-    paths: Paths,
-    campaign_id: str,
-    character: dict[str, Any],
-) -> dict[str, Any]:
-    path = _public_character_mirror_path(paths, campaign_id, character)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    body = _render_public_character_mirror(character)
-    path.write_text(body, encoding="utf-8")
-    return {
-        "path": display_path(path),
-        "bytes": len(body.encode("utf-8")),
-    }
-
-
-def _render_public_character_mirror(character: dict[str, Any]) -> str:
-    lines = [
-        "---",
-        f"title: {character['name']}",
-        "type: character-display",
-        f"character_id: {character['character_id']}",
-        f"player_id: {character['player_id']}",
-        "---",
-        "",
-        f"# {character['name']}",
-        "",
-        f"- **Player:** {character['player_id']}",
-        f"- **Species:** {character['species']}",
-        f"- **Culture:** {character['culture']}",
-        f"- **Archetype:** {character['archetype']}",
-        f"- **Organization role:** {character['organization_role']}",
-        f"- **Pronouns:** {character.get('pronouns') or 'unspecified'}",
-        f"- **Level:** {character['level']} ({character['xp']} XP)",
-        f"- **HP:** {character['hp']['current']}/{character['hp']['max']}",
-        (
-            f"- **Momentum:** {character['momentum']['current']} "
-            f"({character['momentum']['floor']} to {character['momentum']['ceiling']})"
-        ),
-        "",
-        "## Bio",
-        "",
-        str(character["bio"]).strip(),
-        "",
-        "## Goals",
-        "",
-    ]
-    lines.extend(f"- {goal}" for goal in character.get("goals", []))
-    lines.extend(["", "## Attributes", ""])
-    for attribute in ATTRIBUTES:
-        lines.append(f"- **{attribute}:** {character['attributes'].get(attribute, 'standard')}")
-    lines.extend(["", "## Skills", ""])
-    for skill, tier in sorted(character.get("skills", {}).items()):
-        lines.append(f"- **{skill}:** {tier}")
-    lines.extend(["", "## Inventory", ""])
-    inventory = list(character.get("inventory") or [])
-    if inventory:
-        for item in inventory:
-            item_line = f"- **{item.get('id', 'item')}:** x{int(item.get('qty', 1))}"
-            effect_tags = item.get("effect_tags")
-            if isinstance(effect_tags, list) and effect_tags:
-                item_line += " — " + "; ".join(str(tag) for tag in effect_tags)
-            lines.append(item_line)
-    else:
-        lines.append("- None recorded.")
-    tags = list(character.get("tags") or [])
-    if tags:
-        lines.extend(["", "## Tags", ""])
-        lines.append(", ".join(tags))
-    return "\n".join(lines).rstrip() + "\n"
 
 
 SIGNATURE_MOVE_UNLOCK_LEVELS = (1, 3, 5, 7, 9)

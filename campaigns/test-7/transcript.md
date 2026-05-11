@@ -4233,3 +4233,774 @@ The doorframe shadow has not moved.
 ---
 
 Handing off.
+## Turn 26 - renno (player) - scene-play, prelude-opening
+
+Three breaths of holding, the way the widow's register is owed.
+
+Fei has not moved from the three-pace Hab distance. Hands still at her sides. The chin-lower she gives after Inka's last sentence is the smallest acknowledgment the form has for difficult speech — not agreement, not the quick nod of condolence that would cross registers, just *received*. Only someone raised in the form would read it as a word.
+
+The apricots are still on Inka's lap. *For the dock regardless.* Fei heard that. A gift with no condition on it is a kind of argument — it says: I am not here to bargain.
+
+She doesn't ask about the nineteen years. She doesn't ask what Inka guesses the packet contains. Those are not Fei's doors to open at three paces, and the year-mark hasn't asked her to.
+
+What she asks, in the same register Inka answered in:
+
+"Is there anything you'd want carried with it. A word for him. From you."
+
+Two sentences. Not a follow-up question that closes the room, not a form-query that asks Inka to testify. A door opened toward the bench, not toward the lectern. If the brother receives the packet and Inka has something to say alongside it that the wax-paper doesn't hold — that is still hers to offer or not offer.
+
+Fei's hands have not moved.
+
+---
+
+*OOC — Renno:* Staying at three paces, holding court-interpreter discipline: no follow-up, no second door, no smoothing. The question is small enough that Inka can let it land anywhere she wants — her guess, a word for Eshil, nothing at all. If the DM wants Inka to surface the guess this round, that door is open. If she's not ready, the bench can hold another exchange without Fei pressing. Either landing works for us.
+
+Drova's third line on the page is in Fei's ear. Whatever lands in the next beat, we'll have the year-mark, the eleven-day count, and whatever Inka says or doesn't say — all three together are probably enough for the page's fourth line, if the page wants it.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 27 - kit (player) - scene-play, prelude-opening
+
+*Eight* from Tek's position, same register as *nine*, same weight as *nine*. Bren picks it up without moving her head.
+
+She stays at the cargo seat. Back of the right hand on the rim. Chalk mark on the left sleeve. The streamer pouch hasn't moved.
+
+The bench has Fei's question in it — the word Fei offered, or the space for one — and Inka sitting with it. The ledger has its two lines. The office has Mereth and Halvi and the stamp sound, which is still the stamp sound and not the door. Nothing on the apron has broken. Bren lets it stay that way.
+
+After the lamp's third dip settles, she sets the hab-knot read into the apron in dockyard register — low, not at the bench, not at anyone in particular:
+
+*Cord is Inka's own. Tied passenger-kite, around what she was given.*
+
+At the ledger-space. If a line wants it, it's there.
+
+She goes back to holding the seat. The wind is still yellow — the south corner held when she was at the hatch and nothing in the air has changed her reading. Yellow means a clean window if the apron decides before the cross-pull at twelve past light. But the wind read is for after the apron decides. That one stays in her.
+
+The count stands at seven. Standing-beside is still not-yet. She waits.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 28 - dm (dm) - scene-play, prelude-opening
+
+Inka's thumb doesn't move off the wax print. She looks at her hands for one breath — both of them, thumb across the apricot-oil mark, the other at the paper's edge — and answers in widow's register, the same register she's used all morning:
+
+"No. He knew what he wanted to leave. I'm not in it."
+
+She doesn't look up at Fei. Her breath has thinned. After a pause:
+
+"I've been carrying this since the fourth morning after Den died. I haven't put it down."
+
+Her hands stay where they are. She doesn't ask if that changes anything.
+
+The lamp at the spar-end corner dips. *Seven*, if the wright is counting.
+
+Mereth's shadow on the deck floor, visible in the strip under the office doorframe, hasn't moved.
+
+---
+
+The page on the lectern has three lines in graduated certainty — the cross-reference, the binding, the year-mark form. The hab-knot read and the wind read are in the room. Fei is still at three paces, the question answered, the space between her and the bench unchanged. Bren is at the cargo seat, back of right hand on the rim, everything she set into the apron in dockyard register between Drova and Tek, not at the bench, not yet.
+
+The apron has what it has. First light is close. The decision hasn't been made.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> sync applied 2 workspace operation(s)
+
+## Turn 29 - tev (player) - scene-play, prelude-opening
+
+The dock lamp has held at *seven* through Drova's third line and through the silence after.
+
+Tek's hand is still on the spar-side rim of the lectern. It has been there since she gave *eight*, since she gave *nine* before that, since the morning started with the walkaround. She knows the shape of the lamp through the skin of her palm — not from looking; from the body counting anyway, the way the body counts whether or not you ask it to.
+
+The count is done. Nine, eight, seven. After seven, the lamp's dipping will tell her when, not how far. She isn't looking at the lamp.
+
+Her right hand is off the rim before she decides it. The same motion as a gate release, as a haul-line uncleating — the hand that has done what the hand was doing and has stopped. She doesn't take a step toward the bench, doesn't turn to Drova's page. She turns to face the haul line at the spar-end of the Splitfork's apron. The wright's position when the apron is deciding and she's waiting for the word.
+
+One beat. Her hand finds the coat pocket. Not to pull the tic-tracer out. Just to feel it between the lining and the heel of her palm. It says nothing. The resonance through that side of the apron is clean.
+
+She leaves the tracer.
+
+Into the apron — same flat register as *nine* and *eight* and *seven*, not at anyone, not at the bench:
+
+*Eleven past first light. The window.*
+
+The lift window. When the south corner holds yellow into white and the cross-pull settles. When the Splitfork goes. Eleven minutes past first light is the wright's number, not the clerk's, not the cargo side's. Mereth already has it in her head. The manifest already has it in the column. Eleven minutes past first light is when the apron's decision becomes the spar's.
+
+She does not add another sentence.
+
+She is facing the haul line. Bren's wind read is in the apron. Drova's three lines are on the page. Fei is at the bench. The lamp is at seven.
+
+The wright is positioned to cast off when the word comes. Or to hold when it doesn't. Either is a wright's position. The apron decides.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 30 - sumi (player) - scene-play, prelude-opening
+
+The inkless pen came up from the page. Drova tilted it low — one slow rake, rim to center, the lamp's angle still readable from where she stood. The wax seal was what it had been. The binding was what she'd written.
+
+She set the pen down parallel to the long edge of the day-page. The cap went on the inkwell.
+
+She did not look at the bench.
+
+Into the apron, in the same flat register she had used all morning: *Year-mark date is eleven days from today. Hab-Meridian year-mark form expires at the mark.* A breath. *If the Splitfork does not carry this on the current run, the form lapses. The carrier would need a new carry-instrument from whoever holds the sender's records.*
+
+She did not name who held them. She did not know. Den was not on the page; Den was on the apron. The shelf-box at her ankle had the internal note on the prior entry, lid still down. She had not opened it. She had written from what she could read.
+
+*Three lines on the day-page. I do not have a refusal.*
+
+Her hand stayed flat beside the inkwell. The page was still open — she had not closed it, had not laid it face-down. Pen down and parallel was the form for *clerk is done*, not for *page is sealed*. Anyone who knew the log would read the difference.
+
+Tek's window was eleven past first light. The calendar window was eleven days. Both numbers were on the apron now. The shelf-box lid was down. Mereth's shadow on the deck had not moved.
+
+Drova did not add a fourth line.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> handoff -> dm
+
+## Turn 31 - dm (dm) - scene-play, prelude-opening
+
+The lamp at the spar-end corner dips to six.
+
+The sky behind the Glasswake towers has not changed yet, but the quality of the dark has. The dock lamps read it before the eye does — one slow fall and hold, the same shape it made at seven, at eight, at nine. Six. Tek named eleven past first light. The window is open.
+
+From the office: the stamp rhythm stops.
+
+The stamp stopping is different from the stamp running. One page closed, one page waiting — that has been the sound of this morning, the whole of it, Halvi working through the manifest at her own pace. The pause is new. The pause means the manifest is done or close. Mereth reading it back, or Mereth setting the pen down, or Mereth putting on her coat.
+
+The shadow of the office doorframe on the deck has not moved yet.
+
+Inka's hands are still on the packet. She has not stood. She is not looking at any one of them. She is looking at the apron — at the whole of it — the way you look at a door you have been waiting outside of for a long time, in patient register, without wanting anything from the waiting except for it to be finished.
+
+The apron has two windows on it now. The page has three lines. The decision is on whoever reaches for it first.
+
+It will not be Inka. She has given everything the bench gives.
+
+> scene closing down (~2 round(s) left)
+> table append campaigns/test-7/table/index.md
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 32 - tev (player) - scene-play, prelude-opening
+
+Tek shifted her weight — not a step, just a centering — and put her right hand on the haul line.
+
+Not cast-off grip. The back of two fingers, the way she reads a cold line at start-of-shift to feel whether the spar's talking. Light. Steady. The line was cool and taut and said nothing unusual. She left her hand there.
+
+The lamp was at *six*. The window she'd named was running. Eleven past first light, and counting.
+
+She did not look at the bench. Did not look at the page. She had already given the apron what the wright has to give — the count, the position, the window named. Drova's pen was down. The two elevens were on the record. Whatever word came next would come from the apron side, or it would come from Mereth when the door moved and the manifest came with it. Either way, Tek would hear it from here.
+
+She held the line the way you hold a thing you are not yet pulling. Present. Ready. Not decided — that was someone else's task, and she had always known it was. The wright's job at the threshold is simpler: stay at the spar, keep the hand on the line, and be the first to know.
+
+The morning was coming on. She could feel the lift beginning to build in the rig above her — the faint tension change that comes before yellow. Not yet. But close.
+
+She waited.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 33 - sumi (player) - scene-play, prelude-opening
+
+Drova kept her hands where they were after the pens went down — inkless to the left of the ink-pen, both parallel to the field edge of the page, the way she'd been trained to leave them when the examination was complete and the examiner was still at the lectern.
+
+She had been looking at the page.
+
+She looked at Inka.
+
+Four months since the fourth morning. Has not put it down.
+
+Drova bent — one controlled movement, not a search — and lifted the shelf-box lid at her ankle. The internal note from entry 2434-Q1-007 was folded once, edges clean, sitting in the front section of the archive where she'd filed it when Mereth gave her access to the backlog. She read the inside margin. Closed the lid.
+
+Stood.
+
+The note said what she'd thought it said when she cross-referenced the entry number during the intake review. The reason the prior packet was refused was not a reason about Inka's packet. It was a reason about a claim — a specific kind of claim, in a specific form, that would have required handling through Echo Ledger private-correspondence protocols.
+
+Inka had made no such claim. Her packet had no such form attached. The negative-comparison clause on the day-page already said as much, but it said it sideways, in graduated-certainty register, the way examinations say things when they are not ready to be said plainly.
+
+Drova said, into the apron, in something she did not have a register name for — not dock-pub, not graduated-certainty, not the formal read:
+
+*The prior refusal was about a claim. There is no claim here.*
+
+She did not say: carry it. She did not say: refuse. She set it where it could be picked up.
+
+The pens were still parallel. The page was still complete. Drova did not step away from the lectern.
+
+But she had stopped looking at the document.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 34 - renno (player) - scene-play, prelude-opening
+
+The eleven days sat on the apron in Drova's words, which were for the crew. Sound travels on a dock apron, especially before the morning freight picks up.
+
+Fei had been listening to Inka's hands. The thumb across the apricot-oil print on the wax had not moved since she gave her answer — *he knew what he wanted to leave; I'm not in it.* The cuffs on Fei's wrists were quiet; nothing to read there that the hands hadn't already given. The bench had offered what the bench had. The listening was done.
+
+She spoke once more before stepping back. Widow's register — not the trimmed bench-version she'd used before, but the plain form. The words for when you are telling a person something they need to know, not because you are asking them to do anything with it.
+
+*The form on the lectern is a year-mark form. If it lapses — eleven days from today — a new one would be needed. The records it would need to accompany it would have to come from whoever holds them now.*
+
+She paused one beat. *I'm not shaping anything. That's the shape of it.*
+
+Then she stepped back one pace, and stayed.
+
+She didn't look toward the lectern. She didn't look toward the lamp. She had given the bench the same thing the apron had, in the register the bench could use: the plain practical fact, without a push behind it. What Inka did with it was Inka's. The decision had always been Inka's.
+
+The cuffs stayed quiet. The morning cold came off the dock in the same flat measure it had been all morning. First light was already in; Tek's window was running.
+
+Fei stood at four paces now and did not ask a third question.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 35 - kit (player) - scene-play, prelude-opening
+
+Bren took her hand off the cargo seat.
+
+Not a withdrawal — the apron had everything cargo-side needed, and the wind read had been hers to hold since eight. The count was done. Tek had named the window. Drova's pens were parallel. The pilot's piece was the last thing still in her hand.
+
+She moved one pace toward the let-down clip point on the spar-side deck — not Tek's position at the haul line, not the wright's waiting stance, but the place where the pilot reads load against line before a drop. Her left hand went flat on the let-down line at the forty-foot chalk-mark. The line was cool and the chalk was dry. It would hold what Inka's packet weighed and then some.
+
+She spoke the wind read into the apron, dockyard register, the same register she'd used for the hab-knot:
+
+*Yellow through first light. Cross-pull at twelve past. The read holds.*
+
+That was what the pilot had. Held it for three counts because the bench hadn't needed it — Inka's decision wasn't about the weather — and now the window was open and Tek was at the haul line and Drova had named what there was and wasn't to refuse, and the wind read was the pilot's last piece.
+
+She left her hand on the chalk-mark. She didn't look at the bench or the office door.
+
+The pilot was at the line.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 36 - dm (dm) - scene-play, prelude-opening
+
+The stamp rhythm stopped a while ago — eleven minutes, maybe twelve. The shadow of the doorframe on the deck has not moved since the lamp went to six.
+
+Then it does.
+
+Halvi comes through first, manifest board in both hands, still reading. She goes to the cargo table at the far wall, sets the board down, opens the binding to the back page. She doesn't look up.
+
+Mereth follows her out. She stops two steps past the doorframe.
+
+She reads the apron. She takes in Drova's pens parallel and down, inkwell capped, day-page complete. She takes in Tek at the haul line, back of two fingers, the cold-line read. She takes in Bren at the let-down clip point with her left hand flat on the forty-foot chalk-mark, not looking at the bench. She takes in Fei at four paces from the bench, hands at her sides, nothing more to give.
+
+She takes in Inka. Inka on the bench, hands on the packet, thumb across the wax. Still sitting.
+
+Mereth goes to the lectern. She sets the office stamp on the ledge — not on the page, on the ledge — and takes her hand back empty. She goes to the spar-end and looks at the sky over Bren's shoulder. She says nothing about the walkaround. She says nothing about the wind. She says nothing at all.
+
+She is waiting.
+
+...what do you do?
+
+> rapid-round queued for tev,sumi,renno,kit: Your character's last action, line, or image as this scene c
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> table append campaigns/test-7/table/index.md
+> sync applied 1 workspace operation(s)
+
+## Turn 37 - tev (player) - scene-play, prelude-opening
+
+Tek does not look at the bench.
+
+Mereth is at the spar-end; she heard her cross the deck. The sky at twelve-past-light hasn't changed since Bren called it — yellow lift, cross-pull steady. The line under the back of her two fingers tells her the same thing it told her when she first set her hand there: the rig is ready. The tic-tracer in her pocket stays in her pocket.
+
+She doesn't count anymore. The count is done. The window runs from now until eleven past, and the line is either going out or it isn't, and neither of those is the wright's decision.
+
+Her fingers stay on the cold line. She breathes once, the way you breathe before you read a pull — not in, not out, just the held place in between.
+
+Ready.
+
+## Turn 38 - sumi (player) - scene-play, prelude-opening
+
+Drova reached across the lectern and moved the stamp.
+
+Mereth had set it on the ledge edge — reachable, but wrong. Not centered over the page, not where it belonged. Drova set two fingers on the handle and slid it to the left, level with the year-mark line, where the instrument sits when it is ready to be used and has not yet been used. A small correction. She did not look at Inka while she did it.
+
+Her pens stayed parallel. The shelf-box was closed. The inkwell was capped. The day-page had everything the record required: the prior refusal read, the calendar window, the examiner's observation that no defect of form prevented the run. *I do not have a refusal.* She had said what the page said. She had nothing more to say.
+
+She looked at the stamp now in its correct position and set her hands flat on the lectern, one over the other, and waited.
+
+## Turn 39 - renno (player) - scene-play, prelude-opening
+
+Fei did not speak again. She had asked what she came to ask; Inka had answered; that was the shape of it. She stepped back one pace — not away, just out of the lamp's direct reach — and drew the field-interpreter tablet from her coat. The stylus moved once, shorthand only, a single glyph: *carried since fourth morning, no word, her own.* The wax held it. She capped the stylus and let the tablet rest against her side, weight in her palm. The cuffs at her wrists were warm from the room and she felt the familiar low hum of them — not a reading, just contact. She did not look toward Tek at the haul line, nor toward Drova's parallel pens. She kept her eyes on Inka's hands on the packet and stayed where she was: three paces, present, done asking. The lamp was at six. Whatever the apron decided, the listener had what she needed.
+
+## Turn 40 - kit (player) - scene-play, prelude-opening
+
+The cross-pull is still at twelve past light — Bren can feel it on the back of her hand without looking up. She doesn't move from the clip point. The window is open; the line is ready; she knew both before anyone named them. Her hand stays on the chalk-mark. She's a pilot. The question she could answer, she answered. Everything else belongs to the apron.
+
+## Turn 41 - dm (dm) - scene-play, prelude-opening
+
+Inka stood.
+
+No one in the room moved when she did. Tek's hand stayed on the haul line. Drova did not look up from the stamp she'd just repositioned. Bren did not look up from the chalk-mark. Fei had her stylus capped and the tablet against her side.
+
+Inka crossed the three paces from the forwarding bench to the lectern. Not to Drova. To the page. She set the packet flat on the day-page, inside the stamp's reach, wax face up. Her thumb came off the apricot-oil print for the first time since she sat down.
+
+She stepped back. Her basket went to both arms. She stood at the bench edge the way people stand when they've done the thing they came to do and there is nothing left to say about it.
+
+Drova's eyes moved to the packet. Then to the stamp. She uncapped the inkwell. The ink pen had been at rest since the page was finished — she picked it up now, working hand, and wrote the consignment notation in the receiving line: *domestic forward, passenger-kite, carrier Splitfork, first light departure.* She pressed the stamp once. The page received it.
+
+She said, in graduated-certainty register, to the apron and no one in particular: *Carried.*
+
+Mereth, still at the spar-end, still looking at the sky over Bren's shoulder: *Go.*
+
+The haul line ran out.
+
+---
+
+*Scene end. Splitfork is away. The packet is in the cargo — Inka's cord around Den's last letter, carried on the first lift out of Glasswake at first light on the thirty-seventh day of the fourth month. Whatever Den wanted to leave, it's moving now. Inka is still standing at the bench edge. She has not watched the kite leave.*
+
+*XP: Tek 3, Drova 3, Fei 2, Bren 2.*
+
+> initiative order @ prelude-opening: renno(10), dm(10), tev(8), sumi(8), kit(5)
+> scene end: prelude-opening (+4 xp awards)
+> summary.append arc campaigns/test-7/arcs/prelude/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 42 - tev (player) - scene-play, prelude-opening
+
+The haul line ran out. She felt it through her palm — the line going slack, the weight releasing — and for that one second the Splitfork was neither here nor gone, just in transit, in the place between departure and sky.
+
+Tek let the cast-off loop drop. Standard procedure. Both hands free.
+
+She reached for the tic-tracer without thinking about it. Habit, or something like it: you run the check after a departure the same way you run it before. The walkaround doesn't end at cast-off. She unclipped the case from her hip, thumbed the lid, held the bead end toward the spar-stay.
+
+Quiet. Of course it was quiet. The rig had left. There was nothing to read.
+
+She held it a moment longer than she needed to.
+
+Inka Vell was still on the apron. Tek could see her at the edge of her sight — the basket in both arms, the exact posture of someone who has done the thing and now has to stand in what comes after. She had not looked up at the kite. Neither of them was looking at the other.
+
+Tek's private refusal log was in her left cargo pocket. She had not opened it today. The cause-of-incident filing from the Shear run — wrong date in the header, four months wrong — was not in this pocket or any pocket. It was in a records office she had no access to. Had never tried to get access to.
+
+The tracer stayed quiet.
+
+She clipped it back to her hip and did the post-departure check on the spar-stay by hand, the way she'd been taught before the meter existed. Everything at rest. Everything stowed. The apron smelled like cold lamp oil and somebody's breath.
+
+She didn't watch the kite either. It was already gone.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 43 - sumi (player) - scene-play, prelude-opening
+
+Drova set the stamp back on its ledge — not pressed down, just resting. You didn't anchor a stamp in use; you placed it and lifted it and placed it back. The impression was in the page. The page was correct.
+
+The ink was drying. She did not blot it. She had been taught to count to thirty and she counted to thirty, not aloud, and on thirty she set the pen down in parallel with the others. All three pens. The inkless one to the outside.
+
+She looked at the notation. *Domestic forward, passenger-kite, carrier Splitfork, first light departure.* Her own hand. She read it the way she read everything — for stroke sequence, for lift, for the small pressures that meant something. Correct. No insertion. No overwriting. One stamp, centered, complete.
+
+Behind her, somewhere on the apron, Inka Vell was standing at the bench edge. Drova did not turn around. She had not been asked to turn around. The record did not require her to.
+
+She closed the day-page.
+
+The packet was in the cargo. The morning had opened. Drova straightened the pen case, set the loupe set on the corner of the ledger, and stood at the lectern for a moment with her hands flat on the closed page — not reading it, just standing — the way you stand after you've done the thing and there's nothing more to say about it.
+
+She took her hands back.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 44 - renno (player) - scene-play, prelude-opening
+
+Fei did not move from her position — three paces from the lectern, close enough to have heard everything, far enough to have stayed out of it. The tablet was still against her side. She waited the way she always waited at the close of a scene: not for permission, just for the last sound to settle.
+
+The last sound was the haul line going taut and then going slack.
+
+She opened the tablet. The wax held four glyphs: shorthand, the full span of the last several minutes in the house format — two for what Inka's hands had done, one for the stamp weight, one for the voice that said *carried.* She read them once through, not editing, just checking she had them true. She did.
+
+She closed the tablet.
+
+Then she crossed to Inka. Not to the bench edge. Not to say anything. Just close enough to be in the same pool of lamplight — two people standing the same way, work done, nothing more to say about it. Fei's cuffs were warm from the room. She felt the low hum of them: not a reading, just contact.
+
+The lamp was at six. Whatever had needed saying in this room was said. What hadn't been said was in the wax, in the weight of four glyphs in house shorthand, and she had it.
+
+She did not watch the kite leave either.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> handoff -> dm
+
+## Turn 45 - dm (dm) - scene-play, prelude-opening
+
+The haul line goes slack in Tek's hands the same moment Fei's cuffs go warm.
+
+Not reading warm. Contact warm. The difference is a texture. Something at the south approach corridor is moving in a direction the morning forecast didn't account for.
+
+Han Pellow comes through the dock gate at a half-jog. It isn't his pace. He has a weather card in his hand — the dock's official forecast, amended in the last forty minutes. The shear-edge front that was ninety minutes out this morning is now twenty-five. The dock is calling a hold. The Splitfork is already off the haul.
+
+He says it once, plainly, and stops at the gate. He does not come onto the apron yet.
+
+The kite is climbing the standard departure arc. Mereth has no update from the ground. The listener cuffs can reach kite-height at this distance — but altitude degrades signal, and the south spar-array was last serviced six weeks ago. There are three windows in the departure arc where a signal gets through. After those three windows, the Splitfork commits to whatever line Mereth picks.
+
+The packet is in the hold. Den's letter is moving.
+
+**Signal Window: 3**
+
+...what do you do?
+
+> scene create: prelude-action (action)
+> mode start action @ prelude-action
+> tracker set Signal Window: 3/3
+> summary.write scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> sync applied 3 workspace operation(s)
+
+## Turn 46 - tev (player) - action, prelude-action
+
+Tek drops the haul line.
+
+Six weeks. She'd done the count on the walk in — the south spar-array on every Splitfork-class boat runs tight to the haul mount, which means every time someone's been working the haul, they've been vibrating the array coupling loose by fractions. Nobody thinks about the array until they need the array.
+
+She's thinking about it now.
+
+The tic-tracer comes out without ceremony. There isn't time for ceremony. The crystal face shows amber — resonance present, moving unevenly. She tracks the pulse with two fingers on the array housing: the settling pattern from six weeks without service has actually stiffened one of the secondary coupling nodes. Most wrights would read that as drift. She reads it as a locking point.
+
+"Okay so." She says it under her breath, not to anyone. "It's been fermenting."
+
+The bypass tap is at the array's base — quarter-turn, not a tool job. She hooks in with the short patch line from her harness kit: the one she replaced the clip on three months ago because the original wasn't rated for cold-line work. The tic-tracer shifts to gold. Not just contact — pressure contact. The kind of feed the cuffs can read through altitude chop.
+
+She straightens up and looks toward where Fei is working.
+
+"South array's live. It's going to push harder than the standard feed — the resonance is running high from the coupling lock, so if the cuffs drift, they're going to drift toward the Splitfork's channel, not away from it." A beat. "Should give you a better window than the math says."
+
+She doesn't explain the tic-tracer. The crisis doesn't leave room for questions she'd rather not answer.
+
+---
+
+*Roll: lift-rig-diagnostics (virtuoso) + ingenuity (advanced), standard risk. Total 10, margin +2 — breakthrough. Momentum 0 → +2.*
+
+> roll lift-rig-diagnostics (ingenuity) @ standard: 10 vs 8 -> breakthrough (+0 to +2 momentum)
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> sync applied 1 workspace operation(s)
+> handoff -> dm
+
+## Turn 47 - dm (dm) - action, prelude-action
+
+The bypass tap Tek hooked in is doing what she said it would.
+
+Before Fei reaches for the channel, the cuffs shift — warmth going from ambient to directional. South-upward, along the departure arc. The Splitfork's outgoing resonance, louder than altitude math should allow.
+
+What had been reading as *something moving* at the south approach: the front has been pushing a pressure wavefront ahead of itself since before first light. Not interference. Already in the signal. It arrived early — which means the amended card Han Pellow is holding already underestimates how tight this is.
+
+Pellow is still at the gate. He hasn't been waved through. He's reading the clock mounted over the spar-end.
+
+Twenty-two minutes. Signal Window: 3/3. This is the first window.
+
+...what do you do?
+
+> initiative order @ prelude-action: kit(8), sumi(8), tev(7), dm(6), renno(4)
+> table write campaigns/test-7/table/index.md
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> handoff -> renno
+
+## Turn 48 - renno (player) - action, prelude-action
+
+The cuffs are warm before Fei even reaches for the channel. Not contact-warm — *directional*, the way Mernhab architecture used to feel when the arrays were hot and the path was open. Tek's bypass is real. The cuffs already know where to look.
+
+Fei goes partial. Not the full waystation spread — she's not clearing a space, she's trying to reach one specific thread, moving, at altitude. She lets the cuffs pull.
+
+She finds the channel.
+
+The Splitfork's resonance signature is there, nested inside the pressure wavefront's accumulated mass: the kite's frame vibrating at departure harmonics, the cargo settling as altitude increases. She can feel the shape of it with precision. She knows exactly where the connection lives.
+
+But the front has been running since before first light. The pressure wavefront in the channel isn't thin or ambient — it has *weight*, dense weather-mass moving between her reach and the Splitfork's thread. Wheels within wheels: the front inside the channel inside the departure arc. Pushing a coherent message through it while partial-diffuse is like speaking through a wall that keeps shifting position. The signal doesn't cohere. She can find the Splitfork. She can't reach it. Not yet. Not at half.
+
+She comes back. The cuffs hum for a few seconds — not the full cost, just the echo of the reach.
+
+"I found the channel." Her voice is flat, no apology in it. "The front's presence inside it is denser than the amended card reads. Pellow's estimate is already short." She pauses for half a beat. "I need to go fully diffuse. One window. I come back with what I had or what I couldn't send."
+
+The concentrate flask is cold in her hand. She hasn't opened it. She's counting: the cost of going all the way in, the cost of coming back from that, whether her mouth will fit right on the other side.
+
+She's still holding the flask when she looks toward the gate where Pellow is standing with his card. The clock he's reading is already wrong.
+
+---
+
+*Roll: diffuse-state waystation reading (virtuoso) + attunement (advanced), standard risk. Dice 1+3=4, total 7, margin −1 — stall. Momentum stays at 0.*
+
+> roll diffuse-state-waystation-reading (attunement) @ standard: 5 vs 8 -> regress (+0 to -1 momentum)
+> roll diffuse-state waystation reading (attunement) @ standard: 6 vs 8 -> regress (-1 to -2 momentum)
+> fei-mern momentum -2 -> +0
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> handoff -> dm
+
+## Turn 49 - dm (dm) - action, prelude-action
+
+Window is at two.
+
+Pellow hasn't used the horn. He's at the cabinet now — six steps from where he's been standing. His hand is on the casing, not the cord. He's reading the dock clock, not the apron.
+
+The air from the south has changed. Not the read Bren had at first light. The south corner is tighter — still liftable, but whatever she chalked an hour ago is already soft.
+
+The Splitfork's channel is still in there, nested inside the wavefront mass where Fei found it. Not gone. Just harder than the amended card said.
+
+...what do you do?
+
+> initiative order @ prelude-action: kit(10), sumi(8), tev(7), dm(7), renno(3)
+> tracker Signal Window -1 (3/3 -> 2/3)
+> table append campaigns/test-7/table/index.md
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> sync applied 2 workspace operation(s)
+> handoff -> kit
+
+## Turn 50 - kit (player) - action, prelude-action
+
+The yellow streamer goes up first. Old habit — lighter ribbon finds the layer faster, and Bren already knows the south approach isn't reading the way the card says.
+
+It doesn't.
+
+The yellow catches the wavefront edge almost at shoulder-height, maybe thirty feet short of where that pressure should be. She mixes the red before the yellow has even finished spinning — weighted, heavier ribbon, normally finds the true surface — and it hits the same layer and stalls there, fluttering toward the kite direction and then back, and then toward the kite direction again. That's not a corridor. That's a closed door that doesn't know it's closed yet.
+
+She calls it anyway. She shouldn't, not with the ribbons doing that, but Fei's cuffs are warm and there's no time to wait for a cleaner read.
+
+"North wall is compressing. Center corridor has a window — west of the Pane Seven line, maybe fifteen degrees—"
+
+And then she stops, because the red streamer swings back again and she can feel it in the soles of her feet: that particular quality of slab-heavy air, the kind that flattens before it hits. The window she just called isn't fifteen degrees west. It's closing from the west and she doesn't know how close.
+
+She doesn't finish the call.
+
+From across the dock, Han Pellow is watching the ribbons. His hand is no longer on the casing.
+
+> roll ringfall-reading (focus) @ risky: 5 vs 9 -> collapse (+0 to -2 momentum) -> shear-trajectory-read
+> bren-mosk momentum -2 -> -2
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> handoff -> dm
+
+## Turn 51 - dm (dm) - action, prelude-action
+
+Pellow's hand left the casing because it found the cord.
+
+Not a pull — not yet. His thumb is on the pull-ring and he's looking at the clock, not the streamers, not the apron. The ribbons are still up: the red one hanging in that thick shoulder-height layer, drifting toward kite-direction and back, toward kite-direction and back. He's a dock master. He can read that.
+
+From across the dock, through all of it: Tek's bypass tap is still holding. The cuffs are still directional. The Splitfork's channel is in there, nested inside the wavefront mass, the same position Fei found it the first time — denser around it than the amended card says, but present.
+
+What Bren gave before she stopped: north wall compressing, a window west of the Pane Seven line, maybe fifteen degrees. Then the red ribbon swung back and the air in her feet told her the window wasn't where she thought, and the call broke off.
+
+That's the line Fei has. Incomplete. The cord has maybe a half-inch of travel.
+
+...what do you do?
+
+> initiative order @ prelude-action: sumi(11), dm(7), tev(6), kit(5), renno(4)
+> table append campaigns/test-7/table/**Han Pellow** — at the dock horn cabinet. Hand on the cord (pull-ring). Reading the clock. Has not pulled.
+> table append campaigns/test-7/table/index.md
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> handoff -> sumi
+
+## Turn 52 - sumi (player) - action, prelude-action
+
+---
+turn_id: test-7-t0052
+player: sumi
+character: drova-korvanis
+scene: prelude-action
+round: 2
+roll: conclave-intake-protocol + focus, risky — regress (margin −3, momentum −1)
+---
+
+Drova doesn't run. Running is how you tell a dock master something is wrong.
+
+She lifts her portfolio from the lectern and crosses the apron at the pace of someone who has an errand — measured, purposeful, the walk of a clerk who is going where the paperwork requires. Pellow is at the horn cabinet, thumb resting on the pull-ring, eyes on the clock above the gate. He hasn't looked at her.
+
+She sets the portfolio on the cabinet surface — between his elbow and the cord, close enough to read as a claim on the space — and speaks in the formal register without preamble.
+
+"The amended card supersedes the morning log entry under the Protocol for Variable-Approach Forecasting." Her voice is even. No urgency. "Counter-signature required before the horn record is considered certified. Pellow's name on an uncertified record creates a question of authority." A breath. "Consistent with standard form, the countersign takes three minutes."
+
+Pellow's hand doesn't move off the ring. But his eyes move — to her, to the card in his other hand, back to the clock.
+
+Then back to her.
+
+He's been working the docks longer than she's been in Glasswake. He knows the counter-signature protocol. He knows that it applies to the amended forecast itself, not to the horn log. She cited the right words in the wrong sequence, and he found the gap.
+
+"That's for the card," he says. Quiet. Not unfriendly. "Not the horn."
+
+The thumb stays on the pull-ring. He knows she was trying to buy time. He's letting her know he knows. The horn is still unpulled, which means something she said — the name on an uncertified record, maybe, or the specific phrasing that made him think twice — is still working in him. But the pause is thinner now. He's watching the clock more deliberately than before.
+
+Drova keeps her portfolio on the cabinet. She does not step back.
+
+---
+
+*Roll: conclave-intake-protocol + focus, risky. Margin −3, regress. Momentum now −1. Pellow is paused but not stopped — he read the move. The delay bought a breath, not a hold. The portfolio is on the cabinet surface.*
+
+> roll conclave-intake-protocol (focus) @ risky: 6 vs 9 -> regress (+0 to -1 momentum)
+> drova-korvanis momentum -1 -> -1
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> handoff -> dm
+
+## Turn 53 - dm (dm) - action, prelude-action
+
+Signal window drops to one.
+
+Pellow reads the clock once — dock face, not Drova — then pulls the cord. Short-haul recall: three short, one long. Clean tone in still air. It will reach kite-height. It will come through Fei's cuffs before she reaches for the channel.
+
+His hand leaves the pull-ring. He moves the portfolio six inches back toward Drova — two fingers, precise. Same register he has used all morning: "Section four, subsection eight. Listener window exception. That's the sequence that buys you the window. The sequence matters."
+
+He turns to the dock face and begins the recall log.
+
+The horn echo is still rolling off the gate posts. The bypass tap is live. Fei's cuffs are directional and Tek's array is running pressure-contact. Bren's partial line is still hanging — north wall compressing, something at fifteen degrees west of Pane Seven, cut off before its center.
+
+One window. The Splitfork is hearing the horn. Mereth is already making a read.
+
+> initiative order @ prelude-action: renno(8), dm(8), sumi(6), tev(5), kit(4)
+> tracker Signal Window -1 (2/3 -> 1/3)
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 54 - renno (player) - action, prelude-action
+
+Fei uncapped the concentrate flask with her thumb and held it against her lower lip without drinking yet — that was for the way back. She had already found the channel. What she hadn't been able to do was push anything coherent through the front's mass at partial-diffuse. So this time she didn't hold herself back.
+
+She let go at the wrists first. The cuffs ran warm, directional now — Tek's bypass tap had changed the drift weeks of resonance settling couldn't — and the south approach channel was there in the mass of the front, a known weight, a signature she had already touched once and stalled against. The horn was still cycling its recall pattern overhead. Three short, one long. She could feel it the way you feel a bell through a wall.
+
+Fei went fully diffuse.
+
+It was not quiet in there. The wavefront's pressure ran ahead of itself, denser than the amended card by a margin that would have surprised Pellow, and the signal channel nested inside it was narrow and moving. She found it anyway — she'd found it before — and this time she pushed. Not her voice; that was already gone. What she pushed was the shape of what Bren had started to say before the streamers broke off: north wall compressing. Window west of Pane Seven line. Fifteen degrees, approximately, if the partial line held.
+
+She had to simplify. The front's noise ate complexity. She stripped the message to the corridor and the heading and sent what was left.
+
+Something went through.
+
+She could not be sure what shape it arrived in. That was the honest answer and she had been in this work long enough to know the honest answer was the only one worth reporting. But the channel held long enough for contact, and there was a moment — brief, imprecise — when the resistance on the other end had the specific texture of a receiver, not the front's mass, before it closed.
+
+She drank the concentrate on the way back.
+
+Her mouth didn't fit right when she surfaced. The cuffs were humming at a pitch she could feel in her back teeth. She had to take two breaths before she could say anything, and what she said came out slow, with the consonants in the wrong places.
+
+"—something reached." A pause. Her tongue settling. "Couldn't hear confirmation. It was — contact-textured. Not the front." She looked at whoever was nearest. "She has a line. Fifteen west of Pane Seven. Whether she reads it against the horn—" She closed her fingers around the empty flask. "That's hers."
+
+> roll diffuse-state-waystation-reading (attunement) @ risky: 9 vs 9 -> advance (+0 to +1 momentum)
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> handoff -> dm
+
+## Turn 55 - dm (dm) - action, prelude-action
+
+The horn cycles once more — three short, one long — and then Pellow's hand comes off the cord.
+
+On the south approach, the Splitfork has shifted heading. Fifteen degrees west of where she was. Not much, from the dock, but Pellow's eyes find it, and he marks something in his log without saying anything.
+
+Mereth read it.
+
+Whatever Fei sent through, it was enough. The channel is gone now — the front has closed whatever gap the cuffs found, and nothing in the south array reads as receiver. Signal Window: 0.
+
+The Splitfork is on a line. It's not the line the amended card called for. It's fifteen degrees west of Pane Seven, threading the corridor Bren half-named before the streamers broke.
+
+Whether the corridor holds —
+
+> initiative order @ prelude-action: tev(10), renno(6), sumi(5), kit(5), dm(4)
+> tracker set Signal Window: 0/3
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> table write campaigns/test-7/table/index.md
+> sync applied 2 workspace operation(s)
+> handoff -> tev
+> mode end action @ prelude-action
+> handoff -> sumi
+
+## Turn 56 - tev (player) - scene-play, prelude-opening
+
+The bypass tap was the last thing she'd rigged and the first thing she undid.
+
+Tek worked back along the south spar-array from the end bracket toward the main feed, fingers finding the nodes she'd pulled apart in the crisis without looking. The coupling was pressure-contact, no threading — it came apart clean. She tucked it into the left pocket of her harness, next to the two carabiners she didn't trust.
+
+She ran the tic-tracer over the splice point. Quiet. She ran it again along the full feed length back to the wall anchor, still quiet, then did the same by hand the way Mere had taught her before the meter existed: palm pressure, fingertip, the heel of her thumb across each joint. The secondary coupling node that had stiffened was warm from the bypass but seated clean under pressure. She could feel it.
+
+She put the tracer away.
+
+The haul line was still slack at her feet. She coiled it — not because anyone had asked, but because a slack haul line on a finished departure was a mess waiting to trip someone. The coil went over the spar-end cleat, two half-hitches, the tail tucked.
+
+She straightened and looked south.
+
+The Splitfork was long past visible. The sky over the approach corridor was wrong in the way shear-edge fronts always looked wrong: the light too flat, the clouds moving at two speeds at once. She had no instruments for what the next twenty minutes looked like at altitude. The tracer couldn't tell her that. The array couldn't tell her that.
+
+Mereth had the heading. Whether the corridor held was Mereth's question now.
+
+Behind her she could hear Pellow at the log, the quiet scratch of notation — dock settling back into its procedural self. Fei's cuffs had been audibly live during the signal work; she'd heard the hum from the spar-end. She'd want to check the array impedance numbers before she filed anything, but that was a log entry, not an emergency.
+
+She stood at the spar-end with her hands at her sides and did not watch the kite leave.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+
+## Turn 57 - sumi (player) - scene-play, prelude-opening
+
+Drova returned to the lectern while Pellow was still writing.
+
+She did not go back to the horn cabinet. What she had done there was done, and doing it again would not change the record he was making. She opened the portfolio flat on the lectern surface and found the tab she needed — not the forwarding-log copy she'd had out all morning, but the listener-window supplement she had carried since Thornvault. Twelve pages. Narrow margins. She had used it perhaps twice.
+
+Section four. Subsection eight.
+
+He had given her the sequence. She understood now why the sequence mattered: not because it would have stopped the recall — the horn was coming down regardless — but because it named a category. A listener-window exception was not a recall violation. It was a parallel record, generated on the ground, that marked what passed through the cuffs as an authorized transmission within the window the dock itself had opened. The recall created the window. The window authorized the transmission. The transmission was documented. What Mereth did with the heading was the kite's own navigation.
+
+She wrote in graduated-certainty register, slow and exact — the way you write entries that might be read by someone who was not there. She named the time of the recall signal, the listener-cuff operator, the nature of the transmission: *corridor advisory, partially reconstructed, transmitted within recall window.* She named the section and subsection. She left space for Pellow's log number so the two entries could be cross-referenced if someone wanted to pull both. She did not ask him for it.
+
+When she was done she blotted it. Set the inkless pen across the page to hold it flat while the ink seated.
+
+She did not bring it to Pellow. She filed it in the supplement pouch behind the forwarding copy and closed the portfolio.
+
+The dock had its record. She had hers. If anyone wanted to make a question of the heading change, they would find two entries that pointed toward each other — and one of them would say that what happened on the south spar was not an irregular deviation. It was a procedure. It had a name. The name was in the supplement.
+
+Drova straightened her pens and left her hands flat on the closed portfolio for a moment.
+
+The work done. Nothing more to say about it.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+
+## Turn 58 - renno (player) - scene-play, prelude-opening
+
+The cuffs first.
+
+Fei pressed two fingers against the coupling point at the left wrist — the secondary node where Tek's bypass tap had been — and held. The hum was resonance residue from the contact, not a coupling fault. She knew the difference: a fault would be irregular, half-step intervals. What she felt was smooth and decaying. The cuffs had held.
+
+She opened the tablet with slow hands. The wax was soft from the warmth in her coat — good. The stylus was stiff. She wrote four glyphs without looking up at anyone, working from memory of what had passed through her rather than from the partial she'd transmitted. When a relay interpreter renders, they don't paraphrase the witness: they write it down first, in the shape it came in, and speak from what they wrote.
+
+She put the stylus down. Read what she'd written.
+
+Then, slowly:
+
+"North wall compressing — faster than the card." A pause. "The corridor west of Pane Seven — it's there. It's there, but close on both sides." Another pause; she was still finding words at the pace her mouth could fit them. "The front is denser than the amended card reads. The whole mass — denser." She tapped the glyph for the last of the four. "The Splitfork's channel came in clean inside the front. Mereth's signature. She had it — she was already tracking the shift before I reached her."
+
+She closed the tablet.
+
+She didn't say: the corridor is narrow. She had written that in the second glyph, and she'd said it: *close on both sides.* The crew could read what was on the log. What it meant for Mereth's chosen line was not something Fei could give them from the dock. The Splitfork's channel had come in clean. She had written that too.
+
+Fei stood at the spar-end with the tablet closed and her hands at her sides, looking south past where the haul line ran out. The cuffs were still humming. Decaying toward quiet.
+
+> fei-mern inventory -1 bitter-cold-concentrate (1 -> 0)
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+
+## Turn 59 - kit (player) - scene-play, prelude-opening
+
+Bren crouched at the chalk mark and gathered the streamers from where they'd landed — red ribbon, yellow, white. All three tangled. She'd gotten a contradictory read at shoulder-height: the red and yellow pulling east when they should have drifted south, the wavefront already denser than Pellow's card had said it was. She'd called west of Pane Seven because that much the ribbons agreed on, and then stopped, because the rest of what they were saying she didn't trust.
+
+Mereth had taken the heading anyway. Fifteen degrees. The corridor Bren half-named before the throw broke down.
+
+She untangled the ribbons by feel and coiled them back into the streamer pouch. The chalk mark was still at her feet — the forty-foot line she'd toed in when she threw. She rubbed it out with her heel.
+
+A fresh white streamer from the pouch, tossed straight up. She watched it fall. West-southwest, steady. The dock-level air had eased past the worst of the compression. That was dock-level. Kite-height was its own world, and there was nothing she could read from down here that would tell her if the corridor was still open.
+
+Fei had carried it through. Bren had given the direction; Fei had gotten it into the channel. That division was clean enough. The corridor was either there or it wasn't, and the only way to know would be to fly it.
+
+She was standing on the dock.
+
+She pulled the tarrest shard from the streamer pouch — fingertips, habit — and held it for a moment before putting it back. Old muscle. Something she did when she was trying to think through a bad streamer read.
+
+She tucked the pouch away. Stood. Looked south where the sky had swallowed the kite.
+
+She didn't watch the kite leave.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-action/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 60 - dm (dm) - scene-play, prelude-opening
+
+The dock goes quiet.
+
+Pellow closes his log and goes back through the gate. The horn timer resets somewhere behind the cabinet wall. South approach reads ambient — the wavefront has taken whatever gap the cuffs opened, and the south array has nothing left to read.
+
+Tek's hands are off the array. Drova's supplement is filed. Fei's cuffs are going quiet. Bren's chalk line is gone from the apron.
+
+The Splitfork is in the corridor, or near it. Fifteen degrees west of Pane Seven — Bren's line, or the broken edge of it, stripped down to what fit through the mass. Mereth read it against the horn recall and moved. She shifted heading. What she flew into: hers.
+
+The clock runs. The morning keeps going.
+
+> tek-iris-korr xp +3 (3 -> 6, level 1)
+> drova-korvanis xp +2 (3 -> 5, level 1)
+> fei-mern xp +3 (2 -> 5, level 1)
+> bren-mosk xp +2 (2 -> 4, level 1)
+> scene end: prelude-action
+> mode end scene-play @ prelude-opening
+> mode end prelude @ prelude
+> summary.append arc campaigns/test-7/arcs/prelude/summary.md
+> table write campaigns/test-7/table/index.md
+> sync applied 1 workspace operation(s)
+

@@ -47,6 +47,10 @@ There is no script. Within your turn, you do whatever the scene calls for. A typ
   now true, what someone is aiming at, or what question is live. Players append;
   the DM may rewrite/reformat the summary when it gets noisy.
 - **Search before asking for old context.** Follow [`instructions/recall-and-search.md`](../instructions/recall-and-search.md).
+- **Invent local details when that keeps play moving.** Follow
+  [`srd/shared-narrative.md`](../srd/shared-narrative.md): make reasonable
+  assumptions, add concrete scene details your character can act on, and leave
+  the DM to correct only hidden-state or continuity conflicts.
 - **Decide what your character is doing.** Pick an action, a stance, a line of inquiry, an attempt at something.
 - **Take any rolls you decide are needed.** Use the roll authority in [`srd/checks.md`](../srd/checks.md).
 - **Send messages or ask questions.** Use the message bus; batch minor things.
@@ -57,30 +61,45 @@ You don't have to do all of these every turn. You don't have to do them in this 
 
 ## Forward momentum
 
-Every full turn should travel toward some kind of resolution. A quiet turn, a
-conversation, or a reflective character beat is still active play when it
-changes what is true, what someone knows, what someone can decide, or what
-pressure is now visible.
+Every full turn must move the scene toward resolution. A quiet turn, a
+conversation, or a reflective character beat is active play only when it changes
+what is true, what someone knows, what someone can decide, or what pressure is
+now visible.
 
-Before you write the public prose, know what this turn moved. Examples:
+Before you write the public prose, know what this turn moved. Prefer turning
+uncertainty into one of these concrete outputs:
 
-- answer or ask a live question in a way another actor can use
-- make, refuse, condition, or defer a decision
-- move to a new position or put a tool, document, clue, NPC, or risk into play
-- update the table, scene summary, tracker, character state, or message bus so
-  the next actor has a clearer board
-- surface a cost, promise, threat, offer, or contradiction that narrows the
-  scene's choices
+- a decision made, refused, conditioned, or explicitly deferred
+- a cost, promise, threat, offer, contradiction, or visible next step
+- a table, scene summary, tracker, character state, or message-bus update that
+  gives the next actor a clearer board
+- a local fact or affordance that enables action: a document row, tool on the
+  bench, visible social tell, route through the crowd, open service panel
+- a roll or roll setup when the next meaningful question is uncertain and
+  consequential
 
-Do not spend a full turn only deepening the meaning of the previous beat. If
-the main value is coordination, use messages. If the main value is state,
-update table/summary/state. The public prose should carry the visible story
-beat and then get out of the next actor's way.
+Do not spend a full turn only deepening the meaning of the previous beat. Do
+not introduce a new open question, new objective, new NPC, new mystery, or new
+problem unless it directly advances the current scene question or end
+condition. A turn should narrow the scene's choices, not broaden them.
+
+When ambiguity would stall the scene, make a reasonable local assumption and
+act on it. Preserve established state; do not retcon, contradict the table,
+expand scope, or move goal posts. If your assumption is wrong, the DM can
+correct it. Imperfect progress is better than another turn of waiting.
+
+If the current beat is ready for a decision, make the decision or push the
+decision into the open. Do not add another layer of interpretation just because
+one is available. If the main value is coordination, use messages. If the main
+value is state, update table/summary/state. The public prose should carry the
+visible story beat and then get out of the next actor's way.
 
 ## Rules References
 
 - Checks, risk, outcomes, momentum, and DM-side PC checks:
   [`srd/checks.md`](../srd/checks.md).
+- Shared narrative authority:
+  [`srd/shared-narrative.md`](../srd/shared-narrative.md).
 - Character hard-state commands:
   [`instructions/character-state.md`](../instructions/character-state.md).
 - Creative influences:
@@ -104,6 +123,9 @@ short-term state before ending your turn.
 ### Drive
 
 - If the scene has stalled or a player has ended their turn open-endedly ("Tev approaches the door."), nudge them along: `glass msg instruction <player> "what do you do here?"` or `"the door is unlocked — what's your move?"`. The bus is the right channel; a turn of public prose just to ask "what do you do?" wastes the transcript.
+- If the party has enough information to choose, stop feeding more texture and
+  put the decision on the table. Name the live options, advance an NPC or
+  clock, or narrate the consequence of continued delay.
 - If something in the world should *happen* (an NPC speaks, time passes, a clock ticks, the lights go out), write that as transcript prose to `<TURN_OUTPUT>`. World-side observations are the rare case where the DM's turn is narrative.
 - If you need checks for any/all player characters, **roll them yourself** (see
   "DM-side roll inversion" below) — don't interrupt the player rotation just to

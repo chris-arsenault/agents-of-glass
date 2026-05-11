@@ -13,9 +13,9 @@ player_id: tev
 - **Archetype:** Splitfork kite-wright, off-the-books
 - **Organization role:** kite-wright
 - **Pronouns:** she/her
-- **Level:** 1 (0 XP)
+- **Level:** 1 (6 XP)
 - **HP:** 8/8
-- **Momentum:** 0 (-2 to 3)
+- **Momentum:** 2 (-2 to 3)
 
 ## Bio
 

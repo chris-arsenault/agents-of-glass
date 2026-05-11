@@ -22,14 +22,22 @@ when the turn changes position, trackers, target state, intention, or the live
 question for future actors. The DM may rewrite the scene summary between rounds
 when it gets noisy.
 
-Every action turn should move the scene toward its visible end condition. Move,
+Every action turn must move the scene toward its visible end condition. Move,
 act, roll if you choose to roll, update the tracker or table when state changes,
 then write the visible story beat. Conversation, hesitation, and defense are
-valid actions when they change leverage, position, risk, or the next actor's
-choice.
+valid actions only when they change leverage, position, risk, or the next
+actor's choice.
+
+Use shared narrative authority to keep action moving. If a reasonable local
+detail would make your action concrete, author it and act: a loose cargo strap,
+an open service hatch, a nervous courtier's glance, a cracked paving stone.
+Do not spend the action asking the DM to invent every affordance. Do not use
+that authority to erase opposition, contradict the table, open a new problem,
+or move the scene's goal posts.
 
 For the public rules, read [`srd/action-scenes.md`](../srd/action-scenes.md),
-[`srd/checks.md`](../srd/checks.md), and
+[`srd/checks.md`](../srd/checks.md),
+[`srd/shared-narrative.md`](../srd/shared-narrative.md), and
 [`srd/pressure.md`](../srd/pressure.md). This methodology is the turn sequence.
 
 `combat`, `chase`, and `social-pressure` are **DM toolkit examples**, not a

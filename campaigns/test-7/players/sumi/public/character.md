@@ -13,9 +13,9 @@ player_id: sumi
 - **Archetype:** ex-Conclave intake clerk on the Ledger Run
 - **Organization role:** refusal-log clerk and unofficial document examiner
 - **Pronouns:** she/her
-- **Level:** 1 (0 XP)
+- **Level:** 1 (5 XP)
 - **HP:** 10/10
-- **Momentum:** 0 (-2 to 3)
+- **Momentum:** -1 (-2 to 3)
 
 ## Bio
 

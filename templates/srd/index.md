@@ -12,6 +12,8 @@ It is written for players and DMs, not for the repository implementer.
 ## Core Rules
 
 - [`checks.md`](checks.md) — checks, risk, outcomes, and momentum.
+- [`shared-narrative.md`](shared-narrative.md) — player authority to add
+  concrete scene details in play.
 - [`pressure.md`](pressure.md) — numeric pressure for combat, chases, social
   pressure, and other action scenes.
 - [`character-state.md`](character-state.md) — HP, consequences, inventory,

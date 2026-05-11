@@ -1,0 +1,11 @@
+Done. The output is written. Here's what happened this turn:
+
+**DM move:** The office door opened. Mereth read the room — every PC in their closing position, the apron complete — and set the stamp on the lectern ledge without a word. She went to the spar-end and waited. The decision stays with the crew.
+
+**Commands run:**
+- `glass turn rapid-round` queued for all four players: "Your character's last action, line, or image as this scene closes."
+- Scene summary updated with Mereth's entrance
+- Table updated with stamp placement and Mereth's position
+- Scratchpad updated with closing procedure notes
+
+After the rapid-round drains, `glass scene end` closes the scene.

@@ -1,0 +1,5 @@
+Turn complete. The output is written to `players/tev/turns/0046/out.md`.
+
+**What happened:** Tek pulled the tic-tracer without hiding it — the crisis didn't leave room for that — and read the south spar-array. Six weeks of resonance settling had stiffened a secondary coupling node she used as a locking point rather than clearing out. Bypass tap in, array running pressure-contact. Told Fei the drift favors the Splitfork's channel. Breakthrough roll (lift-rig-diagnostics + ingenuity, standard risk, +2 margin). Momentum 0 → +2. Signal Window still 3/3.
+
+The tic-tracer is now visible at the table. Nobody has asked. The crisis is the cover.

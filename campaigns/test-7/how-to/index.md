@@ -19,6 +19,8 @@ instructions have mechanical tool behavior.
   information that enriches rather than sabotages.
 - [`scene-hooks.md`](scene-hooks.md) — hooks, strong starts, and player-facing
   invitations.
+- [`shared-narrative.md`](shared-narrative.md) — examples of inventing useful
+  local details instead of asking the DM to author every affordance.
 - [`skills-and-signature-moves.md`](skills-and-signature-moves.md) — choosing
   low-level starting skills and pressure-ready signature moves.
 - [`specificity.md`](specificity.md) — resisting generic drift with concrete

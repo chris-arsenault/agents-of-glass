@@ -1,0 +1,3 @@
+The turn output file is written — the sync rejection for turn output files is expected, as the orchestrator handles that path. The file is at `players/tev/turns/0042/out.md` and the scene summary has been appended.
+
+Tek's closing beat: she ran the post-departure check at the spar-end — tic-tracer first, then by hand, the old way — and the tracer read quiet because the rig was gone. She held the wrong date in the Shear filing somewhere behind her ribs, didn't reach for it, clipped the meter back. Didn't watch the kite either. Already gone.

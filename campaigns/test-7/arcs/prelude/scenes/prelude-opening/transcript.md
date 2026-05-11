@@ -2890,3 +2890,385 @@ The doorframe shadow has not moved.
 ---
 
 Handing off.
+## Turn 26 - renno (player) - scene-play, prelude-opening
+
+Three breaths of holding, the way the widow's register is owed.
+
+Fei has not moved from the three-pace Hab distance. Hands still at her sides. The chin-lower she gives after Inka's last sentence is the smallest acknowledgment the form has for difficult speech — not agreement, not the quick nod of condolence that would cross registers, just *received*. Only someone raised in the form would read it as a word.
+
+The apricots are still on Inka's lap. *For the dock regardless.* Fei heard that. A gift with no condition on it is a kind of argument — it says: I am not here to bargain.
+
+She doesn't ask about the nineteen years. She doesn't ask what Inka guesses the packet contains. Those are not Fei's doors to open at three paces, and the year-mark hasn't asked her to.
+
+What she asks, in the same register Inka answered in:
+
+"Is there anything you'd want carried with it. A word for him. From you."
+
+Two sentences. Not a follow-up question that closes the room, not a form-query that asks Inka to testify. A door opened toward the bench, not toward the lectern. If the brother receives the packet and Inka has something to say alongside it that the wax-paper doesn't hold — that is still hers to offer or not offer.
+
+Fei's hands have not moved.
+
+---
+
+*OOC — Renno:* Staying at three paces, holding court-interpreter discipline: no follow-up, no second door, no smoothing. The question is small enough that Inka can let it land anywhere she wants — her guess, a word for Eshil, nothing at all. If the DM wants Inka to surface the guess this round, that door is open. If she's not ready, the bench can hold another exchange without Fei pressing. Either landing works for us.
+
+Drova's third line on the page is in Fei's ear. Whatever lands in the next beat, we'll have the year-mark, the eleven-day count, and whatever Inka says or doesn't say — all three together are probably enough for the page's fourth line, if the page wants it.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 27 - kit (player) - scene-play, prelude-opening
+
+*Eight* from Tek's position, same register as *nine*, same weight as *nine*. Bren picks it up without moving her head.
+
+She stays at the cargo seat. Back of the right hand on the rim. Chalk mark on the left sleeve. The streamer pouch hasn't moved.
+
+The bench has Fei's question in it — the word Fei offered, or the space for one — and Inka sitting with it. The ledger has its two lines. The office has Mereth and Halvi and the stamp sound, which is still the stamp sound and not the door. Nothing on the apron has broken. Bren lets it stay that way.
+
+After the lamp's third dip settles, she sets the hab-knot read into the apron in dockyard register — low, not at the bench, not at anyone in particular:
+
+*Cord is Inka's own. Tied passenger-kite, around what she was given.*
+
+At the ledger-space. If a line wants it, it's there.
+
+She goes back to holding the seat. The wind is still yellow — the south corner held when she was at the hatch and nothing in the air has changed her reading. Yellow means a clean window if the apron decides before the cross-pull at twelve past light. But the wind read is for after the apron decides. That one stays in her.
+
+The count stands at seven. Standing-beside is still not-yet. She waits.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 28 - dm (dm) - scene-play, prelude-opening
+
+Inka's thumb doesn't move off the wax print. She looks at her hands for one breath — both of them, thumb across the apricot-oil mark, the other at the paper's edge — and answers in widow's register, the same register she's used all morning:
+
+"No. He knew what he wanted to leave. I'm not in it."
+
+She doesn't look up at Fei. Her breath has thinned. After a pause:
+
+"I've been carrying this since the fourth morning after Den died. I haven't put it down."
+
+Her hands stay where they are. She doesn't ask if that changes anything.
+
+The lamp at the spar-end corner dips. *Seven*, if the wright is counting.
+
+Mereth's shadow on the deck floor, visible in the strip under the office doorframe, hasn't moved.
+
+---
+
+The page on the lectern has three lines in graduated certainty — the cross-reference, the binding, the year-mark form. The hab-knot read and the wind read are in the room. Fei is still at three paces, the question answered, the space between her and the bench unchanged. Bren is at the cargo seat, back of right hand on the rim, everything she set into the apron in dockyard register between Drova and Tek, not at the bench, not yet.
+
+The apron has what it has. First light is close. The decision hasn't been made.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> sync applied 2 workspace operation(s)
+
+## Turn 29 - tev (player) - scene-play, prelude-opening
+
+The dock lamp has held at *seven* through Drova's third line and through the silence after.
+
+Tek's hand is still on the spar-side rim of the lectern. It has been there since she gave *eight*, since she gave *nine* before that, since the morning started with the walkaround. She knows the shape of the lamp through the skin of her palm — not from looking; from the body counting anyway, the way the body counts whether or not you ask it to.
+
+The count is done. Nine, eight, seven. After seven, the lamp's dipping will tell her when, not how far. She isn't looking at the lamp.
+
+Her right hand is off the rim before she decides it. The same motion as a gate release, as a haul-line uncleating — the hand that has done what the hand was doing and has stopped. She doesn't take a step toward the bench, doesn't turn to Drova's page. She turns to face the haul line at the spar-end of the Splitfork's apron. The wright's position when the apron is deciding and she's waiting for the word.
+
+One beat. Her hand finds the coat pocket. Not to pull the tic-tracer out. Just to feel it between the lining and the heel of her palm. It says nothing. The resonance through that side of the apron is clean.
+
+She leaves the tracer.
+
+Into the apron — same flat register as *nine* and *eight* and *seven*, not at anyone, not at the bench:
+
+*Eleven past first light. The window.*
+
+The lift window. When the south corner holds yellow into white and the cross-pull settles. When the Splitfork goes. Eleven minutes past first light is the wright's number, not the clerk's, not the cargo side's. Mereth already has it in her head. The manifest already has it in the column. Eleven minutes past first light is when the apron's decision becomes the spar's.
+
+She does not add another sentence.
+
+She is facing the haul line. Bren's wind read is in the apron. Drova's three lines are on the page. Fei is at the bench. The lamp is at seven.
+
+The wright is positioned to cast off when the word comes. Or to hold when it doesn't. Either is a wright's position. The apron decides.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 30 - sumi (player) - scene-play, prelude-opening
+
+The inkless pen came up from the page. Drova tilted it low — one slow rake, rim to center, the lamp's angle still readable from where she stood. The wax seal was what it had been. The binding was what she'd written.
+
+She set the pen down parallel to the long edge of the day-page. The cap went on the inkwell.
+
+She did not look at the bench.
+
+Into the apron, in the same flat register she had used all morning: *Year-mark date is eleven days from today. Hab-Meridian year-mark form expires at the mark.* A breath. *If the Splitfork does not carry this on the current run, the form lapses. The carrier would need a new carry-instrument from whoever holds the sender's records.*
+
+She did not name who held them. She did not know. Den was not on the page; Den was on the apron. The shelf-box at her ankle had the internal note on the prior entry, lid still down. She had not opened it. She had written from what she could read.
+
+*Three lines on the day-page. I do not have a refusal.*
+
+Her hand stayed flat beside the inkwell. The page was still open — she had not closed it, had not laid it face-down. Pen down and parallel was the form for *clerk is done*, not for *page is sealed*. Anyone who knew the log would read the difference.
+
+Tek's window was eleven past first light. The calendar window was eleven days. Both numbers were on the apron now. The shelf-box lid was down. Mereth's shadow on the deck had not moved.
+
+Drova did not add a fourth line.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> handoff -> dm
+
+## Turn 31 - dm (dm) - scene-play, prelude-opening
+
+The lamp at the spar-end corner dips to six.
+
+The sky behind the Glasswake towers has not changed yet, but the quality of the dark has. The dock lamps read it before the eye does — one slow fall and hold, the same shape it made at seven, at eight, at nine. Six. Tek named eleven past first light. The window is open.
+
+From the office: the stamp rhythm stops.
+
+The stamp stopping is different from the stamp running. One page closed, one page waiting — that has been the sound of this morning, the whole of it, Halvi working through the manifest at her own pace. The pause is new. The pause means the manifest is done or close. Mereth reading it back, or Mereth setting the pen down, or Mereth putting on her coat.
+
+The shadow of the office doorframe on the deck has not moved yet.
+
+Inka's hands are still on the packet. She has not stood. She is not looking at any one of them. She is looking at the apron — at the whole of it — the way you look at a door you have been waiting outside of for a long time, in patient register, without wanting anything from the waiting except for it to be finished.
+
+The apron has two windows on it now. The page has three lines. The decision is on whoever reaches for it first.
+
+It will not be Inka. She has given everything the bench gives.
+
+> scene closing down (~2 round(s) left)
+> table append campaigns/test-7/table/index.md
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 32 - tev (player) - scene-play, prelude-opening
+
+Tek shifted her weight — not a step, just a centering — and put her right hand on the haul line.
+
+Not cast-off grip. The back of two fingers, the way she reads a cold line at start-of-shift to feel whether the spar's talking. Light. Steady. The line was cool and taut and said nothing unusual. She left her hand there.
+
+The lamp was at *six*. The window she'd named was running. Eleven past first light, and counting.
+
+She did not look at the bench. Did not look at the page. She had already given the apron what the wright has to give — the count, the position, the window named. Drova's pen was down. The two elevens were on the record. Whatever word came next would come from the apron side, or it would come from Mereth when the door moved and the manifest came with it. Either way, Tek would hear it from here.
+
+She held the line the way you hold a thing you are not yet pulling. Present. Ready. Not decided — that was someone else's task, and she had always known it was. The wright's job at the threshold is simpler: stay at the spar, keep the hand on the line, and be the first to know.
+
+The morning was coming on. She could feel the lift beginning to build in the rig above her — the faint tension change that comes before yellow. Not yet. But close.
+
+She waited.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 33 - sumi (player) - scene-play, prelude-opening
+
+Drova kept her hands where they were after the pens went down — inkless to the left of the ink-pen, both parallel to the field edge of the page, the way she'd been trained to leave them when the examination was complete and the examiner was still at the lectern.
+
+She had been looking at the page.
+
+She looked at Inka.
+
+Four months since the fourth morning. Has not put it down.
+
+Drova bent — one controlled movement, not a search — and lifted the shelf-box lid at her ankle. The internal note from entry 2434-Q1-007 was folded once, edges clean, sitting in the front section of the archive where she'd filed it when Mereth gave her access to the backlog. She read the inside margin. Closed the lid.
+
+Stood.
+
+The note said what she'd thought it said when she cross-referenced the entry number during the intake review. The reason the prior packet was refused was not a reason about Inka's packet. It was a reason about a claim — a specific kind of claim, in a specific form, that would have required handling through Echo Ledger private-correspondence protocols.
+
+Inka had made no such claim. Her packet had no such form attached. The negative-comparison clause on the day-page already said as much, but it said it sideways, in graduated-certainty register, the way examinations say things when they are not ready to be said plainly.
+
+Drova said, into the apron, in something she did not have a register name for — not dock-pub, not graduated-certainty, not the formal read:
+
+*The prior refusal was about a claim. There is no claim here.*
+
+She did not say: carry it. She did not say: refuse. She set it where it could be picked up.
+
+The pens were still parallel. The page was still complete. Drova did not step away from the lectern.
+
+But she had stopped looking at the document.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 34 - renno (player) - scene-play, prelude-opening
+
+The eleven days sat on the apron in Drova's words, which were for the crew. Sound travels on a dock apron, especially before the morning freight picks up.
+
+Fei had been listening to Inka's hands. The thumb across the apricot-oil print on the wax had not moved since she gave her answer — *he knew what he wanted to leave; I'm not in it.* The cuffs on Fei's wrists were quiet; nothing to read there that the hands hadn't already given. The bench had offered what the bench had. The listening was done.
+
+She spoke once more before stepping back. Widow's register — not the trimmed bench-version she'd used before, but the plain form. The words for when you are telling a person something they need to know, not because you are asking them to do anything with it.
+
+*The form on the lectern is a year-mark form. If it lapses — eleven days from today — a new one would be needed. The records it would need to accompany it would have to come from whoever holds them now.*
+
+She paused one beat. *I'm not shaping anything. That's the shape of it.*
+
+Then she stepped back one pace, and stayed.
+
+She didn't look toward the lectern. She didn't look toward the lamp. She had given the bench the same thing the apron had, in the register the bench could use: the plain practical fact, without a push behind it. What Inka did with it was Inka's. The decision had always been Inka's.
+
+The cuffs stayed quiet. The morning cold came off the dock in the same flat measure it had been all morning. First light was already in; Tek's window was running.
+
+Fei stood at four paces now and did not ask a third question.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 35 - kit (player) - scene-play, prelude-opening
+
+Bren took her hand off the cargo seat.
+
+Not a withdrawal — the apron had everything cargo-side needed, and the wind read had been hers to hold since eight. The count was done. Tek had named the window. Drova's pens were parallel. The pilot's piece was the last thing still in her hand.
+
+She moved one pace toward the let-down clip point on the spar-side deck — not Tek's position at the haul line, not the wright's waiting stance, but the place where the pilot reads load against line before a drop. Her left hand went flat on the let-down line at the forty-foot chalk-mark. The line was cool and the chalk was dry. It would hold what Inka's packet weighed and then some.
+
+She spoke the wind read into the apron, dockyard register, the same register she'd used for the hab-knot:
+
+*Yellow through first light. Cross-pull at twelve past. The read holds.*
+
+That was what the pilot had. Held it for three counts because the bench hadn't needed it — Inka's decision wasn't about the weather — and now the window was open and Tek was at the haul line and Drova had named what there was and wasn't to refuse, and the wind read was the pilot's last piece.
+
+She left her hand on the chalk-mark. She didn't look at the bench or the office door.
+
+The pilot was at the line.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 36 - dm (dm) - scene-play, prelude-opening
+
+The stamp rhythm stopped a while ago — eleven minutes, maybe twelve. The shadow of the doorframe on the deck has not moved since the lamp went to six.
+
+Then it does.
+
+Halvi comes through first, manifest board in both hands, still reading. She goes to the cargo table at the far wall, sets the board down, opens the binding to the back page. She doesn't look up.
+
+Mereth follows her out. She stops two steps past the doorframe.
+
+She reads the apron. She takes in Drova's pens parallel and down, inkwell capped, day-page complete. She takes in Tek at the haul line, back of two fingers, the cold-line read. She takes in Bren at the let-down clip point with her left hand flat on the forty-foot chalk-mark, not looking at the bench. She takes in Fei at four paces from the bench, hands at her sides, nothing more to give.
+
+She takes in Inka. Inka on the bench, hands on the packet, thumb across the wax. Still sitting.
+
+Mereth goes to the lectern. She sets the office stamp on the ledge — not on the page, on the ledge — and takes her hand back empty. She goes to the spar-end and looks at the sky over Bren's shoulder. She says nothing about the walkaround. She says nothing about the wind. She says nothing at all.
+
+She is waiting.
+
+...what do you do?
+
+> rapid-round queued for tev,sumi,renno,kit: Your character's last action, line, or image as this scene c
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> table append campaigns/test-7/table/index.md
+> sync applied 1 workspace operation(s)
+
+## Turn 37 - tev (player) - scene-play, prelude-opening
+
+Tek does not look at the bench.
+
+Mereth is at the spar-end; she heard her cross the deck. The sky at twelve-past-light hasn't changed since Bren called it — yellow lift, cross-pull steady. The line under the back of her two fingers tells her the same thing it told her when she first set her hand there: the rig is ready. The tic-tracer in her pocket stays in her pocket.
+
+She doesn't count anymore. The count is done. The window runs from now until eleven past, and the line is either going out or it isn't, and neither of those is the wright's decision.
+
+Her fingers stay on the cold line. She breathes once, the way you breathe before you read a pull — not in, not out, just the held place in between.
+
+Ready.
+
+## Turn 38 - sumi (player) - scene-play, prelude-opening
+
+Drova reached across the lectern and moved the stamp.
+
+Mereth had set it on the ledge edge — reachable, but wrong. Not centered over the page, not where it belonged. Drova set two fingers on the handle and slid it to the left, level with the year-mark line, where the instrument sits when it is ready to be used and has not yet been used. A small correction. She did not look at Inka while she did it.
+
+Her pens stayed parallel. The shelf-box was closed. The inkwell was capped. The day-page had everything the record required: the prior refusal read, the calendar window, the examiner's observation that no defect of form prevented the run. *I do not have a refusal.* She had said what the page said. She had nothing more to say.
+
+She looked at the stamp now in its correct position and set her hands flat on the lectern, one over the other, and waited.
+
+## Turn 39 - renno (player) - scene-play, prelude-opening
+
+Fei did not speak again. She had asked what she came to ask; Inka had answered; that was the shape of it. She stepped back one pace — not away, just out of the lamp's direct reach — and drew the field-interpreter tablet from her coat. The stylus moved once, shorthand only, a single glyph: *carried since fourth morning, no word, her own.* The wax held it. She capped the stylus and let the tablet rest against her side, weight in her palm. The cuffs at her wrists were warm from the room and she felt the familiar low hum of them — not a reading, just contact. She did not look toward Tek at the haul line, nor toward Drova's parallel pens. She kept her eyes on Inka's hands on the packet and stayed where she was: three paces, present, done asking. The lamp was at six. Whatever the apron decided, the listener had what she needed.
+
+## Turn 40 - kit (player) - scene-play, prelude-opening
+
+The cross-pull is still at twelve past light — Bren can feel it on the back of her hand without looking up. She doesn't move from the clip point. The window is open; the line is ready; she knew both before anyone named them. Her hand stays on the chalk-mark. She's a pilot. The question she could answer, she answered. Everything else belongs to the apron.
+
+## Turn 41 - dm (dm) - scene-play, prelude-opening
+
+Inka stood.
+
+No one in the room moved when she did. Tek's hand stayed on the haul line. Drova did not look up from the stamp she'd just repositioned. Bren did not look up from the chalk-mark. Fei had her stylus capped and the tablet against her side.
+
+Inka crossed the three paces from the forwarding bench to the lectern. Not to Drova. To the page. She set the packet flat on the day-page, inside the stamp's reach, wax face up. Her thumb came off the apricot-oil print for the first time since she sat down.
+
+She stepped back. Her basket went to both arms. She stood at the bench edge the way people stand when they've done the thing they came to do and there is nothing left to say about it.
+
+Drova's eyes moved to the packet. Then to the stamp. She uncapped the inkwell. The ink pen had been at rest since the page was finished — she picked it up now, working hand, and wrote the consignment notation in the receiving line: *domestic forward, passenger-kite, carrier Splitfork, first light departure.* She pressed the stamp once. The page received it.
+
+She said, in graduated-certainty register, to the apron and no one in particular: *Carried.*
+
+Mereth, still at the spar-end, still looking at the sky over Bren's shoulder: *Go.*
+
+The haul line ran out.
+
+---
+
+*Scene end. Splitfork is away. The packet is in the cargo — Inka's cord around Den's last letter, carried on the first lift out of Glasswake at first light on the thirty-seventh day of the fourth month. Whatever Den wanted to leave, it's moving now. Inka is still standing at the bench edge. She has not watched the kite leave.*
+
+*XP: Tek 3, Drova 3, Fei 2, Bren 2.*
+
+> initiative order @ prelude-opening: renno(10), dm(10), tev(8), sumi(8), kit(5)
+> scene end: prelude-opening (+4 xp awards)
+> summary.append arc campaigns/test-7/arcs/prelude/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 42 - tev (player) - scene-play, prelude-opening
+
+The haul line ran out. She felt it through her palm — the line going slack, the weight releasing — and for that one second the Splitfork was neither here nor gone, just in transit, in the place between departure and sky.
+
+Tek let the cast-off loop drop. Standard procedure. Both hands free.
+
+She reached for the tic-tracer without thinking about it. Habit, or something like it: you run the check after a departure the same way you run it before. The walkaround doesn't end at cast-off. She unclipped the case from her hip, thumbed the lid, held the bead end toward the spar-stay.
+
+Quiet. Of course it was quiet. The rig had left. There was nothing to read.
+
+She held it a moment longer than she needed to.
+
+Inka Vell was still on the apron. Tek could see her at the edge of her sight — the basket in both arms, the exact posture of someone who has done the thing and now has to stand in what comes after. She had not looked up at the kite. Neither of them was looking at the other.
+
+Tek's private refusal log was in her left cargo pocket. She had not opened it today. The cause-of-incident filing from the Shear run — wrong date in the header, four months wrong — was not in this pocket or any pocket. It was in a records office she had no access to. Had never tried to get access to.
+
+The tracer stayed quiet.
+
+She clipped it back to her hip and did the post-departure check on the spar-stay by hand, the way she'd been taught before the meter existed. Everything at rest. Everything stowed. The apron smelled like cold lamp oil and somebody's breath.
+
+She didn't watch the kite either. It was already gone.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 43 - sumi (player) - scene-play, prelude-opening
+
+Drova set the stamp back on its ledge — not pressed down, just resting. You didn't anchor a stamp in use; you placed it and lifted it and placed it back. The impression was in the page. The page was correct.
+
+The ink was drying. She did not blot it. She had been taught to count to thirty and she counted to thirty, not aloud, and on thirty she set the pen down in parallel with the others. All three pens. The inkless one to the outside.
+
+She looked at the notation. *Domestic forward, passenger-kite, carrier Splitfork, first light departure.* Her own hand. She read it the way she read everything — for stroke sequence, for lift, for the small pressures that meant something. Correct. No insertion. No overwriting. One stamp, centered, complete.
+
+Behind her, somewhere on the apron, Inka Vell was standing at the bench edge. Drova did not turn around. She had not been asked to turn around. The record did not require her to.
+
+She closed the day-page.
+
+The packet was in the cargo. The morning had opened. Drova straightened the pen case, set the loupe set on the corner of the ledger, and stood at the lectern for a moment with her hands flat on the closed page — not reading it, just standing — the way you stand after you've done the thing and there's nothing more to say about it.
+
+She took her hands back.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+
+## Turn 44 - renno (player) - scene-play, prelude-opening
+
+Fei did not move from her position — three paces from the lectern, close enough to have heard everything, far enough to have stayed out of it. The tablet was still against her side. She waited the way she always waited at the close of a scene: not for permission, just for the last sound to settle.
+
+The last sound was the haul line going taut and then going slack.
+
+She opened the tablet. The wax held four glyphs: shorthand, the full span of the last several minutes in the house format — two for what Inka's hands had done, one for the stamp weight, one for the voice that said *carried.* She read them once through, not editing, just checking she had them true. She did.
+
+She closed the tablet.
+
+Then she crossed to Inka. Not to the bench edge. Not to say anything. Just close enough to be in the same pool of lamplight — two people standing the same way, work done, nothing more to say about it. Fei's cuffs were warm from the room. She felt the low hum of them: not a reading, just contact.
+
+The lamp was at six. Whatever had needed saying in this room was said. What hadn't been said was in the wax, in the weight of four glyphs in house shorthand, and she had it.
+
+She did not watch the kite leave either.
+
+> summary.append scene campaigns/test-7/arcs/prelude/scenes/prelude-opening/summary.md
+> handoff -> dm
+
