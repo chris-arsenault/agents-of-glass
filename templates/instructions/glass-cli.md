@@ -11,7 +11,10 @@ raw Cypher. Read normal workspace-relative paths, edit writable document paths
 in place, and use `glass` to commit those edits or mutate hard state. Do not
 invent mechanical state in prose when a `glass` command owns it.
 
-Use `glass --help` and command-specific `--help` when unsure.
+Use `glass --help` and command-specific `--help` when unsure. Do not spend
+turn time reading the CLI source; if a command still fails after one clear
+usage correction, continue the turn and let the operator-visible logs carry the
+tooling problem.
 
 Prefer bulk commands when you have several related mutations. For authored
 markdown, write files at their real workspace paths and commit them with one
@@ -49,13 +52,14 @@ mutate campaign, scene, lore, clock, tracker, and graph state.
 ```bash
 glass roll <skill> <attribute> --risk <level> --character <id>
 glass scene pressure <target> <skill> <attribute> --risk <level> --character <id> --impact <d6|d8|d10>
-glass character bulk-update --from scratch/character-update.json
+glass character bulk-update --json '<payload>'
 glass character mirror <id>
 glass character signature-status <id>
 glass character signature-add <id> <name>
 glass character set-hp <id> <delta>
 glass character inventory-add <id> <item-id>
-glass summary append scene --body "- Turn 14: concise continuity for the next actor."
+glass turn end --summary "<what changed>" --state "<durable updates or no state change>" --rolls "<rolls or none>" --next default
+glass turn housekeeping-round --previous-scene "<closed>" --next-scene "<next>" --next tev
 glass msg <type> <recipient> <body>
 glass note propose <path>
 glass sync apply [path-or-directory ...]
@@ -78,20 +82,42 @@ glass sync apply
 With no paths, `glass sync apply` commits changed writable markdown files.
 Directory arguments recurse over markdown files.
 
-The older manifest form remains available for rare generated batches:
-
-```json
-{
-  "writes": [
-    {"kind": "note", "path": "journal/today.md", "from": "scratch/today.md"},
-    {"kind": "table", "path": "index.md", "mode": "append", "from": "scratch/table.md"},
-    {"kind": "summary", "level": "scene", "mode": "append", "from": "scratch/scene-summary.md"}
-  ]
-}
-```
+Do not sync turn artifact paths such as `dm/turns/<n>/TURN.md` or
+`players/<id>/turns/<n>/TURN.md`; the runner collects the current turn prose
+and `glass turn end` closeout automatically.
 
 Player syncs can commit only their own writable player document paths. Players
-may also append to the active scene summary with `glass summary append scene`;
-use 2-4 sentences or bullets to capture compact continuity for the next actor.
+may also append to the active scene summary with `glass summary append scene`
+when durable scene-level truth changes. Per-turn continuity for the next actor
+belongs in `glass turn end --summary ...`.
 DM syncs can commit DM, arc, table, shared lore, and campaign summary/context
 document paths. Use `--dry-run` to validate without writing.
+
+## Turn End
+
+Every agent turn closes with `glass turn end`. The command records the compact
+context block future turns receive and optionally queues a next actor:
+
+```bash
+glass turn end \
+  --summary "Tev commits to opening the rack while Sumi keeps Drova talking." \
+  --state "table/index.md updated with the exposed service panel" \
+  --rolls "none" \
+  --next default
+```
+
+Use `--next dm`, `--next tev`, `--next sumi`, `--next renno`, or `--next kit`
+only when normal rotation or action order should be overridden.
+
+DM-only scene boundary helper:
+
+```bash
+glass turn housekeeping-round \
+  --previous-scene "dock-side-questions" \
+  --next-scene "rack-door" \
+  --next tev
+```
+
+This queues one non-plot cleanup turn for each player, then queues the first
+real actor of the next scene. Players use it only to update notes, journals,
+private requests, inventory reminders, or other local bookkeeping.

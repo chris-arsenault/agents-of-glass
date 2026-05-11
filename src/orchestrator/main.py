@@ -30,7 +30,7 @@ PRELUDE_ARC_ID = "prelude"
 # umask 002 so subdirs the orchestrator creates inside the campaign
 # workspace (notably per-turn artifact dirs under <agent>/turns/) are
 # group-writable. Combined with setgid + group=aog-<player> on the
-# parent turns/, this lets the player Unix user write their out.md
+# parent turns/, this lets the player Unix user write their TURN.md
 # into a subdir the orchestrator (running as operator) created.
 os.umask(0o002)
 
@@ -66,25 +66,35 @@ def api() -> None:
 
 @api.command("start")
 @click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+@click.option("--host", "bind_host", default=None, help="Bind host for the daemon.")
 @click.pass_obj
-def api_start(cli: CliState, url: str | None) -> None:
+def api_start(cli: CliState, url: str | None, bind_host: str | None) -> None:
     """Start the detached local glass API daemon."""
     from cli.api_daemon import start_daemon
 
     _echo_api_daemon(
-        start_daemon(url=_api_url(url), config_path=config_env_value(cli.config))
+        start_daemon(
+            url=_api_url(url),
+            config_path=config_env_value(cli.config),
+            bind_host=bind_host,
+        )
     )
 
 
 @api.command("restart")
 @click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+@click.option("--host", "bind_host", default=None, help="Bind host for the daemon.")
 @click.pass_obj
-def api_restart(cli: CliState, url: str | None) -> None:
+def api_restart(cli: CliState, url: str | None, bind_host: str | None) -> None:
     """Restart the detached local glass API daemon with current code/config."""
     from cli.api_daemon import restart_daemon
 
     _echo_api_daemon(
-        restart_daemon(url=_api_url(url), config_path=config_env_value(cli.config))
+        restart_daemon(
+            url=_api_url(url),
+            config_path=config_env_value(cli.config),
+            bind_host=bind_host,
+        )
     )
 
 
@@ -104,6 +114,136 @@ def api_status(url: str | None) -> None:
     from cli.api_daemon import status_daemon
 
     _echo_api_daemon(status_daemon(url=_api_url(url)))
+
+
+@main.group("web-api")
+def web_api() -> None:
+    """Manage the local read-only web API daemon."""
+
+
+@web_api.command("start")
+@click.option("--url", default=None, help="Web API URL. Defaults to AOG_WEB_API_URL or localhost.")
+@click.option("--host", "bind_host", default=None, help="Bind host for the daemon.")
+@click.pass_obj
+def web_api_start(cli: CliState, url: str | None, bind_host: str | None) -> None:
+    """Start the detached read-only web API daemon."""
+    from cli.web_api_daemon import start_daemon
+
+    _echo_service_daemon(
+        start_daemon(
+            url=_web_api_url(url),
+            config_path=config_env_value(cli.config),
+            bind_host=bind_host,
+        ),
+        "web API",
+    )
+
+
+@web_api.command("restart")
+@click.option("--url", default=None, help="Web API URL. Defaults to AOG_WEB_API_URL or localhost.")
+@click.option("--host", "bind_host", default=None, help="Bind host for the daemon.")
+@click.pass_obj
+def web_api_restart(cli: CliState, url: str | None, bind_host: str | None) -> None:
+    """Restart the detached read-only web API daemon."""
+    from cli.web_api_daemon import restart_daemon
+
+    _echo_service_daemon(
+        restart_daemon(
+            url=_web_api_url(url),
+            config_path=config_env_value(cli.config),
+            bind_host=bind_host,
+        ),
+        "web API",
+    )
+
+
+@web_api.command("stop")
+@click.option("--url", default=None, help="Web API URL. Defaults to AOG_WEB_API_URL or localhost.")
+def web_api_stop(url: str | None) -> None:
+    """Stop the detached read-only web API daemon."""
+    from cli.web_api_daemon import stop_daemon
+
+    _echo_service_daemon(stop_daemon(url=_web_api_url(url)), "web API")
+
+
+@web_api.command("status")
+@click.option("--url", default=None, help="Web API URL. Defaults to AOG_WEB_API_URL or localhost.")
+def web_api_status(url: str | None) -> None:
+    """Show local read-only web API daemon status."""
+    from cli.web_api_daemon import status_daemon
+
+    _echo_service_daemon(status_daemon(url=_web_api_url(url)), "web API")
+
+
+@main.group()
+def web() -> None:
+    """Manage the local web UI and read-only web API."""
+
+
+@web.command("start")
+@click.argument("campaign_id", required=False)
+@click.option("--url", default=None, help="Web UI URL. Defaults to localhost:26000.")
+@click.pass_obj
+def web_start(cli: CliState, campaign_id: str | None, url: str | None) -> None:
+    """Start the local web UI and read-only web API if needed."""
+
+    campaign = campaign_id or cli.store.latest_campaign() or "test-7"
+    _echo_webui_daemon(_start_webui_for_campaign(cli, campaign, url=url))
+
+
+@web.command("restart")
+@click.argument("campaign_id", required=False)
+@click.option("--url", default=None, help="Web UI URL. Defaults to localhost:26000.")
+@click.pass_obj
+def web_restart(cli: CliState, campaign_id: str | None, url: str | None) -> None:
+    """Restart the local web UI process."""
+
+    from .webui_daemon import restart_webui
+
+    campaign = campaign_id or cli.store.latest_campaign() or "test-7"
+    _echo_webui_daemon(
+        restart_webui(
+            repo_root=cli.config.repo_root,
+            config_path=config_env_value(cli.config),
+            campaign_id=campaign,
+            url=url or _webui_url(None),
+            web_api_url=_web_api_url(None),
+        )
+    )
+
+
+@web.command("stop")
+@click.option("--url", default=None, help="Web UI URL. Defaults to localhost:26000.")
+@click.pass_obj
+def web_stop(cli: CliState, url: str | None) -> None:
+    """Stop managed local web UI processes."""
+
+    from .webui_daemon import stop_webui
+
+    _echo_webui_daemon(
+        stop_webui(
+            repo_root=cli.config.repo_root,
+            url=url or _webui_url(None),
+            web_api_url=_web_api_url(None),
+        )
+    )
+
+
+@web.command("status")
+@click.option("--url", default=None, help="Web UI URL. Defaults to localhost:26000.")
+@click.pass_obj
+def web_status(cli: CliState, url: str | None) -> None:
+    """Show local web UI status."""
+
+    from .webui_daemon import status_webui
+
+    _echo_webui_daemon(
+        status_webui(
+            repo_root=cli.config.repo_root,
+            url=url or _webui_url(None),
+            web_api_url=_web_api_url(None),
+        )
+    )
 
 
 @main.group()
@@ -131,7 +271,6 @@ def _run_campaign_lifecycle(
     _ensure_operator_groups_active()
     _ensure_db_migrated(cli)
     _ensure_falkor_reachable(cli)
-    _restart_api_daemon_for_run(cli)
 
     if campaign_id is None:
         campaign_id = cli.store.latest_campaign()
@@ -140,6 +279,7 @@ def _run_campaign_lifecycle(
                 "campaign id required when no campaign exists; "
                 "run `aog campaign run <campaign-id>`"
             )
+    _ensure_glass_api_for_run(cli)
 
     space = CampaignSpace.from_config(cli.config, campaign_id)
     if space.exists():
@@ -347,14 +487,26 @@ def _phase_completed(cm_state: dict, phase_name: str) -> bool:
 def _start_next_active_mode(cli: CliState, *, campaign_id: str) -> str | None:
     """Start the next no-intervention active-play bridge mode.
 
-    A no-mode active campaign is an intentional pause surface: after prelude
-    or an act closes, the next run opens intermission; after intermission
-    closes, the next run opens scene prep and queues Mara.
+    A no-mode active campaign is an intentional pause surface. Intermission is
+    an act/prelude boundary, not a scene boundary: after intermission closes we
+    open scene prep; inside an already-active act we recover into scene prep
+    rather than opening another intermission.
     """
 
     latest_mode = _latest_turn_mode(cli, campaign_id)
-    next_mode = _next_mode_after_no_active_mode(latest_mode)
-    arc_id = _ensure_main_arc_active(cli, campaign_id)
+    try:
+        cm_state = cli.campaign_manager.load_state(campaign_id)
+    except Exception:
+        cm_state = {}
+    arc_id = _active_main_arc_id(cm_state)
+    raw_active_arc = str(cm_state.get("active_arc") or "")
+    if not arc_id and raw_active_arc == PRELUDE_ARC_ID:
+        arc_id = _ensure_main_arc_active(cli, campaign_id)
+    next_mode = _next_mode_after_no_active_mode(
+        latest_mode,
+        active_arc=arc_id,
+        has_prior_intermission=_has_intermission_turns(cli, campaign_id),
+    )
     if next_mode == MODE_INTERMISSION:
         scene_id = _next_intermission_scene_id(cli, campaign_id)
         _dm_glass(cli, campaign_id, ["mode", "start", MODE_INTERMISSION, scene_id])
@@ -366,6 +518,7 @@ def _start_next_active_mode(cli: CliState, *, campaign_id: str) -> str | None:
         return MODE_INTERMISSION
 
     if next_mode == MODE_SCENE_PREP:
+        arc_id = arc_id or _ensure_main_arc_active(cli, campaign_id)
         scene_id = f"{arc_id or 'next-act'}-setup"
         _dm_glass(cli, campaign_id, ["mode", "start", MODE_SCENE_PREP, scene_id])
         _queue_mara_next(cli, campaign_id)
@@ -375,10 +528,50 @@ def _start_next_active_mode(cli: CliState, *, campaign_id: str) -> str | None:
     return None
 
 
-def _next_mode_after_no_active_mode(latest_turn_mode: str | None) -> str:
+def _next_mode_after_no_active_mode(
+    latest_turn_mode: str | None,
+    *,
+    active_arc: str | None = None,
+    has_prior_intermission: bool = False,
+) -> str:
     if (latest_turn_mode or "").lower() == MODE_INTERMISSION:
         return MODE_SCENE_PREP
+    if active_arc and has_prior_intermission:
+        return MODE_SCENE_PREP
     return MODE_INTERMISSION
+
+
+def _active_main_arc_id(cm_state: dict) -> str | None:
+    closed = {str(arc_id) for arc_id in cm_state.get("closed_arcs", [])}
+    active_arc = str(cm_state.get("active_arc") or "")
+    if active_arc and active_arc != PRELUDE_ARC_ID and active_arc not in closed:
+        return active_arc
+    return None
+
+
+def _has_intermission_turns(cli: CliState, campaign_id: str) -> bool:
+    from cli import db as _glass_db
+    from cli.config import load_config as _load_glass_config
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        toml_data = _load_glass_config()
+        pg_config = _glass_db.load_pg_config(toml_data)
+        with _glass_db.connect(pg_config) as conn:
+            return bool(
+                _glass_db.turn_list(
+                    conn,
+                    campaign_id=campaign_id,
+                    mode=MODE_INTERMISSION,
+                    limit=1,
+                )
+            )
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
 
 
 def _consume_review_stop(review_stop_budget: int | None) -> tuple[bool, int | None]:
@@ -455,16 +648,19 @@ def _ensure_main_arc_active(cli: CliState, campaign_id: str) -> str | None:
         cm_state = cli.campaign_manager.load_state(campaign_id)
     except Exception:
         return None
+    closed = {str(arc_id) for arc_id in cm_state.get("closed_arcs", [])}
     active_arc = str(cm_state.get("active_arc") or "")
-    if active_arc and active_arc != PRELUDE_ARC_ID:
+    if active_arc and active_arc != PRELUDE_ARC_ID and active_arc not in closed:
         return active_arc
     candidates = [
         str(arc_id)
         for arc_id in cm_state.get("arcs", [])
-        if str(arc_id) and str(arc_id) != PRELUDE_ARC_ID
+        if str(arc_id)
+        and str(arc_id) != PRELUDE_ARC_ID
+        and str(arc_id) not in closed
     ]
     if not candidates:
-        return active_arc or None
+        return None
     chosen = candidates[0]
     _dm_glass(cli, campaign_id, ["arc", "activate", chosen])
     click.echo(f"      active arc: {chosen}")
@@ -806,19 +1002,36 @@ def _ensure_operator_groups_active() -> None:
     )
 
 
-def _restart_api_daemon_for_run(cli: CliState) -> None:
-    from cli.api_daemon import restart_daemon
-
+def _ensure_glass_api_for_run(cli: CliState) -> None:
     try:
+        from cli.api_daemon import restart_daemon
+
         info = restart_daemon(
             url=_api_url(None),
             config_path=config_env_value(cli.config),
         )
     except Exception as exc:
-        raise click.ClickException(f"failed to restart glass API daemon: {exc}") from exc
+        raise click.ClickException(f"failed to restart glass API: {exc}") from exc
     click.echo(
-        f"      glass API: restarted {info.url} pid={info.pid or '-'} "
-        f"(log: {info.log_path})"
+        f"      glass API: {info.message} {info.url} "
+        f"pid={info.pid or '-'} (log: {info.log_path})"
+    )
+
+
+def _start_webui_for_campaign(
+    cli: CliState,
+    campaign_id: str,
+    *,
+    url: str | None = None,
+):
+    from .webui_daemon import start_webui
+
+    return start_webui(
+        repo_root=cli.config.repo_root,
+        config_path=config_env_value(cli.config),
+        campaign_id=campaign_id,
+        url=url or _webui_url(None),
+        web_api_url=_web_api_url(None),
     )
 
 
@@ -881,9 +1094,34 @@ def _api_url(value: str | None) -> str:
     return value or os.environ.get("GLASS_API_URL", DEFAULT_API_URL)
 
 
+def _webui_url(value: str | None) -> str:
+    from .webui_daemon import DEFAULT_WEBUI_URL
+
+    return value or os.environ.get("AOG_WEBUI_URL", DEFAULT_WEBUI_URL)
+
+
+def _web_api_url(value: str | None) -> str:
+    from cli.web_api_server import DEFAULT_WEB_API_URL
+
+    return value or os.environ.get("AOG_WEB_API_URL", DEFAULT_WEB_API_URL)
+
+
 def _echo_api_daemon(info) -> None:
+    _echo_service_daemon(info, "glass API")
+
+
+def _echo_service_daemon(info, label: str) -> None:
+    bind = f" bind={info.bind_host}" if getattr(info, "bind_host", None) else ""
     click.echo(
-        f"glass API {info.message}: url={info.url} "
+        f"{label} {info.message}: url={info.url} "
+        f"pid={info.pid or '-'} running={str(info.running).lower()}{bind}"
+    )
+    click.echo(f"log: {info.log_path}")
+
+
+def _echo_webui_daemon(info) -> None:
+    click.echo(
+        f"web UI {info.message}: url={info.url} web_api={info.api_url} "
         f"pid={info.pid or '-'} running={str(info.running).lower()}"
     )
     click.echo(f"log: {info.log_path}")
@@ -1029,8 +1267,9 @@ def campaign_prepare_turn(cli: CliState, campaign_id: str | None) -> None:
     package = cli.orchestrator.prepare_turn(state)
     click.echo(f"prepared {package.turn_id}")
     click.echo(f"cwd: {package.spawn_cwd}")
-    click.echo(f"in:  {package.turn_start_path}")
-    click.echo(f"out: {package.turn_output_path}")
+    click.echo(f"start:    {package.turn_start_path}")
+    click.echo(f"prose:    {package.turn_prose_path}")
+    click.echo(f"closeout: {package.turn_closeout_path}")
 
 
 @campaign.command("run")

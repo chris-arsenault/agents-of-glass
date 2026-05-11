@@ -30,10 +30,10 @@ player-agent table unless the DM explicitly puts or links them under `table/`.
 
 ## Current Local Architecture
 
-- REST API: `src/cli/api_server.py`, under `/v1/campaigns/<id>/...`.
+- REST API: `src/cli/web_api_server.py`, under `/v1/campaigns/<id>/...`.
 - Frontend: `frontend/`, Vite/React.
-- Local helper: `scripts/run-webui-local.sh`, which starts both services in the
-  mapped Docker port range.
+- Local helper: `scripts/run-webui-local.sh`, which starts the read-only web API
+  and frontend in the mapped Docker port range.
 - Source of truth:
   - Postgres for turns, messages, rolls, characters, hard state, and runtime.
   - Markdown for campaign files.

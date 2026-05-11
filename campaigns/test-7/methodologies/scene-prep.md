@@ -64,7 +64,7 @@ with `glass sync apply arcs/<arc>/scenes/<slug> table`.
 
 ## Read first
 
-1. Your own [`persona.md`](../../dm/persona.md) and [`scratchpad.md`](../../dm/scratchpad.md).
+1. Your own [`persona.md`](../../dm/persona.md).
 2. The campaign foundation: `context.md` at the campaign root, `dm/notes/philosophy/`.
 3. The active arc(s): `arcs/<active>/plan.md`. If multiple arcs are in play, all of their plans.
 4. The most recent scene's transcript and audit log.

@@ -71,7 +71,6 @@ generic-fantasy fallbacks.]
 - `../workspace/` — in-progress drafts. NPCs not ready for the table yet. Sketches.
 - `../secret/` — knowledge the players should never see. The DM-only truth behind public-facing entries (mirrors the lore repo's `dm/` vs `player/` split).
 - `../journal/` — chronological DM reflection.
-- `../scratchpad.md` — current working notes; overwriteable.
 - `../intake/` — player-drafted lore awaiting ratification.
 
 When something is ready for the table, it lives here. Until then it's in `workspace/`.

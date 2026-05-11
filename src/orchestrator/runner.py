@@ -47,6 +47,9 @@ class TurnResult:
     spawn_cwd: Path
     prose: str
     dry_run: bool
+    turn_end: dict[str, Any] | None = None
+    turn_prose_path: Path | None = None
+    turn_closeout_path: Path | None = None
     duration_seconds: float | None = None
     queued_speaker_entry: dict[str, Any] | None = None
     action_order_entry: dict[str, Any] | None = None
@@ -57,6 +60,7 @@ _GLASS_COMMAND_LINE_RE = re.compile(
     r"(roll|character|clock|summary|entity|search|tarot|lore|note|arc|"
     r"scene|table|mode|turn|thread|msg|turns|sync)\b"
 )
+_SCENE_PLAY_MODES = {"scene-play", "action", "combat", "chase", "social-pressure"}
 
 
 class Orchestrator:
@@ -80,9 +84,9 @@ class Orchestrator:
         """Pick the next agent + any per-turn metadata.
 
         Peeks at the head of `state["next_speakers"]` if non-empty. Each entry is
-        a dict with at least an `agent` key plus optional `rapid_prompt` for
-        rapid-response turns. Falls back to action-scene initiative order,
-        then round-robin if no queue/order applies.
+        a dict with at least an `agent` key plus optional metadata such as
+        `rapid_prompt` or `housekeeping`. Falls back to action-scene initiative
+        order, then round-robin if no queue/order applies.
         """
         entry = self._peek_next_speaker_entry(state.campaign)
         if entry:
@@ -303,6 +307,7 @@ class Orchestrator:
                 f"_Dry run: prepared turn `{package.turn_id}` for {agent.display_name}. "
                 f"TURN_START at `{package.turn_start_path}`._"
             )
+            package.turn_prose_path.write_text(prose.rstrip() + "\n", encoding="utf-8")
             return TurnResult(
                 turn_id=package.turn_id,
                 agent=agent,
@@ -310,6 +315,7 @@ class Orchestrator:
                 spawn_cwd=package.spawn_cwd,
                 prose=prose,
                 dry_run=True,
+                turn_prose_path=package.turn_prose_path,
                 duration_seconds=0.0,
                 queued_speaker_entry=queued_entry,
                 action_order_entry=action_entry,
@@ -331,9 +337,9 @@ class Orchestrator:
                 state,
                 result,
                 {
-                    "reason": "turn_output_contains_glass_command_lines",
+                    "reason": "turn_prose_contains_glass_command_lines",
                     "message": (
-                        "turn output included Glass command-looking lines; "
+                        "turn prose included Glass command-looking lines; "
                         "commands are audited separately, but prose is still committed"
                     ),
                     "lines": command_lines,
@@ -371,26 +377,37 @@ class Orchestrator:
                         },
                     )
 
-        # The agent's TURN.md (or the dry-run synthetic prose) is what we
-        # commit. glass turn append owns the transcript header; we just hand
-        # it the markdown file.
-        commit_file = result.turn_dir / "COMMIT.md"
-        commit_file.write_text(result.prose.rstrip() + "\n", encoding="utf-8")
+        if result.turn_prose_path is None:
+            raise TurnFailure(
+                "Turn result did not include a prose file.",
+                {
+                    "reason": "missing_turn_prose_path",
+                    "turn_id": result.turn_id,
+                    "speaker": result.agent.id,
+                    "turn_dir": str(result.turn_dir),
+                },
+            )
+
+        # The agent's TURN.md is what we commit. glass turn append owns the
+        # transcript header; we just hand it the markdown file.
+        append_args = [
+            "turn",
+            "append",
+            str(result.turn_prose_path),
+            "--speaker",
+            result.agent.id,
+            "--role",
+            result.agent.role,
+            "--mode",
+            active.mode,
+            "--scene",
+            active.scene_id,
+        ]
+        if result.turn_closeout_path is not None:
+            append_args.extend(["--end-file", str(result.turn_closeout_path)])
         try:
             self.store.glass.invoke(
-                [
-                    "turn",
-                    "append",
-                    str(commit_file),
-                    "--speaker",
-                    result.agent.id,
-                    "--role",
-                    result.agent.role,
-                    "--mode",
-                    active.mode,
-                    "--scene",
-                    active.scene_id,
-                ],
+                append_args,
                 role=result.agent.glass_role,
                 campaign=state.campaign,
             )
@@ -422,6 +439,16 @@ class Orchestrator:
                     if result.duration_seconds is not None
                     else None
                 ),
+                "turn_summary": (
+                    result.turn_end.get("summary")
+                    if isinstance(result.turn_end, dict)
+                    else None
+                ),
+                "next_speaker": (
+                    result.turn_end.get("next")
+                    if isinstance(result.turn_end, dict)
+                    else None
+                ),
             },
         )
         self._tick_closing_countdown(state.campaign)
@@ -435,6 +462,7 @@ class Orchestrator:
         state.__dict__.update(synced.__dict__)
         self._validate_prelude_dm_handoff(state, result, active)
         self._validate_scene_prep_dm_handoff(state, result, active)
+        self._validate_scene_boundary_dm_handoff(state, result, active)
 
     def _append_turn_warning(
         self,
@@ -536,6 +564,49 @@ class Orchestrator:
             },
         )
 
+    def _validate_scene_boundary_dm_handoff(
+        self,
+        state: SessionState,
+        result: TurnResult,
+        previous_active: Any,
+    ) -> None:
+        """Fail fast when an open-act scene ends without staging what follows."""
+        if result.dry_run or result.agent.id != "dm":
+            return
+        if previous_active.mode not in _SCENE_PLAY_MODES:
+            return
+        if state.has_active_mode:
+            return
+        if not self._campaign_has_open_active_arc(state.campaign):
+            return
+        raise TurnFailure(
+            "DM scene close left an open act with no active scene mode.",
+            {
+                "reason": "scene_boundary_no_next_scene",
+                "turn_id": result.turn_id,
+                "speaker": result.agent.id,
+                "turn_dir": str(result.turn_dir),
+                "previous_mode": previous_active.mode,
+                "previous_scene": previous_active.scene_id,
+                "hint": (
+                    "When a scene ends inside an open act, the same DM turn "
+                    "must close the old scene, stage and start the next scene "
+                    "mode, queue `glass turn housekeeping-round`, and then run "
+                    "`glass turn end`. If the act is complete, close the arc "
+                    "instead so the next run opens intermission."
+                ),
+            },
+        )
+
+    def _campaign_has_open_active_arc(self, campaign: str) -> bool:
+        try:
+            glass_state = self.store._load_glass_state(campaign)
+        except Exception:
+            return False
+        active_arc = str(glass_state.get("active_arc") or "")
+        closed = {str(arc_id) for arc_id in glass_state.get("closed_arcs", [])}
+        return bool(active_arc and active_arc != "prelude" and active_arc not in closed)
+
     def _tick_closing_countdown(self, campaign: str) -> None:
         """Decrement state["scene_closing_turns"] by 1 if set, after a turn.
 
@@ -581,10 +652,11 @@ class Orchestrator:
         # The prompt is intentionally short — the heavy lifting is in
         # TURN_START.md, which the agent reads as its first action.
         turn_start_ref = _agent_path(package.agent_turn_start_path, package.spawn_cwd)
-        turn_output_ref = _agent_path(package.agent_turn_output_path, package.spawn_cwd)
+        turn_prose_ref = _agent_path(package.agent_turn_prose_path, package.spawn_cwd)
         prompt = (
             f"Read {turn_start_ref} and follow its instructions. "
-            f"Write your final public prose to {turn_output_ref} and exit."
+            f"Write your final public prose to {turn_prose_ref}, run "
+            "`glass turn end`, and exit."
         )
 
         # Agents run in an actor-owned projection. `glass` uses the local API
@@ -606,6 +678,8 @@ class Orchestrator:
             ttl_seconds=max(self.config.claude.turn_timeout_seconds + 600, 3600),
             workspace_root=package.spawn_cwd,
             workspace_reader_user=target_user,
+            turn_prose_path=package.agent_turn_prose_path,
+            turn_closeout_path=package.agent_turn_closeout_path,
         )
         glass_api_grant_file: Path | None = None
         if target_user is not None:
@@ -659,7 +733,8 @@ class Orchestrator:
                 "GLASS_API_URL": glass_api_url,
                 "GLASS_API_GRANT": glass_api_grant,
                 "AOG_TURN_START": str(package.agent_turn_start_path),
-                "AOG_TURN_OUTPUT": str(package.agent_turn_output_path),
+                "AOG_TURN_PROSE": str(package.agent_turn_prose_path),
+                "AOG_TURN_CLOSEOUT": str(package.agent_turn_closeout_path),
             }
         )
         if target_user is not None:
@@ -785,7 +860,7 @@ class Orchestrator:
                 },
             )
 
-        prose = _collect_prose(package.turn_output_path, stdout_text)
+        prose = _collect_prose(package.turn_prose_path, stdout_text)
         if not prose:
             output_debug = _turn_path_debug(package)
             raise TurnFailure(
@@ -802,10 +877,29 @@ class Orchestrator:
                     "stderr_bytes": debug_payload["stderr_bytes"],
                     "stdout_preview": debug_payload["stdout_preview"],
                     "stderr_preview": debug_payload["stderr_preview"],
-                    "turn_output_path": str(package.turn_output_path),
-                    "turn_output": output_debug,
+                    "turn_prose_path": str(package.turn_prose_path),
+                    "turn_paths": output_debug,
                 },
             )
+        try:
+            turn_end = _collect_turn_end(package.turn_closeout_path)
+        except ValueError as exc:
+            output_debug = _turn_path_debug(package)
+            raise TurnFailure(
+                f"Turn {package.turn_id} did not complete `glass turn end`.",
+                {
+                    "reason": "invalid_turn_end",
+                    "turn_id": package.turn_id,
+                    "speaker": agent.id,
+                    "turn_dir": str(package.turn_dir),
+                    "debug_path": str(debug_path),
+                    "exit_code": returncode,
+                    "duration_seconds": round(duration_seconds, 3),
+                    "error": str(exc),
+                    "turn_closeout_path": str(package.turn_closeout_path),
+                    "turn_paths": output_debug,
+                },
+            ) from exc
         return TurnResult(
             turn_id=package.turn_id,
             agent=agent,
@@ -813,6 +907,9 @@ class Orchestrator:
             spawn_cwd=package.spawn_cwd,
             prose=prose,
             dry_run=False,
+            turn_end=turn_end,
+            turn_prose_path=package.turn_prose_path,
+            turn_closeout_path=package.turn_closeout_path,
             duration_seconds=duration_seconds,
             queued_speaker_entry=queued_entry,
             action_order_entry=action_entry,
@@ -865,7 +962,7 @@ def _stream_subprocess(
     """Run a subprocess, streaming stdout/stderr to the operator's terminal
     line-by-line (with a prefix per agent), while also capturing the full
     text for audit. If capture paths are provided, tee output to those files
-    as lines arrive so the local API can expose in-progress turn output.
+    as lines arrive so the local API can expose in-progress process output.
     Enforces a wall-clock timeout.
 
     Returns (stdout_text, stderr_text, returncode, timed_out).
@@ -1014,7 +1111,8 @@ def _env_debug(env: dict[str, str], preserved_env: list[str]) -> dict[str, Any]:
             "GLASS_API_GRANT",
             "GLASS_API_GRANT_FILE",
             "AOG_TURN_START",
-            "AOG_TURN_OUTPUT",
+            "AOG_TURN_PROSE",
+            "AOG_TURN_CLOSEOUT",
         }
     )
     return {
@@ -1065,7 +1163,7 @@ def _assert_actor_workspace_ready(
         _assert_actor_owns_path(package.spawn_cwd, target_user=target_user)
         _assert_actor_owns_path(package.agent_turn_dir, target_user=target_user)
 
-    probe_dirs = [package.agent_turn_dir, package.projection.scratch_dir]
+    probe_dirs = [package.agent_turn_dir]
     probe_dirs.extend(writable_probe_dirs(package.spawn_cwd, package.agent))
     seen: set[Path] = set()
     unique_probe_dirs: list[Path] = []
@@ -1212,13 +1310,15 @@ def _turn_path_debug(package: ContextPackage) -> dict[str, Any]:
         "campaign_root": _path_debug(package.campaign_root),
         "projection_turn_dir": _path_debug(package.agent_turn_dir),
         "projection_turn_start_path": _path_debug(package.agent_turn_start_path),
-        "projection_turn_output_path": _path_debug(package.agent_turn_output_path),
+        "projection_turn_prose_path": _path_debug(package.agent_turn_prose_path),
+        "projection_turn_closeout_path": _path_debug(package.agent_turn_closeout_path),
         "projection_claude_debug_path": _path_debug(
             package.agent_turn_dir / "claude-debug.log"
         ),
         "turn_dir": _path_debug(package.turn_dir),
         "turn_start_path": _path_debug(package.turn_start_path),
-        "turn_output_path": _path_debug(package.turn_output_path),
+        "turn_prose_path": _path_debug(package.turn_prose_path),
+        "turn_closeout_path": _path_debug(package.turn_closeout_path),
         "agent_stdout_path": _path_debug(package.turn_dir / "agent-stdout.txt"),
         "agent_stderr_path": _path_debug(package.turn_dir / "agent-stderr.txt"),
         "claude_debug_path": _path_debug(package.turn_dir / "claude-debug.log"),
@@ -1354,13 +1454,40 @@ def _agent_path(path: Path, spawn_cwd: Path) -> str:
         return str(path)
 
 
-def _collect_prose(turn_output_path: Path, stdout: str | None) -> str:
+def _collect_prose(turn_prose_path: Path, stdout: str | None) -> str:
     """Read the agent's committed public turn prose file."""
-    if turn_output_path.exists():
-        text = turn_output_path.read_text(encoding="utf-8").strip()
+    if turn_prose_path.exists():
+        text = turn_prose_path.read_text(encoding="utf-8").strip()
         if text:
             return text
     return ""
+
+
+def _collect_turn_end(turn_closeout_path: Path) -> dict[str, Any]:
+    try:
+        raw = json.loads(turn_closeout_path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(
+            f"missing turn closeout metadata at {turn_closeout_path}; run `glass turn end` "
+            "after writing public prose"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid turn closeout JSON at {turn_closeout_path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("turn closeout metadata must be a JSON object")
+    summary = str(raw.get("summary") or "").strip()
+    if not summary:
+        raise ValueError("turn closeout metadata is missing a non-empty summary")
+    state_changes = raw.get("state")
+    if not isinstance(state_changes, list) or not any(str(item).strip() for item in state_changes):
+        raise ValueError("turn closeout metadata is missing --state closeout")
+    rolls = str(raw.get("rolls") or "").strip()
+    if not rolls:
+        raise ValueError("turn closeout metadata is missing --rolls closeout")
+    next_speaker = str(raw.get("next") or "default")
+    if next_speaker not in {"default", "dm", "tev", "sumi", "renno", "kit"}:
+        raise ValueError(f"invalid turn closeout next speaker: {next_speaker}")
+    return raw
 
 
 def _tool_transcript_lines(prose: str) -> list[str]:

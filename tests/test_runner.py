@@ -104,6 +104,14 @@ class OrchestratorQueueTests(unittest.TestCase):
         self.assertIn("--skip-stops", result.output)
         self.assertIn("--no-review-stops", result.output)
 
+    def test_web_stack_commands_are_exposed(self) -> None:
+        result = CliRunner().invoke(aog_main, ["web", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("start", result.output)
+        self.assertIn("stop", result.output)
+        self.assertIn("restart", result.output)
+
     def test_prelude_coordinator_mode_is_dm_only(self) -> None:
         self.assertEqual(speaker_order_for("prelude"), ("dm",))
 
@@ -116,10 +124,32 @@ class OrchestratorQueueTests(unittest.TestCase):
             ("dm", "tev", "sumi", "renno", "kit"),
         )
 
-    def test_no_mode_active_lifecycle_alternates_intermission_and_scene_prep(self) -> None:
+    def test_no_mode_active_lifecycle_uses_intermission_only_at_act_boundaries(self) -> None:
         self.assertEqual(_next_mode_after_no_active_mode(None), "intermission")
-        self.assertEqual(_next_mode_after_no_active_mode("scene-play"), "intermission")
-        self.assertEqual(_next_mode_after_no_active_mode("action"), "intermission")
+        self.assertEqual(
+            _next_mode_after_no_active_mode(
+                "scene-play",
+                active_arc="caulden-rack",
+                has_prior_intermission=False,
+            ),
+            "intermission",
+        )
+        self.assertEqual(
+            _next_mode_after_no_active_mode(
+                "scene-play",
+                active_arc="caulden-rack",
+                has_prior_intermission=True,
+            ),
+            "scene-prep",
+        )
+        self.assertEqual(
+            _next_mode_after_no_active_mode(
+                "action",
+                active_arc="caulden-rack",
+                has_prior_intermission=True,
+            ),
+            "scene-prep",
+        )
         self.assertEqual(_next_mode_after_no_active_mode("intermission"), "scene-prep")
 
     def test_review_stop_budget_consumes_finite_or_unlimited_stops(self) -> None:
@@ -155,6 +185,11 @@ class OrchestratorQueueTests(unittest.TestCase):
             package = orchestrator.prepare_turn(state)
 
             self.assertIn("players/sumi/turns/0001", str(package.turn_dir))
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("Turn type: **rapid-response-player**", turn_start)
+            self.assertIn("methodologies/rapid-response-player.md", turn_start)
+            self.assertIn("## RAPID-RESPONSE TURN", turn_start)
+            self.assertNotIn("methodologies/scene-play-player.md", turn_start)
             orchestrator._peek_next_speaker_entry_from_postgres.assert_called_once_with("c1")
 
     def test_prepare_turn_builds_player_projection_with_writable_own_docs(self) -> None:
@@ -197,7 +232,11 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertEqual(package.spawn_cwd, root / ".glass-cwd" / "c1" / "0001-tev")
             self.assertEqual(
                 package.agent_turn_start_path,
-                package.spawn_cwd / "players" / "tev" / "turns" / "0001" / "in.md",
+                package.spawn_cwd / "players" / "tev" / "turns" / "0001" / "TURN_START.md",
+            )
+            self.assertEqual(
+                package.agent_turn_closeout_path,
+                package.spawn_cwd / "players" / "tev" / "turns" / "0001" / "turn-closeout.json",
             )
             self.assertTrue((package.spawn_cwd / "table" / "scene.md").exists())
             self.assertTrue(
@@ -210,7 +249,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 (package.spawn_cwd / "players" / "sumi" / "secrets" / "debt.md").exists()
             )
             self.assertFalse((package.spawn_cwd / "dm" / "secret" / "truth.md").exists())
-            self.assertTrue((package.spawn_cwd / "scratch").is_dir())
+            self.assertFalse((package.spawn_cwd / "scratch").exists())
             self.assertEqual((package.spawn_cwd.stat().st_mode & 0o777), 0o550)
             self.assertEqual(
                 (
@@ -220,9 +259,6 @@ class OrchestratorQueueTests(unittest.TestCase):
                     & 0o777
                 ),
                 0o770,
-            )
-            self.assertEqual(
-                ((package.spawn_cwd / "scratch").stat().st_mode & 0o7777), 0o2770
             )
             self.assertEqual(
                 (
@@ -249,6 +285,8 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertEqual(((package.spawn_cwd / ".mcp.json").stat().st_mode & 0o777), 0o660)
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
             self.assertIn("## Authoring Surface", turn_start)
+            self.assertIn("glass turn end", turn_start)
+            self.assertIn("methodologies/scene-play-player.md", turn_start)
             _assert_actor_workspace_ready(package, target_user=None)
 
     def test_prepare_turn_dm_projection_includes_dm_arc_prep(self) -> None:
@@ -301,7 +339,9 @@ class OrchestratorQueueTests(unittest.TestCase):
                 ).exists()
             )
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
-            self.assertIn("carry-forward note", turn_start)
+            self.assertIn("methodologies/` holds required ordered workflows", turn_start)
+            self.assertIn("TURN_START selects the one methodology", turn_start)
+            self.assertNotIn("optional current-turn working memory", turn_start)
             self.assertIn("methodologies/closeout.md", turn_start)
 
     def test_projection_refresh_preserves_unsynced_projected_edits(self) -> None:
@@ -391,9 +431,69 @@ class OrchestratorQueueTests(unittest.TestCase):
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
             self.assertIn("## Scene Summary", turn_start)
             self.assertIn("Drova logged the packet as year-mark form", turn_start)
+            self.assertIn("## Recent Turn Summaries", turn_start)
             self.assertIn("Recent full turn narration is intentionally not embedded", turn_start)
             self.assertIn("glass turns find --scene opening", turn_start)
             self.assertNotIn("Full recent narration should not be pasted", turn_start)
+
+    def test_housekeeping_turn_uses_non_plot_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="second-scene",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(
+                orchestrator,
+                next_speaker={
+                    "agent": "tev",
+                    "housekeeping": True,
+                    "previous_scene": "first-scene",
+                    "next_scene": "second-scene",
+                },
+            )
+
+            package = orchestrator.prepare_turn(state)
+
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("## HOUSEKEEPING TURN", turn_start)
+            self.assertIn("Do not advance plot", turn_start)
+            self.assertIn("Scene just closed: `first-scene`", turn_start)
+            self.assertIn("Next scene staged: `second-scene`", turn_start)
+            self.assertIn("Turn type: **scene-housekeeping-player**", turn_start)
+            self.assertIn("methodologies/scene-housekeeping-player.md", turn_start)
+            self.assertNotIn("## Creative Influence", turn_start)
+
+    def test_dm_closing_turn_uses_transition_methodology(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="first-scene",
+                initial_budget=None,
+            )
+            state.scene_closing_turns = 0
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "dm"})
+
+            package = orchestrator.prepare_turn(state)
+
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("Turn type: **scene-transition-dm**", turn_start)
+            self.assertIn("## SCENE TRANSITION TURN", turn_start)
+            self.assertIn("methodologies/scene-transition-dm.md", turn_start)
+            self.assertNotIn("methodologies/scene-play-dm.md", turn_start)
+            self.assertNotIn("## Creative Influence", turn_start)
 
     def test_prepare_turn_uses_action_order_when_queue_empty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -430,9 +530,33 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertIn("You are playing the character summarized", turn_start)
             self.assertIn("## ACTION-SCENE TURN", turn_start)
             self.assertIn("`kit -> dm -> tev`", turn_start)
+            self.assertIn("Turn type: **action-scene-player**", turn_start)
+            self.assertIn("methodologies/action-scene-player.md", turn_start)
             self.assertIn("## Creative Influence", turn_start)
             self.assertIn("Verse phrase:", turn_start)
             self.assertIn("Tarot:", turn_start)
+
+    def test_dm_action_turn_without_order_uses_opening_methodology(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="action",
+                initial_scene="ambush",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "dm"})
+
+            package = orchestrator.prepare_turn(state)
+
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("Turn type: **action-scene-opening-dm**", turn_start)
+            self.assertIn("methodologies/action-scene-opening-dm.md", turn_start)
+            self.assertNotIn("methodologies/action-scene-dm.md", turn_start)
 
     def test_creative_influence_omitted_during_bootstrap_modes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -505,6 +629,11 @@ class OrchestratorQueueTests(unittest.TestCase):
             campaign_root = config.campaigns_dir / "c1"
             turn_dir = campaign_root / "players" / "tev" / "turns" / "0001"
             turn_dir.mkdir(parents=True)
+            turn_file = turn_dir / "TURN.md"
+            turn_file.write_text(
+                "Done.\n\nglass sync apply players/tev/public/intro.md\n",
+                encoding="utf-8",
+            )
             state = SessionState.new(
                 campaign="c1",
                 initial_mode="character-creation",
@@ -523,6 +652,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 spawn_cwd=campaign_root,
                 prose="Done.\n\nglass sync apply players/tev/public/intro.md\n",
                 dry_run=False,
+                turn_prose_path=turn_file,
                 duration_seconds=12.3456,
             )
 
@@ -533,7 +663,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 for line in (campaign_root / "audit.jsonl").read_text(encoding="utf-8").splitlines()
             ]
             warning = next(event for event in events if event["event"] == "turn.warning")
-            self.assertEqual(warning["reason"], "turn_output_contains_glass_command_lines")
+            self.assertEqual(warning["reason"], "turn_prose_contains_glass_command_lines")
             self.assertEqual(
                 warning["lines"],
                 ["glass sync apply players/tev/public/intro.md"],
@@ -571,8 +701,8 @@ class OrchestratorQueueTests(unittest.TestCase):
                 "new file\n",
                 encoding="utf-8",
             )
-            (package.spawn_cwd / "scratch" / "draft.md").write_text(
-                "scratch is intentionally ignored\n",
+            (package.agent_turn_dir / "draft.md").write_text(
+                "turn artifacts are intentionally ignored\n",
                 encoding="utf-8",
             )
 
@@ -708,6 +838,44 @@ class OrchestratorQueueTests(unittest.TestCase):
             )
 
             orchestrator._validate_scene_prep_dm_handoff(state, result, previous)
+
+    def test_scene_close_inside_open_arc_without_next_mode_fails_fast(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="first-scene",
+                initial_budget=None,
+            )
+            previous = state.active_mode
+            state.mode_stack = []
+            orchestrator = Orchestrator(config, SessionStore(config))
+            orchestrator.store._load_glass_state = Mock(
+                return_value={"active_arc": "caulden-rack", "closed_arcs": []}
+            )
+            result = TurnResult(
+                turn_id="c1-t0001",
+                agent=AGENTS_BY_ID["dm"],
+                turn_dir=campaign_root / "dm" / "turns" / "0001",
+                spawn_cwd=campaign_root,
+                prose="Scene closes.",
+                dry_run=False,
+            )
+
+            with self.assertRaises(TurnFailure) as caught:
+                orchestrator._validate_scene_boundary_dm_handoff(
+                    state,
+                    result,
+                    previous,
+                )
+            self.assertEqual(
+                caught.exception.failure["reason"],
+                "scene_boundary_no_next_scene",
+            )
 
     def test_advance_action_order_delegates_to_postgres(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

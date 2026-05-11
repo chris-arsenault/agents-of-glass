@@ -1,6 +1,6 @@
 ---
 status: inactive
-previous_scene: prelude-action
+previous_scene: caulden-rack-setup
 ---
 
 # Scene

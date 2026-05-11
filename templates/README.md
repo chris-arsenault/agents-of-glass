@@ -26,7 +26,6 @@ templates/
     handouts/              in-game handouts
   dm/                      DM workspace template
     persona.md             who Mara is at the table
-    scratchpad.md          starter current-notes file
     notes/index.md         encyclopedia how-to-use
     journal/               starter dir
     workspace/             starter dir
@@ -36,7 +35,6 @@ templates/
     persona.md             who they are at the table
     signature-moves.md     recurring prose moves; starts with one slot
     character.md           starter character sheet (filled during character creation; canonical numbers in Postgres)
-    scratchpad.md          starter current-notes file
     notes/index.md         encyclopedia how-to-use
     journal/               starter dir
     drafts/                starter dir
@@ -61,7 +59,7 @@ The orchestrator copies `templates/` into a per-campaign root at campaign creati
 - **SRD-shaped** (public rules for player/DM roles) — `srd/`.
 - **How-to-shaped** (optional examples and craft guidance) — `how-to/`.
 - **Encyclopedia-shaped** (frontmatter + prose + sections, FalkorDB-mirrored when canonized) — `shared/lore/`, players' `drafts/`, players' `notes/`, DM's `notes/`.
-- **Journal-shaped** (free-form, no schema) — players' `journal/` and `scratchpad.md`, DM's `journal/` and `scratchpad.md` and `workspace/` and `secret/` and `intake/`.
+- **Journal-shaped** (free-form, no schema) — players' `journal/`, DM's `journal/`, `workspace/`, `secret/`, and `intake/`.
 - **Table-shaped** (short, current, player-agent-visible) —
   `table/index.md`, `table/scene.md`, `table/handouts/`, and any freeform
   markdown files at `table/` root that prevent repeated clarification

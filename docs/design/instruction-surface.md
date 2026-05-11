@@ -24,7 +24,7 @@ character or player agent can see.
 | Type | Runtime root | Target | Authority |
 |------|--------------|--------|-----------|
 | Instructions | `instructions/` | executing agent | Binding mechanical tool/file behavior |
-| Methodology | `methodologies/` | executing agent | Binding ordered workflow for a phase or turn mode |
+| Methodology | `methodologies/` | executing agent | Binding ordered workflow for a phase or generated turn type |
 | SRD | `srd/` | player/DM | Public TTRPG rules and mechanics |
 | How-to / examples | `how-to/` | player/DM | Non-binding craft advice and seeds |
 | Lore | `shared/lore/` | character | In-fiction world knowledge |
@@ -36,7 +36,7 @@ When an executing agent is taking a turn:
 
 1. `TURN_START.md` — current facts, output path, active mode, table pointers.
 2. `instructions/` — how to use tools, files, searches, and state safely.
-3. `methodologies/<mode>.md` — the required sequence for this invocation.
+3. The methodology named by TURN_START — the required sequence for this invocation.
 4. `srd/` — game rules.
 5. Persona and character sheet — table voice and character behavior.
 6. `how-to/` — optional craft guidance and examples.
@@ -50,6 +50,11 @@ methodology, table state, dice, or SRD.
 - Instructions say how an executing agent uses the system: `glass` commands,
   message bus, table, output files, search, and note/lore paths.
 - Methodologies say what sequence to follow in this invocation.
+- Actual-play methodologies are one contract per role and turn type. A generated
+  TURN_START chooses the active document from mode plus metadata such as action
+  order, rapid-response prompt, housekeeping queue, or scene-transition state.
+  Do not add "if this turn is really another turn type, use another methodology"
+  routing inside those documents.
 - SRD says what the game rules are, written as public rules rather than
   implementation docs.
 - How-to docs offer patterns and examples. They should avoid binding language

@@ -10,7 +10,12 @@ speaker selection and inter-player dialog, see [`open-questions.md`](open-questi
 
 ## In One Paragraph
 
-The orchestrator picks the next agent based on the current mode's speaker rule. It spawns the agent with their role prompt, the recent transcript, their notes, and a tool allowlist. The agent writes prose — their turn — and along the way calls `glass` for any mechanical thing that needs coherence (dice, HP changes, notes, mode transitions). When the agent exits, the orchestrator commits their prose to the transcript with the right header and moves on.
+The orchestrator picks the next agent based on the current mode's speaker rule
+and queued turn metadata. It builds TURN_START with the actor identity, compact
+continuity, visible table state, tool allowlist, output path, and exactly one
+methodology for that role and turn type. The agent writes prose and calls
+`glass` for coherent state changes. Before exit, the agent must close with
+`glass turn end`, which provides the compact summary used by the next actor.
 
 ## Codified vs Prose
 
@@ -30,12 +35,19 @@ directly instead of asking a player to take an extra turn just to roll dice.
 
 ## How a Turn Begins
 
-The orchestrator builds a canonical per-turn `in.md`/TURN_START file, then
+The orchestrator builds a canonical per-turn `TURN_START.md` file, then
 copies it into the agent's projected workspace at the same relative path. The
-agent's prompt is essentially "Read `in.md` and take your turn." TURN_START is
+agent's prompt is essentially "Read `TURN_START.md` and take your turn." TURN_START is
 a thin pointer file — links to the role, public table, scene framing, recent
-transcript, unread messages, instruction surfaces, and the tool allowlist. Full
-layout in [`context-packages.md`](context-packages.md).
+turn summaries, unread messages, instruction surfaces, the selected methodology,
+and the tool allowlist. Full layout in [`context-packages.md`](context-packages.md).
+
+The methodology switch is programmatic. Normal player scene play points to
+`scene-play-player.md`; queued player cleanup points to
+`scene-housekeeping-player.md`; rapid prompts point to
+`rapid-response-player.md`; action order points to the action-scene documents;
+DM scene-boundary turns point to `scene-transition-dm.md`. A methodology is not
+allowed to route the agent to a different actual-play turn type.
 
 The orchestrator builds a fresh CWD per turn with only the files the agent's role is allowed to see. Process-level isolation, not policy. See [`architecture.md`](architecture.md) for how.
 
@@ -63,10 +75,16 @@ While they write it, they may call `glass` tools:
 - `glass msg read [--since-checkpoint]` — read messages addressed to them
 - `glass turns find ...` — exact past-turn lookup by metadata or `--text` when
   more context is needed
+- `glass turn end --summary ... --state ... --rolls ... --next default` —
+  required closeout metadata for future TURN_START summaries
 
-They make these calls in the order they would normally do them at a real table. When they're done writing, they exit.
+They make these calls in the order they would normally do them at a real table.
+When their prose is written and `glass turn end` has succeeded, they exit.
 
-There is **no structured delta block** at the end of a turn. There is no `next_speaker` field. There is no `intent: action` tag. There is no `proposed_check` block. There is no `prepared_actions: [...]` array. The orchestrator already knows who's speaking, in what mode, at what turn number; the DM reads the player's prose and responds like a person who can read.
+There is **no structured delta block in the prose**. There is no `intent:
+action` tag, `proposed_check` block, or `prepared_actions: [...]` array. The
+mandatory structure is the CLI closeout command, not an agent-authored schema
+inside the turn text.
 
 ## What the Orchestrator Adds
 
@@ -124,7 +142,7 @@ can interrupt for clarifications or bursts of reaction; when they drain, play
 continues from the stored action-order cursor.
 
 An action-scene turn is **atomic**. One agent invocation handles the turn's
-housekeeping, movement, one action, any roll, and immediate outcome narration;
+quick upkeep, movement, one action, any roll, and immediate outcome narration;
 no other-agent input is required unless the acting agent explicitly hands off
 for a DM clarification.
 
@@ -144,15 +162,15 @@ that reflects the roll result. A player who rolls and doesn't narrate has
 produced a malformed turn. (This is a soft rule we enforce in the prompt, not a
 schema. The orchestrator can flag it but won't reject.)
 
-**One turn menu:** move, one action, housekeeping. Housekeeping includes message
-bus work, inventory checks, reading relevant lore/state, and asking DM
-questions. It does not grant a second action.
+**One turn menu:** move, one action, quick upkeep. Upkeep includes message bus
+work, inventory checks, reading relevant lore/state, and asking DM questions. It
+does not grant a second action.
 
 **Rolls are more common, not handoff-heavy.** In ordinary scene play, many
 actions resolve through prose. In action scenes, more player actions are
 obviously uncertain and consequential, so players should expect to call rolls
 more often on their own turns. DM-side checks happen on the DM's turn without
-handing off just for dice. Safe movement, short speech, and pure housekeeping
+handing off just for dice. Safe movement, short speech, and pure upkeep
 usually do not need rolls.
 
 **The end condition is visible.** The DM declares what would end the action

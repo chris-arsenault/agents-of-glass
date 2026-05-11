@@ -1,0 +1,5 @@
+All state is committed. The turn is done.
+
+The public prose (`dm/turns/0069/out.md`) lands the world's reaction: Halvi signs off clean, Per Vask exhales and stops near the door without leaving, Mereth watches the door he's in front of. The charge variance sits in the room, unspoken. Two hours to departure.
+
+Supporting work: spot XP awarded to Tek'iris (breakthrough, now 7 XP), scene summary updated, table updated with Per Vask's stopped posture and a third public question, carry-forward notes filed in `dm/scratchpad.md` on Per Vask's tell and what each of the remaining three players can enter on next.

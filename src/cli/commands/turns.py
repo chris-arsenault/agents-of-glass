@@ -183,6 +183,15 @@ def turns_feed(ctx: click.Context, after_turn: int, limit: int) -> None:
             "payload": {
                 "character_id": turn.get("character_id"),
                 "prose": turn.get("prose") or _strip_turn_header(turn.get("markdown", "")),
+                "summary": turn.get("turn_summary", ""),
+                "next": turn.get("next_speaker", "default"),
+                "scene_status": turn.get("scene_status", "active"),
+                "state_changes": turn.get("state_changes", []),
+                "rolls": turn.get("rolls", ""),
+                "open_questions": turn.get("open_questions", []),
+                "position": turn.get("position", ""),
+                "pressure": turn.get("pressure", ""),
+                "turn_end": turn.get("turn_end", {}),
                 "event_summaries": turn.get("event_summaries", []),
                 "events": turn.get("events", []),
                 "markdown": turn.get("markdown", ""),
@@ -221,8 +230,14 @@ def _turn_search_text(record: dict[str, Any]) -> str:
     parts = [
         str(record.get("prose") or ""),
         str(record.get("markdown") or ""),
+        str(record.get("turn_summary") or ""),
+        str(record.get("rolls") or ""),
+        str(record.get("position") or ""),
+        str(record.get("pressure") or ""),
     ]
     parts.extend(str(item) for item in record.get("event_summaries", []) or [])
+    parts.extend(str(item) for item in record.get("state_changes", []) or [])
+    parts.extend(str(item) for item in record.get("open_questions", []) or [])
     return "\n".join(parts)
 
 

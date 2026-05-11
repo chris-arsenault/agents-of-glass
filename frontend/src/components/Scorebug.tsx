@@ -31,7 +31,9 @@ export function Scorebug({ onOpenCommand }: { onOpenCommand: () => void }) {
     latestDmTurn?.scene_id ??
     lastTurn?.scene_id ??
     "—";
-  const mode = runtime?.mode_stack?.at(-1) ?? lastTurn?.mode ?? "scene-play";
+  const mode = coerceMode(
+    runtime?.mode_stack?.at(-1) ?? lastTurn?.mode ?? "scene-play",
+  );
 
   const highlightedClocks = useMemo(
     () => pickHighlightClocks(clocks, sceneTrackers),
@@ -150,6 +152,21 @@ function pickHighlightClocks(
     });
   }
   return bands.slice(0, 3);
+}
+
+function coerceMode(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object") {
+    const candidate = (value as Record<string, unknown>).mode
+      ?? (value as Record<string, unknown>).name
+      ?? (value as Record<string, unknown>).id;
+    if (typeof candidate === "string") {
+      return candidate;
+    }
+  }
+  return "scene-play";
 }
 
 function BandStrip({ label, value, max, warn }: ScoreBand) {

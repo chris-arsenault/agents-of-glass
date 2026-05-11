@@ -95,9 +95,19 @@ from ..yaml_io import (
 )
 
 
+_TURN_END_NEXT_CHOICES = ("default", "dm", "tev", "sumi", "renno", "kit")
+_TURN_END_SCENE_STATUS_CHOICES = (
+    "active",
+    "closing",
+    "ending",
+    "ended",
+    "blocked",
+)
+
+
 @click.group()
 def turn() -> None:
-    """Turn append command."""
+    """Turn lifecycle commands."""
 
 
 @turn.command("append")
@@ -107,6 +117,7 @@ def turn() -> None:
 @click.option("--mode", "mode_name")
 @click.option("--scene", "scene_id")
 @click.option("--character", "character_id")
+@click.option("--end-file", "end_file")
 @click.pass_context
 def turn_append(
     ctx: click.Context,
@@ -116,6 +127,7 @@ def turn_append(
     mode_name: str | None,
     scene_id: str | None,
     character_id: str | None,
+    end_file: str | None,
 ) -> None:
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -126,6 +138,7 @@ def turn_append(
     if not source.exists():
         raise GlassError(f"turn markdown not found: {markdown_file}")
     body = source.read_text(encoding="utf-8").strip()
+    turn_end = _load_turn_end_metadata(end_file)
     role = current_role()
     speaker_id = actor_for_turn(role, speaker)
     resolved_role = role_label_for_turn(role, turn_role)
@@ -181,13 +194,15 @@ def turn_append(
         "scene_type": scene_type,
         "turn_number_in_scene": turn_number_in_scene,
         "visibility": "public",
+        **_turn_end_record_fields(turn_end),
     }
     search_title = (
         f"Turn {turn_id} - {speaker_id} "
         f"({resolved_mode}, {resolved_scene})"
     )
+    search_body = _turn_search_body(body, turn_end)
     embedded = _embeddings.embed_text(
-        _embeddings.embedding_text(title=search_title, body=body),
+        _embeddings.embedding_text(title=search_title, body=search_body),
         kind="document",
     )
     with pg_connection() as conn:
@@ -219,6 +234,7 @@ def turn_append(
             scene_type=scene_type,
             turn_number_in_scene=turn_number_in_scene,
             visibility="public",
+            **_turn_end_db_fields(turn_end),
         )
         _db.event_insert_many(
             conn,
@@ -237,7 +253,7 @@ def turn_append(
             owner_actor=None,
             path=str(source),
             title=search_title,
-            body=body,
+            body=search_body,
             metadata={
                 "turn_id": turn_id,
                 "speaker": speaker_id,
@@ -279,9 +295,194 @@ def turn_append(
         state,
         ctx,
         "turn.append",
-        command_params(markdown_file=markdown_file, speaker=speaker_id),
+        command_params(markdown_file=markdown_file, speaker=speaker_id, end_file=end_file),
         result,
     )
+
+
+@turn.command("end")
+@click.option("--summary", required=True, help="1-3 sentence compact continuity for the next actor.")
+@click.option(
+    "--next",
+    "next_speaker",
+    type=click.Choice(_TURN_END_NEXT_CHOICES),
+    default="default",
+    show_default=True,
+    help="Next actor override. Use default to keep normal rotation/action order.",
+)
+@click.option(
+    "--state",
+    "state_changes",
+    multiple=True,
+    required=True,
+    help="Durable state/table/lore/message update, or 'no state change'. Repeat as needed.",
+)
+@click.option(
+    "--rolls",
+    required=True,
+    help="Rolls/checks/pressure commands used, or 'none'.",
+)
+@click.option("--open-question", "open_questions", multiple=True)
+@click.option(
+    "--scene-status",
+    type=click.Choice(_TURN_END_SCENE_STATUS_CHOICES),
+    default="active",
+    show_default=True,
+)
+@click.option("--position", default="", help="Position/leverage change, or unchanged.")
+@click.option("--pressure", default="", help="Tracker/clock/HP/pressure change, or none.")
+@click.option("--to", "end_file", default=None, hidden=True)
+@click.pass_context
+def turn_end(
+    ctx: click.Context,
+    summary: str,
+    next_speaker: str,
+    state_changes: tuple[str, ...],
+    rolls: str,
+    open_questions: tuple[str, ...],
+    scene_status: str,
+    position: str,
+    pressure: str,
+    end_file: str | None,
+) -> None:
+    """Record the required end-of-turn closeout block.
+
+    The orchestrator commits public prose separately with `glass turn append`.
+    This command records the compact context block that future TURN_START files
+    embed, and optionally queues a next-speaker override.
+    """
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    role = current_role()
+    summary_text = _required_text(summary, "--summary")
+    rolls_text = _required_text(rolls, "--rolls")
+    state_items = [_required_text(item, "--state") for item in state_changes]
+    open_items = [item.strip() for item in open_questions if item.strip()]
+    target = _turn_end_target_path(end_file=end_file)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    current = current_mode_record(state) or {}
+    payload = {
+        "summary": summary_text,
+        "next": next_speaker,
+        "state": state_items,
+        "rolls": rolls_text,
+        "open_questions": open_items,
+        "scene_status": scene_status,
+        "position": position.strip(),
+        "pressure": pressure.strip(),
+        "campaign_id": campaign_id,
+        "turn_id": os.environ.get("GLASS_TURN_ID", ""),
+        "actor": role.actor,
+        "role": role.kind,
+        "mode": current.get("mode"),
+        "scene_id": current.get("scene_id"),
+        "created_at": now_iso(),
+    }
+    target.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    if next_speaker != "default":
+        state["next_speakers"].append({"agent": next_speaker, "source": "turn.end"})
+        queue_event(state, role.actor, f"turn end handoff -> {next_speaker}")
+
+    result = {
+        "turn_closeout_path": display_path(target),
+        "summary": summary_text,
+        "next": next_speaker,
+        "state": state_items,
+        "rolls": rolls_text,
+        "open_questions": open_items,
+        "scene_status": scene_status,
+        "queue": list(state.get("next_speakers", [])),
+    }
+    commit(
+        paths,
+        state,
+        ctx,
+        "turn.end",
+        command_params(
+            summary=summary_text,
+            next=next_speaker,
+            state=state_items,
+            rolls=rolls_text,
+            open_questions=open_items,
+            scene_status=scene_status,
+            position=position.strip(),
+            pressure=pressure.strip(),
+        ),
+        result,
+    )
+
+
+def _load_turn_end_metadata(end_file: str | None) -> dict[str, Any]:
+    if not end_file:
+        return {}
+    path = Path(end_file).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise GlassError(f"turn end metadata not found: {end_file}") from exc
+    except json.JSONDecodeError as exc:
+        raise GlassError(f"invalid turn end metadata: {end_file}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise GlassError("turn end metadata must be a JSON object")
+    summary = str(payload.get("summary") or "").strip()
+    if not summary:
+        raise GlassError("turn end metadata is missing summary")
+    return payload
+
+
+def _turn_end_record_fields(turn_end: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "turn_summary": str(turn_end.get("summary") or ""),
+        "next_speaker": str(turn_end.get("next") or "default"),
+        "scene_status": str(turn_end.get("scene_status") or "active"),
+        "state_changes": list(turn_end.get("state") or []),
+        "rolls": str(turn_end.get("rolls") or ""),
+        "open_questions": list(turn_end.get("open_questions") or []),
+        "position": str(turn_end.get("position") or ""),
+        "pressure": str(turn_end.get("pressure") or ""),
+        "turn_end": dict(turn_end),
+    }
+
+
+def _turn_end_db_fields(turn_end: dict[str, Any]) -> dict[str, Any]:
+    return _turn_end_record_fields(turn_end)
+
+
+def _turn_search_body(body: str, turn_end: dict[str, Any]) -> str:
+    parts = [body]
+    summary = str(turn_end.get("summary") or "").strip()
+    if summary:
+        parts.append(summary)
+    for key in ("state", "rolls", "open_questions", "position", "pressure"):
+        value = turn_end.get(key)
+        if isinstance(value, list):
+            parts.extend(str(item) for item in value if str(item).strip())
+        elif value:
+            parts.append(str(value))
+    return "\n\n".join(part for part in parts if part)
+
+
+def _required_text(value: str, label: str) -> str:
+    text = value.strip()
+    if not text:
+        raise GlassError(f"{label} cannot be empty")
+    return text
+
+
+def _turn_end_target_path(*, end_file: str | None) -> Path:
+    raw = end_file or os.environ.get("AOG_TURN_CLOSEOUT")
+    if raw:
+        path = Path(raw).expanduser()
+        return path if path.is_absolute() else Path.cwd() / path
+    raise GlassError("turn end needs AOG_TURN_CLOSEOUT or --to")
 
 
 def _turn_export_info(scene_id: str) -> dict[str, Any]:
@@ -516,6 +717,118 @@ def turn_rapid_round(
     commit(
         paths, state, ctx, "turn.rapid-round",
         command_params(prompt=prompt, players=targets), result,
+    )
+
+
+@turn.command("housekeeping-round")
+@click.option(
+    "--players",
+    "players_csv",
+    default=None,
+    help="Comma-separated player ids. Defaults to tev,sumi,renno,kit.",
+)
+@click.option(
+    "--previous-scene",
+    default="",
+    help="Scene that just closed. Used only for TURN_START context.",
+)
+@click.option(
+    "--next-scene",
+    default="",
+    help="Scene being staged next. Used only for TURN_START context.",
+)
+@click.option(
+    "--next",
+    "next_actor",
+    type=click.Choice(_TURN_END_NEXT_CHOICES),
+    default="tev",
+    show_default=True,
+    help="Actor queued after housekeeping. Use default to leave rotation alone.",
+)
+@click.pass_context
+def turn_housekeeping_round(
+    ctx: click.Context,
+    players_csv: str | None,
+    previous_scene: str,
+    next_scene: str,
+    next_actor: str,
+) -> None:
+    """DM-only: queue one non-plot housekeeping turn for each player.
+
+    Use this at a scene boundary after the DM has wrapped the old scene,
+    staged the next scene, and started the next scene's play mode. The queued
+    player turns are for notes, journals, sheet cleanup, and private requests;
+    they must not introduce new in-fiction action or mid/long-term plot design.
+    """
+    require_dm()
+    if players_csv:
+        targets = [p.strip() for p in players_csv.split(",") if p.strip()]
+    else:
+        targets = list(_PLAYER_AGENT_IDS)
+    seen: set[str] = set()
+    for player in targets:
+        if player not in _PLAYER_AGENT_IDS:
+            raise GlassError(
+                f"unknown player {player!r}; valid: {', '.join(_PLAYER_AGENT_IDS)}"
+            )
+        if player in seen:
+            raise GlassError(f"duplicate player {player!r}")
+        seen.add(player)
+
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    role = current_role()
+    previous = previous_scene.strip()
+    upcoming = next_scene.strip()
+
+    for player in targets:
+        state["next_speakers"].append(
+            {
+                "agent": player,
+                "housekeeping": True,
+                "previous_scene": previous,
+                "next_scene": upcoming,
+                "source": "turn.housekeeping-round",
+            }
+        )
+    if next_actor != "default":
+        state["next_speakers"].append(
+            {
+                "agent": next_actor,
+                "after_housekeeping": True,
+                "previous_scene": previous,
+                "next_scene": upcoming,
+                "source": "turn.housekeeping-round",
+            }
+        )
+    queue_event(
+        state,
+        role.actor,
+        (
+            f"housekeeping-round queued for {','.join(targets)}"
+            f"; next scene actor: {next_actor}"
+        ),
+    )
+    result = {
+        "queue": list(state["next_speakers"]),
+        "players": targets,
+        "previous_scene": previous,
+        "next_scene": upcoming,
+        "next": next_actor,
+    }
+    commit(
+        paths,
+        state,
+        ctx,
+        "turn.housekeeping-round",
+        command_params(
+            players=targets,
+            previous_scene=previous,
+            next_scene=upcoming,
+            next=next_actor,
+        ),
+        result,
     )
 
 

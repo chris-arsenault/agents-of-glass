@@ -16,7 +16,7 @@ Markdown owns:
 - shared lore prose under `shared/lore/`
 - quest log, party knowledge, instructions, methodologies, SRD, how-to guidance
 - DM notes/workspace/secret files
-- player notes, journals, drafts, public files, scratchpads, signature moves
+- player notes, journals, drafts, public files, signature moves
 
 Markdown also receives generated projections:
 
@@ -46,8 +46,8 @@ Postgres owns:
 - search chunks for bounded recall over turns and indexed markdown
 
 Final public turn prose has a durable home in Postgres `turns.prose`. The
-orchestrator captures each agent's `out.md`, then commits it through
-`glass turn append`. The per-agent `out.md`, stdout, stderr, and debug logs are
+orchestrator captures each agent's `TURN.md`, then commits it through
+`glass turn append`. The per-agent `TURN.md`, closeout JSON, stdout, stderr, and debug logs are
 operational artifacts. The viewer UI and future narrative-weaving passes should
 read `glass turns feed` / Postgres, not scrape agent turn folders.
 

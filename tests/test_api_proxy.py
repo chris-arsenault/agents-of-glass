@@ -5,20 +5,27 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
 from cli import db as _db
+from cli.api_client import DEFAULT_TIMEOUT_SECONDS, _timeout_seconds
 from cli.api_grants import mint_grant, validate_grant
 from cli.api_server import (
+    _format_invoke_exception,
+    _invoke_glass,
+    _make_server as _make_command_server,
+    ensure_background_server,
+)
+from cli.web_api_server import (
     _current_turn_output_payload,
     _file_content_payload,
     _file_entry_matches_section,
     _file_section_counts,
     _file_tree_payload,
-    _invoke_glass,
     _parse_created_id_cursor,
-    ensure_background_server,
+    _make_server as _make_web_server,
 )
 from cli.config import get_paths, load_config
 from cli.errors import GlassError
@@ -62,6 +69,29 @@ class GlassApiProxyTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._provisioned_patch.stop()
+
+    def test_api_server_is_threaded_for_ui_reads_during_commands(self) -> None:
+        server = _make_command_server("127.0.0.1", 0)
+        web_server = _make_web_server("127.0.0.1", 0)
+        try:
+            self.assertIsInstance(server, ThreadingHTTPServer)
+            self.assertIsInstance(web_server, ThreadingHTTPServer)
+        finally:
+            server.server_close()
+            web_server.server_close()
+
+    def test_api_client_timeout_is_long_and_configurable(self) -> None:
+        self.assertEqual(_timeout_seconds({}), float(DEFAULT_TIMEOUT_SECONDS))
+        self.assertEqual(_timeout_seconds({"GLASS_API_TIMEOUT_SECONDS": "900"}), 900.0)
+        self.assertEqual(_timeout_seconds({"GLASS_API_TIMEOUT_SECONDS": "bad"}), 600.0)
+        self.assertEqual(_timeout_seconds({"GLASS_API_TIMEOUT_SECONDS": "0"}), 1.0)
+
+    def test_api_invocation_formats_unexpected_empty_exceptions(self) -> None:
+        self.assertEqual(_format_invoke_exception(None), "")
+        self.assertIn(
+            "glass internal error: RuntimeError: boom",
+            _format_invoke_exception(RuntimeError("boom")),
+        )
 
     def test_readonly_file_tree_includes_narrative_private_notes_not_grants(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -180,6 +210,20 @@ class GlassApiProxyTests(unittest.TestCase):
             validate_grant(campaigns, token, ["tarot", "current"])
             validate_grant(campaigns, token, ["tarot", "list"])
             validate_grant(campaigns, token, ["entity", "relations", "duke"])
+            validate_grant(
+                campaigns,
+                token,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Tev moves.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                ],
+            )
             validate_grant(campaigns, token, ["sync", "apply", "--from", "scratch/sync.json"])
             validate_grant(
                 campaigns,

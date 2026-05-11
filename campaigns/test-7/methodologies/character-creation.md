@@ -60,7 +60,6 @@ Pronouns are optional; if unspecified, the public mirror will say
 players/<your-id>/
   persona.md            you (the player) — provided with the campaign template
   signature-moves.md    recurring prose moves; one simple move at level 1
-  scratchpad.md         your working notes — commit updates with glass sync apply
   public/               party-readable: intros, relationships, cached character display
   secrets/              DM-readable, other-player-private: hidden knowledge files
   drafts/, journal/, notes/, inbox/   private to you
@@ -324,8 +323,7 @@ glass character new <character-id> --player <your-agent-id> \
     --tag <tag> --tag <tag>
 
 # Add inventory, one starting signature move, and the public mirror in one call.
-cat > scratch/character-update.json <<'JSON'
-{
+glass character bulk-update --json '{
   "characters": [
     {
       "character_id": "<character-id>",
@@ -345,9 +343,7 @@ cat > scratch/character-update.json <<'JSON'
       "mirror": true
     }
   ]
-}
-JSON
-glass character bulk-update --from scratch/character-update.json
+}'
 ```
 
 Then write your intro markdown at its real workspace path and commit it:
@@ -376,13 +372,6 @@ glass character signature-add <character-id> "<move name>" \
     --look "<what it looks/sounds/feels like>" \
     --use "<what kind of problem you reach for it against>" \
     --tell "<trace, cost, risk, or who might recognize it>"
-```
-
-Or draft the move body in `scratch/signature-move.md` and run:
-
-```bash
-glass character signature-add <character-id> "<move name>" \
-    --from scratch/signature-move.md
 ```
 
 Keep it current during play as your character's habits settle. New moves should

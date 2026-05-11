@@ -89,6 +89,22 @@ def api_serve(host: str, port: int, config_path: str | None) -> None:
     serve_forever(host=host, port=port, config_path=config_path)
 
 
+@click.group("web-api")
+def web_api() -> None:
+    """Read-only web UI API server commands."""
+
+
+@web_api.command("serve")
+@click.option("--host", default="0.0.0.0", show_default=True)
+@click.option("--port", default=26002, show_default=True, type=int)
+@click.option("--config", "config_path", type=click.Path())
+def web_api_serve(host: str, port: int, config_path: str | None) -> None:
+    """Run the read-only web API in the foreground."""
+    from .web_api_server import serve_forever
+
+    serve_forever(host=host, port=port, config_path=config_path)
+
+
 @api.group("daemon")
 def api_daemon_group() -> None:
     """Manage the detached local glass API daemon."""
@@ -96,25 +112,43 @@ def api_daemon_group() -> None:
 
 @api_daemon_group.command("start")
 @click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+@click.option("--host", "bind_host", default=None, help="Bind host for the daemon.")
 @click.option("--config", "config_path", type=click.Path())
-def api_daemon_start(url: str | None, config_path: str | None) -> None:
+def api_daemon_start(
+    url: str | None,
+    bind_host: str | None,
+    config_path: str | None,
+) -> None:
     from .api_daemon import start_daemon
     from .api_grants import DEFAULT_API_URL
 
     _echo_api_daemon(
-        start_daemon(url=url or _api_url_default(DEFAULT_API_URL), config_path=config_path)
+        start_daemon(
+            url=url or _api_url_default(DEFAULT_API_URL),
+            config_path=config_path,
+            bind_host=bind_host,
+        )
     )
 
 
 @api_daemon_group.command("restart")
 @click.option("--url", default=None, help="API URL. Defaults to GLASS_API_URL or localhost.")
+@click.option("--host", "bind_host", default=None, help="Bind host for the daemon.")
 @click.option("--config", "config_path", type=click.Path())
-def api_daemon_restart(url: str | None, config_path: str | None) -> None:
+def api_daemon_restart(
+    url: str | None,
+    bind_host: str | None,
+    config_path: str | None,
+) -> None:
     from .api_daemon import restart_daemon
     from .api_grants import DEFAULT_API_URL
 
     _echo_api_daemon(
-        restart_daemon(url=url or _api_url_default(DEFAULT_API_URL), config_path=config_path)
+        restart_daemon(
+            url=url or _api_url_default(DEFAULT_API_URL),
+            config_path=config_path,
+            bind_host=bind_host,
+        )
     )
 
 
@@ -143,9 +177,10 @@ def _api_url_default(default: str) -> str:
 
 
 def _echo_api_daemon(info) -> None:
+    bind = f" bind={info.bind_host}" if getattr(info, "bind_host", None) else ""
     click.echo(
         f"glass API {info.message}: url={info.url} "
-        f"pid={info.pid or '-'} running={str(info.running).lower()}"
+        f"pid={info.pid or '-'} running={str(info.running).lower()}{bind}"
     )
     click.echo(f"log: {info.log_path}")
 
@@ -172,6 +207,7 @@ main.add_command(tarot)
 main.add_command(quest)
 main.add_command(lore)
 main.add_command(api)
+main.add_command(web_api)
 
 
 if __name__ == "__main__":

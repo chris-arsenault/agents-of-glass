@@ -13,7 +13,7 @@ Use `glass` for:
 
 ```bash
 glass character bulk-get <id>... [--all]
-glass character bulk-update --json '<payload>'  # or --from scratch/update.json
+glass character bulk-update --json '<payload>'
 glass character new <id> --player <player-id> ...
 glass character get <id>
 glass character mirror <id>

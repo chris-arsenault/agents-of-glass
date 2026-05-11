@@ -12,6 +12,10 @@ sections: after the prelude, and after an act closes before the next act starts.
 It is not an in-fiction scene. It is collaborative mid- to long-term campaign
 planning.
 
+Intermission is not used between ordinary scenes in an open act. Scene-to-scene
+continuity is preserved by scene summaries, turn closeout summaries, the DM's
+scene-to-scene transition turn, and the players' one housekeeping turn.
+
 ## Purpose
 
 Use intermission to let the table say what it wants before Mara frames the next
@@ -45,11 +49,11 @@ Players answer with concrete preferences. Good intermission turns are specific:
 
 ## Outputs
 
-Before the intermission closes, Mara should write a compact synthesis to
-`dm/scratchpad.md` and, when useful, a player-visible version to
-`shared/quest-log.md` or `shared/party-knowledge.md`.
+Before the intermission closes, Mara should write a player-visible synthesis to
+`shared/quest-log.md` or `shared/party-knowledge.md` and private next-act prep
+to the relevant `arcs/<arc>/` or `dm/workspace/` file.
 
-Players may update their own scratchpads, journals, public notes, or private
+Players may update their own journals, public notes, or private
 requests to Mara. Keep these concise and commit them with `glass sync apply`.
 
 ## Ending

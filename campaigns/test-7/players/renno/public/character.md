@@ -13,9 +13,9 @@ player_id: renno
 - **Archetype:** diffuse-state waystation listener
 - **Organization role:** waystation reader / first-pass scene clear
 - **Pronouns:** unspecified
-- **Level:** 1 (5 XP)
+- **Level:** 1 (8 XP)
 - **HP:** 8/8
-- **Momentum:** 1 (-2 to 3)
+- **Momentum:** 2 (-2 to 3)
 
 ## Bio
 

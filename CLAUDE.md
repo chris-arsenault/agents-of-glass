@@ -26,6 +26,9 @@ Four principles govern every decision. **Read these first:**
   for executing-agent sequences, `srd/` for public player/DM rules,
   `how-to/` for optional player/DM examples, and `shared/lore/` for
   in-fiction character knowledge. Keep new prose in the right surface.
+- Actual-play methodologies are one contract per role and generated turn type.
+  If a new turn type is needed, update TURN_START selection and add a dedicated
+  methodology; don't put turn-type routing branches inside scene/action docs.
 - Agents are smart; resist the urge to enforce structure they can handle in prose.
 
 ## Working in this repo

@@ -2,7 +2,11 @@
 
 The bootstrap flow that takes a fresh repo from "no campaign exists" to "real scenes are running." Two authoring phases, one short prelude-play phase, plus an operator init step. Each phase produces transcripts, messages, public lore, and private notes. Every phase is clearable and resumable.
 
-For the workflow docs the agents read inside each phase, see [`/templates/methodologies/`](../../templates/methodologies/). For the broader runtime instruction surface, see [`instruction-surface.md`](instruction-surface.md). The core methodology set is campaign-planning, arc-creation, scene-prep, scene-play, action-scene, character-creation, and prelude-arc.
+For the workflow docs the agents read inside each phase, see
+[`/templates/methodologies/`](../../templates/methodologies/). For the broader
+runtime instruction surface, see [`instruction-surface.md`](instruction-surface.md).
+Actual-play methodologies are split by role and generated turn type; TURN_START
+links the active one directly.
 
 For the campaign-level state machine, see [Phase state](#phase-state). For the operator CLI, see [`/src/orchestrator/SPEC.md`](../../src/orchestrator/SPEC.md).
 
@@ -145,7 +149,7 @@ campaigns/<id>/                     # per-campaign runtime root
     scene.md                        # scene kickoff description
     handouts/                       # in-game handouts
   dm/                               # copy of templates/dm/, mutates during play
-    persona.md, scratchpad.md, journal/, notes/, secret/, intake/, workspace/
+    persona.md, journal/, notes/, secret/, intake/, workspace/
     foundation.md                   # DM-only working framing for the campaign
   players/<id>/                     # copy of templates/players/<id>/, mutates
   methodologies/                    # frozen snapshot of templates/methodologies/

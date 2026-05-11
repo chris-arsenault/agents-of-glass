@@ -101,7 +101,7 @@ Postgres is on the LAN.
 A Python process. Its job is small:
 
 1. Hold the campaign + scene state machine (which phase, which arc, which scene, which mode, which budgets, whose turn).
-2. Build the next agent's per-turn `in.md` under `dm/turns/` or `players/<id>/turns/`, then project the actor-visible campaign files into `.glass-cwd/`.
+2. Build the next agent's per-turn `TURN_START.md` under `dm/turns/` or `players/<id>/turns/`, then project the actor-visible campaign files into `.glass-cwd/`.
 3. Spawn `claude -p --dangerously-skip-permissions` in the projection. All tools are available; the role-specific state grant is enforced by the local `glass` API/CLI boundary.
 4. Wait for the subprocess to exit.
 5. Commit the agent's prose through `glass turn append`, which inserts a structured `turns` row and writes a derived markdown transcript export.
@@ -180,7 +180,10 @@ Five `claude -p` invocations, one per person at the table. Each is given:
 - Their **context window** (recent transcript, current mode framing, their own notes, relevant lore excerpts)
 - Their **tool allowlist** (which `glass` subcommands they can call)
 
-Agents return when they've produced a turn artifact. They can call tools as much as they want during the turn — look up lore, check their notes, roll dice, write a journal entry — but the turn ends when they emit their structured turn output.
+Agents return when they've produced `TURN.md` and completed `glass turn end`.
+They can call tools as much as they want during the turn — look up lore, check
+their notes, roll dice, write a journal entry — but the turn ends only after
+public prose and the compact closeout exist.
 
 See [`agents.md`](agents.md) for the people, [`turn-loop.md`](turn-loop.md) for the turn shape.
 
@@ -193,11 +196,11 @@ directly instead of handing to a player just to request dice. See
 ## Data Flow Per Turn
 
 1. Orchestrator decides whose turn it is (mode-dependent — see [`modes.md`](modes.md)).
-2. Orchestrator writes the agent's per-turn `in.md` into that agent's canonical campaign turn directory, then builds an actor-owned projected workspace containing only files that actor may see (same relative paths as the campaign root).
+2. Orchestrator writes the agent's per-turn `TURN_START.md` into that agent's canonical campaign turn directory, then builds an actor-owned projected workspace containing only files that actor may see (same relative paths as the campaign root).
 3. Orchestrator spawns `claude -p "Read <turn-start path> and take your turn."` with CWD set to the projection and a role-scoped `glass` grant.
 4. Agent runs its own tool loop. May call `glass roll`, `glass entity neighborhood`, `glass character set-hp`, `glass msg`, etc. — each call is logged to the audit trail.
-5. Agent emits prose (their turn) and exits.
-6. Orchestrator wraps the prose with a header (speaker, role, mode, scene, turn number, timestamp) and inlines mechanical event lines drawn from pending events, then calls `glass turn append`. The CLI writes the structured turn row to Postgres and refreshes the markdown transcript export.
+5. Agent writes public prose to `TURN.md`, records compact closeout with `glass turn end`, and exits.
+6. Orchestrator calls `glass turn append` with `TURN.md` and the closeout JSON. The CLI writes the structured turn row to Postgres and refreshes the markdown transcript export.
 7. Orchestrator evaluates mode-end conditions (deferred — see [`scene-ending.md`](scene-ending.md)); per-turn files remain available for debugging.
 8. Loop.
 

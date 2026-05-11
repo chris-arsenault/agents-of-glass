@@ -1,0 +1,12 @@
+Turn 67 complete. The prelude is done and the campaign proper has begun.
+
+**What happened this turn:**
+- Drained the message bus (empty)
+- Scaffolded `arcs/caulden-rack/scenes/caulden-rack-setup/` via `glass scene create`
+- Wrote `prep.md` (DM-only, all 8 sections) and `context.md` (player-facing scene framing)
+- Updated `table/scene.md` (kickoff description) and `table/index.md` (at-a-glance)
+- Committed all documents via `glass sync apply`
+- Ended `scene-prep` mode, started `scene-play caulden-rack-setup`
+- Wrote public turn prose to `dm/turns/0067/out.md`
+
+The scene opens at the Glasswake dock: Per Vask is at the door watching Halvi run a clean-ledger cross-check he has reason to watch, the Caulden Rack is in the Tuner-cradle, and Mereth has already said one thing to Bren.

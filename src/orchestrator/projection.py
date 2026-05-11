@@ -79,8 +79,8 @@ class ProjectionPaths:
     root: Path
     turn_dir: Path
     turn_start_path: Path
-    turn_output_path: Path
-    scratch_dir: Path
+    turn_prose_path: Path
+    turn_closeout_path: Path
 
 
 def projection_root_for(
@@ -111,7 +111,8 @@ def build_projection(
     agent: Agent,
     turn_number: int,
     canonical_turn_start_path: Path,
-    canonical_turn_output_path: Path,
+    canonical_turn_prose_path: Path,
+    canonical_turn_closeout_path: Path,
 ) -> ProjectionPaths:
     """Create a fresh actor-owned projection for one actor turn."""
 
@@ -127,7 +128,8 @@ def build_projection(
 
     current_turn_dir_rel = canonical_turn_start_path.parent.relative_to(campaign_root)
     current_turn_start_rel = canonical_turn_start_path.relative_to(campaign_root)
-    current_turn_output_rel = canonical_turn_output_path.relative_to(campaign_root)
+    current_turn_prose_rel = canonical_turn_prose_path.relative_to(campaign_root)
+    current_turn_closeout_rel = canonical_turn_closeout_path.relative_to(campaign_root)
 
     # Create visible empty directories first so table/handouts and similar
     # roots are still discoverable even before they contain files.
@@ -148,8 +150,6 @@ def build_projection(
 
     projected_turn_dir = root / current_turn_dir_rel
     projected_turn_dir.mkdir(parents=True, exist_ok=True)
-    scratch_dir = root / "scratch"
-    scratch_dir.mkdir(parents=True, exist_ok=True)
     _prepare_tool_runtime_files(root)
     _write_projection_manifest(root, manifest)
     _ensure_authoring_surfaces(root, agent)
@@ -157,9 +157,9 @@ def build_projection(
     _make_readonly(root)
     _make_authoring_surfaces_writable(root, agent)
     _make_writable_tree(projected_turn_dir)
-    _make_writable_tree(scratch_dir)
     _make_writable_tree(root / ".claude")
     _chmod_if_possible(root / ".mcp.json", WRITABLE_FILE_MODE)
+    _chmod_if_possible(root / PROJECTION_MANIFEST, WRITABLE_FILE_MODE)
     permissions.apply_projection_permissions(
         root,
         actor_user=permissions.player_user_for(agent.id),
@@ -169,8 +169,8 @@ def build_projection(
         root=root,
         turn_dir=projected_turn_dir,
         turn_start_path=root / current_turn_start_rel,
-        turn_output_path=root / current_turn_output_rel,
-        scratch_dir=scratch_dir,
+        turn_prose_path=root / current_turn_prose_rel,
+        turn_closeout_path=root / current_turn_closeout_rel,
     )
 
 
@@ -182,7 +182,7 @@ def copy_turn_artifacts_to_canonical(
 ) -> None:
     """Copy generated turn artifacts from projection back to canonical storage."""
 
-    for name in ("out.md", "claude-debug.log"):
+    for name in ("TURN.md", "turn-closeout.json", "claude-debug.log"):
         source = projection.turn_dir / name
         if not source.exists():
             continue
@@ -217,8 +217,7 @@ def refresh_projection_from_canonical(
         return
 
     current_turn_dir_rel = _current_turn_dir_rel(agent, turn_number)
-    current_turn_start_rel = current_turn_dir_rel / "in.md"
-    scratch_dir = root / "scratch"
+    current_turn_start_rel = current_turn_dir_rel / "TURN_START.md"
     projected_turn_dir = root / current_turn_dir_rel
 
     _make_owner_writable(root)
@@ -229,8 +228,6 @@ def refresh_projection_from_canonical(
 
     for rel, source in sorted(_iter_files(campaign_root), key=lambda item: item[0]):
         if not _file_visible(rel, agent, current_turn_start_rel):
-            continue
-        if rel.parts and rel.parts[0] == "scratch":
             continue
         target = root / rel
         source_hash = _hash_file(source)
@@ -252,9 +249,9 @@ def refresh_projection_from_canonical(
     _make_readonly(root)
     _make_authoring_surfaces_writable(root, agent)
     _make_writable_tree(projected_turn_dir)
-    _make_writable_tree(scratch_dir)
     _make_writable_tree(root / ".claude")
     _chmod_if_possible(root / ".mcp.json", WRITABLE_FILE_MODE)
+    _chmod_if_possible(root / PROJECTION_MANIFEST, WRITABLE_FILE_MODE)
     permissions.apply_projection_permissions(
         root,
         actor_user=permissions.player_user_for(agent.id),
@@ -533,8 +530,6 @@ def _is_syncable_authoring_path(rel: Path, *, root: Path, agent: Agent) -> bool:
     if rel.suffix.lower() != ".md":
         return False
     if any(part.startswith(".") for part in rel.parts):
-        return False
-    if rel.parts and rel.parts[0] == "scratch":
         return False
     if _is_turn_path(rel):
         return False

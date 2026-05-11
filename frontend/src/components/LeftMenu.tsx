@@ -49,7 +49,9 @@ export function LeftMenu({
   const turns = useSessionStore((state) => state.turns);
   const playerIds = usePlayerIds();
 
-  const mode = runtime?.mode_stack?.at(-1) ?? turns.at(-1)?.mode ?? "scene-play";
+  const mode = coerceMode(
+    runtime?.mode_stack?.at(-1) ?? turns.at(-1)?.mode ?? "scene-play",
+  );
   const ModeIcon = MODE_ICON[mode] ?? Activity;
 
   const recentSpeakers = useMemo(() => {
@@ -135,4 +137,19 @@ function shortMode(mode: string): string {
     prelude: "Prelude",
   };
   return map[mode] ?? mode.slice(0, 6);
+}
+
+function coerceMode(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object") {
+    const candidate = (value as Record<string, unknown>).mode
+      ?? (value as Record<string, unknown>).name
+      ?? (value as Record<string, unknown>).id;
+    if (typeof candidate === "string") {
+      return candidate;
+    }
+  }
+  return "scene-play";
 }

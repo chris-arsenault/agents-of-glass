@@ -1,0 +1,8 @@
+The `out.md` is written. The turn output is collected automatically by the orchestrator — no manual handoff needed since Tev's turn shows the same pattern (empty events, rotation handled by the system).
+
+Sumi's turn is complete. She spoke as a player in three concrete requests:
+1. **Senna Talindra letters** — a scene where Drova gets close enough that the commitment becomes load-bearing, decision point unresolved
+2. **Article 14 file** — one Conclave contact noticing the listener-window supplement, with ambiguous intent
+3. **Misdeclared cell** — Drova will find it; the interesting part is the decision of what to do with it
+
+Also affirmed Tev's tic-tracer scene request (Drova as the right person to ask quietly) and seconded the preference for procedural texture over louder confrontation.

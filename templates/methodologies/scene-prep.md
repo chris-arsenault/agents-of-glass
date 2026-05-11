@@ -11,7 +11,13 @@ A scene has a protocol/toolkit label. Use common labels when they fit
 `social-pressure`), but the list is not exhaustive. The label points the DM
 toward a turn protocol; it does not define every possible kind of scene.
 
-This methodology is invoked **before each new scene** in active play. The orchestrator can run it on demand or fold it into the DM's first turn of the scene. Light, short, re-readable.
+This methodology is invoked **before each new scene** in active play when a new
+scene needs deliberate setup. After intermission, it is the normal handoff into
+the next act's first scene. Inside an already-open act, the preferred path is
+the prior DM scene-to-scene transition turn in
+[`scene-play-dm.md`](scene-play-dm.md); if the orchestrator starts
+`scene-prep` after an ordinary scene close, treat that as recovery and stage
+the next scene immediately.
 
 The principle remains the same: **prep situations, not plots**. At the campaign and arc level the unit is "the world is set up to react"; at the scene level the unit is "I have a strong start and a handful of things in play." Sly Flourish's *Lazy Dungeon Master* is the direct ancestor of this layer.
 
@@ -31,6 +37,11 @@ glass mode start <protocol-or-toolkit-label> <slug>
 If the next act follows an intermission, read the intermission turns first and
 let player requests affect emphasis, rewards, unresolved threads, and what gets
 summarized rather than played. Do not treat requests as binding outcomes.
+
+If this is recovery after a scene ended inside an open act, do not run
+intermission logic or ask players for mid-term plot input. Use the previous
+scene summary, recent turn closeout summaries, and current arc plan to stage the
+next scene.
 
 ## Scaffolding the scene directory
 
@@ -64,7 +75,7 @@ with `glass sync apply arcs/<arc>/scenes/<slug> table`.
 
 ## Read first
 
-1. Your own [`persona.md`](../../dm/persona.md) and [`scratchpad.md`](../../dm/scratchpad.md).
+1. Your own [`persona.md`](../../dm/persona.md).
 2. The campaign foundation: `context.md` at the campaign root, `dm/notes/philosophy/`.
 3. The active arc(s): `arcs/<active>/plan.md`. If multiple arcs are in play, all of their plans.
 4. The most recent scene's transcript and audit log.

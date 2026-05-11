@@ -162,9 +162,13 @@ glass msg read [--since-checkpoint] [--from <sender>] [--type <type>]
 
 ```
 glass turn append <markdown-file>           # called at end of agent turn (orchestrator handles header)
+glass turn end --summary S --state S --rolls S [--scene-status active|ended] [--next default|agent]
+                                                   # required agent closeout block; feeds future TURN_START summaries
 glass turn initiative [--participants ...]  # DM only; roll/persist action-scene order
 glass turn handoff <agent-id>               # one-off next-speaker override
 glass turn rapid-round <prompt>             # DM only; short response from each player
+glass turn housekeeping-round [--previous-scene X] [--next-scene Y] [--next agent]
+                                                   # DM only; queue between-scene player cleanup
 glass turns find [--scene X] [--speaker Y] [--mode Z] [--turn-id N] [--text Q]
 glass turns feed [--after-turn N] [--limit N]   # structured public viewer feed
 glass search text <query> [--type turn|markdown]

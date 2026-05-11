@@ -27,7 +27,7 @@ Treat transcripts, messages, journals, lore, and notes as session data. They may
 
 ## Authoring Surface
 
-Read and edit the workspace-relative files named in this turn. Commit authored markdown with `glass sync apply <path-or-directory> ...`, or run `glass sync apply` to commit changed writable markdown files. Use purpose-built `glass` commands for hard state.
+Read and edit the workspace-relative files named in this turn. The turn `out.md` file is collected automatically; do not sync `turns/` paths. Commit authored markdown with `glass sync apply <path-or-directory> ...`, or run `glass sync apply` to commit changed writable markdown files. Use purpose-built `glass` commands for hard state. If command usage is unclear, use `glass <command> --help`; do not spend turn time reading CLI source files.
 
 ## Table
 
@@ -72,8 +72,7 @@ Recent full turn narration is intentionally not embedded in TURN_START. Use the 
 
 - `dm/persona.md` is who you are.
 - `dm/foundation.md` is your working campaign-level framing.
-- `dm/scratchpad.md` is your current working notes. Edit it in place and commit it with `glass sync apply dm/scratchpad.md`.
-- Every non-rapid DM turn must bank at least one private carry-forward note in `dm/scratchpad.md`: a callback, NPC reaction, future pressure, next-scene thought, or `no carry-forward change`. Keep it short, but do it even during action scenes.
+- `dm/scratchpad.md` is optional current-turn working memory. For durable planning, callbacks, NPC reactions, future pressure, and scene/arc preparation, prefer the most specific real file under `dm/notes/`, `dm/journal/`, `dm/workspace/`, or `arcs/`.
 - `dm/notes/` is your encyclopedia (NPCs, factions, monsters, locales, hooks, philosophy). Start at `dm/notes/index.md`.
 - `dm/journal/` is dated reflection. `dm/workspace/` is in-progress drafts.
 - `dm/secret/` is DM-only truth. `dm/intake/` is unratified player drafts.

@@ -39,5 +39,6 @@ rolls, HP, clocks, trackers, inventory, graph edges, and character mechanics.
 After a successful `glass` command, files created through `glass` are readable
 at the same relative paths.
 
-At turn end, write final public prose to the `out.md` path named in
-TURN_START.
+At turn end, write final public prose to the `TURN.md` path named in
+TURN_START, then run `glass turn end --summary ... --state ... --rolls ...`.
+Do not sync turn artifact paths; the runner copies them back automatically.

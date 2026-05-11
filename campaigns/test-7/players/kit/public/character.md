@@ -13,7 +13,7 @@ player_id: kit
 - **Archetype:** drop-pilot, ex-ringfall scavenger
 - **Organization role:** drop-pilot of the Splitfork
 - **Pronouns:** she/her
-- **Level:** 1 (4 XP)
+- **Level:** 1 (6 XP)
 - **HP:** 10/10
 - **Momentum:** -2 (-2 to 3)
 

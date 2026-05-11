@@ -10,7 +10,7 @@ applies_to_modes: [scene-play, action, prelude, arc-creation, scene-prep, interm
 Use this whenever Mara closes a scene, prelude, act, or arc. This is an ordered
 workflow, not advice. Execute every step in order. A step may end with "no
 lore change," "no journal change," or "no state change," but it must be
-considered and recorded in `dm/scratchpad.md`.
+considered and recorded in durable DM notes or workspace files.
 
 The purpose is commitment. Long-running mysteries can stay unresolved, but the
 core tension of the scene or act cannot close as unknown. Assign consequence
@@ -22,12 +22,12 @@ Read:
 
 1. The active `table/` and active scene `summary.md`.
 2. The relevant arc `plan.md`, `context.md`, and `summary.md`.
-3. `dm/scratchpad.md`.
+3. Relevant `dm/notes/`, `dm/workspace/`, and `dm/secret/` files.
 4. Any unread messages.
 5. Character state if HP, inventory, XP, consequences, or signature moves
    changed during the scene.
 
-Then create a `dm/scratchpad.md` section titled:
+Then create a durable closeout note or workspace section titled:
 
 ```markdown
 ## Closeout - <scene-or-act-id>
@@ -55,7 +55,7 @@ is "no change."
 4. **NPC carry-forward.** List every NPC who appeared or was materially affected.
    For each, choose one:
    - promote or update a durable `dm/notes/npcs/` entry
-   - add a scratchpad callback if they may return
+   - add a durable DM note callback if they may return
    - write "no NPC carry-forward"
 
 5. **Mechanical and fictional state.** Apply persistent changes before close:
@@ -65,7 +65,7 @@ is "no change."
 
 6. **Lore and canon.** If a new public fact should be available later, update
    `shared/lore/` or import/canonize with the lore tools. If it is DM-only,
-   update `dm/notes/`, `dm/secret/`, or `dm/scratchpad.md`. If none, write
+   update `dm/notes/`, `dm/secret/`, or `dm/workspace/`. If none, write
    "no lore change."
 
 7. **Journals and reflection.** Do not write player journals. If Mara needs a
@@ -114,7 +114,7 @@ Run this only after all active scenes in the act are closed.
 
 4. **Promote recurring NPCs and locations.** Any NPC, place, object, faction
    face, or institution that may recur gets a durable note or an explicit
-   scratchpad callback. If none, write "no promoted NPC/location."
+   carry-forward callback. If none, write "no promoted NPC/location."
 
 5. **Log lasting consequences.** Apply cross-scene character consequences,
    durable clocks, faction clock ticks, inventory/reward changes, obligations,
@@ -125,7 +125,7 @@ Run this only after all active scenes in the act are closed.
    `shared/lore/`, quest log, and DM journal as needed. Each surface must get
    either an update or a written "no change."
 
-7. **Carry hooks forward.** Add a compact `dm/scratchpad.md` list:
+7. **Carry hooks forward.** Add a compact durable DM note or workspace list:
    - callbacks Mara wants to bring back
    - unresolved mysteries that are intentionally still live
    - player requests to honor in intermission or scene prep
@@ -146,5 +146,5 @@ Then start intermission or scene prep according to campaign lifecycle.
 - Do not use "left unresolved" as a substitute for consequence.
 - Do not leave a scene's main roll/failure without impact.
 - Do not rely on final narration alone. If a fact matters later, put it in a
-  summary, note, lore entry, quest beat, state command, or scratchpad callback.
+  summary, note, lore entry, quest beat, state command, or carry-forward callback.
 - Do not write player journals for them.

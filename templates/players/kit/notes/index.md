@@ -31,7 +31,7 @@ type: npc        # or location, faction, theory, observation, ...
 ### Conventions
 
 - **One file per topic.** Don't accumulate a single mega-file.
-- **Encyclopedia-shaped, not journal-shaped.** Journal entries (chronological reflection, "today the party did X") go in `../journal/`. Current working notes go in `../scratchpad.md`. This directory is for *reference material* you maintain.
+- **Encyclopedia-shaped, not journal-shaped.** Journal entries (chronological reflection, "today the party did X") go in `../journal/`. This directory is for *reference material* you maintain.
 - **Link freely.** Markdown relative links between files are encouraged. Future-you and the analysis pipeline both benefit.
 - **Subdirectories** are fine when a topic has obvious children (`npcs/`, `locations/`, `theories/`).
 - **Update, don't append.** When your understanding of something changes, update the relevant entry. The note is the *current state* of your knowledge, not a log.

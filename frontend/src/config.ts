@@ -16,7 +16,7 @@ function defaultApiBaseUrl(): string {
   }
   const protocol = window.location.protocol || "http:";
   const hostname = window.location.hostname || "127.0.0.1";
-  return `${protocol}//${hostname}:26001`;
+  return `${protocol}//${hostname}:26002`;
 }
 
 const defaults: AppConfig = {

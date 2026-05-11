@@ -5004,3 +5004,804 @@ The clock runs. The morning keeps going.
 > table write campaigns/test-7/table/index.md
 > sync applied 1 workspace operation(s)
 
+## Turn 61 - dm (dm) - intermission, intermission-01
+
+The prelude is closed. Two scenes, start to end.
+
+Before we go into the next arc, I want to stop here and hear from you. This is intermission — step out of your characters for a minute. Speak as yourselves.
+
+---
+
+**What I can tell you about what's coming:**
+
+The run to Hab Meridian is the job. Cargo is declared as a standard microcavity rack out of Caulden Refinery — twenty-four cells, sealed and bonded. One cell in that rack isn't what the manifest says. The crew doesn't know this yet. When they find out — and they will — the shape of the run changes. The arc's question is: whose decision was it to misdeclare, and what does the Ledger Run do with that fact? I haven't answered the first half. The second half is yours.
+
+The Article 14 amendment is out there. The Conclave has a file building. Neither of those things will crack open in the first scene of the arc — but they're the hum under everything.
+
+---
+
+**What's still loose from the prelude:**
+
+- Eshil Caur hasn't received Den Vell's letter. The Splitfork is the carrier of record, and the year-mark form has eleven days left.
+- Fei's drop log has four glyphs from the contact. They haven't been rendered into something the crew can read.
+- Tek's tic-tracer came out in front of the full crew during the shear crisis.
+- Drova's listener-window exception is filed in the supplement. That has procedural weight; whether she wants to use it is a different question.
+- Whether Bren's corridor actually held. Mereth went in. Mereth will come back with a report. That report is the opening state of the arc.
+
+---
+
+**What I want from you:**
+
+Which of your open threads do you want a scene built around? Which NPC do you want time with? Is there a relationship, a question, or a gap in your character's life that you want the arc to address?
+
+What's a thing you want your character to learn, find, or change — before this arc closes?
+
+And if there's anything about pacing or tone: quieter, harder, more dangerous, more in the weeds of how the system works — now is the time.
+
+Floor is yours.
+
+> arc activate: caulden-rack
+> mode start intermission @ intermission-01
+> handoff -> dm
+
+## Turn 62 - tev (player) - intermission, intermission-01
+
+Okay so. Three things.
+
+**The tic-tracer.** That's the one I want a scene for. Tek has been keeping that meter completely off-book — it came out during the shear crisis in front of the whole crew, and I don't want that to just evaporate. It doesn't need to be a confrontation. Actually I'd rather it wasn't. But I want at least one person to ask her about it quietly, in a moment where she has to decide what to say. Drova would be my first pick — their skillsets are adjacent enough that Drova would understand what she was looking at. If Drova asks, Tek can't just deflect with jargon. That's the scene I want.
+
+**The Shear run.** That's still the thread I most want to follow. The cause-of-incident filing has the wrong date — that's in Tek's goals, and I haven't had a chance to pull on it yet. I'm not asking for the whole answer in this arc. But if there's one moment where Tek finds a document, or runs into someone who was there, or gets close enough to the right archive that she knows the shape of what she's looking for — that's enough. I don't need the resolution, just the lead.
+
+**The misdeclared cell.** Okay, I love this setup. A standard microcavity rack where one cell isn't what it says it is — that is exactly the kind of job where Tek's meter becomes load-bearing. Like, the tic-tracer beeps hard when it shouldn't, and the crew starts to understand why she built it. I want that to be a moment where the thing she's been hiding about herself is also the thing that cracks the problem. Not a redemption arc or whatever. Just — her prep pays off in a way she can't fully explain without admitting what she is.
+
+On tone: I'm good with staying in the weeds. The prelude had a lot of procedural texture — the refusal forms, the listener-window exception — and that's the stuff I actually enjoy. If the arc is partly about figuring out who misdeclared the cell and through what chain of paperwork it got stamped through, I'm here for all of that. Quieter is fine. More dangerous is also fine. I just don't want it to skip the mechanics of how the system works to get there.
+
+That's what I want. If you need me to prioritize: tic-tracer scene first, Shear run thread second, the cell situation third. But ideally all three.
+
+## Turn 63 - sumi (player) - intermission, intermission-01
+
+Tev — yes to the tic-tracer scene. Drova's the right person for it. She reads what's in front of her without making it a confrontation. She'd ask because the meter doesn't fit any category she knows, not to corner Tek. I like that scene a lot.
+
+What I want for Drova:
+
+**The Senna Talindra letters.** That goal is in her sheet and we haven't touched it. I'm not asking for a resolution — I'd rather it didn't resolve cleanly. But I want one moment where the commitment becomes load-bearing. Drova is carrying those letters because she said she would, and she's not going to break the seals, and she can't make that delivery if she doesn't know where to look. I want a scene where she gets close to finding Senna's daughter — maybe a name on a manifest she wasn't expecting, or a contact at a way-station, or someone who recognizes the portfolio and asks what's in it. And Drova has to decide whether she's a courier in that moment or something else. I don't know what she decides. That's the point.
+
+**The Article 14 file.** I want it to move. Not a resolution. The listener-window supplement she filed is the first real thing Drova has put on paper that names herself, and I want one moment where someone in the Conclave notices it — not necessarily hostile. Maybe someone who's following the refusal log with more interest than Drova expected, and she can't tell if that's an ally or a problem. She'd have to read the intention behind the attention. That's the scene: Drova figuring out whether someone on her side is going to help or get in the way.
+
+**The misdeclared cell.** Drova is going to find it. She reads manifests. That's not the question. The question is what she does when she does — whether she files it, sits on it, or uses it. I want that decision to cost something either way. I don't have a preference for which way she lands. I just don't want it to be obvious.
+
+On tone: I'm with Tev on staying in the weeds. The procedural texture in the prelude was exactly what I wanted. If the cargo investigation runs through document channels — someone stamped something they shouldn't have, someone signed off on a chain that doesn't hold up — that's the arc I want. Quieter is fine. More dangerous is fine too, if the danger comes from the paperwork being real rather than from something louder.
+
+That's what I want from this arc.
+
+## Turn 64 - renno (player) - intermission, intermission-01
+
+Okay.
+
+Tev — yes on the tic-tracer scene. Sumi's read on Drova is right. She'd ask because the instrument doesn't fit a known category, not to press Tek. That's exactly the kind of scene that doesn't feel like a confrontation until you're already in it. I want to be there for that scene. Fei would notice the meter before the question was asked. She's been noticing things about Tek and not filing them anywhere.
+
+**The four glyphs.** That's the thread I most want built around. Fei recorded the contact in listener shorthand — four glyphs, spoken. The crew knows she logged something. They don't know what. I want a scene where she has to render them into something readable, and what comes out matters to the arc. Not a revelation. Just — the words she heard are load-bearing for something, and she has to decide how much to translate versus how much to leave in shorthand that only she can read. She's trained to be a first-pass reader. She doesn't usually have to be the one who decides what gets surfaced.
+
+**Mernhab.** That's Fei's personal goal and I haven't had a chance to pull on it. The council said "unstable resonance" and filed it. I don't believe the press release and neither does she. I'm not asking for the answer — I don't want the answer yet. But if there's one moment in the arc where she finds something adjacent: a cross-reference in a cargo archive, a name on a Caulden filing that was also on a Mernhab decommissioning report, someone who knows the shape of what actually happened and doesn't realize they're talking to someone who'd care — that's the thread I want live. Just the shape of the question, not the answer.
+
+**The misdeclared cell.** Fei will be diffuse when the cargo comes aboard. She'll read the rack. I want the moment where she sets down the concentrate flask and says quietly, to whoever's nearest: *this one reads different from the others.* That's all. She found it before it became a problem. What the crew does with that is not her call.
+
+On tone: I'm with Tev and Sumi. Procedural texture, paperwork that's real, danger from the system working exactly as designed rather than from something sudden. Quieter is fine. That's where Fei works anyway.
+
+## Turn 65 - kit (player) - intermission, intermission-01
+
+Okay yeah, yes to everything Renno said about the misdeclared cell. Fei reads it quiet, sets down the flask. That's the moment. Love it.
+
+Here's what I want for Bren:
+
+**The previous drop-pilot.** That's number one. The refusal log missing a whole month isn't a clerical gap — someone decided not to file it, or someone filed it and it got pulled, and I want one scene where Bren gets close enough to that question that the crew can't talk around it anymore. Not a confrontation. Bren's not going to corner anyone. But I want the shape of the gap to become visible to her — maybe she's doing routine Halfsign maintenance and finds something in the drop-seat rigging that doesn't match the last-service log. Or she asks Halvi about parts and Halvi gives her a date that doesn't line up. Just one moment where the absence has a shape.
+
+**The Halfsign.** The official cause says shear damage. It's wrong. Bren's the one who works on that ship, and she knows the difference between a shear-stressed spar and something else. I don't want the answer — I want Bren to be the one who knows the answer is wrong before anyone else does. Maybe she says nothing about it. That's actually better. She files the right parts list and doesn't match it to the official cause document, and she waits to see if anyone notices. That's the kind of thing she'd do.
+
+**Her corridor.** The Splitfork flew fifteen degrees west of Pane Seven on Bren's read. She's the one who said it would hold. I want a moment when the ship comes back — one beat where she finds out whether she was right. It doesn't need to be a big scene. It just needs to land. She sent the crew through her corridor on her judgment, and she needs to know.
+
+On tone — I'm with the table. Weeds are fine. Procedural texture is fine. If the danger in this arc is from a stamped form that shouldn't have been stamped rather than from something loud, that's actually more interesting to me than the loud thing. And I really want at least one moment where Bren does something that's technically wrong by the manifest but completely right by the drop, and she gets away with it. That's the player request. Give her one of those.
+
+## Turn 66 - dm (dm) - intermission, intermission-01
+
+Technically wrong by the manifest but right by the drop.
+
+Yeah. That's going in.
+
+---
+
+Here's what I'm taking as committed scenes:
+
+**The corridor.** The Splitfork comes back with a report. Bren finds out early — that's the first beat of the arc, before anything else loads. It doesn't need to be a whole scene. It just needs to land. It will.
+
+**Tic-tracer, Drova and Tek.** Before the cell becomes a problem. Drova asks because the instrument doesn't fit a category she knows, not to corner. Fei is already there and has already noticed and hasn't filed anything. The scene is two people with adjacent skill sets figuring out what they're looking at, and Tek deciding what to say. I'll build the room around it.
+
+**Fei and the four glyphs.** She has to render them into something readable. What comes out matters to the arc. She decides what to translate and what stays in shorthand that only she can read. That's a scene with a real question at its center — not just information moving from one person to another.
+
+**The misdeclared cell.** Four distinct entry points. Fei reads the rack, sets down the flask, says it quiet. Drova reads the manifest and the decision costs something either way. The tic-tracer beeps when it shouldn't, and the crew starts to understand what Tek built. Bren files the right parts list without matching it to the official cause document, and waits. What the crew does with all of that: still yours.
+
+---
+
+**Threads I'm holding, not committing to scenes yet:**
+
+— Tek and the Shear run date discrepancy. One document or one person who was there. The shape of the question, not the answer.
+
+— Drova and Senna Talindra's letters. A name on a manifest she wasn't looking for, or someone who recognizes the portfolio and asks what's in it. She'll have to decide whether she's a courier in that moment.
+
+— The Conclave noticing Drova's supplement. Someone is following the refusal log and saw her name on it. She won't be able to tell right away whether that's good.
+
+— Fei and Mernhab. One cross-reference in a Caulden filing. A name that appears on two different lists. The shape only.
+
+— The previous drop-pilot gap. Something in the rigging, or a date that doesn't line up when Bren asks about parts. The absence gets a shape. Bren sees it; she doesn't have to say anything.
+
+---
+
+**On tone:** Procedural. System working exactly as designed. Danger from a stamped form that shouldn't have been stamped, not from something loud. I heard that from all four of you the same way.
+
+That's what I've got. Prep is mine from here.
+
+> sync applied 2 workspace operation(s)
+> mode end intermission @ intermission-01
+
+## Turn 67 - dm (dm) - scene-prep, caulden-rack-setup
+
+---
+turn_id: test-7-t0067
+mode: scene-prep
+scene: caulden-rack-setup
+actor: dm
+---
+
+# Turn 67 — Mara
+
+The prelude is closed. The table moves to campaign proper.
+
+Scene prepped: **caulden-rack-setup**, `scene-play` mode, active.
+
+---
+
+The Glasswake reclaimed dock, departure morning.
+
+Most of the manifest is already loaded. The ringglass on the south wall hums as the crane sets down the last ordinary crate — pitch rising as the crane lifts, pitch falling as it sets — and the dock crews count under their breath. Three this morning.
+
+Mereth came in from the berth side a few minutes ago. She set the refusal log on the desk corner before she said anything else. The opening of the book was the first thing.
+
+Halvi is at the window desk with the manifest tablet. Window open. The previous day's tablet is on the shelf, different shelf than yesterday. Ev is near the door — already stamped the manifest without visibly writing anything, paperwork in a clean stack.
+
+The last item on the manifest arrived twenty minutes late.
+
+A small Hab-Worlder named Per Vask pushed a hand-cart through the dock bay door with a microcavity rack from Caulden Refinery in the Sable Crescent — standard tray, twelve cells, foreman-sealed, year-mark manifest, destination Hab Meridian receiving dock. His dispatch slip says he caught a delayed kite from Sable two nights ago. He looks tired. He handed the rack to Halvi with the delivery form and the foreman's seal in good order.
+
+He has not been asked to stay.
+
+He is still here. Standing near the door. Watching Halvi run the clean-ledger cross-check.
+
+Halvi is running it in front of him. Because he is watching.
+
+The rack is in the Tuner-cradle now. Sealed, humming at the standard low frequency of a charged microcavity rack.
+
+Departure in two hours.
+
+---
+
+*What do you do?*
+
+---
+
+**Table:** `table/scene.md` has the full scene kickoff. `table/index.md` has the at-a-glance. Scene files committed to `arcs/caulden-rack/scenes/caulden-rack-setup/`.
+
+Mode advanced: `scene-prep` closed → `scene-play` live.
+
+> mode start scene-prep @ caulden-rack-setup
+> handoff -> dm
+> scene create: caulden-rack-setup (scene-play)
+> sync applied 5 workspace operation(s)
+> mode end scene-prep @ caulden-rack-setup
+> mode start scene-play @ caulden-rack-setup
+
+## Turn 68 - tev (player) - scene-play, caulden-rack-setup
+
+Okay so — Tek'iris moves to the Tuner-cradle while Halvi's cross-check is still running.
+
+Not intrusively. She's crew; she has every reason to be near the cargo. She sets a hand lightly on the cradle frame — cold metal through her work gloves — and pulls the tic-tracer from her vest pocket with the other hand. The pearwood casing is warm from sitting against her ribs all morning.
+
+She opens the lid. The salvaged ringglass shard inside begins its quiet read without prompting. First beep, soft.
+
+She holds the tracer near the rack's upper face, then sweeps it along the cell line slow and even. Twelve cells. Foreman-sealed. Humming at what would pass for a standard delivery frequency on a charged microcavity rack out of Caulden. At a quick listen, at a glance, nothing wrong.
+
+But the charge distribution isn't standard.
+
+Cells three and four from the left end are running a half-step higher than the rest — not alarm-high, not even technically wrong, just off. Like a lattice that was partially depleted and brought back up in the field. Or like those two cells were opened after the foreman's seal went on, then resealed.
+
+Or like nothing. Like Caulden Refinery calibrates tighter than she's used to and she's reading too much into a frequency variance that's still inside tolerance.
+
+She closes the tracer. The inscription on the inside of the lid is by feel by now: *if you can't see it grounded, it's not grounded.*
+
+She doesn't move away from the cradle. She doesn't say anything. The manifest tablet in Halvi's hands, Per Vask still near the door with his arms loose at his sides, the dispatch slip probably folded in his coat — she takes all of it in without turning her head. The ringglass on the south wall hums low. Three cranes this morning, the dock crews said.
+
+Two hours to departure.
+
+---
+
+*Breakthrough on lift-rig-diagnostics / focus, controlled risk (2d6 = 12, total 18, margin +11). Tek'iris read a specific charge variance in cells three and four. Momentum at ceiling (3). Scene summary updated.*
+
+> roll lift-rig-diagnostics (focus) @ controlled: 18 vs 7 -> breakthrough (+2 to +3 momentum)
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+> handoff -> dm
+
+## Turn 69 - dm (dm) - scene-play, caulden-rack-setup
+
+---
+turn_id: test-7-t0069
+mode: scene-play
+scene: caulden-rack-setup
+actor: dm
+---
+
+# Turn 69 — Mara
+
+The ringglass on the south wall hums. Standard frequency. Three this morning.
+
+Halvi sets the manifest tablet face-down on the window desk. Twelve cells accounted for. Foreman seal confirmed. Clean ledger. The refusal log on the desk corner hasn't been opened.
+
+Per Vask exhales.
+
+Just a breath. The kind a person takes when the thing they were watching for is over. He picks up the empty hand-cart handle, turns it toward the dock bay door, and then stops, one step in, not moving.
+
+Mereth is still near the berth-side door. She hasn't looked at the manifest. She's looking at the door Per Vask is stopped in front of.
+
+The rack hums in the Tuner-cradle.
+
+Two hours to departure.
+
+> tek-iris-korr xp +1 (6 -> 7, level 1)
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+> table write campaigns/test-7/table/index.md
+> sync applied 1 workspace operation(s)
+
+## Turn 70 - tev (player) - scene-play, caulden-rack-setup
+
+Tek'iris stayed at the Tuner-cradle longer than the read required.
+
+She set the tic-tracer on the edge of the housing — lid open — and looked at the rack again. Not at the whole rack. At the third and fourth cells from the left. She ran two fingers down the edge of cell three, not to feel anything, just to have a reason to be standing there. The tracer sat quiet in her hand. It had already said what it had to say.
+
+Per Vask had not moved.
+
+She picked up the tracer, closed it, and crossed to Mereth.
+
+She stopped close enough that her voice would stay below the ringglass hum from the south wall, her back partway to the room.
+
+"Three and four," she said. "Running a half-step high. Consistent pattern, both cells." She let that land. "That's not how a standard rack distributes after a run out of the Crescent. It's how it distributes if someone opened two cells after the foreman sealed it and didn't even it back out."
+
+She didn't look at Per Vask. She held the tracer without opening it. If Mereth wanted to see the read, it was there.
+
+"Halvi's signed it clean. That's her call on the ledger side." Her voice stayed flat. "I'm telling you what the rig says."
+
+She waited. She was not certain what she was asking Mereth to do, or if she was asking for anything. The rack was sealed. Halvi had signed. Per Vask was still at the door, and he had exhaled when the manifest cleared, and he was still at the door.
+
+Two hours to departure.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 71 - sumi (player) - scene-play, caulden-rack-setup
+
+Drova moves to Halvi's desk — no announcement, no ask. The delivery form and Per Vask's dispatch slip are still there beside the signed tablet. She takes both and carries them to the window edge where the morning light comes low and flat off the dock wall.
+
+She sets them nearly flat and tilts them into the raking light. Holds them still. The loupe stays in her pocket. She tilts first.
+
+In the ghost-light, the paper holds its history.
+
+The dispatch slip carries an indent trace from a page that once rested above it — pressed in with enough force to leave a record. Most of the impression is smeared past reading, the top page offset when it was written. But the rack serial field in the impression is clean: five characters, and the first two digits at the end are wrong. The form on the desk says 7C-AA9. The indent in the paper says 7C-AA7.
+
+Two racks. One set of papers.
+
+She sets the forms face-up on the desk and straightens. She does not look at the rack. The loupe stays in her hand, closed.
+
+Across the room, Per Vask has stopped watching Halvi's tablet. He is watching Drova's hands.
+
+She looks at Mereth across the room and speaks at the volume you use when you've accepted that the other person will know something passed, even if he can't hear the words.
+
+"There's a second serial on the dispatch slip. Ghost impression from a page above. The indent says 7C-AA7. The form says 7C-AA9."
+
+She leaves the papers on Halvi's desk.
+
+She does not move toward the rack or toward Per Vask. She waits, loupe in hand, and lets Mereth decide what comes next.
+
+> roll reading what's been redacted from a paper record (focus) @ standard: 12 vs 8 -> breakthrough (-1 to +1 momentum) -> delivery form from Per Vask — look for post-seal access: altered timestamps, indentation traces, signature pressure inconsistency
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 72 - renno (player) - scene-play, caulden-rack-setup
+
+Fei Mern has not moved far from the cradle since Tek'iris stepped back. She holds her position the way she holds a threshold — present, not pressing.
+
+She takes the resonance meter from her bag without looking at it. The sweep is part of her role here: first-pass clearance on cargo before departure. She's done it on every load this run. There's nothing unusual about the gesture.
+
+She passes the meter face-down along the rack, left to right. The ringglass hums somewhere behind her on the south wall. Her hands are level.
+
+Cells one and two: nothing that stops her.
+
+Three and four: the meter stalls in her attention. Not loudly — it gives her the edge of something, the way a waystation corridor gives her the residue of a second use it wasn't officially put to. Not transit vibration, not ordinary settling. The impression is of something handled, examined, closed again. The two cells feel like a door someone went through carefully and tried to leave as they found it.
+
+She holds the meter there for three seconds. Then she moves it to five, six. Completes the sweep. Closes the meter.
+
+Per Vask has not moved from the dock bay door. His eyes have been on her hands since she opened the case.
+
+Fei Mern looks at Mereth. She doesn't speak. She tips her chin once — the small kind, barely a movement. What it means: *I found the same wall they found.* Then she looks back at the rack.
+
+The Mernhab cuffs haven't hummed. She hasn't gone diffuse. She has the meter reading, the impression of post-seal handling, and Per Vask's attention. Those are three things she holds without saying.
+
+She does not look at Per Vask.
+
+> roll diffuse-state waystation reading (attunement) @ standard: 9 vs 8 -> advance (+1 to +2 momentum)
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 73 - kit (player) - scene-play, caulden-rack-setup
+
+The rack is in the cradle. Three people have put readings on cells three and four. Bren has been present for all of it — close enough to the rigging to look occupied, far enough to stay out of the work.
+
+Per Vask hasn't moved.
+
+She knows what a delayed kite does to a schedule. She grew up on the ringfall plain west of Span Nine; she's spent more nights in loading bays waiting on manifests than she can count. She knows the particular patience of someone who can't leave yet, who's waiting on a result they're not going to get to see directly.
+
+She walks over.
+
+"You caught a delayed kite two nights ago."
+
+Not a question. Just placing herself as someone who's read the slip, who knows what that kind of disruption costs — an acknowledgment between two hab-worlders who understand how the logistics work.
+
+Per Vask looks at her the way you look at someone who's just confirmed what you were hoping wasn't confirmed. He sets the hand-cart upright. One hand rests flat on the grip.
+
+"I did." A pause that isn't quite a hesitation. "Dispatch said to wait for in-person clearance on delivery."
+
+He glances toward the cradle. Then back at her. His eyes aren't reading her anymore — she crossed something and he's landed on the other side of it. The pretense of lingering-by-accident is gone. He has instructions.
+
+Bren holds where she is. She doesn't look at Mereth.
+
+She opened a door she didn't have the key for. Collapse reads like that: the thing you said that told the other person everything they needed to know about how much you know. Now Per Vask is standing in the room with no reason left to keep waiting quietly, and his instruction is *in-person clearance*, which means someone is expecting a signal from him.
+
+Two hours to departure.
+
+---
+
+*Roll: dockyard-talk + presence, standard risk — collapse. Per Vask's pretense is down; he has explicit instructions from dispatch to wait for in-person clearance, and his attention has moved to the rack. Momentum: -2 (floor, unchanged).*
+
+> roll dockyard-talk (presence) @ standard: 2 vs 8 -> collapse (-2 to -2 momentum)
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 74 - dm (dm) - scene-play, caulden-rack-setup
+
+---
+turn_id: test-7-t0074
+mode: scene-play
+scene: caulden-rack-setup
+actor: dm
+---
+
+# Turn 74 — Mara
+
+Mereth crossed the office.
+
+She came around the corner of Halvi's desk without hurrying — past the papers Drova had left face-up on the window ledge, past the cradle with the rack still humming in it — toward the dock bay door. She stopped next to Bren. Not in front of Per Vask. Beside Bren.
+
+The three of them: Per Vask with his hand on the cart grip, Bren holding her ground, Mereth standing alongside her.
+
+Mereth looked at Per Vask. "The slip shows 7C-AA7 in the impression. Your delivery form reads 7C-AA9."
+
+Per Vask was quiet for a moment. His eyes went to the cradle — just a glance, the kind that can't stop itself — and then back to her.
+
+"I was told the rack would be in order," he said.
+
+Mereth waited.
+
+He shifted his weight, just slightly, and his grip on the cart handle adjusted without going anywhere. "The clearance I'm here for." He stopped. He had landed on the far side of a decision. "The people who sent me — they need to know the rack made delivery."
+
+The refusal log was on the desk corner. Still unopened.
+
+The ringglass on the south wall hummed at standard frequency. Three this morning.
+
+Two hours to departure.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+> table write campaigns/test-7/table/index.md
+> sync applied 2 workspace operation(s)
+
+## Turn 75 - tev (player) - scene-play, caulden-rack-setup
+
+Tek'iris crossed to the rack.
+
+She didn't look at Per Vask. She opened the tic-tracer — the click of the casing lid was the only sound she made — and brought the instrument close to the face of the cradle. Not a sweep. She pressed the reading tip to the seam directly above cell three and held still.
+
+The needle moved. She watched it. Then she shifted to cell four and held again.
+
+Forty seconds, maybe less. She could feel Halvi not looking up from the desk, and Per Vask not moving from the door.
+
+She closed the tracer.
+
+"These two cells aren't running high." She tapped the seam above three with one knuckle — the gesture she used when she wanted someone to understand the geometry and not just the number. "The profile isn't a variance from the others. It's a different class entirely. High-density resonance, not microcavity." She looked at Mereth across the room. "The manifest says microcavity throughout. These two aren't."
+
+She put the tic-tracer back in her harness pocket and left her hand there. She was not going to sign anything that said otherwise.
+
+The rack was sealed and she had not touched the seal. The read was from the exterior. Whatever was inside those two cells, it had told her what it was without being asked.
+
+She waited. Per Vask was still at the door. Mereth had the refusal log on the desk corner.
+
+> roll lift-rig-diagnostics (focus) @ standard: 14 vs 8 -> breakthrough (+3 to +3 momentum) -> determine what happened to cells 3 and 4 from exterior resonance read
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+> handoff -> dm
+
+## Turn 76 - dm (dm) - scene-play, caulden-rack-setup
+
+---
+turn_id: test-7-t0076
+mode: scene-play
+scene: caulden-rack-setup
+actor: dm
+---
+
+# Turn 76 — Mara
+
+Per Vask looked at Tek'iris for one beat.
+
+Then he reached inside his coat and took out a flat plate — palm-sized, laminate, a recessed stud on one edge. The kind of confirmation token a hab-courier carries when the job is one-way: press the stud, the seal burns, a pulse goes out over the dispatch frequency. No reply path.
+
+He held it in both hands and looked at Mereth. Not at Halvi. Not at the rack.
+
+"I was told the rack would be in order." Not an excuse. The thing he knew. "The people I work for need to know it arrived. That's what I was sent here to do. I'm going to send that signal."
+
+He had not pressed the stud. His thumbs were clear of it.
+
+The ringglass on the south wall hummed at standard frequency. The refusal log was still on the desk corner. Tek'iris's hand was still in her harness pocket.
+
+What do you do?
+
+> table write campaigns/test-7/table/index.md
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 77 - tev (player) - scene-play, caulden-rack-setup
+
+Tek'iris had not moved since she named the cell class to the room.
+
+Now she did. Not toward the rack. Not toward Mereth. Toward Per Vask.
+
+She pulled the private refusal log from her harness pocket — the small bound book she kept in the left-side pocket, next to the two carabiners she didn't trust. She held it open, low, where he could see it without either of them having to acknowledge the room. Dates in the left margin. One-line reasons in cramped field notation. Some entries crossed out. Most not.
+
+She said: "Two cells in that rack aren't microcavity. Your slip says so. The rig read says so." She didn't look at the plate in his hand. "They told you the rack would be in order. It isn't."
+
+She nodded once, very slightly, toward the refusal log on Mereth's desk — the one that had been sitting on the corner since before anyone said a word.
+
+"That log is for when the job isn't what they said." She held her own book up a fraction of an inch, not offering it to him, just making sure he saw what she was holding. "You can add your name to one. It's not the same as sending a signal."
+
+She closed the book and put it back in the left-side pocket.
+
+She did not step away. She did not wait for him to respond. She stood there with her hand resting on the pocket flap and let him look at whatever he was going to look at.
+
+Per Vask's thumbs were still clear of the stud.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 78 - sumi (player) - scene-play, caulden-rack-setup
+
+Drova did not move while Tek'iris stood at the dock bay door with her hand resting on her harness pocket. She waited until Tek'iris stepped back.
+
+Then she picked up the dispatch slip from the window desk — Per Vask's original, still flat under her loupe — and walked toward him.
+
+Not to the refusal log. Not to the rack. To him.
+
+She held the slip out and set it on the doorframe ledge at a height he could read without looking away from the room. She positioned her inkless pen in the crease of the paper, angled so the overhead light raked across the surface. The impression was visible: 7C-AA7, faint but legible, the shadow of the page that had been above this one when someone made his copy.
+
+She said: "Your principals told you the rack would be in order."
+
+She didn't look at him. She looked at the document.
+
+"The indent here says 7C-AA7. The form says 7C-AA9." She moved the pen a fraction, holding the shadow. "The rack in the cradle is 7C-AA9."
+
+She picked the pen up and turned it once in her fingers.
+
+"When you press that stud — you're confirming 7C-AA9 arrived." She looked up at him for the first time. "Which serial are your principals waiting for?"
+
+She took the slip off the ledge and walked back to the window desk. Set it down next to the loupe. She didn't wait for his answer — or rather, she set the question down the way she'd set the document down, and left it in the room alongside everything else.
+
+Per Vask's thumbs were still clear of the stud.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 79 - renno (player) - scene-play, caulden-rack-setup
+
+Fei Mern hadn't moved since the chin-tilt. She'd been at the cradle's edge, watching Per Vask's hands, letting the others work through what they'd found.
+
+Drova's question was still in the room without an answer. The thumbs were still clear of the stud.
+
+She crossed back to the rack. Not to Per Vask — to the cradle. She lifted the resonance meter and ran it across cells one through six again, slowly. The meter chattered at three and four. Same read. She held the position at each cell for three full seconds — long enough for anyone watching to understand this was deliberate.
+
+Then she unclipped the field interpreter tablet and logged it. First-person witness render: cells three and four, high-density resonance class, deviation from manifest specification, date, time, location, her initials. She wrote it out in longhand rather than shorthand — readable to anyone in the room who could read standard.
+
+She turned and walked toward the dock bay door. Stopped eight feet from Per Vask. Didn't close the distance further. Held the tablet open where he could read it without moving toward her.
+
+"It's filed now." Her voice carried the register she used when she wasn't performing volume. "Whatever the stud sends — this came first."
+
+She let him look at it.
+
+"A waystation witness render runs ahead of a delivery signal. That's how the log works — not something I decided." She tilted the tablet slightly, in case the angle wasn't right. "When this crosses a waystation, the anomaly is already in the record before the confirmation landed."
+
+She didn't say what he should do with that. She was hab-worlder. She understood what it meant to be dispatched with bad information and to be standing in the wrong room when the account came due.
+
+She lowered the tablet, reclipped it to her belt, and stepped back to the cradle.
+
+The ringglass on the south wall hummed low as the dock crane cable ran back to rest.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 80 - kit (player) - scene-play, caulden-rack-setup
+
+Bren hadn't moved since Mereth came to stand beside her. Two feet from Per Vask. Close enough to see his thumbs.
+
+The room had given him everything it had: the cells, the serial, Tek'iris's log, the witness render on Fei Mern's tablet. Drova's question was still floating — *which serial were your principals waiting for?* — and nobody had answered it for him.
+
+Bren didn't answer it either.
+
+"What were you told you were delivering?"
+
+Not an accusation. She'd run courier jobs out of Span Nine before the Splitfork — two years of carrying things she hadn't packed and signing for manifests she hadn't written. She knew how dispatch worked. She knew the face of a person who was dispatched with one thing and handed another. She wasn't asking him to give up his principals. She was asking what he knew, because if he'd been told 7C-AA7 and he pressed that stud for 7C-AA9, those weren't the same signal — and whoever was waiting on the other end would read the discrepancy before he was out of the building.
+
+She didn't say all of that. She just asked.
+
+Per Vask's thumbs were still clear of the stud. She waited.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 81 - dm (dm) - scene-play, caulden-rack-setup
+
+Per Vask's eyes moved to Bren's face when she asked. Then to the dispatch slip in Drova's hands. Then to Fei's tablet — the witness render still open where anyone could read it, date and time and initials in longhand.
+
+He stood there for a few seconds.
+
+Then he pocketed the confirmation plate. Just the sound of the case closing, and his hand going back to his side. No explanation. No concession. Nothing added to the room.
+
+He picked up his dispatch bag from beside the dock bay door, crossed the office without looking at the rack, and went out.
+
+The door settled shut behind him. The dock outside was quiet. No pulse. No signal.
+
+Mereth had been standing beside Bren through the last of it. She let a beat go — just a breath. Then she looked at the refusal log still on the desk corner.
+
+She had not touched it. It was still there. The rack was still in the cradle. Two hours to departure.
+
+> scene closing down (~1 round(s) left)
+> table write campaigns/test-7/table/index.md
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+> sync applied 3 workspace operation(s)
+
+## Turn 82 - tev (player) - scene-play, caulden-rack-setup
+
+Tek'iris is still standing near the cradle when the dock bay door closes behind Per Vask.
+
+She waits three seconds. Then she crosses to the desk corner and opens Mereth's refusal log.
+
+Not to read it — she keeps her thumb on the cover, barely cracked. She's looking for the last date. She finds it: a run three months back. One line, tight. She does not read the line.
+
+She sets the log back down with that page open, turns to her harness pocket, and pulls out her own. Hers goes down beside it. Open to the last entry. She crossed out the most recent one after the job was done; she still hasn't decided if that was the right call.
+
+She does not look at Mereth. She looks at the rack.
+
+"Two hours," she says. Not to anyone, or to everyone. "That's the question now."
+
+The tic-tracer is still in her pocket. The seal on cells three and four is unbroken. She identified the class from outside — that read is in her hand, in Fei Mern's witness render, in the shape of the thing as it sits in the cradle. The seal being unbroken does not change what is inside it.
+
+She is not going to tell Mereth to file. She is not the captain. But she has the kind of log that gets looked at after things go wrong, and she set it next to the one that gets looked at after things go wrong, and the page is open.
+
+The ringglass on the south wall hums. The dock crane somewhere above the bay is settling something. Pitch rising, pitch falling.
+
+Two hours.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 83 - sumi (player) - scene-play, caulden-rack-setup
+
+Drova crosses to the desk corner and picks up the refusal log. She doesn't look at Tek'iris or Mereth before she does it — just picks it up, the way you pick up a tool that has a job.
+
+She carries it to the window desk. Sets her loupe set at the angle she works in. Opens the log to the current date.
+
+The page is blank.
+
+She uncaps the good pen — the one that leaves a clean impression on the page below — and begins to write. Not quickly, not slowly. The practiced pace of someone who has done this hundreds of times at a Conclave intake desk in Thornvault and knows what weight each word carries.
+
+She documents the serial discrepancy first. Delivery form: 7C-AA9. Ghost indent from the page above: 7C-AA7. Method noted. Then the cell classification across three independent reads — tic-tracer, resonance meter, close exterior field read — each attributed. High-density resonance in positions three and four. Manifest states microcavity throughout. Foreman's seal unbroken at time of examination.
+
+She names Per Vask as the delivery agent: hab-worlder, principals waiting on delivery signal, signal not sent as of the time of this entry. She writes the date. She writes the location: Glasswake reclaimed dock. She writes her name in the clerk's signature box and draws a single line underneath it.
+
+Then she reads it back once, the way she was trained.
+
+"Filed under document deviation," she says to the room, not loud. "Both serials, three independent reads, the delivery agent named. If this goes anywhere legal, the notation holds."
+
+She sets the log back on the desk corner. Not handed to Mereth, not filed away — just returned to where it was, now with something written inside it.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 84 - renno (player) - scene-play, caulden-rack-setup
+
+Fei Mern was still near the bench where the resonance meter had been sitting — the needle not yet zeroed. She picked it up and zeroed it. Old Mernhab habit: calibration tools don't sit half-read.
+
+Then she walked to the desk corner.
+
+Drova's entry was three lines. Serial discrepancy, cell class deviation, Per Vask named, signal not sent, three reads each attributed. The third attribution had her name in it — second resonance meter sweep, repeated, first-person witness render, initials on file. She took the stylus from her tablet pocket and put her initials in the margin beside that line, in witness shorthand. Not adding anything. Confirming what was already written.
+
+She unclipped the field interpreter tablet from her harness and set it open on the desk next to the refusal log. The wax held clearly: cells three and four, high-density resonance class, deviation from manifest, date, time, location, initials, longhand. The render and the log entry were the same packet now. Anyone who opened one would find the other.
+
+She didn't close the log. That was Mereth's.
+
+The coherence-aid cuffs were warm against her wrists — residual warmth from a long session near the cradle. She pressed her left wrist to the inside edge the way she always did at the end of a sweep, checking for the small slip that meant she'd gone further out than she knew. It was clean. She was solid.
+
+Two hours to departure. The record existed regardless of what Mereth did with it. Fei Mern stepped back from the desk.
+
+She didn't look at the rack again.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 85 - kit (player) - scene-play, caulden-rack-setup
+
+The room was quiet after Fei Mern stepped back.
+
+Bren crossed to the desk.
+
+Not to close the log — Drova's entry was already there, three clean lines, Fei Mern's initials in the margin beside the third attribution. She could read it from two feet away. She didn't touch that page.
+
+She turned back through the log from the current date.
+
+Pages. Clean entries in different hands — delivery flags, cargo deviations, one old customs query still marked pending. Standard waystation traffic. She kept going.
+
+The month Ev had talked around when she'd asked about crew rotations. The month the Splitfork's last drop-pilot had her last entry in any official record.
+
+No flag. No notation. No initialed anomaly. Just clean dock traffic, one month continuous before and after, as if there'd been nothing to note.
+
+Bren closed the log.
+
+She set it back on the desk corner, face-down — caught herself — and turned it face-up again. Left it there. The record existed regardless.
+
+Mereth was watching her from the corner of the room. Bren didn't say anything about what she hadn't found. She crossed back to stand near the outer door where she could see the loading bay and not the desk.
+
+Two hours to departure. The rack in the cradle behind her. The refusal log on the desk corner, open to Drova's entry, Fei Mern's initials beside the third line.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+> handoff -> dm
+
+## Turn 86 - dm (dm) - scene-play, caulden-rack-setup
+
+Mereth lets the quiet hold for three seconds after Bren crosses back to the outer door.
+
+Then she walks to the desk.
+
+She reads Drova's entry once. Serial discrepancy. Both serials. Cell classification, three reads attributed, names and method. Per Vask as delivery agent, signal not sent. Drova's signature under the clerk's line, Fei Mern's initials in the margin beside the third attribution. She does not reread it.
+
+She picks up the log and carries it to the intake slot on the western wall — cast-steel lip, runs to the waystation filing system. She presses it flat on the feed plate and tabs the confirmation. A soft sound from somewhere behind the panel. The plate pulls back.
+
+The log goes with it.
+
+She turns back to the room.
+
+"Rack stays," she says. Not to anyone specifically. "We're wheels-up in two hours. Whatever they're waiting on — let them wait."
+
+She doesn't say anything about what Bren didn't find in the earlier pages. She doesn't have to.
+
+Halvi's tablet is face-down on the window desk. Ev is near the outer door with the stamped paperwork. The Caulden Rack is in the cradle in the loading bay, seal unbroken, and it is going to stay there when the crew ships out.
+
+The refusal log is in the waystation system now. Not in the room. Not on the desk corner. It went somewhere.
+
+> rapid-round queued for tev,sumi,renno,kit: The refusal log is filed. The rack stays in the cradle. Mere
+> table write campaigns/test-7/table/index.md
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+> sync applied 1 workspace operation(s)
+
+## Turn 87 - tev (player) - scene-play, caulden-rack-setup
+
+Tek'iris takes the tic-tracer off the cradle rail and clips it back to her harness pocket without looking at the rack. The lid is shut; she doesn't need to check again. She crosses to the door that leads to the Splitfork and stands in the frame — not quite in, not quite out — checking the third carabiner out of habit. It holds. The refusal log is filed and somebody with steadier hands than hers wrote the entry. Two hours. She stays in the doorway and watches the clock without looking back at cells three and four.
+
+## Turn 88 - sumi (player) - scene-play, caulden-rack-setup
+
+Drova opens the refusal log to the last entry — not to read it, just to check her own hand. The notation is clean: rack serial, timestamp, discrepancy language, the instrument read cited by name. She closes the cover and slides the working copy into the portfolio's back compartment, the false one, the one that opens from the spine and looks like padding. She has done this before, with documents that needed to travel without looking like they were traveling. The rack can stay in the cradle. The log does not stay anywhere it didn't choose to be.
+
+## Turn 89 - renno (player) - scene-play, caulden-rack-setup
+
+Fei Mern pulls the field tablet from her vest and marks a line at the bottom of the refusal-log entry — same-day, time-of-read, her own interpreter shorthand for *undeclared class, post-seal, dock-held*. Not the quarterly form. Today's. She stares at it for a moment before capping the stylus.
+
+On her way to the door she passes the cradle. She doesn't stop. But she goes half-diffuse for just a breath — not enough to lose shape, just enough to hear the dock the way the dock actually sounds. The rack is there the way a wrong note is there: the room has organized itself around it without anyone saying so out loud. She comes back before she reaches the threshold, touches the cuff on her left wrist once to settle, and steps through.
+
+She doesn't know what Per Vask's principals will do with the signal that doesn't come.
+
+## Turn 90 - kit (player) - scene-play, caulden-rack-setup
+
+Bren didn't watch Per Vask go. While Mereth was still talking she crossed back to the desk, put her hand flat on the refusal log for a moment — not to read it, just to feel the weight of it — then lifted it and set it in the outgoing basket. The Splitfork's last pilot didn't have one of these filed for her. Bren still didn't know if that meant something had been different, or just that nobody had filed it. Two hours was enough time to not think about that. She went to check the let-down lines.
+
+## Turn 91 - dm (dm) - scene-play, caulden-rack-setup
+
+The intake slot pulled the refusal log back at 0840.
+
+Mereth turned from the desk without a word. *Rack stays. Wheels-up in two hours.*
+
+That was it.
+
+Per Vask is gone. The confirmation plate is in his pocket, unstruck. His principals are waiting on a signal that did not come. They will wait, and then they will not wait, and then something will happen — but not today, not in this room. Today the crew documented three independent reads against a sealed rack, named the serial discrepancy to a courier's face, filed a first-person witness render, and wrote a refusal log entry that now belongs to the waystation system. The record is ahead of the signal.
+
+Bren went through the log before it was filed. Found the month the previous drop-pilot died, clean of any entry. She set the log back and said nothing to Mereth.
+
+The Caulden Rack is in the Tuner-cradle, seal unbroken, cells three and four confirmed high-density resonance against a microcavity manifest. It stays.
+
+Two hours to departure.
+
+---
+
+*Scene ends — caulden-rack-setup.*
+
+XP: Tek'iris 3, Drova 3, Fei Mern 3, Bren 2.
+
+> scene end: caulden-rack-setup (+4 xp awards)
+> sync applied 2 workspace operation(s)
+
+## Turn 92 - tev (player) - scene-play, caulden-rack-setup
+
+Tek'iris steps back from the intake desk after Mereth has gone. The Tuner-cradle stands empty now — the rack wheeled to the holding pad while they were still in the room. The cradle's idle hum is lower without cargo, a harmonic you only notice when the weight is gone.
+
+She doesn't go straight to the berth. She takes three minutes at the window.
+
+The private refusal log comes out of her vest pocket and she opens it to the last entry — reads it once, and doesn't add to it. This one doesn't go in. The entries in this book are jobs she let through when she shouldn't have: the date she walked past a jury-rigged bypass on a Hab Meridian uplift and told herself it was in-spec, the night she said nothing about an order she should have asked more questions about. Each time she'd had the read in her hands and done the wrong thing with it.
+
+This morning she had the read. She had three reads.
+
+She closes the book and pockets it. Outside through the glass: the Splitfork at the berth, her running lights on in the overcast. The dock crane at the next berth counts its pitch — up, then down. Someone else's cargo.
+
+It comes to her quietly, the way things do when there's nothing left to do — the previous drop-pilot filed nothing. No flag in the refusal log, nothing noted. She'd checked herself. And two years ago, on the Shear run, the cause-of-incident filing went in with the wrong date. It has been sitting with the wrong date for two years.
+
+Nobody else has noticed.
+
+She picks up her harness from the bench, clips the third carabiner — the one she replaced the gate on herself — and goes out to the Splitfork.
+
+> summary.write scene campaigns/test-7/arcs/caulden-rack/scenes/unnamed/summary.md
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/caulden-rack-setup/summary.md
+
+## Turn 93 - sumi (player) - scene-play, caulden-rack-setup
+
+Two hours is enough time to clean the loupe set properly.
+
+Drova finds a corner in the loading bay's side office, away from the dock noise, and lays the three lenses out on a strip of cloth. The first two are routine. The third — the indentation lens, the one that reads the ghost impression of what was written before — gets the most use and collects the most grime along the beveled edge. She breathes on it and wipes it slow, working the rim clean with the tip of her thumbnail before moving on.
+
+When the lenses are back in their case, she opens the mentor-handwriting notebook.
+
+Not to read it. She knows the pages — she's been copying Senna Talindra's hand since her second year at Thornvault, one sample per year, marking the date at the top of each entry in her own small script. The comparison has always been that way: Senna's letter forms, her own letter forms, the gap between them measured and set down. She stopped writing new entries when she left. The last one is from three years ago.
+
+What she writes now is not a copy. It's a date range. One month — the month the Splitfork's previous drop-pilot died — and after it: *no entry. No flag. Nothing noted.*
+
+Then she closes the notebook and puts it back with the portfolio.
+
+The refusal log belongs to the waystation system now. It went through the intake slot the way things do — it won't come back and it doesn't belong to her. But the notebook is the measure she still trusts. The one she keeps because the official system wasn't always.
+
+She picks up the portfolio and goes toward the berth.
+
+> summary.append scene campaigns/test-7/arcs/caulden-rack/scenes/unnamed/summary.md
+> sync applied 2 workspace operation(s)
+> handoff -> dm
+
+## Turn 94 - dm (dm) - scene-play, caulden-rack-setup
+
+Two hours is exact on a dock.
+
+The Caulden Rack sits in the Tuner-cradle in Bay Six, seal unbroken, exactly where it was when Per Vask walked in. It will still be there when the Splitfork clears the field.
+
+Tek'iris is at the third carabiner. Bren walks the let-down lines. Fei's cuffs catch the dock hum in two frequencies and she does not go all the way diffuse. Drova's portfolio is closed; the loupe set is in the cargo satchel; the mentor notebook is underneath.
+
+Mereth is on the Splitfork.
+
+The waystation intake slot has long since pulled the panel back in. The log went with a soft sound, and that was the last of it. No confirmation arrived. No one came to argue about the rack. Per Vask is gone toward whatever he reports to, and what he will tell them is that the signal didn't come — which is its own kind of record.
+
+The dock crane at Bay Nine counts its pitch. Up, then down. Someone else's cargo.
+
+The Splitfork's running lights are on in the overcast.
+
+Whatever comes next comes after Glasswake. The refusal log got there first. It always needed to get there first — the kite hasn't lifted yet and already that is true. Three reads. Four names. A serial discrepancy in a system that outlasts any one boat.
+
+Whatever the principals do with the silence, the record exists.
+
+Wheels-up in two hours.
+
+> mode end scene-play @ caulden-rack-setup
+> summary.append arc campaigns/test-7/arcs/caulden-rack/summary.md
+> sync applied 2 workspace operation(s)
+

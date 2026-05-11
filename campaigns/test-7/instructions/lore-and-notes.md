@@ -12,8 +12,7 @@ or a more specific `glass` command.
 
 ## DM Notes
 
-DM-only working notes live under `dm/notes/`, `dm/workspace/`, `dm/secret/`,
-and `dm/scratchpad.md`.
+DM-only working notes live under `dm/notes/`, `dm/workspace/`, and `dm/secret/`.
 
 ```bash
 glass sync apply dm/workspace/<name>.md
@@ -32,7 +31,7 @@ glass lore upsert shared/lore/<category>/<slug>.md
 ## Player Notes
 
 Player private reference lives under `players/<id>/notes/`, `journal/`,
-`drafts/`, `scratchpad.md`, and `secrets/`.
+`drafts/`, and `secrets/`.
 
 ```bash
 glass sync apply players/<id>/notes/<slug>.md

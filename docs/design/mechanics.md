@@ -180,8 +180,8 @@ full pace. It still does not automatically mean dead. Death policy remains a
 campaign-tone decision, not a default subsystem.
 
 NPCs and hazards do not need full character rows until they drift. For early
-sessions, the DM may track enemy HP in `dm/scratchpad.md` or scene prep and
-only codify what must survive across turns.
+sessions, the DM may track enemy HP in scene prep or public trackers and only
+codify what must survive across turns.
 
 ## Effects
 

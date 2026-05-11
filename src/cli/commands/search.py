@@ -83,7 +83,7 @@ def search_reindex(ctx: click.Context, turns_only: bool) -> None:
                 f"Turn {turn['turn_id']} - {turn['speaker']} "
                 f"({turn['mode']}, {turn['scene_id']})"
             ),
-            "body": turn.get("prose") or "",
+            "body": _turn_index_body(turn),
             "metadata": {
                 "turn_id": turn["turn_id"],
                 "speaker": turn.get("speaker"),
@@ -230,6 +230,19 @@ def _embed_chunks(chunks: list[dict[str, Any]]) -> _embeddings.EmbeddingBatch:
         for chunk in chunks
     ]
     return _embeddings.embed_texts(texts, kind="document")
+
+
+def _turn_index_body(turn: dict[str, Any]) -> str:
+    parts = [
+        str(turn.get("prose") or ""),
+        str(turn.get("turn_summary") or ""),
+        str(turn.get("rolls") or ""),
+        str(turn.get("position") or ""),
+        str(turn.get("pressure") or ""),
+    ]
+    parts.extend(str(item) for item in turn.get("state_changes", []) or [])
+    parts.extend(str(item) for item in turn.get("open_questions", []) or [])
+    return "\n\n".join(part for part in parts if part)
 
 
 def _iter_indexable_markdown(root: Path) -> Iterable[dict[str, Any]]:

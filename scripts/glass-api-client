@@ -17,6 +17,9 @@ import urllib.request
 from pathlib import Path
 
 
+DEFAULT_TIMEOUT_SECONDS = 600
+
+
 def main(argv: list[str]) -> int:
     api_url, grant = _api_credentials()
     if not api_url or not grant:
@@ -33,7 +36,7 @@ def main(argv: list[str]) -> int:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=_timeout_seconds()) as response:
             body = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
@@ -53,6 +56,17 @@ def main(argv: list[str]) -> int:
         if not output.endswith("\n"):
             sys.stdout.write("\n")
     return int(data.get("exit_code", 1))
+
+
+def _timeout_seconds() -> float:
+    raw = os.environ.get("GLASS_API_TIMEOUT_SECONDS")
+    if raw is None:
+        return float(DEFAULT_TIMEOUT_SECONDS)
+    try:
+        value = float(raw)
+    except ValueError:
+        return float(DEFAULT_TIMEOUT_SECONDS)
+    return max(value, 1.0)
 
 
 def _api_credentials() -> tuple[str | None, str | None]:

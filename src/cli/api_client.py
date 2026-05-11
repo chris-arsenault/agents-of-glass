@@ -9,6 +9,9 @@ import urllib.error
 import urllib.request
 
 
+DEFAULT_TIMEOUT_SECONDS = 600
+
+
 def should_proxy(args: list[str], env: dict[str, str] | None = None) -> bool:
     env = env or os.environ
     if env.get("GLASS_API_INTERNAL"):
@@ -34,7 +37,7 @@ def proxy_args(args: list[str], env: dict[str, str] | None = None) -> int:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=_timeout_seconds(env)) as response:
             body = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
@@ -54,3 +57,14 @@ def proxy_args(args: list[str], env: dict[str, str] | None = None) -> int:
         if not output.endswith("\n"):
             sys.stdout.write("\n")
     return int(data.get("exit_code", 1))
+
+
+def _timeout_seconds(env: dict[str, str]) -> float:
+    raw = env.get("GLASS_API_TIMEOUT_SECONDS")
+    if raw is None:
+        return float(DEFAULT_TIMEOUT_SECONDS)
+    try:
+        value = float(raw)
+    except ValueError:
+        return float(DEFAULT_TIMEOUT_SECONDS)
+    return max(value, 1.0)

@@ -1361,7 +1361,9 @@ def roll_record(
 _TURN_COLUMNS = (
     "campaign_id, turn_id, session_id, scene_id, mode, speaker, role, "
     "character_id, source_path, prose, event_summaries, events, markdown, "
-    "created_at, arc_id, scene_type, turn_number_in_scene, visibility"
+    "created_at, arc_id, scene_type, turn_number_in_scene, visibility, "
+    "turn_summary, next_speaker, scene_status, state_changes, rolls, "
+    "open_questions, position, pressure, turn_end"
 )
 
 
@@ -1385,6 +1387,15 @@ def _row_to_turn(row: tuple[Any, ...]) -> dict[str, Any]:
         scene_type,
         turn_number_in_scene,
         visibility,
+        turn_summary,
+        next_speaker,
+        scene_status,
+        state_changes,
+        rolls,
+        open_questions,
+        position,
+        pressure,
+        turn_end,
     ) = row
     return {
         "campaign_id": campaign_id,
@@ -1408,6 +1419,15 @@ def _row_to_turn(row: tuple[Any, ...]) -> dict[str, Any]:
             int(turn_number_in_scene) if turn_number_in_scene is not None else None
         ),
         "visibility": visibility,
+        "turn_summary": turn_summary or "",
+        "next_speaker": next_speaker or "default",
+        "scene_status": scene_status or "active",
+        "state_changes": list(state_changes or []),
+        "rolls": rolls or "",
+        "open_questions": list(open_questions or []),
+        "position": position or "",
+        "pressure": pressure or "",
+        "turn_end": dict(turn_end or {}),
     }
 
 
@@ -1432,6 +1452,15 @@ def turn_insert(
     scene_type: str | None = None,
     turn_number_in_scene: int | None = None,
     visibility: str = "public",
+    turn_summary: str = "",
+    next_speaker: str = "default",
+    scene_status: str = "active",
+    state_changes: list[str] | None = None,
+    rolls: str = "",
+    open_questions: list[str] | None = None,
+    position: str = "",
+    pressure: str = "",
+    turn_end: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     with conn.cursor() as cur:
         cur.execute(
@@ -1440,10 +1469,12 @@ def turn_insert(
                 campaign_id, turn_id, session_id, scene_id, mode, speaker, role,
                 character_id, source_path, prose, event_summaries, events,
                 markdown, created_at, arc_id, scene_type, turn_number_in_scene,
-                visibility
+                visibility, turn_summary, next_speaker, scene_status,
+                state_changes, rolls, open_questions, position, pressure, turn_end
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s::jsonb, %s::jsonb, %s, %s::timestamptz, %s, %s, %s, %s
+                %s::jsonb, %s::jsonb, %s, %s::timestamptz, %s, %s, %s, %s,
+                %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s, %s, %s::jsonb
             )
             RETURNING {_TURN_COLUMNS}
             """,
@@ -1466,6 +1497,15 @@ def turn_insert(
                 scene_type,
                 turn_number_in_scene,
                 visibility,
+                turn_summary,
+                next_speaker,
+                scene_status,
+                json.dumps(state_changes or []),
+                rolls,
+                json.dumps(open_questions or []),
+                position,
+                pressure,
+                json.dumps(turn_end or {}),
             ),
         )
         row = cur.fetchone()
@@ -1524,10 +1564,12 @@ def turn_list(
         params.append(after_turn)
     if text:
         where.append(
-            "(prose ILIKE %s OR markdown ILIKE %s OR event_summaries::text ILIKE %s)"
+            "(prose ILIKE %s OR markdown ILIKE %s OR event_summaries::text ILIKE %s "
+            "OR turn_summary ILIKE %s OR state_changes::text ILIKE %s "
+            "OR open_questions::text ILIKE %s)"
         )
         pattern = f"%{text}%"
-        params.extend([pattern, pattern, pattern])
+        params.extend([pattern, pattern, pattern, pattern, pattern, pattern])
     params.append(limit)
     order = "DESC" if latest else "ASC"
     with conn.cursor() as cur:

@@ -782,6 +782,115 @@ Then: close the prelude arc, time-jump to main campaign, call
 Arc summary append: note the prelude's two beats (carry decision, signal
 outcome) and what they carry forward.
 
+## Turn 81 — DM: Per Vask pocketed the plate and left
+
+The confirmation plate did not fire. Per Vask absorbed Bren's question (what were you told you were delivering?), processed the serial arithmetic, processed the witness render, pocketed the plate without speaking, and left. No pulse went out.
+
+**What this means:**
+- His principals are now waiting on silence. That silence will eventually prompt a follow-up — not today, but the scene carries that pressure forward.
+- Per Vask knows the rack is wrong. He'll reach his principals somehow, just not in this room. He is a courier who got handed something he doesn't understand. Whether he's complicit in the modification or simply a delivery vector is still open.
+- The rack is still in the cradle. The crew now has the room to themselves with an undeclared restricted-class rack, two hours to departure, and a refusal log that hasn't been opened.
+
+**Scene closing-down: 1 round (5 turns) called.**
+
+**Closing beats to watch for:**
+- Does Drova open the refusal log and write the entry? This is her moment — the rack is exactly what the log exists for.
+- Does Mereth make the call herself, or does she wait for the crew?
+- Does anyone contact dock authority about the restricted-class cells? Or do they carry the secret?
+- What does the crew do with the rack — refuse delivery, hold it, push it back?
+
+**Rapid-round prompt when countdown hits 0:**
+  "your character's last action, line, or image as this scene closes"
+
+**Beats to log at scene end:**
+1. Per Vask's confirmation plate was drawn but not fired — the silence is the beat.
+2. The rack's restricted-class cells were identified and witnessed on record.
+3. The refusal log (whatever form the crew's decision takes).
+
+**XP baseline:** 2 each for meaningful scene participation.
+- Tek'iris: +1 spot XP already awarded earlier for the breakthrough read. Strong candidate for 3 at scene end — drove the major diagnostic beat.
+- Drova: 3 if she files the refusal entry herself; 2 otherwise. The ghost-indent read was the pivot.
+- Fei: 2-3. Witness render was the move that made the signal moot regardless of what Per Vask did.
+- Bren: 2. The serial question was the final pressure — quiet, effective, landed.
+
+**What I'm holding:**
+- Per Vask's principals and who modified the cells. Still mine.
+- Whether the rack gets physically turned away or gets loaded. Depends on the crew.
+- What Mereth said to Bren at the start of the scene. Still unspent.
+- The Caulden Refinery / Sable Crescent parallel with the Shear run. Still quiet.
+
+## Turn 76 — DM after Tek'iris names the cell class
+
+Per Vask drew the confirmation plate. One-way signal, no reply path. He named his intent to Mereth: send delivery confirmed, one pulse. He has not sent it. Thumbs clear of the stud.
+
+**The crew's window:** they can act before the signal goes out.
+- Stop Per Vask (verbally or physically)
+- Open the refusal log — Mereth set it there, it names the rack
+- Let the signal go and deal with what comes
+- Try to get more: who sent you, who are your principals
+
+**If the signal goes out:** his principals know the rack made delivery. Whether they come for it, or wait, is mine to hold.
+**If it doesn't:** they notice the silence. Someone checks — or Per Vask has a secondary protocol. Holding.
+
+**Per Vask's limit:** he's a courier. Not a soldier. In over his head. Job was: watch the cross-check, send confirmation. The modification happened before the rack reached him, or he was complicit — not deciding yet. His fear: the crew acts before the stud fires.
+
+**The refusal log:** Drova's goal is to make it evidentiary. Mereth set it on the corner. A rack carrying undeclared restricted-class cells is exactly the entry it exists for.
+
+**Closing signal check:** NOT calling closing-down this turn. Scene is at its sharpest. Let the crew react. Evaluate next DM turn.
+
+## Turn 69 — DM after Tek'iris reads the rack
+
+The clean-ledger cross-check cleared. Manifest closed. Per Vask exhaled
+and stopped near the dock bay door instead of leaving. Mereth has been
+watching the door he's in front of, not the manifest.
+
+**Per Vask's tell is in the room:** his exhale on the sign-off is the
+behavior of someone who needed the anomaly to pass undetected. He is not
+a courier who got lucky with a delay. He is a courier who needed to
+watch the cross-check run — and he stayed to confirm it passed. That is
+not courier behavior.
+
+**Who sent him:** I am not committing yet. Caulden Refinery foreman-seal
+could be legitimate or forged. The post-seal field work on cells three
+and four — two cells opened and resealed after the foreman's stamp —
+is the operative fact. Someone in the Caulden chain opened those cells
+after sealing. Per Vask either did it, witnessed it, or was handed the
+rack already modified. The question of which one is arc-material.
+
+**Mereth knows something is off:** she set the refusal log on the desk
+corner before she said anything to Bren. She has not opened it. She is
+watching Per Vask's door. She came in from the berth side — she walked
+past the dock bay. She may have seen Per Vask arrive, or seen his
+hand-cart, or seen something that preceded his entering the office.
+What Mereth said to Bren in her first sentence is still the scene's
+first unspent secret. Keep it.
+
+**The other three PCs haven't entered the scene yet.** The rotation
+goes to sumi (Drova) next. Drova is the document examiner. She will read
+the manifest. The delivery form. The foreman's seal. Fei may go diffuse.
+Bren may go to the Splitfork. The four entry points from the intermission
+commit are all still available.
+
+**Tek +1 spot XP awarded** (now 7, level 1). The breakthrough is real.
+
+**What I'm watching for:**
+- Does Drova pull the delivery form and read it under her loupe?
+- Does anyone speak to Per Vask before he decides to leave?
+- Does Fei go diffuse — and if so, does she read the rack?
+- Does Bren notice Per Vask's stopped posture?
+- Does Per Vask take a step toward the door — or toward Halvi?
+
+**What I'm holding back:**
+- What Mereth said to Bren. My current read: something about the
+  departure window, or something about the previous drop-pilot. Not
+  about the rack. Mereth came in before the rack was in the cradle.
+  She doesn't know what Tek knows. Yet.
+- Whether Per Vask's seal is forged or genuine.
+- Who modified the cells and why.
+- The Caulden Refinery name. It's in canon as Sable Crescent. The
+  Sable Crescent is also where the Shear run happened. That parallel
+  is sitting quietly. Not surfacing it yet.
+
 ## Turn 60 — Prelude closed
 
 Prelude is done. Both scenes formally ended. Mode stack is clear.
@@ -832,3 +941,94 @@ on receipt of Eshil Caur's response. Or open on Velsk Tarn's next
 drop. Waiting to see what the players lean toward.
 
 Mug goes back on the table.
+
+## Turn 86 — DM: Mereth files the refusal log
+
+Mereth crossed to the desk, read Drova's entry once (serial discrepancy, three reads attributed, Per Vask named, signal not sent, Drova's signature, Fei's initials in the margin), and filed the log through the waystation intake slot. The plate pulled back. The log went with it.
+
+She turned and said: "Rack stays. Wheels-up in two hours. Whatever they're waiting on — let them wait."
+
+She did not address Bren's absence find (the previous drop-pilot's clean month). She didn't have to. The log is out of the room. The rack is staying.
+
+**Rapid-round queued:** all four players get "The refusal log is filed. The rack stays in the cradle. Mereth has said wheels-up in two hours. Your character's last action, line, or image before the crew ships out."
+
+After rapid-round drains, call scene end.
+
+### Scene end calls to make after rapid-round
+
+```bash
+glass scene end \
+  --summary "The crew documented the Caulden Rack's deviation through three independent reads (tic-tracer, raking-light document examination, resonance meter), then forced Per Vask's cover. He drew his confirmation plate and named his intent — then pocketed it and left without sending the signal. His principals are waiting on silence. Drova wrote the refusal log entry (serial discrepancy, cell class deviation, three attributed reads, Per Vask named); Fei Mern initialed it and filed a first-person witness render. Bren found the previous drop-pilot's month in the log — nothing noted, no flag. Mereth filed the refusal log through the waystation intake slot and said the rack stays. The Caulden Rack remains in the Tuner-cradle at the Glasswake dock, seal unbroken. The crew ships out in two hours." \
+  --outcome "The refusal log is in the waystation system: serial discrepancy and undeclared restricted-class cells are on record, attributed." \
+  --outcome "Per Vask's principals received silence instead of a confirmation signal. Someone will notice." \
+  --beats "Per Vask drew the confirmation plate but did not fire it — the silence is the signal his principals received.
+The Caulden Rack's restricted-class cells were identified, witnessed, and filed before the crew shipped out.
+Mereth filed the refusal log and refused the cargo. The rack stays at Glasswake." \
+  --xp tev=3,sumi=3,renno=3,kit=2
+```
+
+**XP rationale:**
+- Tek'iris (tev): 3. Drove the diagnostic arc end to end — the breakthrough read on cell class was the pivot. Already has +1 spot XP (total 7 including spot award).
+- Drova (sumi): 3. The ghost-indent read was the evidentiary pivot; she wrote the formal refusal entry.
+- Fei (renno): 3. Witness render made the record immune to Per Vask's signal. Quiet and decisive.
+- Bren (kit): 2. The serial question was the final pressure that cracked Per Vask. The absence find (drop-pilot's month) was a character moment worth noting — but she said nothing, and that's the scene. 2 is right.
+
+### What travels into the next arc
+
+- The silence: Per Vask's principals don't have a confirmation. They will move. Timing unknown, threat level unknown.
+- The serial discrepancy (7C-AA7 vs 7C-AA9): two racks, one set of papers. The second rack is somewhere.
+- The record: waystation filing system, Fei's witness render. Public document, legally weighted.
+- The absence in the refusal log (drop-pilot's month): Bren found it, said nothing to Mereth. That unsaid thing is now in the hull.
+- The Caulden Rack (seal unbroken) at the dock. Someone will come for it.
+
+### What I'm still holding
+
+Same as turn 81, no additions. Per Vask's principals, who modified the cells, what's in 7C-AA7, whether Per Vask is complicit or a vector. None of these get answered until the next arc asks.
+
+## Closeout - caulden-rack-setup
+
+**Turn 94 — formal scene close**
+
+### 1. Core tension
+The crew had to decide whether to document and refuse a misdeclared restricted-class cargo rack or let it through. They documented it, attributed it, and filed before the kite left. The refusal is on record. The principals got silence.
+
+### 2. Consequence and impact
+The record is ahead of whatever the principals planned. Per Vask left without confirmation; his principals now know something interrupted the delivery. The rack sits at Glasswake, seal unbroken. The crew shipped out. The cost is: whoever modified those cells knows the Splitfork crew filed and named them.
+
+### 3. Outcomes drafted
+- "The refusal log is in the waystation system: serial discrepancy and undeclared restricted-class cells are on record, attributed."
+- "Per Vask's principals received silence instead of a confirmation signal — the rack did not clear."
+
+### 4. NPC carry-forward
+- **Per Vask**: scratchpad callback. Courier, possibly complicit or simply a vector. His next move (contact principals, go to ground, disappear) is mine to hold. He's carrying a confirmation plate he never struck. Someone will ask him why.
+- **Mereth Kel**: no new note needed; established. Her decision to file and ship out is character-consistent.
+- **Halvi**: minor supporting. No callback needed.
+- **Ev**: minor supporting. No callback needed.
+
+### 5. Mechanical / state changes
+No HP changes, no consequences, no inventory changes. Signature moves all used (1/1 slots); will refresh at next scene opening. XP already awarded (tev=10, sumi=8, renno=8, kit=6 — matches planned amounts). No further state commands needed.
+
+### 6. Lore and canon
+No new public lore to register. DM-only threads remaining: the Caulden/Shear parallel (Sable Crescent name on both), the second rack 7C-AA7, Per Vask's principals, who modified the cells. Still mine.
+
+### 7. Journal
+No journal update needed.
+
+### 8. Summaries
+Scene summary already reflects the full arc of events. Arc summary is stub — will append after scene end. Campaign summary: no change at campaign level; the caulden-rack arc is mid-run.
+
+### 9. Party-visible beats
+1. Per Vask drew the confirmation plate but did not fire it — the silence is the signal his principals received.
+2. The Caulden Rack's restricted-class cells were identified, witnessed, and filed before the crew shipped out.
+3. Mereth filed the refusal log and refused the cargo. The rack stays at Glasswake.
+
+### 10. XP
+Already awarded. Omitting --xp from scene end command.
+
+### 11. Carry-forward into next caulden-rack scene
+- The Caulden Rack at Glasswake: someone will come for it. Timing unknown.
+- Per Vask's principals: silence received, will move. Unknown timeline, unknown vector.
+- Second rack 7C-AA7: the authentic serial is somewhere in the system. The papers exist. The rack does not match them.
+- Bren's silence: she found the refusal-log month-gap and said nothing to Mereth. That unsaid thing is in the hull now.
+- Tek'iris's private refusal log and the Shear-run date: she knows. Drova does not know Tek knows. The two-witness structure is intact.
+- Fei's witness render: first-person, filed. It's a legally weighted document. Someone at the Conclave or the waystation system will eventually read it.

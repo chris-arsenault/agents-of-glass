@@ -7,7 +7,7 @@ For actual-play anti-staleness nudges, see [`creative-influences.md`](creative-i
 
 ## TURN_START.md — the single entry point
 
-The orchestrator builds a per-turn `in.md`/TURN_START file in the agent's
+The orchestrator builds a per-turn `TURN_START.md` file in the agent's
 canonical turn directory and copies it into the projected workspace before each
 invocation. The agent's prompt is essentially:
 
@@ -18,7 +18,11 @@ available, inside a per-turn projection of the campaign workspace.
 Role-specific mutation authority is enforced at the `glass` CLI/API boundary,
 not by Claude Code's permission system.
 
-The TURN_START is dynamic — regenerated every turn — and contains pointers (links and headlines), not the full content of every relevant file. It pulls the agent into the right sub-files via curiosity instead of dumping everything in the prompt.
+The TURN_START is dynamic — regenerated every turn — and contains pointers
+(links and headlines), not the full content of every relevant file. It also
+selects exactly one active methodology for the actor's role and turn type.
+Agents do not choose between scene-play, action, transition, rapid-response, or
+housekeeping methodologies themselves.
 
 A typical player TURN_START:
 
@@ -40,7 +44,9 @@ patrol leader is up and angry; Karrith is exposed.
 
 ## Scene Summary
 Compact scene continuity is embedded from `arcs/<arc>/scenes/<scene>/summary.md`.
-Players append 2-4 sentences or bullets per turn; the DM may rewrite/reformat it.
+Per-turn continuity comes from `glass turn end --summary`; the DM rewrites the
+scene summary when scene-level truth has changed enough to deserve durable
+compression.
 
 ## History Lookup
 Full turn narration is not embedded. Pull exact detail with
@@ -72,8 +78,9 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 
 ### Always-on for every agent (in TURN_START as content or near-pointer)
 - An embodied identity paragraph drawn from their `persona.md`
-- Their `scratchpad.md` (current working notes — committed through `glass sync apply`)
 - Current mode + scene framing
+- A generated turn type plus one methodology pointer selected by role, mode, and
+  turn metadata
 - Current public table: `table/index.md`, `table/scene.md`, `table/handouts/`,
   and any other files under `table/`
 - Campaign framing
@@ -180,13 +187,11 @@ templates/                             # authored, stable input
   how-to/                              # optional table examples and craft guidance
   dm/
     persona.md                         # who Mara is — voice, tastes, what she cuts
-    scratchpad.md                      # starter current-notes file
     notes/index.md                     # encyclopedia how-to-use
     journal/  workspace/  secret/  intake/   # starter dirs
   players/<player>/
     persona.md                         # who they are at the table
     character.md                       # starter sheet (filled during character creation)
-    scratchpad.md
     notes/index.md
     journal/  drafts/  inbox/
 
@@ -238,12 +243,13 @@ actor may read. For example, `table/scene.md` stays `table/scene.md`; Tev's
 private notes stay `players/tev/notes/`; another player's private notes simply
 are not present.
 
-The canonical campaign root remains `campaigns/<id>/`. TURN_START and output
+The canonical campaign root remains `campaigns/<id>/`. TURN_START and turn
 artifacts are written canonically under `dm/turns/<NNNN>/` or
 `players/<id>/turns/<NNNN>/`, and copied into the projection at the same
-relative path before the subprocess starts. The agent writes `out.md` in the
-projected turn dir; the orchestrator copies it back to canonical storage before
-committing the turn.
+relative path before the subprocess starts. The agent writes `TURN.md` in the
+projected turn dir and runs `glass turn end` to create `turn-closeout.json`;
+the orchestrator copies them back to canonical storage before committing the
+turn.
 
 The projection is owned by the spawned actor. Projected files are writable only
 on role-authorized document surfaces and in the current turn dir; before Claude
@@ -324,11 +330,11 @@ This is the queryability layer that lets the always-on context stay small. An ag
 
 The orchestrator decides Sumi is up next during scene `keel-quarter-aftermath` in arc `reconnect-to-vantara`. It:
 
-1. Generates canonical `players/sumi/turns/<NNNN>/in.md` with an embodied identity paragraph plus pointers to her readable campaign files: `persona.md`, `character.md`, `scratchpad.md`, campaign context, arc context, scene context, recent transcript, messages, instruction surfaces, and notes.
+1. Generates canonical `players/sumi/turns/<NNNN>/TURN_START.md` with an embodied identity paragraph plus pointers to her readable campaign files: `persona.md`, `character.md`, campaign context, arc context, scene context, recent turn summaries, messages, instruction surfaces, notes, and the one methodology selected for this turn.
 2. Builds `.glass-cwd/<campaign>/<NNNN>-sumi/` with the same relative paths for Sumi's visible files.
-3. Spawns `claude -p --dangerously-skip-permissions "Read players/sumi/turns/<NNNN>/in.md and take your turn."` with CWD set to the projection and the Sumi role grant installed for `glass`.
+3. Spawns `claude -p --dangerously-skip-permissions "Read players/sumi/turns/<NNNN>/TURN_START.md and take your turn."` with CWD set to the projection and the Sumi role grant installed for `glass`.
 4. Waits for the subprocess to exit.
-5. Copies projected turn artifacts back to the canonical turn dir, reads `out.md`, and appends the turn to Postgres plus markdown transcript exports.
+5. Copies projected turn artifacts back to the canonical turn dir, reads `TURN.md`, and appends the turn plus closeout metadata to Postgres and markdown transcript exports.
 6. Picks the next agent.
 
 ## What This Doc Does Not Cover

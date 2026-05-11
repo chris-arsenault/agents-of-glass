@@ -9,7 +9,7 @@ campaigns/<id>/:
   audit.jsonl         — append-only command audit log
   scene-framing.md    — current scene framing (rewritten on scene start)
   table/              — current player-agent-visible short-term table state
-  dm/turns/<NNNN>/    — DM's per-turn artifacts (in.md, out.md, stdout, stderr)
+  dm/turns/<NNNN>/    — DM's per-turn artifacts (TURN_START.md, TURN.md, closeout, stdout, stderr)
   players/<id>/turns/<NNNN>/ — that player's per-turn artifacts
 
 There is no `session` concept. The campaign id is the only identifier;
@@ -30,7 +30,7 @@ Schema (v5):
   entities:             dict — graph mirror cache
   threads:              dict — DM thread tracker
   turns:                list — structured turn rows mirrored from Postgres
-  next_speakers:        list[{agent, rapid_prompt?}] — handoff queue
+  next_speakers:        list[{agent, rapid_prompt?, housekeeping?, scene_transition?}] — handoff queue
   action_order:         dict | None — persistent initiative order for action scenes
   scene_trackers:       dict — scene-local generic counters/clocks
   scene_closing_turns:  int | None — closing-down countdown (in agent commits)
@@ -107,7 +107,7 @@ def agent_turn_dir(
 ) -> Path:
     """A specific per-turn artifact directory.
 
-    Contains in.md (TURN_START), out.md (TURN), stdout.txt, stderr.txt.
+    Contains TURN_START.md, TURN.md, turn-closeout.json, stdout, and stderr.
     """
     return agent_turns_dir(
         paths, campaign_id, role_kind=role_kind, agent_id=agent_id
@@ -368,10 +368,7 @@ def _refresh_projection_committed_paths(
             manifest[str(rel)] = _hash_file_for_commit(source)
             changed = True
     if changed:
-        manifest_path.write_text(
-            json.dumps({"files": manifest}, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
+        _write_projection_manifest_for_commit(manifest_path, manifest)
 
 
 def _committed_result_paths(
@@ -433,6 +430,23 @@ def _load_projection_manifest_for_commit(path: Path) -> dict[str, str]:
     if not isinstance(files, dict):
         return {}
     return {str(key): str(value) for key, value in files.items() if isinstance(value, str)}
+
+
+def _write_projection_manifest_for_commit(path: Path, manifest: dict[str, str]) -> None:
+    try:
+        os.chmod(path, 0o660)
+    except OSError:
+        pass
+    try:
+        path.write_text(
+            json.dumps({"files": manifest}, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        # The durable command has already succeeded. Projection manifest refresh
+        # is a same-turn convenience; failing it must not make `glass` report a
+        # failed mutation to the agent.
+        return
 
 
 def _hash_file_for_commit(path: Path) -> str:

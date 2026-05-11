@@ -25,9 +25,11 @@ claiming that `chase` is the only possible action scene shape.
 
 When the DM scaffolds a new scene with `glass scene create <slug> --type <label>`,
 the CLI records that label in scene state. Custom slugs are allowed. The DM then
-uses the methodology/protocol that fits the scene: usually `scene-play` for
-open-ended play, `action` for quickfire rounds, `travel`/`montage` for compressed
-movement, or a toolkit label that points to one of those protocols.
+starts the protocol that fits the scene: usually `scene-play` for open-ended
+play, `action` for quickfire rounds, `travel`/`montage` for compressed movement,
+or a toolkit label that points to one of those protocols. TURN_START chooses the
+exact methodology for each generated turn from the active protocol plus role and
+turn metadata.
 
 A scene's mode can change mid-scene if the situation changes — combat erupts in the middle of a town-mode scene. The DM calls `glass mode push combat` to nest, and `glass mode end` (or `glass mode pop`) to return to the parent. See [Mode Nesting](#mode-nesting) below.
 
@@ -103,20 +105,21 @@ The action protocol:
 4. The orchestrator follows that action order round after round. Handoffs and
    rapid-response queues can interrupt; after the queue drains, play continues
    from the stored action cursor.
-5. Each player turn is quickfire: move, one action, housekeeping. Housekeeping
-   includes messages, inventory checks, reading relevant lore/state, and asking
-   DM clarifications. It should not become a second action.
+5. Each player turn is quickfire: move, one action, quick upkeep. Upkeep includes
+   messages, inventory checks, reading relevant lore/state, and asking DM
+   clarifications. It should not become a second action.
 6. Because the scene is under pressure, actions that change position, HP,
    leverage, escape progress, or scene pressure are usually good candidates for
-   player-called rolls. Pure housekeeping and safe movement usually are not.
+   player-called rolls. Pure upkeep and safe movement usually are not.
 7. The scene has a **player-visible end condition**, usually numeric, tracked
    through `glass scene tracker` and reduced through `glass scene pressure` when
    the fiction calls for roll-mediated pressure: defeat/rout the opposition,
    fill the escape clock, convince the duke, survive until the gate opens,
    prevent the hazard clock from filling.
 
-The methodology for this protocol is
-[`/templates/methodologies/action-scene.md`](../../templates/methodologies/action-scene.md).
+TURN_START selects the methodology for the action turn type: DM opening layout,
+DM action-order turn, player action-order turn, rapid response, player
+housekeeping, or DM scene transition.
 
 Toolkit labels that often use `action`: `combat`, `chase`, `social-pressure`,
 `escape`, `duel`, `infiltration`, `trial`, `disaster`, `heist`, `race`,

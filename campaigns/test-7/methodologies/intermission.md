@@ -45,11 +45,11 @@ Players answer with concrete preferences. Good intermission turns are specific:
 
 ## Outputs
 
-Before the intermission closes, Mara should write a compact synthesis to
-`dm/scratchpad.md` and, when useful, a player-visible version to
-`shared/quest-log.md` or `shared/party-knowledge.md`.
+Before the intermission closes, Mara should write a player-visible synthesis to
+`shared/quest-log.md` or `shared/party-knowledge.md` and private next-act prep
+to the relevant `arcs/<arc>/` or `dm/workspace/` file.
 
-Players may update their own scratchpads, journals, public notes, or private
+Players may update their own journals, public notes, or private
 requests to Mara. Keep these concise and commit them with `glass sync apply`.
 
 ## Ending

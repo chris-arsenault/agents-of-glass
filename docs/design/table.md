@@ -59,8 +59,7 @@ table may summarize or link those values for readability, but hard state wins
 if there is a conflict.
 
 Secrets stay out of `table/` until they become visible. Use `dm/secret/`,
-`dm/notes/`, `dm/scratchpad.md`, hidden trackers, or the message bus for hidden
-state.
+`dm/notes/`, hidden trackers, or the message bus for hidden state.
 
 The web UI's **Active Table** panel must render only `table/**` from the live
 campaign root. If a viewer wants to know which NPCs, monsters, routes, hooks, or

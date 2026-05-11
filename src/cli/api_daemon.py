@@ -28,6 +28,7 @@ class ApiDaemonInfo:
     running: bool
     pid: int | None
     url: str
+    bind_host: str | None
     config_path: str | None
     log_path: str
     pid_file: str
@@ -41,6 +42,7 @@ def start_daemon(
     *,
     url: str = DEFAULT_API_URL,
     config_path: str | None = None,
+    bind_host: str | None = None,
 ) -> ApiDaemonInfo:
     """Start the API daemon unless a healthy one is already running."""
 
@@ -52,12 +54,13 @@ def start_daemon(
             running=True,
             pid=pid,
             url=url,
+            bind_host=_string_or_none(health.get("bind_host")) or bind_host,
             config_path=_string_or_none(health.get("config_path")) or config_path,
             message="already running",
         )
 
     parsed = urllib.parse.urlparse(url)
-    host = parsed.hostname or "127.0.0.1"
+    host = bind_host or parsed.hostname or "127.0.0.1"
     port = parsed.port or 26001
     command = [
         sys.executable,
@@ -100,6 +103,7 @@ def start_daemon(
         running=True,
         pid=pid,
         url=url,
+        bind_host=host,
         config_path=_string_or_none(health.get("config_path")) or config_path,
         message="started",
     )
@@ -128,6 +132,7 @@ def stop_daemon(*, url: str = DEFAULT_API_URL) -> ApiDaemonInfo:
         running=False,
         pid=stopped[-1] if stopped else None,
         url=url,
+        bind_host=None,
         config_path=None,
         message="stopped" if stopped else "not running",
     )
@@ -137,9 +142,10 @@ def restart_daemon(
     *,
     url: str = DEFAULT_API_URL,
     config_path: str | None = None,
+    bind_host: str | None = None,
 ) -> ApiDaemonInfo:
     stop_daemon(url=url)
-    return start_daemon(url=url, config_path=config_path)
+    return start_daemon(url=url, config_path=config_path, bind_host=bind_host)
 
 
 def status_daemon(*, url: str = DEFAULT_API_URL) -> ApiDaemonInfo:
@@ -149,6 +155,7 @@ def status_daemon(*, url: str = DEFAULT_API_URL) -> ApiDaemonInfo:
             running=True,
             pid=_int_or_none(health.get("pid")),
             url=url,
+            bind_host=_string_or_none(health.get("bind_host")),
             config_path=_string_or_none(health.get("config_path")),
             message="healthy",
         )
@@ -160,6 +167,7 @@ def status_daemon(*, url: str = DEFAULT_API_URL) -> ApiDaemonInfo:
             running=True,
             pid=pid,
             url=url,
+            bind_host=_string_or_none(pid_data.get("bind_host")),
             config_path=_string_or_none(pid_data.get("config_path")),
             message="process exists but health check failed",
         )
@@ -167,6 +175,7 @@ def status_daemon(*, url: str = DEFAULT_API_URL) -> ApiDaemonInfo:
         running=False,
         pid=pid,
         url=url,
+        bind_host=_string_or_none(pid_data.get("bind_host")) if pid_data else None,
         config_path=_string_or_none(pid_data.get("config_path")) if pid_data else None,
         message="not running",
     )
@@ -282,6 +291,7 @@ def _info(
     running: bool,
     pid: int | None,
     url: str,
+    bind_host: str | None,
     config_path: str | None,
     message: str,
 ) -> ApiDaemonInfo:
@@ -289,6 +299,7 @@ def _info(
         running=running,
         pid=pid,
         url=url,
+        bind_host=bind_host,
         config_path=config_path,
         log_path=str(LOG_FILE),
         pid_file=str(PID_FILE),

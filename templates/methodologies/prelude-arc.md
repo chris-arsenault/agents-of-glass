@@ -44,7 +44,7 @@ queue player turns, or end the prelude. If the campaign remains in bare
 
 ## Read First
 
-1. Your persona and `dm/scratchpad.md`.
+1. Your persona.
 2. `context.md`, `summary.md`, and `dm/foundation.md`.
 3. `players/*/public/intro.md`, `players/*/public/relationships.md`, and
    `players/*/signature-moves.md`.
@@ -183,7 +183,7 @@ turn:
 - append any campaign-level continuity with
   `glass summary append campaign --body "..."`
 - update `shared/quest-log.md` if a beat should remain player-visible
-- write `dm/scratchpad.md` with your read on party chemistry, friction,
+- write a durable DM workspace note with your read on party chemistry, friction,
   standout hooks, and what should carry forward
 - name the time jump if the campaign continues: hours, days, weeks, or "after
   training / repair / fallout"
@@ -218,7 +218,7 @@ End the `prelude` mode only when:
 - the prelude arc summary says what happened and what remains true
 - the prelude arc has 1-2 in-universe outcome bullets via `glass arc close`
 - `summary.md` or `shared/quest-log.md` carries any campaign-visible fallout
-- `dm/scratchpad.md` records party chemistry, friction, standout hooks, and
+- a durable DM workspace note records party chemistry, friction, standout hooks, and
   carry-forward concerns
 - the final turn names the time jump into the main campaign
 

@@ -42,7 +42,7 @@ _PLAYER_ALLOWED: dict[str, set[str] | None] = {
     },
     "note": {"write", "propose"},
     "search": {"text", "semantic"},
-    "turn": {"handoff"},
+    "turn": {"end", "handoff"},
     "turns": {"find", "feed"},
     "summary": {"show", "append"},
     "sync": {"apply"},
@@ -65,6 +65,8 @@ def mint_grant(
     ttl_seconds: int = _DEFAULT_TTL_SECONDS,
     workspace_root: Path | str | None = None,
     workspace_reader_user: str | None = None,
+    turn_prose_path: Path | str | None = None,
+    turn_closeout_path: Path | str | None = None,
 ) -> str:
     """Create and persist a short-lived API grant."""
 
@@ -87,6 +89,10 @@ def mint_grant(
         grants[token]["workspace_root"] = str(workspace_root)
     if workspace_reader_user is not None:
         grants[token]["workspace_reader_user"] = workspace_reader_user
+    if turn_prose_path is not None:
+        grants[token]["turn_prose_path"] = str(turn_prose_path)
+    if turn_closeout_path is not None:
+        grants[token]["turn_closeout_path"] = str(turn_closeout_path)
     _write_store(path, data)
     return token
 

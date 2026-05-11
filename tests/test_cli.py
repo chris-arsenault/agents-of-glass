@@ -492,27 +492,52 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
             turn_file = tmp_path / "turn.md"
             turn_file.write_text("Mara frames the scene.", encoding="utf-8")
+            end_file = tmp_path / "turn-closeout.json"
+            ended = invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Mara frames the opening choice.",
+                    "--state",
+                    "table unchanged",
+                    "--rolls",
+                    "none",
+                    "--next",
+                    "default",
+                ],
+                {
+                    **dm_env,
+                    "AOG_TURN_CLOSEOUT": str(end_file),
+                    "GLASS_TURN_ID": "c1-t0001",
+                },
+            )
+            self.assertIn("summary: \"Mara frames the opening choice.\"", ended.output)
+            self.assertTrue(end_file.exists())
 
             appended = invoke_ok(
                 runner,
-                ["turn", "append", str(turn_file), "--speaker", "dm"],
+                ["turn", "append", str(turn_file), "--speaker", "dm", "--end-file", str(end_file)],
                 dm_env,
             )
             self.assertIn("turn_id: 1", appended.output)
+            self.assertIn("turn_summary: \"Mara frames the opening choice.\"", appended.output)
             self.assertIn("transcript_export_path:", appended.output)
 
             found = invoke_ok(runner, ["turns", "find", "--limit", "1"], dm_env)
             self.assertIn("Mara frames the scene.", found.output)
             text_found = invoke_ok(
                 runner,
-                ["turns", "find", "--text", "frames", "--limit", "1"],
+                ["turns", "find", "--text", "opening choice", "--limit", "1"],
                 dm_env,
             )
-            self.assertIn("Mara frames the scene.", text_found.output)
+            self.assertIn("Mara frames the opening choice.", text_found.output)
 
             feed = invoke_ok(runner, ["turns", "feed", "--after-turn", "0"], dm_env)
             self.assertIn("event_type: turn.committed", feed.output)
             self.assertIn('prose: "Mara frames the scene."', feed.output)
+            self.assertIn('summary: "Mara frames the opening choice."', feed.output)
 
             transcript = (tmp_path / "campaigns" / "c1" / "transcript.md").read_text(
                 encoding="utf-8"
@@ -611,6 +636,7 @@ Recipients are `dm`, `party`, or a player id.
                     json.dumps({"files": {"table/index.md": "old-hash"}}),
                     encoding="utf-8",
                 )
+                Path(".glass-projection-manifest.json").chmod(0o440)
                 Path("table").mkdir()
                 (Path("table") / "index.md").write_text(
                     "stale projected edit\n",

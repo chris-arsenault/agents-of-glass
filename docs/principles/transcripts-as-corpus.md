@@ -29,7 +29,7 @@ This principle has consequences that touch most of the system:
 
 **The agent emits prose. The orchestrator emits structure.** Agents don't write YAML delta blocks at the end of their turns. They write what they have to say, calling `glass` for any mechanical thing along the way. The orchestrator wraps each turn with a structured header (speaker, role, mode, scene, turn number, timestamp) and inlines mechanical event lines (rolls, HP changes) drawn from the `glass` audit log. Structure comes from the metadata around the prose, not from forcing the agent to author both.
 
-**The durable home is Postgres.** The agent's per-turn `out.md` is an
+**The durable home is Postgres.** The agent's per-turn `TURN.md` is an
 operational handoff file. `glass turn append` commits that prose into
 Postgres `turns.prose`, links/inlines pending events, and refreshes campaign
 and scene markdown transcript exports. Viewers and narrative-weaving passes
