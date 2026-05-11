@@ -10,7 +10,15 @@ from unittest.mock import patch
 
 from cli import db as _db
 from cli.api_grants import mint_grant, validate_grant
-from cli.api_server import _invoke_glass, ensure_background_server
+from cli.api_server import (
+    _file_content_payload,
+    _file_entry_matches_section,
+    _file_section_counts,
+    _file_tree_payload,
+    _invoke_glass,
+    _parse_created_id_cursor,
+    ensure_background_server,
+)
 from cli.config import get_paths, load_config
 from cli.errors import GlassError
 from cli.local_env import load_repo_env
@@ -53,6 +61,57 @@ class GlassApiProxyTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._provisioned_patch.stop()
+
+    def test_readonly_file_tree_includes_narrative_private_notes_not_grants(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            campaign_root = Path(tmp) / "campaigns" / "c1"
+            (campaign_root / "dm" / "notes").mkdir(parents=True)
+            (campaign_root / "players" / "tev" / "private").mkdir(parents=True)
+            (campaign_root / "dm" / "notes" / "secret.md").write_text(
+                "# Secret Notes\n\nvisible to the debug surface\n",
+                encoding="utf-8",
+            )
+            (campaign_root / "players" / "tev" / "private" / "journal.md").write_text(
+                "# Tev Journal\n\nalso visible\n",
+                encoding="utf-8",
+            )
+            (campaign_root / ".glass-grants.json").write_text("{}", encoding="utf-8")
+
+            files = _file_tree_payload(campaign_root)
+            paths = {entry["path"] for entry in files}
+
+            self.assertIn("dm/notes/secret.md", paths)
+            self.assertIn("players/tev/private/journal.md", paths)
+            self.assertNotIn(".glass-grants.json", paths)
+            sections = {entry["section"]: entry["count"] for entry in _file_section_counts(files)}
+            self.assertGreaterEqual(sections["dm"], 1)
+            self.assertTrue(
+                _file_entry_matches_section(
+                    next(entry for entry in files if entry["path"] == "dm/notes/secret.md"),
+                    "dm",
+                )
+            )
+
+    def test_readonly_file_content_rejects_campaign_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            campaign_root = root / "campaigns" / "c1"
+            campaign_root.mkdir(parents=True)
+            (campaign_root / "context.md").write_text("hello\n", encoding="utf-8")
+            (root / "outside.md").write_text("nope\n", encoding="utf-8")
+
+            payload = _file_content_payload(campaign_root, "context.md")
+            self.assertEqual(payload["content"], "hello\n")
+            with self.assertRaises(GlassError):
+                _file_content_payload(campaign_root, "../outside.md")
+
+    def test_created_id_cursor_parsing_rejects_invalid_cursor(self) -> None:
+        self.assertEqual(
+            _parse_created_id_cursor("2026-05-11T00:00:00Z::abc"),
+            ("2026-05-11T00:00:00Z", "abc"),
+        )
+        with self.assertRaises(GlassError):
+            _parse_created_id_cursor("not-a-cursor")
 
     def test_player_grant_allows_player_surface_and_rejects_db(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
