@@ -203,8 +203,10 @@ class SessionState:
 
 def speaker_order_for(mode: str) -> tuple[str, ...]:
     normalized = mode.lower()
-    if normalized in {"wrap", "campaign-planning", "prelude"}:
+    if normalized in {"wrap", "campaign-planning", "prelude", "scene-prep"}:
         return ("dm",)
+    if normalized == "intermission":
+        return tuple(agent.id for agent in AGENTS)
     if normalized in {"travel", "travel/montage", "montage"}:
         return PLAYER_IDS
     if normalized == "character-creation":

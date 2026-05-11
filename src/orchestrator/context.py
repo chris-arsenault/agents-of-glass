@@ -843,6 +843,7 @@ def _methodology_for_mode(mode: str) -> str | None:
         "campaign-planning": "campaign-planning.md",
         "character-creation": "character-creation.md",
         "prelude": "prelude-arc.md",
+        "intermission": "intermission.md",
         "arc-creation": "arc-creation.md",
         "scene-prep": "scene-prep.md",
         "scene-play": "scene-play.md",

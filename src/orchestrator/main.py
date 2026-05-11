@@ -22,6 +22,10 @@ from .runner import Orchestrator, TurnFailure
 from .state import PLAYER_IDS
 from .store import SessionStore
 
+MODE_INTERMISSION = "intermission"
+MODE_SCENE_PREP = "scene-prep"
+PRELUDE_ARC_ID = "prelude"
+
 
 # umask 002 so subdirs the orchestrator creates inside the campaign
 # workspace (notably per-turn artifact dirs under <agent>/turns/) are
@@ -240,26 +244,64 @@ def _run_campaign_lifecycle(
         cm_state = cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
     click.secho("[5/5] Active campaign", fg="green")
     active_state = cli.store.load(campaign_id)
+    if not active_state.has_active_mode:
+        started = _start_next_active_mode(cli, campaign_id=campaign_id)
+        if started:
+            active_state = cli.store.load(campaign_id)
+        else:
+            active_state.mark_ready()
+            cli.store.save(active_state)
+            click.echo("      no active mode; no arc is available for automatic setup")
+            click.echo()
+            click.secho(
+                f"Campaign '{campaign_id}' is ready.",
+                fg="green",
+            )
+            click.echo("Runtime state: Postgres runtime row")
+            return
+
     if active_state.has_active_mode:
+        mode_at_start = active_state.active_mode.mode
+        run_limit = max_active_turns
+        auto_end_intermission = False
+        if mode_at_start == MODE_INTERMISSION:
+            remaining = active_state.active_mode.turn_budget_remaining
+            if remaining is None:
+                remaining = cli.config.caps.budget_for(MODE_INTERMISSION) or 15
+            if max_active_turns is None:
+                run_limit = remaining
+                auto_end_intermission = True
+            else:
+                run_limit = min(max_active_turns, remaining)
+                auto_end_intermission = max_active_turns >= remaining
         turns = _run_or_raise(
             cli,
             active_state,
-            max_turns=max_active_turns,
+            max_turns=run_limit,
             dry_run=dry_run,
             resume_failed=True,
         )
+        if mode_at_start == MODE_INTERMISSION:
+            after = cli.store.load(campaign_id)
+            if (
+                auto_end_intermission
+                and after.has_active_mode
+                and after.active_mode.mode == MODE_INTERMISSION
+                and not dry_run
+            ):
+                _end_current_mode(
+                    cli,
+                    campaign_id=campaign_id,
+                    expected_mode=MODE_INTERMISSION,
+                    reason="intermission turn cap reached",
+                )
+                after = cli.store.load(campaign_id)
+            click.echo(f"      ran {turns} intermission turn(s)")
+            if not after.has_active_mode:
+                click.echo("      intermission complete; next run will start scene prep")
+            return
         click.echo(f"      ran {turns} active-play turn(s)")
         return
-    active_state.mark_ready()
-    cli.store.save(active_state)
-    click.echo("      no active mode; DM creates the next scene via glass scene create")
-
-    click.echo()
-    click.secho(
-        f"Campaign '{campaign_id}' is ready.",
-        fg="green",
-    )
-    click.echo("Runtime state: Postgres runtime row")
 
 
 def _phase_completed(cm_state: dict, phase_name: str) -> bool:
@@ -268,6 +310,151 @@ def _phase_completed(cm_state: dict, phase_name: str) -> bool:
         if entry.get("phase") == phase_name and "completed_at" in entry:
             return True
     return False
+
+
+def _start_next_active_mode(cli: CliState, *, campaign_id: str) -> str | None:
+    """Start the next no-intervention active-play bridge mode.
+
+    A no-mode active campaign is an intentional pause surface: after prelude
+    or an act closes, the next run opens intermission; after intermission
+    closes, the next run opens scene prep and queues Mara.
+    """
+
+    latest_mode = _latest_turn_mode(cli, campaign_id)
+    next_mode = _next_mode_after_no_active_mode(latest_mode)
+    arc_id = _ensure_main_arc_active(cli, campaign_id)
+    if next_mode == MODE_INTERMISSION:
+        scene_id = _next_intermission_scene_id(cli, campaign_id)
+        _dm_glass(cli, campaign_id, ["mode", "start", MODE_INTERMISSION, scene_id])
+        _queue_mara_next(cli, campaign_id)
+        click.echo(
+            f"      started intermission: {scene_id} "
+            "(Mara queued first, 15-turn cap)"
+        )
+        return MODE_INTERMISSION
+
+    if next_mode == MODE_SCENE_PREP:
+        scene_id = f"{arc_id or 'next-act'}-setup"
+        _dm_glass(cli, campaign_id, ["mode", "start", MODE_SCENE_PREP, scene_id])
+        _queue_mara_next(cli, campaign_id)
+        click.echo(f"      started scene prep: {scene_id} (Mara queued first)")
+        return MODE_SCENE_PREP
+
+    return None
+
+
+def _next_mode_after_no_active_mode(latest_turn_mode: str | None) -> str:
+    if (latest_turn_mode or "").lower() == MODE_INTERMISSION:
+        return MODE_SCENE_PREP
+    return MODE_INTERMISSION
+
+
+def _latest_turn_mode(cli: CliState, campaign_id: str) -> str | None:
+    from cli import db as _glass_db
+    from cli.config import load_config as _load_glass_config
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        toml_data = _load_glass_config()
+        pg_config = _glass_db.load_pg_config(toml_data)
+        with _glass_db.connect(pg_config) as conn:
+            turns = _glass_db.turn_list(
+                conn,
+                campaign_id=campaign_id,
+                limit=1,
+                latest=True,
+            )
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
+    if not turns:
+        return None
+    return str(turns[0].get("mode") or "")
+
+
+def _next_intermission_scene_id(cli: CliState, campaign_id: str) -> str:
+    from cli import db as _glass_db
+    from cli.config import load_config as _load_glass_config
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        toml_data = _load_glass_config()
+        pg_config = _glass_db.load_pg_config(toml_data)
+        with _glass_db.connect(pg_config) as conn:
+            turns = _glass_db.turn_list(
+                conn,
+                campaign_id=campaign_id,
+                mode=MODE_INTERMISSION,
+                limit=100000,
+            )
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
+
+    seen = {
+        str(turn.get("scene_id"))
+        for turn in turns
+        if str(turn.get("scene_id") or "").startswith("intermission-")
+    }
+    return f"intermission-{len(seen) + 1:02d}"
+
+
+def _ensure_main_arc_active(cli: CliState, campaign_id: str) -> str | None:
+    try:
+        cm_state = cli.campaign_manager.load_state(campaign_id)
+    except Exception:
+        return None
+    active_arc = str(cm_state.get("active_arc") or "")
+    if active_arc and active_arc != PRELUDE_ARC_ID:
+        return active_arc
+    candidates = [
+        str(arc_id)
+        for arc_id in cm_state.get("arcs", [])
+        if str(arc_id) and str(arc_id) != PRELUDE_ARC_ID
+    ]
+    if not candidates:
+        return active_arc or None
+    chosen = candidates[0]
+    _dm_glass(cli, campaign_id, ["arc", "activate", chosen])
+    click.echo(f"      active arc: {chosen}")
+    return chosen
+
+
+def _queue_mara_next(cli: CliState, campaign_id: str) -> None:
+    try:
+        _dm_glass(cli, campaign_id, ["turn", "clear-handoff"])
+    except click.ClickException:
+        # Clearing is best-effort; the handoff below is what makes Mara next.
+        pass
+    _dm_glass(cli, campaign_id, ["turn", "handoff", "dm"])
+
+
+def _end_current_mode(
+    cli: CliState,
+    *,
+    campaign_id: str,
+    expected_mode: str,
+    reason: str,
+) -> None:
+    state = cli.store.load(campaign_id)
+    if not state.has_active_mode or state.active_mode.mode != expected_mode:
+        return
+    _dm_glass(cli, campaign_id, ["mode", "end"])
+    click.echo(f"      ended {expected_mode}: {reason}")
+
+
+def _dm_glass(cli: CliState, campaign_id: str, args: list[str]) -> None:
+    try:
+        cli.store.glass.invoke(args, role="dm", campaign=campaign_id)
+    except Exception as exc:
+        joined = " ".join(args)
+        raise click.ClickException(f"glass {joined} failed: {exc}") from exc
 
 
 def _run_bootstrap_phase(

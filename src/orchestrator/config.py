@@ -27,6 +27,8 @@ class CapsConfig:
         normalized = mode.lower()
         if normalized == "worldbuilding":
             return None
+        if normalized == "intermission":
+            return 15
         if normalized == "scene-play":
             return self.mode_scene_play_max_turns
         if normalized == "combat":

@@ -12,6 +12,7 @@ import type { FileEntry } from "../types";
 import { fileMatches, shortText } from "../utils";
 import { MarkdownBlock } from "./MarkdownBlock";
 import { Modal } from "./Modal";
+import { SheetRenderer } from "./SheetRenderer";
 
 interface PlayerColumnProps {
   playerId: string;
@@ -142,10 +143,7 @@ export function PlayerColumn({ playerId }: PlayerColumnProps) {
         subtitle={modalPath}
         title={modalFile?.title ?? modalSource?.title ?? "Player file"}
       >
-        <MarkdownBlock
-          content={modalFile?.content}
-          emptyLabel={isFileLoading ? "Loading file" : "No file content"}
-        />
+        <SheetRenderer file={modalFile} isLoading={isFileLoading} />
       </Modal>
     </>
   );

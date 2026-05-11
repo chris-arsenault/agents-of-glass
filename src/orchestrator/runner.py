@@ -434,6 +434,7 @@ class Orchestrator:
         synced = self.store.sync_from_glass(state)
         state.__dict__.update(synced.__dict__)
         self._validate_prelude_dm_handoff(state, result, active)
+        self._validate_scene_prep_dm_handoff(state, result, active)
 
     def _append_turn_warning(
         self,
@@ -494,6 +495,43 @@ class Orchestrator:
                     "scene-play <scene>` or `glass mode start action <scene>`, "
                     "queue players with `glass turn rapid-round`/handoff, or "
                     "end the prelude mode before finishing the turn."
+                ),
+            },
+        )
+
+    def _validate_scene_prep_dm_handoff(
+        self,
+        state: SessionState,
+        result: TurnResult,
+        previous_active: Any,
+    ) -> None:
+        """Fail fast if scene prep did not hand into an actual play mode."""
+        if result.dry_run or result.agent.id != "dm":
+            return
+        if previous_active.mode != "scene-prep":
+            return
+        if state.has_active_mode and state.active_mode.mode != "scene-prep":
+            return
+        if self._peek_next_speaker_entry(state.campaign):
+            return
+        if self._peek_action_order_entry(state):
+            return
+        active_mode = state.active_mode.mode if state.has_active_mode else "none"
+        active_scene = state.active_mode.scene_id if state.has_active_mode else "none"
+        raise TurnFailure(
+            "scene-prep DM turn did not start an actual play mode.",
+            {
+                "reason": "scene_prep_no_handoff",
+                "turn_id": result.turn_id,
+                "speaker": result.agent.id,
+                "turn_dir": str(result.turn_dir),
+                "active_mode": active_mode,
+                "active_scene": active_scene,
+                "hint": (
+                    "In scene-prep mode, the DM should create the next scene, "
+                    "commit scene/table files, end scene-prep, and start an "
+                    "actual play mode such as scene-play or action before "
+                    "finishing the turn."
                 ),
             },
         )

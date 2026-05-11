@@ -18,6 +18,7 @@ NON_PLAY_MODES = {
     "campaign-planning",
     "character-creation",
     "prelude",
+    "intermission",
     "arc-creation",
     "scene-prep",
 }

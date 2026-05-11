@@ -23,6 +23,7 @@ import type {
 import { classNames, formatTime, progressPercent, shortText } from "../utils";
 import { MarkdownBlock } from "./MarkdownBlock";
 import { Modal } from "./Modal";
+import { SheetRenderer } from "./SheetRenderer";
 
 interface PressureItem {
   id: string;
@@ -172,10 +173,7 @@ export function DmPanel() {
         subtitle={maraFilePath}
         title={maraFile?.title ?? "Mara"}
       >
-        <MarkdownBlock
-          content={maraFile?.content}
-          emptyLabel={isFileLoading ? "Loading Mara" : "No Mara sheet"}
-        />
+        <SheetRenderer file={maraFile} isLoading={isFileLoading} />
       </Modal>
     </>
   );
