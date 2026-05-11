@@ -16,8 +16,10 @@ from typing import Any, Iterator
 
 from click.testing import CliRunner
 
+from . import db
+from . import graph as graph_db
 from .api_grants import DEFAULT_API_URL, validate_grant
-from .config import get_paths
+from .config import get_paths, load_config
 from .errors import GlassError
 
 
@@ -25,6 +27,19 @@ _server: HTTPServer | None = None
 _server_thread: threading.Thread | None = None
 _server_url: str | None = None
 _invoke_lock = threading.Lock()
+_READABLE_FILE_SUFFIXES = {".jsonl", ".md", ".txt"}
+_EXCLUDED_FILE_NAMES = {".glass-grants.json"}
+_EXCLUDED_PATH_PARTS = {".git", ".glass-cwd", "__pycache__"}
+_MAX_FILE_BYTES = 512_000
+_CURSOR_SEPARATOR = "::"
+_FILE_SECTION_TERMS = {
+    "journal": ["journal", "players/"],
+    "lore": ["lore", "context", "summary"],
+    "arcs": ["arc", "previous"],
+    "scenes": ["scene", "table/scene", "transcript"],
+    "dm": ["dm/", "scratchpad", "prep"],
+    "audit": ["audit", ".jsonl"],
+}
 
 
 def ensure_background_server(
@@ -105,8 +120,12 @@ def _wait_for_health(url: str) -> None:
 class _GlassApiHandler(BaseHTTPRequestHandler):
     server_version = "glass-api/0.1"
 
+    def do_OPTIONS(self) -> None:
+        self._write_empty(204)
+
     def do_GET(self) -> None:
-        if self.path == "/v1/health":
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/v1/health":
             self._write_json(
                 200,
                 {
@@ -115,6 +134,17 @@ class _GlassApiHandler(BaseHTTPRequestHandler):
                     "config_path": os.environ.get("GLASS_CONFIG"),
                 },
             )
+            return
+        try:
+            payload = _read_api_payload(parsed.path, urllib.parse.parse_qs(parsed.query))
+        except GlassError as exc:
+            self._write_json(400, {"error": str(exc)})
+            return
+        except Exception as exc:
+            self._write_json(500, {"error": f"glass API read error: {exc}"})
+            return
+        if payload is not None:
+            self._write_json(200, payload)
             return
         self._write_json(404, {"error": "not found"})
 
@@ -174,8 +204,895 @@ class _GlassApiHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self._write_cors_headers()
         self.end_headers()
         self.wfile.write(body)
+
+    def _write_empty(self, status: int) -> None:
+        self.send_response(status)
+        self.send_header("Content-Length", "0")
+        self._write_cors_headers()
+        self.end_headers()
+
+    def _write_cors_headers(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+
+def _read_api_payload(path: str, query: dict[str, list[str]]) -> dict[str, Any] | None:
+    segments = [urllib.parse.unquote(part) for part in path.strip("/").split("/") if part]
+    if segments == ["v1", "campaigns"]:
+        return _campaigns_payload()
+    if len(segments) != 4 or segments[:2] != ["v1", "campaigns"]:
+        return None
+    campaign_id = _validate_campaign_id(segments[2])
+    route = segments[3]
+    if route == "dashboard":
+        return _campaign_dashboard_payload(campaign_id, query)
+    if route == "summary":
+        return _campaign_summary_payload(campaign_id)
+    if route == "live":
+        return _campaign_live_payload(campaign_id, query)
+    if route == "table":
+        return _campaign_table_resource_payload(campaign_id)
+    if route == "turns":
+        return _campaign_turns_payload(campaign_id, query)
+    if route == "messages":
+        return _campaign_messages_payload(campaign_id, query)
+    if route == "events":
+        return _campaign_events_payload(campaign_id, query)
+    if route == "rolls":
+        return _campaign_rolls_payload(campaign_id, query)
+    if route == "files":
+        return _campaign_files_payload(campaign_id, query)
+    return None
+
+
+def _campaigns_payload() -> dict[str, Any]:
+    campaigns_dir = get_paths().campaigns
+    campaigns: list[dict[str, Any]] = []
+    if campaigns_dir.exists():
+        for campaign_root in sorted(campaigns_dir.iterdir(), key=lambda path: path.name):
+            if not campaign_root.is_dir() or campaign_root.name.startswith("."):
+                continue
+            campaigns.append(
+                {
+                    "campaign_id": campaign_root.name,
+                    "dashboard_url": f"/v1/campaigns/{campaign_root.name}/dashboard",
+                    "files_url": f"/v1/campaigns/{campaign_root.name}/files",
+                    "updated_at": _path_mtime(campaign_root),
+                }
+            )
+    return {"campaigns": campaigns}
+
+
+def _campaign_dashboard_payload(
+    campaign_id: str,
+    query: dict[str, list[str]],
+) -> dict[str, Any]:
+    """Compatibility route for ad-hoc debugging.
+
+    The web UI uses the resource routes below. This route intentionally returns
+    only current summary + initial live window, not the campaign file tree.
+    """
+    live = _campaign_live_payload(campaign_id, query)
+    summary = _campaign_summary_payload(campaign_id)
+    table = _campaign_table_resource_payload(campaign_id)
+    return {**summary, **table, **live}
+
+
+def _campaign_summary_payload(campaign_id: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "campaign_id": campaign_id,
+        "generated_at": _now_iso(),
+        "runtime": None,
+        "characters": [],
+        "clocks": [],
+        "scene_trackers": [],
+        "tarot": [],
+        "graph": _graph_payload(campaign_id),
+    }
+    try:
+        config = load_config()
+        with db.connect(db.load_pg_config(config)) as conn:
+            payload["runtime"] = _runtime_payload(conn, campaign_id)
+            payload["characters"] = db.character_list(conn, campaign_id)
+            payload["clocks"] = db.clock_list(
+                conn,
+                campaign_id=campaign_id,
+                include_archived=True,
+            )
+            payload["scene_trackers"] = db.scene_tracker_list(
+                conn,
+                campaign_id=campaign_id,
+                include_archived=True,
+            )
+            payload["tarot"] = db.tarot_list(
+                conn,
+                campaign_id=campaign_id,
+                active_only=False,
+                limit=100,
+            )
+    except Exception as exc:
+        payload["database_error"] = str(exc)
+    return payload
+
+
+def _campaign_live_payload(
+    campaign_id: str,
+    query: dict[str, list[str]],
+) -> dict[str, Any]:
+    turn_limit = _query_int(query, "turns", default=20, minimum=1, maximum=100)
+    message_limit = _query_int(query, "messages", default=100, minimum=1, maximum=500)
+    event_limit = _query_int(query, "events", default=100, minimum=1, maximum=500)
+    roll_limit = _query_int(query, "rolls", default=50, minimum=1, maximum=250)
+    after_turn = _query_int_or_none(query, "after_turn", minimum=0, maximum=1_000_000)
+    messages_after = _first_query_value(query, "messages_after")
+    events_after = _first_query_value(query, "events_after")
+    rolls_after = _first_query_value(query, "rolls_after")
+    include_state = _query_bool(query, "include_state", default=False)
+    payload: dict[str, Any] = {
+        "campaign_id": campaign_id,
+        "generated_at": _now_iso(),
+        "turns": [],
+        "messages": [],
+        "events": [],
+        "rolls": [],
+        "cursors": {
+            "turn": after_turn,
+            "messages": messages_after,
+            "events": events_after,
+            "rolls": rolls_after,
+        },
+    }
+    try:
+        config = load_config()
+        with db.connect(db.load_pg_config(config)) as conn:
+            turns = _turn_delta(conn, campaign_id, after_turn=after_turn, limit=turn_limit)
+            messages = _message_delta(
+                conn,
+                campaign_id,
+                cursor=messages_after,
+                limit=message_limit,
+            )
+            events = _event_delta(
+                conn,
+                campaign_id,
+                cursor=events_after,
+                limit=event_limit,
+            )
+            rolls = _roll_delta(
+                conn,
+                campaign_id,
+                cursor=rolls_after,
+                limit=roll_limit,
+            )
+            payload["turns"] = turns["items"]
+            payload["messages"] = messages["items"]
+            payload["events"] = events["items"]
+            payload["rolls"] = rolls["items"]
+            payload["cursors"] = {
+                "turn": turns["cursor"],
+                "messages": messages["cursor"],
+                "events": events["cursor"],
+                "rolls": rolls["cursor"],
+            }
+            if include_state:
+                payload["runtime"] = _runtime_payload(conn, campaign_id)
+                payload["clocks"] = db.clock_list(
+                    conn,
+                    campaign_id=campaign_id,
+                    include_archived=True,
+                )
+                payload["scene_trackers"] = db.scene_tracker_list(
+                    conn,
+                    campaign_id=campaign_id,
+                    include_archived=True,
+                )
+                payload["tarot"] = db.tarot_list(
+                    conn,
+                    campaign_id=campaign_id,
+                    active_only=False,
+                    limit=100,
+                )
+    except Exception as exc:
+        payload["database_error"] = str(exc)
+    return payload
+
+
+def _campaign_table_resource_payload(campaign_id: str) -> dict[str, Any]:
+    campaign_root = _campaign_root(campaign_id)
+    return {
+        "campaign_id": campaign_id,
+        "generated_at": _now_iso(),
+        "table": _campaign_table_payload(campaign_root),
+    }
+
+
+def _campaign_turns_payload(
+    campaign_id: str,
+    query: dict[str, list[str]],
+) -> dict[str, Any]:
+    limit = _query_int(query, "limit", default=50, minimum=1, maximum=500)
+    after_turn = _query_int_or_none(query, "after_turn", minimum=0, maximum=1_000_000)
+    payload: dict[str, Any] = {
+        "campaign_id": campaign_id,
+        "items": [],
+        "cursor": after_turn,
+    }
+    try:
+        with db.connect(db.load_pg_config(load_config())) as conn:
+            payload.update(_turn_delta(conn, campaign_id, after_turn=after_turn, limit=limit))
+    except Exception as exc:
+        payload["database_error"] = str(exc)
+    return payload
+
+
+def _campaign_messages_payload(
+    campaign_id: str,
+    query: dict[str, list[str]],
+) -> dict[str, Any]:
+    limit = _query_int(query, "limit", default=100, minimum=1, maximum=1000)
+    cursor = _first_query_value(query, "after")
+    payload: dict[str, Any] = {"campaign_id": campaign_id, "items": [], "cursor": cursor}
+    try:
+        with db.connect(db.load_pg_config(load_config())) as conn:
+            payload.update(_message_delta(conn, campaign_id, cursor=cursor, limit=limit))
+    except Exception as exc:
+        payload["database_error"] = str(exc)
+    return payload
+
+
+def _campaign_events_payload(
+    campaign_id: str,
+    query: dict[str, list[str]],
+) -> dict[str, Any]:
+    limit = _query_int(query, "limit", default=100, minimum=1, maximum=1000)
+    cursor = _first_query_value(query, "after")
+    payload: dict[str, Any] = {"campaign_id": campaign_id, "items": [], "cursor": cursor}
+    try:
+        with db.connect(db.load_pg_config(load_config())) as conn:
+            payload.update(_event_delta(conn, campaign_id, cursor=cursor, limit=limit))
+    except Exception as exc:
+        payload["database_error"] = str(exc)
+    return payload
+
+
+def _campaign_rolls_payload(
+    campaign_id: str,
+    query: dict[str, list[str]],
+) -> dict[str, Any]:
+    limit = _query_int(query, "limit", default=50, minimum=1, maximum=500)
+    cursor = _first_query_value(query, "after")
+    payload: dict[str, Any] = {"campaign_id": campaign_id, "items": [], "cursor": cursor}
+    try:
+        with db.connect(db.load_pg_config(load_config())) as conn:
+            payload.update(_roll_delta(conn, campaign_id, cursor=cursor, limit=limit))
+    except Exception as exc:
+        payload["database_error"] = str(exc)
+    return payload
+
+
+def _campaign_files_payload(
+    campaign_id: str,
+    query: dict[str, list[str]],
+) -> dict[str, Any]:
+    campaign_root = _campaign_root(campaign_id)
+    raw_path = _first_query_value(query, "path")
+    if raw_path:
+        return _file_content_payload(campaign_root, raw_path)
+    section = _first_query_value(query, "section")
+    prefix = _first_query_value(query, "prefix")
+    limit = _query_int(query, "limit", default=100, minimum=1, maximum=1000)
+    files = _file_tree_payload(campaign_root)
+    if section:
+        files = [entry for entry in files if _file_entry_matches_section(entry, section)]
+    elif prefix:
+        files = [entry for entry in files if entry["path"].startswith(prefix)]
+    else:
+        return {
+            "campaign_id": campaign_id,
+            "root": campaign_root.name,
+            "sections": _file_section_counts(files),
+            "files": [],
+        }
+    return {
+        "campaign_id": campaign_id,
+        "root": campaign_root.name,
+        "files": files[:limit],
+    }
+
+
+def _runtime_payload(conn: Any, campaign_id: str) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT campaign_id, status, created_at, updated_at, wrapped_at, summary,
+                   turn_counter, mode_stack, pending_events, note_intake,
+                   next_speakers, scene_closing_turns
+            FROM campaign_runtime_states
+            WHERE campaign_id = %s
+            """,
+            (campaign_id,),
+        )
+        row = cur.fetchone()
+        cur.execute(
+            "SELECT count(*), max(turn_id) FROM turns WHERE campaign_id = %s",
+            (campaign_id,),
+        )
+        turn_row = cur.fetchone()
+    if row is None:
+        return None
+    (
+        campaign,
+        status,
+        created_at,
+        updated_at,
+        wrapped_at,
+        summary,
+        turn_counter,
+        mode_stack,
+        pending_events,
+        note_intake,
+        next_speakers,
+        scene_closing_turns,
+    ) = row
+    turn_count = int(turn_row[0] or 0) if turn_row else 0
+    latest_turn_id = int(turn_row[1]) if turn_row and turn_row[1] is not None else None
+    return {
+        "schema_version": 5,
+        "campaign": campaign,
+        "status": status,
+        "created_at": _iso(created_at),
+        "updated_at": _iso(updated_at),
+        "wrapped_at": _iso(wrapped_at),
+        "summary": summary or "",
+        "turn_counter": max(int(turn_counter), latest_turn_id or 0),
+        "mode_stack": list(mode_stack or []),
+        "pending_events": list(pending_events or []),
+        "note_intake": list(note_intake or []),
+        "next_speakers": list(next_speakers or []),
+        "scene_closing_turns": scene_closing_turns,
+        "turns": {
+            "count": turn_count,
+            "latest_turn_id": latest_turn_id,
+        },
+    }
+
+
+def _latest_messages(
+    conn: Any,
+    campaign_id: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {db._MESSAGE_COLUMNS}
+            FROM messages
+            WHERE campaign_id = %s
+            ORDER BY created_at DESC, id DESC
+            LIMIT %s
+            """,
+            (campaign_id, limit),
+        )
+        rows = cur.fetchall()
+    return [db._row_to_message(row) for row in reversed(rows)]
+
+
+def _latest_events(
+    conn: Any,
+    campaign_id: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT event_id, campaign_id, scene_id, turn_id, actor, event_type,
+                   visibility, summary, payload, created_at, claimed_at
+            FROM events
+            WHERE campaign_id = %s
+            ORDER BY created_at DESC, event_id DESC
+            LIMIT %s
+            """,
+            (campaign_id, limit),
+        )
+        rows = cur.fetchall()
+    events = [
+        {
+            "event_id": str(row[0]),
+            "campaign_id": row[1],
+            "scene_id": row[2],
+            "turn_id": row[3],
+            "actor": row[4],
+            "event_type": row[5],
+            "visibility": row[6],
+            "summary": row[7],
+            "payload": row[8] or {},
+            "created_at": _iso(row[9]),
+            "claimed_at": _iso(row[10]),
+        }
+        for row in reversed(rows)
+    ]
+    return events
+
+
+def _latest_rolls(
+    conn: Any,
+    campaign_id: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {db._ROLL_COLUMNS}
+            FROM rolls
+            WHERE campaign_id = %s
+            ORDER BY created_at DESC, id DESC
+            LIMIT %s
+            """,
+            (campaign_id, limit),
+        )
+        rows = cur.fetchall()
+    return [db._row_to_roll(row) for row in reversed(rows)]
+
+
+def _turn_delta(
+    conn: Any,
+    campaign_id: str,
+    *,
+    after_turn: int | None,
+    limit: int,
+) -> dict[str, Any]:
+    turns = db.turn_list(
+        conn,
+        campaign_id=campaign_id,
+        after_turn=after_turn,
+        limit=limit,
+        latest=after_turn is None,
+    )
+    cursor = turns[-1]["turn_id"] if turns else after_turn
+    return {"items": turns, "cursor": cursor}
+
+
+def _message_delta(
+    conn: Any,
+    campaign_id: str,
+    *,
+    cursor: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    rows = _created_id_delta_rows(
+        conn,
+        table="messages",
+        id_column="id",
+        id_cast="uuid",
+        columns=db._MESSAGE_COLUMNS,
+        campaign_id=campaign_id,
+        cursor=cursor,
+        limit=limit,
+    )
+    messages = [db._row_to_message(row) for row in rows]
+    next_cursor = _cursor_from_rows(rows, created_at_index=7, id_index=0) or cursor
+    return {"items": messages, "cursor": next_cursor}
+
+
+def _event_delta(
+    conn: Any,
+    campaign_id: str,
+    *,
+    cursor: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    columns = (
+        "event_id, campaign_id, scene_id, turn_id, actor, event_type, "
+        "visibility, summary, payload, created_at, claimed_at"
+    )
+    rows = _created_id_delta_rows(
+        conn,
+        table="events",
+        id_column="event_id",
+        id_cast=None,
+        columns=columns,
+        campaign_id=campaign_id,
+        cursor=cursor,
+        limit=limit,
+    )
+    events = [_row_to_event(row) for row in rows]
+    next_cursor = _cursor_from_rows(rows, created_at_index=9, id_index=0) or cursor
+    return {"items": events, "cursor": next_cursor}
+
+
+def _roll_delta(
+    conn: Any,
+    campaign_id: str,
+    *,
+    cursor: str | None,
+    limit: int,
+) -> dict[str, Any]:
+    rows = _created_id_delta_rows(
+        conn,
+        table="rolls",
+        id_column="id",
+        id_cast="uuid",
+        columns=db._ROLL_COLUMNS,
+        campaign_id=campaign_id,
+        cursor=cursor,
+        limit=limit,
+    )
+    rolls = [db._row_to_roll(row) for row in rows]
+    next_cursor = _cursor_from_rows(rows, created_at_index=23, id_index=0) or cursor
+    return {"items": rolls, "cursor": next_cursor}
+
+
+def _created_id_delta_rows(
+    conn: Any,
+    *,
+    table: str,
+    id_column: str,
+    id_cast: str | None,
+    columns: str,
+    campaign_id: str,
+    cursor: str | None,
+    limit: int,
+) -> list[tuple[Any, ...]]:
+    params: list[Any] = [campaign_id]
+    where = ["campaign_id = %s"]
+    if cursor:
+        created_at, row_id = _parse_created_id_cursor(cursor)
+        cast = f"::{id_cast}" if id_cast else ""
+        where.append(f"(created_at, {id_column}) > (%s::timestamptz, %s{cast})")
+        params.extend([created_at, row_id])
+        order = "created_at ASC, {id_column} ASC"
+    else:
+        order = "created_at DESC, {id_column} DESC"
+    params.append(limit)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {columns}
+            FROM {table}
+            WHERE {' AND '.join(where)}
+            ORDER BY {order.format(id_column=id_column)}
+            LIMIT %s
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    if cursor:
+        return rows
+    return list(reversed(rows))
+
+
+def _row_to_event(row: tuple[Any, ...]) -> dict[str, Any]:
+    return {
+        "event_id": str(row[0]),
+        "campaign_id": row[1],
+        "scene_id": row[2],
+        "turn_id": row[3],
+        "actor": row[4],
+        "event_type": row[5],
+        "visibility": row[6],
+        "summary": row[7],
+        "payload": row[8] or {},
+        "created_at": _iso(row[9]),
+        "claimed_at": _iso(row[10]),
+    }
+
+
+def _cursor_from_rows(
+    rows: list[tuple[Any, ...]],
+    *,
+    created_at_index: int,
+    id_index: int,
+) -> str | None:
+    if not rows:
+        return None
+    row = rows[-1]
+    return f"{_iso(row[created_at_index])}{_CURSOR_SEPARATOR}{row[id_index]}"
+
+
+def _parse_created_id_cursor(cursor: str) -> tuple[str, str]:
+    parts = cursor.split(_CURSOR_SEPARATOR, 1)
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise GlassError("invalid cursor")
+    return parts[0], parts[1]
+
+
+def _graph_payload(campaign_id: str) -> dict[str, Any]:
+    config = graph_db.load_falkor_config(load_config())
+    payload: dict[str, Any] = {
+        "available": False,
+        "target": config.describe(),
+        "entities": [],
+        "edges": [],
+        "entity_types": [],
+    }
+    try:
+        with graph_db.connect(config) as g:
+            g.query("RETURN 1")
+            payload["available"] = True
+            payload["entities"] = graph_db.find_entities(
+                g,
+                campaign_id=campaign_id,
+                limit=50,
+            )
+            payload["edges"] = _graph_edges(g, campaign_id, limit=100)
+            payload["entity_types"] = _graph_entity_types(g, campaign_id)
+    except Exception as exc:
+        payload["error"] = str(exc)
+    return payload
+
+
+def _graph_edges(g: Any, campaign_id: str, *, limit: int) -> list[dict[str, Any]]:
+    result = g.query(
+        """
+        MATCH (a:Entity {campaign_id: $campaign})-[r]->(b:Entity {campaign_id: $campaign})
+        RETURN type(r), a.id, a.title, b.id, b.title
+        ORDER BY a.title, b.title
+        LIMIT $limit
+        """,
+        {"campaign": campaign_id, "limit": limit},
+    )
+    return [
+        {
+            "type": str(row[0]),
+            "source": row[1],
+            "source_title": row[2],
+            "target": row[3],
+            "target_title": row[4],
+        }
+        for row in result.result_set
+    ]
+
+
+def _graph_entity_types(g: Any, campaign_id: str) -> list[dict[str, Any]]:
+    result = g.query(
+        """
+        MATCH (e:Entity {campaign_id: $campaign})
+        RETURN e.type, count(e)
+        ORDER BY count(e) DESC, e.type
+        """,
+        {"campaign": campaign_id},
+    )
+    return [
+        {
+            "type": row[0] or "entity",
+            "count": int(row[1]),
+        }
+        for row in result.result_set
+    ]
+
+
+def _campaign_table_payload(campaign_root: Path) -> dict[str, Any]:
+    table_dir = campaign_root / "table"
+    payload: dict[str, Any] = {
+        "index": _optional_file_payload(table_dir / "index.md"),
+        "scene": _optional_file_payload(table_dir / "scene.md"),
+        "files": [],
+    }
+    if table_dir.exists():
+        files = []
+        for path in sorted(table_dir.rglob("*"), key=lambda item: item.as_posix()):
+            if path.name in {"index.md", "scene.md"}:
+                continue
+            if _is_readable_campaign_file(campaign_root, path):
+                files.append(_file_entry(campaign_root, path))
+        payload["files"] = files
+    return payload
+
+
+def _optional_file_payload(path: Path) -> dict[str, Any] | None:
+    if not path.exists() or not path.is_file():
+        return None
+    return {
+        "path": path.name,
+        "title": _file_title(path),
+        "content": _read_text(path),
+        "updated_at": _path_mtime(path),
+    }
+
+
+def _file_tree_payload(campaign_root: Path) -> list[dict[str, Any]]:
+    files: list[dict[str, Any]] = []
+    if not campaign_root.exists():
+        return files
+    for path in sorted(campaign_root.rglob("*"), key=lambda item: item.as_posix()):
+        if _is_readable_campaign_file(campaign_root, path):
+            files.append(_file_entry(campaign_root, path))
+    return files
+
+
+def _file_section_counts(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "section": section,
+            "count": sum(1 for entry in files if _file_entry_matches_section(entry, section)),
+        }
+        for section in _FILE_SECTION_TERMS
+    ]
+
+
+def _file_entry_matches_section(entry: dict[str, Any], section: str) -> bool:
+    terms = _FILE_SECTION_TERMS.get(section, [section])
+    haystack = f"{entry.get('path', '')} {entry.get('title', '')} {entry.get('section', '')}".lower()
+    return any(term.lower() in haystack for term in terms)
+
+
+def _file_content_payload(campaign_root: Path, raw_path: str) -> dict[str, Any]:
+    path = _safe_campaign_path(campaign_root, raw_path)
+    if not _is_readable_campaign_file(campaign_root, path):
+        raise GlassError(f"campaign file is not readable: {raw_path}")
+    entry = _file_entry(campaign_root, path)
+    return {
+        **entry,
+        "campaign_id": campaign_root.name,
+        "content": _read_text(path),
+    }
+
+
+def _safe_campaign_path(campaign_root: Path, raw_path: str) -> Path:
+    if not raw_path or raw_path.startswith(("/", "\\")):
+        raise GlassError("campaign file path must be relative")
+    root = campaign_root.resolve()
+    path = (root / raw_path).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise GlassError("campaign file path escapes campaign root") from exc
+    return path
+
+
+def _is_readable_campaign_file(campaign_root: Path, path: Path) -> bool:
+    if not path.is_file():
+        return False
+    if path.is_symlink():
+        return False
+    if path.name in _EXCLUDED_FILE_NAMES:
+        return False
+    if path.suffix.lower() not in _READABLE_FILE_SUFFIXES:
+        return False
+    try:
+        relative = path.relative_to(campaign_root)
+    except ValueError:
+        return False
+    if any(part in _EXCLUDED_PATH_PARTS or part.startswith(".") for part in relative.parts):
+        return False
+    return True
+
+
+def _file_entry(campaign_root: Path, path: Path) -> dict[str, Any]:
+    relative = path.relative_to(campaign_root).as_posix()
+    section = relative.split("/", 1)[0]
+    stat = path.stat()
+    return {
+        "path": relative,
+        "name": path.name,
+        "section": section,
+        "title": _file_title(path),
+        "size": stat.st_size,
+        "updated_at": _iso_from_timestamp(stat.st_mtime),
+    }
+
+
+def _file_title(path: Path) -> str:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            for _ in range(30):
+                line = handle.readline()
+                if not line:
+                    break
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    return stripped.lstrip("#").strip() or path.stem
+                if stripped.lower().startswith("title:"):
+                    return stripped.split(":", 1)[1].strip().strip("\"'") or path.stem
+    except OSError:
+        return path.stem
+    return path.stem.replace("-", " ").replace("_", " ").strip() or path.name
+
+
+def _read_text(path: Path) -> str:
+    with path.open("rb") as handle:
+        raw = handle.read(_MAX_FILE_BYTES + 1)
+    truncated = len(raw) > _MAX_FILE_BYTES
+    if truncated:
+        raw = raw[:_MAX_FILE_BYTES]
+    text = raw.decode("utf-8", errors="replace")
+    if truncated:
+        text = f"{text}\n\n[truncated at {_MAX_FILE_BYTES} bytes]"
+    return text
+
+
+def _campaign_root(campaign_id: str) -> Path:
+    campaign_root = get_paths().campaigns / campaign_id
+    if not campaign_root.exists() or not campaign_root.is_dir():
+        raise GlassError(f"unknown campaign: {campaign_id}")
+    return campaign_root
+
+
+def _validate_campaign_id(campaign_id: str) -> str:
+    if not campaign_id or "/" in campaign_id or "\\" in campaign_id:
+        raise GlassError("invalid campaign id")
+    if campaign_id in {".", ".."} or campaign_id.startswith("."):
+        raise GlassError("invalid campaign id")
+    return campaign_id
+
+
+def _query_int(
+    query: dict[str, list[str]],
+    name: str,
+    *,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    raw = _first_query_value(query, name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise GlassError(f"invalid {name}: expected integer") from exc
+    return min(max(value, minimum), maximum)
+
+
+def _query_int_or_none(
+    query: dict[str, list[str]],
+    name: str,
+    *,
+    minimum: int,
+    maximum: int,
+) -> int | None:
+    raw = _first_query_value(query, name)
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise GlassError(f"invalid {name}: expected integer") from exc
+    return min(max(value, minimum), maximum)
+
+
+def _query_bool(
+    query: dict[str, list[str]],
+    name: str,
+    *,
+    default: bool,
+) -> bool:
+    raw = _first_query_value(query, name)
+    if raw is None:
+        return default
+    return raw.lower() in {"1", "true", "yes", "on"}
+
+
+def _first_query_value(query: dict[str, list[str]], name: str) -> str | None:
+    values = query.get(name)
+    if not values:
+        return None
+    value = values[0].strip()
+    return value or None
+
+
+def _path_mtime(path: Path) -> str:
+    return _iso_from_timestamp(path.stat().st_mtime)
+
+
+def _iso_from_timestamp(value: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(value))
+
+
+def _now_iso() -> str:
+    return _iso_from_timestamp(time.time())
+
+
+def _iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return str(value.isoformat())
+    return str(value)
 
 
 def _invoke_glass(args: list[str], claim: dict[str, Any]) -> dict[str, Any]:

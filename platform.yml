@@ -1,0 +1,7 @@
+project: agents-of-glass
+prefix: agents-of-glass
+stack:
+  - python
+  - typescript
+  - terraform
+migrations: migrations
