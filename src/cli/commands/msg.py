@@ -39,10 +39,12 @@ from ..entities import (
 from ..errors import GlassError
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
+    canonicalize_actor_reference,
     infer_player_from_path,
     load_message_types,
     message_visible_to,
     player_dirs,
+    render_message_identities,
     require_message_type,
     require_recipient,
     roster,
@@ -126,7 +128,7 @@ def msg_send(
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     require_message_type(paths, message_type)
-    require_recipient(paths, state, recipient)
+    recipient = require_recipient(paths, state, recipient)
     role = current_role()
     body = " ".join(body_parts)
     campaign_id = active_campaign_id()
@@ -140,7 +142,7 @@ def msg_send(
             type_=message_type,
             body=body,
         )
-    result = {"message": message}
+    result = {"message": render_message_identities(paths, state, message)}
     commit(
         paths,
         state,
@@ -171,6 +173,7 @@ def msg_read(
     state = load_state(paths, campaign_id)
     if message_type:
         require_message_type(paths, message_type)
+    sender = canonicalize_actor_reference(paths, state, sender)
     role = current_role()
     campaign_id = active_campaign_id()
     with pg_connection() as conn:
@@ -192,7 +195,10 @@ def msg_read(
                 agent_id=role.actor,
                 message_ids=[m["id"] for m in visible],
             )
-    result = {"messages": visible, "count": len(visible)}
+    rendered_messages = [
+        render_message_identities(paths, state, message) for message in visible
+    ]
+    result = {"messages": rendered_messages, "count": len(rendered_messages)}
     commit(
         paths,
         state,
@@ -206,5 +212,4 @@ def msg_read(
         ),
         result,
     )
-
 

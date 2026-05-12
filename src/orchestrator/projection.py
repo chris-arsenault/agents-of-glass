@@ -31,7 +31,10 @@ WRITABLE_DIR_MODE = 0o2770
 PROJECTION_PARENT_DIR_MODE = 0o710
 WRITABLE_FILE_MODE = 0o660
 PROJECTION_MANIFEST = ".glass-projection-manifest.json"
+PLAYER_SURFACE_PROFILE = ".glass-player-surface-profile"
 CURRENT_TURN_DIR = Path("turns")
+PLAYER_SURFACE_PLAYER = "player"
+PLAYER_SURFACE_CHARACTER = "character"
 
 _TOP_LEVEL_FILES = {
     "README.md",
@@ -51,6 +54,7 @@ _PUBLIC_DIRS = {
 _SKIP_FILE_NAMES = {
     ".glass-grants.json",
     PROJECTION_MANIFEST,
+    PLAYER_SURFACE_PROFILE,
     "aog-state.json",
     "state.json",
     "audit.jsonl",
@@ -63,6 +67,9 @@ _PLAYER_OWN_ROOT_FILES = {
     "scratchpad.md",
     "signature-moves.md",
 }
+_CHARACTER_OWN_ROOT_FILES = {
+    "signature-moves.md",
+}
 _PLAYER_OWN_DIRS = {
     "public",
     "secrets",
@@ -71,12 +78,28 @@ _PLAYER_OWN_DIRS = {
     "drafts",
     "inbox",
 }
+_CHARACTER_OWN_DIRS = {
+    "public",
+    "secrets",
+    "inbox",
+}
+_CHARACTER_OWN_PUBLIC_FILES = {
+    "character.md",
+}
 _ARC_PRIVATE_FILES = {
     "plan.md",
     "prep.md",
     "state.json",
     "audit.jsonl",
 }
+_CHARACTER_TEMPLATE_OVERLAYS = (
+    Path("instructions/index-character.md"),
+    Path("instructions/message-bus-character.md"),
+    Path("instructions/workspace-authoring-character.md"),
+    Path("methodologies/scene-play-character.md"),
+    Path("methodologies/action-scene-character.md"),
+    Path("methodologies/rapid-response-character.md"),
+)
 
 
 @dataclass(frozen=True)
@@ -124,6 +147,7 @@ def build_projection(
     canonical_turn_start_path: Path,
     canonical_turn_prose_path: Path,
     canonical_turn_closeout_path: Path,
+    player_surface: str = PLAYER_SURFACE_PLAYER,
 ) -> ProjectionPaths:
     """Rebuild the actor-owned projection for one actor turn."""
 
@@ -143,18 +167,35 @@ def build_projection(
     # roots are still discoverable even before they contain files.
     for directory in sorted(_iter_dirs(campaign_root), key=lambda item: item[0]):
         rel, source = directory
-        if _directory_visible(rel, agent, style_id=style_id):
+        if _directory_visible(
+            rel,
+            agent,
+            style_id=style_id,
+            player_surface=player_surface,
+        ):
             (root / rel).mkdir(parents=True, exist_ok=True)
 
     manifest: dict[str, str] = {}
     for rel, source in sorted(_iter_files(campaign_root), key=lambda item: item[0]):
-        if not _file_visible(rel, agent, style_id=style_id):
+        if not _file_visible(
+            rel,
+            agent,
+            style_id=style_id,
+            player_surface=player_surface,
+        ):
             continue
         target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         _copy_file(source, target, campaign_root=campaign_root)
         if target.exists() and target.is_file():
             manifest[str(rel)] = _hash_file(target)
+
+    _overlay_template_docs(
+        config.templates_dir,
+        root,
+        manifest,
+        player_surface=player_surface,
+    )
 
     projected_turn_dir = root / CURRENT_TURN_DIR
     projected_turn_dir.mkdir(parents=True, exist_ok=True)
@@ -168,13 +209,15 @@ def build_projection(
     )
     manifest[str(CURRENT_TURN_DIR / "TURN_START.md")] = _hash_file(projected_turn_start)
     _prepare_tool_runtime_files(root)
+    _write_player_surface_profile(root, player_surface)
     _write_projection_manifest(root, manifest)
-    _ensure_authoring_surfaces(root, agent)
+    _ensure_authoring_surfaces(root, agent, player_surface=player_surface)
 
     _make_readonly(root)
-    _make_authoring_surfaces_writable(root, agent)
+    _make_authoring_surfaces_writable(root, agent, player_surface=player_surface)
     _make_writable_tree(projected_turn_dir)
     _make_writable_tree(root / ".claude")
+    _make_writable_tree(root / ".codex")
     _chmod_if_possible(root / ".mcp.json", WRITABLE_FILE_MODE)
     _chmod_if_possible(root / PROJECTION_MANIFEST, WRITABLE_FILE_MODE)
     permissions.apply_projection_permissions(
@@ -237,13 +280,24 @@ def refresh_projection_from_canonical(
 
     _make_owner_writable(root)
     style_id = assigned_style_id(campaign_root, agent)
+    player_surface = _read_player_surface_profile(root)
     manifest = _load_projection_manifest(root)
     for rel, _source in sorted(_iter_dirs(campaign_root), key=lambda item: item[0]):
-        if _directory_visible(rel, agent, style_id=style_id):
+        if _directory_visible(
+            rel,
+            agent,
+            style_id=style_id,
+            player_surface=player_surface,
+        ):
             (root / rel).mkdir(parents=True, exist_ok=True)
 
     for rel, source in sorted(_iter_files(campaign_root), key=lambda item: item[0]):
-        if not _file_visible(rel, agent, style_id=style_id):
+        if not _file_visible(
+            rel,
+            agent,
+            style_id=style_id,
+            player_surface=player_surface,
+        ):
             continue
         target = root / rel
         source_hash = _hash_file(source)
@@ -261,11 +315,13 @@ def refresh_projection_from_canonical(
 
     _prepare_tool_runtime_files(root)
     _write_projection_manifest(root, manifest)
-    _ensure_authoring_surfaces(root, agent)
+    _write_player_surface_profile(root, player_surface)
+    _ensure_authoring_surfaces(root, agent, player_surface=player_surface)
     _make_readonly(root)
-    _make_authoring_surfaces_writable(root, agent)
+    _make_authoring_surfaces_writable(root, agent, player_surface=player_surface)
     _make_writable_tree(projected_turn_dir)
     _make_writable_tree(root / ".claude")
+    _make_writable_tree(root / ".codex")
     _chmod_if_possible(root / ".mcp.json", WRITABLE_FILE_MODE)
     _chmod_if_possible(root / PROJECTION_MANIFEST, WRITABLE_FILE_MODE)
     permissions.apply_projection_permissions(
@@ -384,7 +440,11 @@ def assigned_style_id(campaign_root: Path, agent: Agent) -> str | None:
 
 
 def _directory_visible(
-    rel: Path, agent: Agent, *, style_id: str | None = None
+    rel: Path,
+    agent: Agent,
+    *,
+    style_id: str | None = None,
+    player_surface: str = PLAYER_SURFACE_PLAYER,
 ) -> bool:
     if rel == Path("."):
         return True
@@ -412,13 +472,24 @@ def _directory_visible(
         if len(parts) == 2:
             return True
         if player_id == agent.id:
-            return parts[2] in _PLAYER_OWN_DIRS or parts[2] == "turns"
+            own_dirs = (
+                _CHARACTER_OWN_DIRS
+                if player_surface == PLAYER_SURFACE_CHARACTER
+                else _PLAYER_OWN_DIRS
+            )
+            return parts[2] in own_dirs or parts[2] == "turns"
+        if player_surface == PLAYER_SURFACE_CHARACTER:
+            return False
         return parts[2] == "public"
     return False
 
 
 def _file_visible(
-    rel: Path, agent: Agent, *, style_id: str | None = None
+    rel: Path,
+    agent: Agent,
+    *,
+    style_id: str | None = None,
+    player_surface: str = PLAYER_SURFACE_PLAYER,
 ) -> bool:
     parts = rel.parts
     if not parts:
@@ -453,8 +524,19 @@ def _file_visible(
     player_id = parts[1]
     if player_id == agent.id:
         if len(parts) == 3:
-            return parts[2] in _PLAYER_OWN_ROOT_FILES
+            own_files = (
+                _CHARACTER_OWN_ROOT_FILES
+                if player_surface == PLAYER_SURFACE_CHARACTER
+                else _PLAYER_OWN_ROOT_FILES
+            )
+            return parts[2] in own_files
+        if player_surface == PLAYER_SURFACE_CHARACTER:
+            if parts[2] == "public":
+                return rel.name in _CHARACTER_OWN_PUBLIC_FILES
+            return parts[2] in _CHARACTER_OWN_DIRS
         return parts[2] in _PLAYER_OWN_DIRS
+    if player_surface == PLAYER_SURFACE_CHARACTER:
+        return False
     return parts[2] == "public"
 
 
@@ -495,9 +577,47 @@ def _prepare_tool_runtime_files(root: Path) -> None:
     # prompt. Keep these hidden runtime paths writable while the campaign
     # projection itself remains read-only.
     (root / ".claude").mkdir(parents=True, exist_ok=True)
+    (root / ".codex").mkdir(parents=True, exist_ok=True)
     mcp_path = root / ".mcp.json"
     if not mcp_path.exists():
         mcp_path.write_text("{}\n", encoding="utf-8")
+
+
+def _overlay_template_docs(
+    templates_root: Path,
+    projection_root: Path,
+    manifest: dict[str, str],
+    *,
+    player_surface: str,
+) -> None:
+    if player_surface != PLAYER_SURFACE_CHARACTER:
+        return
+    for rel in _CHARACTER_TEMPLATE_OVERLAYS:
+        source = templates_root / rel
+        if not source.is_file():
+            raise FileNotFoundError(
+                f"Missing character-surface template overlay: {source}"
+            )
+        target = projection_root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        manifest[str(rel)] = _hash_file(target)
+
+
+def _read_player_surface_profile(root: Path) -> str:
+    path = root / PLAYER_SURFACE_PROFILE
+    try:
+        value = path.read_text(encoding="utf-8").strip().lower()
+    except (FileNotFoundError, OSError):
+        return PLAYER_SURFACE_PLAYER
+    if value == PLAYER_SURFACE_CHARACTER:
+        return PLAYER_SURFACE_CHARACTER
+    return PLAYER_SURFACE_PLAYER
+
+
+def _write_player_surface_profile(root: Path, player_surface: str) -> None:
+    path = root / PLAYER_SURFACE_PROFILE
+    path.write_text(f"{player_surface}\n", encoding="utf-8")
 
 
 def _load_projection_manifest(root: Path) -> dict[str, str]:
@@ -547,14 +667,27 @@ def writable_probe_dirs(root: Path, agent: Agent) -> list[Path]:
     read-only parent is not actually writable in practice.
     """
 
-    dirs, files = _authoring_surfaces(root, agent)
+    dirs, files = _authoring_surfaces(
+        root,
+        agent,
+        player_surface=_read_player_surface_profile(root),
+    )
     probes = list(dirs)
     probes.extend(path.parent for path in files)
     return sorted({path for path in probes if path.exists()})
 
 
-def _make_authoring_surfaces_writable(root: Path, agent: Agent) -> None:
-    dirs, files = _authoring_surfaces(root, agent)
+def _make_authoring_surfaces_writable(
+    root: Path,
+    agent: Agent,
+    *,
+    player_surface: str | None = None,
+) -> None:
+    dirs, files = _authoring_surfaces(
+        root,
+        agent,
+        player_surface=player_surface or _read_player_surface_profile(root),
+    )
     for directory in dirs:
         if not directory.exists():
             continue
@@ -568,15 +701,29 @@ def _make_authoring_surfaces_writable(root: Path, agent: Agent) -> None:
                 pass
 
 
-def _ensure_authoring_surfaces(root: Path, agent: Agent) -> None:
-    dirs, files = _authoring_surfaces(root, agent)
+def _ensure_authoring_surfaces(
+    root: Path,
+    agent: Agent,
+    *,
+    player_surface: str | None = None,
+) -> None:
+    dirs, files = _authoring_surfaces(
+        root,
+        agent,
+        player_surface=player_surface or _read_player_surface_profile(root),
+    )
     for directory in dirs:
         directory.mkdir(parents=True, exist_ok=True)
     for path in files:
         path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _authoring_surfaces(root: Path, agent: Agent) -> tuple[list[Path], list[Path]]:
+def _authoring_surfaces(
+    root: Path,
+    agent: Agent,
+    *,
+    player_surface: str = PLAYER_SURFACE_PLAYER,
+) -> tuple[list[Path], list[Path]]:
     if agent.role == "dm":
         dirs = [
             root / "arcs",
@@ -597,6 +744,8 @@ def _authoring_surfaces(root: Path, agent: Agent) -> tuple[list[Path], list[Path
         return dirs, files
 
     base = root / "players" / agent.id
+    if player_surface == PLAYER_SURFACE_CHARACTER:
+        return [base / "secrets"], []
     dirs = [base / item for item in _PLAYER_OWN_DIRS]
     files = [base / "scratchpad.md"]
     return dirs, files
@@ -616,7 +765,11 @@ def _is_syncable_authoring_path(rel: Path, *, root: Path, agent: Agent) -> bool:
     if rel.name in {"transcript.md", "audit.jsonl"}:
         return False
 
-    dirs, files = _authoring_surfaces(root, agent)
+    dirs, files = _authoring_surfaces(
+        root,
+        agent,
+        player_surface=_read_player_surface_profile(root),
+    )
     dir_rels = [path.relative_to(root) for path in dirs]
     file_rels = [path.relative_to(root) for path in files]
     if rel in file_rels:

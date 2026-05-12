@@ -62,6 +62,10 @@ _GLASS_COMMAND_LINE_RE = re.compile(
     r"scene|table|mode|turn|thread|msg|turns|sync)\b"
 )
 _SCENE_PLAY_MODES = {"scene-play", "action", "combat", "chase", "social-pressure"}
+_PROVIDER_EXECUTABLES = {
+    "claude": "claude",
+    "codex": "codex",
+}
 
 
 def _ensure_actor_claude_session(
@@ -797,23 +801,29 @@ class Orchestrator:
         # the canonical campaign tree.
         target_user = permissions.player_user_for(agent.id)
         _assert_actor_workspace_ready(package, target_user=target_user)
-        claude_session = _ensure_actor_claude_session(
-            state,
-            agent,
-            cwd=package.spawn_cwd,
-        )
-        claude_session_args, claude_session_cli_mode = _claude_session_cli_args(
-            claude_session,
-            use_session_id=self.config.claude.use_session_id,
-        )
-        _record_actor_claude_invocation(
-            state,
-            agent,
-            turn_id=package.turn_id,
-            session_id_enabled=self.config.claude.use_session_id,
-            session_cli_mode=claude_session_cli_mode,
-        )
-        self.store.save(state)
+        provider = self.config.agent_provider
+        provider_executable = _resolve_provider_executable(provider)
+        claude_session: dict[str, Any] = {}
+        claude_session_args: list[str] = []
+        claude_session_cli_mode = "disabled"
+        if provider == "claude":
+            claude_session = _ensure_actor_claude_session(
+                state,
+                agent,
+                cwd=package.spawn_cwd,
+            )
+            claude_session_args, claude_session_cli_mode = _claude_session_cli_args(
+                claude_session,
+                use_session_id=self.config.claude.use_session_id,
+            )
+            _record_actor_claude_invocation(
+                state,
+                agent,
+                turn_id=package.turn_id,
+                session_id_enabled=self.config.claude.use_session_id,
+                session_cli_mode=claude_session_cli_mode,
+            )
+            self.store.save(state)
         glass_api_url = ensure_background_server(
             url=os.environ.get("GLASS_API_URL", DEFAULT_API_URL),
             config_path=config_env_value(self.config),
@@ -842,31 +852,42 @@ class Orchestrator:
             )
 
         actor_command: list[str] = []
-        preserved_env: list[str] = []
-
-        actor_command.append("claude")
-        if self.config.claude.model:
-            actor_command.extend(["--model", self.config.claude.model])
-        actor_command.extend(claude_session_args)
         claude_debug_path = package.agent_turn_dir / "claude-debug.log"
-        claude_debug_ref = _agent_path(claude_debug_path, package.spawn_cwd)
-        actor_command.extend([
-            "-p",
-            prompt,
-            "--dangerously-skip-permissions",
-            "--debug-file",
-            claude_debug_ref,
-        ])
+        preserved_env = _provider_preserved_env(provider)
+        if provider == "claude":
+            claude_debug_ref = _agent_path(claude_debug_path, package.spawn_cwd)
+            actor_command.append(provider_executable)
+            if self.config.claude.model:
+                actor_command.extend(["--model", self.config.claude.model])
+            actor_command.extend(claude_session_args)
+            actor_command.extend([
+                "-p",
+                prompt,
+                "--dangerously-skip-permissions",
+                "--debug-file",
+                claude_debug_ref,
+            ])
+        else:
+            actor_command.extend(
+                [
+                    provider_executable,
+                    "exec",
+                    "--dangerously-bypass-approvals-and-sandbox",
+                    prompt,
+                ]
+            )
         command = actor_command
         if target_user is not None:
+            runtime_path = _player_path(extra_dirs=[str(Path(provider_executable).parent)])
             command = [
                 "sudo",
                 "-n",
+                f"--preserve-env={','.join(preserved_env)}",
                 "-u",
                 target_user,
                 "--",
                 "env",
-                f"PATH={_player_path()}",
+                f"PATH={runtime_path}",
                 "bash",
                 "-lc",
                 'umask 0007; exec "$@"',
@@ -886,10 +907,13 @@ class Orchestrator:
                 "AOG_TURN_START": str(package.agent_turn_start_path),
                 "AOG_TURN_PROSE": str(package.agent_turn_prose_path),
                 "AOG_TURN_CLOSEOUT": str(package.agent_turn_closeout_path),
+                "AOG_AGENT_PROVIDER": provider,
             }
         )
+        if package.player_surface:
+            env["AOG_PLAYER_SURFACE"] = package.player_surface
         if target_user is not None:
-            env["PATH"] = _player_path()
+            env["PATH"] = runtime_path
             if glass_api_grant_file is not None:
                 env["GLASS_API_GRANT_FILE"] = str(glass_api_grant_file)
 
@@ -911,9 +935,12 @@ class Orchestrator:
             preserved_env=preserved_env,
             timeout_seconds=self.config.claude.turn_timeout_seconds,
             phase="before_spawn",
+            provider=provider,
             claude_debug_path=claude_debug_path,
             claude_session=claude_session,
-            claude_session_enabled=self.config.claude.use_session_id,
+            claude_session_enabled=(
+                provider == "claude" and self.config.claude.use_session_id
+            ),
             claude_session_cli_mode=claude_session_cli_mode,
         )
         _write_json(debug_path, debug_payload)
@@ -945,9 +972,9 @@ class Orchestrator:
                 status="spawn failed",
             )
             raise TurnFailure(
-                "Claude CLI was not found on PATH.",
+                f"{provider.title()} CLI was not found on PATH.",
                 {
-                    "reason": "claude_not_found",
+                    "reason": f"{provider}_not_found",
                     "turn_id": package.turn_id,
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
@@ -958,21 +985,22 @@ class Orchestrator:
         duration_seconds = time.monotonic() - turn_started
         status = "timed out" if timed_out else f"exit {returncode}"
         _print_turn_duration(agent, package, duration_seconds, status=status)
-        _record_actor_claude_invocation(
-            state,
-            agent,
-            turn_id=package.turn_id,
-            session_id_enabled=self.config.claude.use_session_id,
-            session_cli_mode=claude_session_cli_mode,
-            session_materialized=_claude_session_materialized_after_run(
+        if provider == "claude":
+            _record_actor_claude_invocation(
+                state,
+                agent,
+                turn_id=package.turn_id,
+                session_id_enabled=self.config.claude.use_session_id,
                 session_cli_mode=claude_session_cli_mode,
+                session_materialized=_claude_session_materialized_after_run(
+                    session_cli_mode=claude_session_cli_mode,
+                    returncode=returncode,
+                    timed_out=timed_out,
+                    stderr_text=stderr_text,
+                ),
                 returncode=returncode,
                 timed_out=timed_out,
-                stderr_text=stderr_text,
-            ),
-            returncode=returncode,
-            timed_out=timed_out,
-        )
+            )
 
         _normalize_actor_projection(package, target_user=target_user)
         copy_turn_artifacts_to_canonical(
@@ -1230,6 +1258,7 @@ def _agent_debug_payload(
     preserved_env: list[str],
     timeout_seconds: int,
     phase: str,
+    provider: str,
     claude_debug_path: Path,
     claude_session: dict[str, Any],
     claude_session_enabled: bool,
@@ -1250,10 +1279,15 @@ def _agent_debug_payload(
             "target_user": target_user,
         },
         "process": {
+            "provider": provider,
             "cwd": str(package.spawn_cwd),
             "timeout_seconds": timeout_seconds,
             "command": command,
             "resolved_executable": shutil.which(command[0]),
+            "resolved_provider": shutil.which(
+                _PROVIDER_EXECUTABLES.get(provider, provider),
+                path=env.get("PATH"),
+            ),
             "resolved_claude": shutil.which("claude", path=env.get("PATH")),
             "operator_uid": os.getuid(),
             "operator_euid": os.geteuid(),
@@ -1297,6 +1331,17 @@ def _env_debug(env: dict[str, str], preserved_env: list[str]) -> dict[str, Any]:
             "AOG_TURN_START",
             "AOG_TURN_PROSE",
             "AOG_TURN_CLOSEOUT",
+            "AOG_AGENT_PROVIDER",
+            "AOG_PLAYER_SURFACE",
+            "CODEX_HOME",
+            "OPENAI_API_KEY",
+            "OPENAI_BASE_URL",
+            "OPENAI_API_BASE",
+            "OPENAI_ORG_ID",
+            "OPENAI_PROJECT_ID",
+            "XDG_CONFIG_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_STATE_HOME",
         }
     )
     return {
@@ -1552,8 +1597,72 @@ def _home_for_user(user: str) -> str | None:
         return None
 
 
-def _player_path() -> str:
-    return "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+def _resolve_provider_executable(provider: str) -> str:
+    binary = _PROVIDER_EXECUTABLES.get(provider, provider)
+    search_paths = [
+        os.environ.get("PATH", ""),
+        str(Path.home() / ".local" / "bin"),
+        _player_path(),
+    ]
+    for search_path in search_paths:
+        resolved = shutil.which(binary, path=search_path)
+        if resolved:
+            return resolved
+    raise FileNotFoundError(binary)
+
+
+def _provider_preserved_env(provider: str) -> list[str]:
+    keys = [
+        "GLASS_ROLE",
+        "GLASS_CAMPAIGN_ID",
+        "GLASS_CONFIG",
+        "GLASS_TURN_ID",
+        "GLASS_API_URL",
+        "GLASS_API_GRANT",
+        "GLASS_API_GRANT_FILE",
+        "AOG_TURN_START",
+        "AOG_TURN_PROSE",
+        "AOG_TURN_CLOSEOUT",
+        "AOG_AGENT_PROVIDER",
+        "AOG_PLAYER_SURFACE",
+    ]
+    if provider == "codex":
+        keys.extend(
+            [
+                "CODEX_HOME",
+                "OPENAI_API_KEY",
+                "OPENAI_BASE_URL",
+                "OPENAI_API_BASE",
+                "OPENAI_ORG_ID",
+                "OPENAI_PROJECT_ID",
+                "XDG_CONFIG_HOME",
+                "XDG_CACHE_HOME",
+                "XDG_STATE_HOME",
+            ]
+        )
+    return [key for key in keys if key in os.environ or key.startswith(("GLASS_", "AOG_"))]
+
+
+def _player_path(extra_dirs: list[str] | None = None) -> str:
+    parts = list(extra_dirs or [])
+    parts.extend(
+        [
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/local/sbin",
+            "/usr/sbin",
+            "/sbin",
+        ]
+    )
+    seen: set[str] = set()
+    unique: list[str] = []
+    for part in parts:
+        if not part or part in seen:
+            continue
+        seen.add(part)
+        unique.append(part)
+    return ":".join(unique)
 
 
 def _write_player_glass_api_file(

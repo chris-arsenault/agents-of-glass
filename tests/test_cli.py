@@ -510,6 +510,77 @@ Recipients are `dm`, `party`, or a player id.
 
             self.assertEqual(found, {"banter", "plot-hint", "table-talk"})
 
+    def test_character_branch_messages_accept_character_recipient_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env, player="tev", character_id="vel")
+            create_test_character(
+                runner,
+                env,
+                player="sumi",
+                character_id="drova",
+                name="Drova Pell",
+            )
+
+            result = invoke_ok(
+                runner,
+                ["msg", "banter", "drova", "Hold", "the", "line."],
+                {**env, "GLASS_ROLE": "player:tev", "AOG_PLAYER_SURFACE": "character"},
+            )
+
+            self.assertIn("recipient: drova", result.output)
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
+            try:
+                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                    rows = _db.message_list(
+                        conn,
+                        campaign_id="c1",
+                        agent_id="sumi",
+                        limit=20,
+                    )
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+
+            self.assertEqual(rows[0]["recipient"], "sumi")
+            self.assertEqual(rows[0]["sender"], "tev")
+
+    def test_character_branch_message_reads_render_character_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env, player="tev", character_id="vel")
+            create_test_character(
+                runner,
+                env,
+                player="sumi",
+                character_id="drova",
+                name="Drova Pell",
+            )
+            invoke_ok(
+                runner,
+                ["msg", "banter", "drova", "Meet", "me", "below."],
+                {**env, "GLASS_ROLE": "player:tev", "AOG_PLAYER_SURFACE": "character"},
+            )
+
+            result = invoke_ok(
+                runner,
+                ["msg", "read", "--since-checkpoint"],
+                {**env, "GLASS_ROLE": "player:sumi", "AOG_PLAYER_SURFACE": "character"},
+            )
+
+            self.assertIn("sender: vel", result.output)
+            self.assertIn("recipient: drova", result.output)
+
     def test_session_and_mode_use_campaign_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

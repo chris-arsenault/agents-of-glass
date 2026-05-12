@@ -26,13 +26,16 @@ and hand off with `--next` only when another actor is required.
 ## Selected Turn Methodologies
 
 - `organization-bootstrap.md`: single-turn DM org build before characters exist.
+- `scene-play-character.md`: character-framed full turn in free scene play.
 - `scene-play-player.md`: player full turn in free scene play.
 - `scene-play-dm.md`: DM full turn in free scene play.
 - `scene-transition-dm.md`: DM scene boundary turn.
 - `scene-housekeeping-player.md`: player cleanup between scenes.
+- `rapid-response-character.md`: short character-framed answer to a DM prompt.
 - `rapid-response-player.md`: short player answer to a DM prompt.
 - `action-scene-opening-dm.md`: DM opens quickfire action.
 - `action-scene-dm.md`: DM turn inside quickfire action.
+- `action-scene-character.md`: character-framed turn inside quickfire action.
 - `action-scene-player.md`: player turn inside quickfire action.
 - `character-creation-dm-setup.md`: DM setup when character creation lacks a brief.
 - `character-creation-player-build.md`: player character build turn.

@@ -48,19 +48,44 @@ class CliState:
         self.campaign_manager = CampaignManager(self.config)
 
 
-def _apply_use_session_id_override(
-    cli: CliState,
-    use_session_id: bool | None,
-) -> None:
-    if use_session_id is None:
-        return
-    cli.config = replace(
-        cli.config,
-        claude=replace(cli.config.claude, use_session_id=use_session_id),
-    )
+def _rebuild_cli_state(cli: CliState) -> None:
     cli.store = SessionStore(cli.config)
     cli.orchestrator = Orchestrator(cli.config, cli.store)
     cli.campaign_manager = CampaignManager(cli.config)
+
+
+def _apply_cli_overrides(
+    cli: CliState,
+    *,
+    use_session_id: bool | None = None,
+    use_codex: bool | None = None,
+    skip_player_persona: bool | None = None,
+) -> None:
+    if (
+        use_session_id is None
+        and use_codex is None
+        and skip_player_persona is None
+    ):
+        return
+    provider = cli.config.agent_provider
+    if use_codex is not None:
+        provider = "codex" if use_codex else "claude"
+    session_flag = (
+        cli.config.claude.use_session_id
+        if use_session_id is None
+        else use_session_id
+    )
+    cli.config = replace(
+        cli.config,
+        agent_provider=provider,
+        skip_player_persona=(
+            cli.config.skip_player_persona
+            if skip_player_persona is None
+            else skip_player_persona
+        ),
+        claude=replace(cli.config.claude, use_session_id=session_flag),
+    )
+    _rebuild_cli_state(cli)
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -1425,6 +1450,18 @@ def campaign_reconcile(cli: CliState, campaign_id: str, repair: bool) -> None:
 @campaign.command("prepare-turn")
 @click.argument("campaign_id", required=False)
 @click.option(
+    "--use-codex/--use-claude",
+    "use_codex",
+    default=None,
+    help="Override [agent].provider for this prepared turn.",
+)
+@click.option(
+    "--skip-player-persona/--no-skip-player-persona",
+    "skip_player_persona",
+    default=None,
+    help="Override [agent].skip_player_persona for this prepared turn.",
+)
+@click.option(
     "--use-session-id/--no-use-session-id",
     "use_session_id",
     default=None,
@@ -1434,10 +1471,17 @@ def campaign_reconcile(cli: CliState, campaign_id: str, repair: bool) -> None:
 def campaign_prepare_turn(
     cli: CliState,
     campaign_id: str | None,
+    use_codex: bool | None,
+    skip_player_persona: bool | None,
     use_session_id: bool | None,
 ) -> None:
     """Build the next turn's TURN_START context without invoking the agent."""
-    _apply_use_session_id_override(cli, use_session_id)
+    _apply_cli_overrides(
+        cli,
+        use_session_id=use_session_id,
+        use_codex=use_codex,
+        skip_player_persona=skip_player_persona,
+    )
     _ensure_db_migrated(cli)
     _ensure_falkor_reachable(cli)
     state = cli.store.load(campaign_id)
@@ -1515,6 +1559,18 @@ def campaign_prepare_turn(
     help="Stop after campaign planning without running the bootstrap prelude.",
 )
 @click.option(
+    "--use-codex/--use-claude",
+    "use_codex",
+    default=None,
+    help="Override [agent].provider for this run.",
+)
+@click.option(
+    "--skip-player-persona/--no-skip-player-persona",
+    "skip_player_persona",
+    default=None,
+    help="Override [agent].skip_player_persona for this run.",
+)
+@click.option(
     "--use-session-id/--no-use-session-id",
     "use_session_id",
     default=None,
@@ -1534,12 +1590,19 @@ def campaign_run(
     max_prelude_turns: int,
     skip_character_creation: bool,
     skip_prelude: bool,
+    use_codex: bool | None,
+    skip_player_persona: bool | None,
     use_session_id: bool | None,
     dry_run: bool,
 ) -> None:
     """Create or continue a campaign from its durable phase/mode state."""
 
-    _apply_use_session_id_override(cli, use_session_id)
+    _apply_cli_overrides(
+        cli,
+        use_session_id=use_session_id,
+        use_codex=use_codex,
+        skip_player_persona=skip_player_persona,
+    )
     _run_campaign_lifecycle(
         cli,
         campaign_id,

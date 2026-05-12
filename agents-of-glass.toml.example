@@ -34,6 +34,16 @@ query_prefix = "search_query: "
 # read-only path to the world bible
 path = "../the-glass-frontier-lore"
 
+[agent]
+# Orchestrator provider selection. Override per run with
+# `aog campaign run --use-codex` or `--use-claude`.
+provider = "claude"
+# When true, active-play player turns use the character branch: no
+# player-persona file, no player notes/journal/drafts, and character-framed
+# methodologies/instructions. Override per run with
+# `--skip-player-persona` or `--no-skip-player-persona`.
+skip_player_persona = false
+
 [paths]
 templates = "templates"          # authored content; stable input, copied to campaigns/<id>/ at bootstrap
 campaigns = "campaigns"          # per-campaign live workspaces; created by `aog campaign bootstrap`
@@ -42,7 +52,7 @@ ephemeral_cwd = ".glass-cwd"     # stable per-actor agent CWDs; not committed
 
 [claude]
 # claude-p invocation tunables
-model = "claude-sonnet-4-6"
+model = "opus"
 # One Claude Code session id is tracked per actor. When true, the orchestrator
 # creates the first attached invocation with `--session-id` and resumes later
 # attached invocations with `--resume`; when false, ids are still tracked but

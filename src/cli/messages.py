@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,9 @@ def player_dirs(paths: Paths) -> list[str]:
 
 
 def roster(paths: Paths, state: dict[str, Any] | None = None) -> list[str]:
+    runtime_players = _runtime_player_ids(state)
+    if runtime_players:
+        return runtime_players
     return sorted(set(player_dirs(paths)))
 
 
@@ -61,18 +65,56 @@ def require_message_type(paths: Paths, message_type: str) -> None:
     )
 
 
-def require_recipient(paths: Paths, state: dict[str, Any], recipient: str) -> None:
-    valid = {"dm", "party", *roster(paths, state)}
-    if recipient in valid:
-        return
-    options = ", ".join(sorted(valid))
+def require_recipient(paths: Paths, state: dict[str, Any], recipient: str) -> str:
+    if recipient in {"dm", "party"}:
+        return recipient
+    valid_players = roster(paths, state)
+    if recipient in valid_players:
+        return recipient
+    _, character_to_player = _character_alias_maps(paths, state)
+    if recipient in character_to_player:
+        return character_to_player[recipient]
+    options = ", ".join(_recipient_display_options(paths, valid_players, state))
     raise GlassError(
         agent_instruction(
             f"unknown recipient {recipient!r}",
             f"Use one of: {options}.",
-            "Use `party` for all players, `dm` for Mara, or a listed player id for a private recipient.",
+            "Use `party` for the whole group, `dm` for Mara, or a listed player/character id for a private recipient.",
         )
     )
+
+
+def canonicalize_actor_reference(
+    paths: Paths,
+    state: dict[str, Any],
+    actor: str | None,
+) -> str | None:
+    if actor is None or actor in {"dm", "party"}:
+        return actor
+    if actor in roster(paths, state):
+        return actor
+    _, character_to_player = _character_alias_maps(paths, state)
+    return character_to_player.get(actor, actor)
+
+
+def render_message_identities(
+    paths: Paths,
+    state: dict[str, Any],
+    message: dict[str, Any],
+) -> dict[str, Any]:
+    if not _prefer_character_aliases():
+        return dict(message)
+    player_to_character, _character_to_player = _character_alias_maps(paths, state)
+
+    def alias(value: Any) -> Any:
+        if not isinstance(value, str) or value in {"dm", "party"}:
+            return value
+        return player_to_character.get(value, value)
+
+    rendered = dict(message)
+    rendered["sender"] = alias(rendered.get("sender"))
+    rendered["recipient"] = alias(rendered.get("recipient"))
+    return rendered
 
 
 def message_visible_to(message: dict[str, Any], role: Role) -> bool:
@@ -86,3 +128,58 @@ def message_visible_to(message: dict[str, Any], role: Role) -> bool:
         or recipient == role.actor
         or message["sender"] == role.actor
     )
+
+
+def _runtime_player_ids(state: dict[str, Any] | None) -> list[str]:
+    campaign_id = str((state or {}).get("campaign") or "").strip()
+    if not campaign_id:
+        return []
+    try:
+        from . import db as _db
+        from .campaign import pg_connection
+
+        with pg_connection() as conn:
+            characters = _db.character_list(conn, campaign_id)
+    except Exception:
+        return []
+    players = {
+        str(character.get("player_id") or "").strip()
+        for character in characters
+        if character.get("player_id")
+    }
+    return sorted(player for player in players if player)
+
+
+def _character_alias_maps(
+    paths: Paths,
+    state: dict[str, Any],
+) -> tuple[dict[str, str], dict[str, str]]:
+    from .campaign import lookup_player_character_id
+
+    player_to_character: dict[str, str] = {}
+    character_to_player: dict[str, str] = {}
+    for player_id in roster(paths, state):
+        character_id = lookup_player_character_id(state["campaign"], player_id)
+        if not character_id:
+            continue
+        player_to_character[player_id] = character_id
+        character_to_player[character_id] = player_id
+    return player_to_character, character_to_player
+
+
+def _recipient_display_options(
+    paths: Paths,
+    valid_players: list[str],
+    state: dict[str, Any],
+) -> list[str]:
+    options: list[str] = ["dm", "party"]
+    if _prefer_character_aliases():
+        player_to_character, _character_to_player = _character_alias_maps(paths, state)
+        options.extend(player_to_character.get(player_id, player_id) for player_id in valid_players)
+    else:
+        options.extend(valid_players)
+    return sorted(set(options))
+
+
+def _prefer_character_aliases() -> bool:
+    return os.environ.get("AOG_PLAYER_SURFACE") == "character"

@@ -48,6 +48,8 @@ class AogConfig:
     templates_dir: Path
     campaigns_dir: Path
     lore_path: Path
+    agent_provider: str
+    skip_player_persona: bool
     claude: ClaudeConfig
     caps: CapsConfig
 
@@ -60,8 +62,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "lore": {
         "path": "../the-glass-frontier-lore",
     },
+    "agent": {
+        "provider": "claude",
+        "skip_player_persona": False,
+    },
     "claude": {
-        "model": "claude-sonnet-4-6",
+        "model": "opus",
         # Always track one Claude Code session id per actor in runtime state.
         # When enabled, pass that id to `claude -p --session-id ...`.
         "use_session_id": False,
@@ -116,6 +122,7 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
     base_dir = loaded_paths[0].parent if loaded_paths else repo_root
     paths = data.get("paths", {})
     lore = data.get("lore", {})
+    agent = data.get("agent", {})
     claude = data.get("claude", {})
     caps = data.get("caps", {})
 
@@ -131,6 +138,8 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
             paths.get("campaigns", "campaigns"),
         ),
         lore_path=_resolve_path(base_dir, lore.get("path", "../the-glass-frontier-lore")),
+        agent_provider=_agent_provider(agent.get("provider", "claude")),
+        skip_player_persona=_bool(agent.get("skip_player_persona", False)),
         claude=ClaudeConfig(
             model=_optional_string(claude.get("model")),
             turn_timeout_seconds=int(claude.get("turn_timeout_seconds", 300)),
@@ -192,3 +201,12 @@ def _bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def _agent_provider(value: Any) -> str:
+    provider = str(value or "claude").strip().lower()
+    if provider in {"claude", "codex"}:
+        return provider
+    raise ValueError(
+        f"Unsupported [agent].provider {provider!r}; use 'claude' or 'codex'."
+    )
