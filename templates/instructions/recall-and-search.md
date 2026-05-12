@@ -9,22 +9,39 @@ authority: binding
 Do not spend actor transitions asking another agent to repeat information that
 is already recorded.
 
-Use bounded recall:
+## Sequence
 
-```bash
-glass turns find --text "<query>"
-glass turns find --scene <scene-id>
-glass turns feed --after-turn <n>
-glass search text "<query>"
-glass search semantic "<query>"
-glass entity relations <entity-id>
-glass entity between <a> <b>
-glass entity stance <a> <b>
-glass summary show campaign
-glass summary show arc <arc-id>
-glass summary show scene <scene-id>
-```
+1. Read `table/` first for immediate visible scene state.
+2. Read summaries for compressed continuity:
 
-Use the table for immediate visible scene state. Use summaries for continuity
-compression. Use search for older prose. Use the graph for relationships
-between named things.
+   ```bash
+   glass summary show campaign
+   glass summary show arc <arc-id>
+   glass summary show scene <scene-id>
+   ```
+
+3. Read recent or scene-bound prose with turns commands:
+
+   ```bash
+   glass turns find --text "<query>"
+   glass turns find --scene <scene-id>
+   glass turns feed --after-turn <n>
+   ```
+
+4. Search older prose only after the bounded surfaces above:
+
+   ```bash
+   glass search text "<query>"
+   glass search semantic "<query>"
+   ```
+
+5. Use graph commands for relationships between named things:
+
+   ```bash
+   glass entity relations <entity-id>
+   glass entity between <a> <b>
+   glass entity stance <a> <b>
+   ```
+
+6. Act on the retrieved context in the same turn or state the remaining blocker
+   in `glass turn end --state`.

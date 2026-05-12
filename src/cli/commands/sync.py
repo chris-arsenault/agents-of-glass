@@ -15,7 +15,7 @@ import click
 from .. import workspace as _workspace
 from ..campaign import active_campaign_id, active_campaign_root, resolve_active_campaign_workspace
 from ..config import get_paths
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..paths_resolve import clean_relative_path, display_path, ensure_under, resolve_note_write_path
 from ..persistence import CampaignPersistence
 from ..role import current_role, require_dm
@@ -67,7 +67,13 @@ def sync_apply(
 
     if from_file:
         if path_args:
-            raise GlassError("sync apply accepts either paths or --from, not both")
+            raise GlassError(
+                agent_instruction(
+                    "`glass sync apply` accepts either paths or `--from`, not both",
+                    "For normal workspace edits, run `glass sync apply <path> [<path> ...]`.",
+                    "For a legacy JSON manifest, run `glass sync apply --from <manifest.json>` with no path arguments.",
+                )
+            )
         results = _apply_manifest_sync(
             from_file,
             state=state,
@@ -150,7 +156,13 @@ def _apply_path_sync(
     else:
         files = _changed_projection_files(source_root, campaign_root=campaign_root)
     if not files:
-        raise GlassError("sync apply found no changed markdown files to commit")
+        raise GlassError(
+            agent_instruction(
+                "`glass sync apply` found no changed markdown files to commit",
+                "Edit a durable markdown surface first, or pass the exact file or directory you changed.",
+                "Do not sync TURN_START, turn closeout files, instructions, methodologies, SRD/how-to files, or other generated turn scaffolding.",
+            )
+        )
 
     results: list[dict[str, Any]] = []
     manifest_updates: dict[str, str] = {}
@@ -204,8 +216,11 @@ def _apply_op(
             dry_run=dry_run,
         )
     raise GlassError(
-        f"sync operation #{index}: unsupported kind {kind!r}; "
-        "expected note, table, or summary"
+        agent_instruction(
+            f"sync operation #{index} has unsupported kind {kind!r}",
+            "Use `kind: note`, `kind: table`, or `kind: summary` in legacy manifests.",
+            "Prefer direct path sync with `glass sync apply <path>` for normal agent turns.",
+        )
     )
 
 
@@ -219,7 +234,12 @@ def _apply_note(
 ) -> dict[str, Any]:
     mode = _mode(op, default="write")
     if mode != "write":
-        raise GlassError(f"sync operation #{index}: note supports only mode=write")
+        raise GlassError(
+            agent_instruction(
+                f"sync operation #{index}: notes support only `mode: write`",
+                "Use `mode: write`, or switch to a table/summary operation if append semantics are required.",
+            )
+        )
     campaign_id = active_campaign_id()
     destination = resolve_note_write_path(
         get_paths(),
@@ -252,13 +272,23 @@ def _apply_table(
     role = require_dm()
     mode = _mode(op, default="write")
     if mode not in {"write", "append"}:
-        raise GlassError(f"sync operation #{index}: table mode must be write or append")
+        raise GlassError(
+            agent_instruction(
+                f"sync operation #{index}: table mode must be `write` or `append`",
+                "Use `write` to replace a table artifact, or `append` to add to an existing table artifact.",
+            )
+        )
     path = _resolve_table_path(
         workspace.table_dir,
         _required_str(op, "path", index=index),
     )
     if path.exists() and path.is_dir():
-        raise GlassError(f"sync operation #{index}: cannot write table directory")
+        raise GlassError(
+            agent_instruction(
+                f"sync operation #{index}: table destination is a directory",
+                "Write to a markdown file such as `scene.md`, `handouts/<slug>.md`, or `<kind>-<slug>.md`.",
+            )
+        )
     text = _operation_body(op, index=index)
     result = {
         "index": index,
@@ -293,14 +323,29 @@ def _apply_summary(
     role = require_dm()
     mode = _mode(op, default="write")
     if mode not in {"write", "append"}:
-        raise GlassError(f"sync operation #{index}: summary mode must be write or append")
+        raise GlassError(
+            agent_instruction(
+                f"sync operation #{index}: summary mode must be `write` or `append`",
+                "Use `write` to replace a summary or `append` to add a compact scene/arc/session summary.",
+            )
+        )
     level = _required_str(op, "level", index=index)
     target_id = op.get("target_id")
     arc_id = op.get("arc")
     if target_id is not None and not isinstance(target_id, str):
-        raise GlassError(f"sync operation #{index}: target_id must be a string")
+        raise GlassError(
+            agent_instruction(
+                f"sync operation #{index}: `target_id` must be a string",
+                "Set `target_id` to the scene/session id as text, or omit it for levels that do not need one.",
+            )
+        )
     if arc_id is not None and not isinstance(arc_id, str):
-        raise GlassError(f"sync operation #{index}: arc must be a string")
+        raise GlassError(
+            agent_instruction(
+                f"sync operation #{index}: `arc` must be a string",
+                "Set `arc` to the arc id as text, or omit it when the active arc should be used.",
+            )
+        )
     path = _summary_path(workspace, level, target_id, arc_id=arc_id)
     text = _operation_body(op, index=index).rstrip() + "\n"
     resolved_level = "arc" if level == "act" else level
@@ -367,15 +412,26 @@ def _files_from_path_args(path_args: list[str], *, source_root: Path) -> list[Pa
         source = ensure_under(
             (source_root / rel).resolve(),
             source_root,
-            f"sync path must stay under the current workspace: {path_text!r}",
+            f"sync path is outside the current workspace: {path_text!r}",
         )
         if not source.exists():
-            raise GlassError(f"sync path not found: {path_text}")
+            raise GlassError(
+                agent_instruction(
+                    f"sync path does not exist: {path_text}",
+                    "Pass a file or directory that exists in the current projected workspace.",
+                    "Use workspace-relative paths, for example `table/scene.md` or `shared/lore/<kind>/<slug>.md`.",
+                )
+            )
         if source.is_dir():
             files.extend(sorted(path for path in source.rglob("*.md") if path.is_file()))
             continue
         if source.suffix.lower() != ".md":
-            raise GlassError(f"sync can commit markdown files only: {path_text}")
+            raise GlassError(
+                agent_instruction(
+                    f"sync can commit markdown files only: {path_text}",
+                    "Choose a `.md` file or a directory containing markdown files.",
+                )
+            )
         files.append(source)
     return _dedupe_files(files)
 
@@ -384,8 +440,11 @@ def _changed_projection_files(source_root: Path, *, campaign_root: Path) -> list
     manifest = _load_projection_manifest(source_root)
     if not manifest:
         raise GlassError(
-            "sync apply without paths requires a workspace change manifest; "
-            "pass one or more paths explicitly"
+            agent_instruction(
+                "`glass sync apply` without paths needs a projection manifest",
+                "Pass the changed path explicitly, for example `glass sync apply table/scene.md`.",
+                "If you are outside an orchestrated workspace, run from the agent cwd created for the turn.",
+            )
         )
     files: list[Path] = []
     for source in sorted(source_root.rglob("*.md")):
@@ -439,16 +498,45 @@ def _validate_projected_sync_path(
     workspace: _workspace.CampaignWorkspace,
 ) -> bool | str:
     if rel.is_absolute() or any(part == ".." for part in rel.parts):
-        raise GlassError(f"invalid sync path: {rel}")
+        raise GlassError(
+            agent_instruction(
+                f"invalid sync path: {rel}",
+                "Use a workspace-relative path without `..`.",
+            )
+        )
     if rel.suffix.lower() != ".md":
-        raise GlassError(f"sync can commit markdown files only: {rel}")
+        raise GlassError(
+            agent_instruction(
+                f"sync can commit markdown files only: {rel}",
+                "Move durable text into a markdown file, then sync that `.md` file.",
+            )
+        )
     if _skip_projection_sync_candidate(rel):
-        raise GlassError(f"sync path is not a durable document surface: {rel}")
+        raise GlassError(
+            agent_instruction(
+                f"sync path is not a durable document surface: {rel}",
+                "Sync campaign artifacts such as `table/*.md`, `shared/lore/**/*.md`, `arcs/**/*.md`, or player public/notes/journal files.",
+                "Do not sync turn scaffolding, scratch, instructions, methodologies, SRD/how-to files, transcripts, or audit logs.",
+            )
+        )
+    if rel == Path("table") / "index.md":
+        raise GlassError(
+            agent_instruction(
+                "table/index.md is retired; sync scene.md or named table artifacts instead",
+                "Use `table/scene.md` for the active scene description.",
+                "Use named table artifacts such as `table/npc-<slug>.md`, `table/locale-<slug>.md`, `table/ship-<slug>.md`, or `table/handouts/<slug>.md` for player-visible lore.",
+            )
+        )
 
     role = current_role()
     parts = rel.parts
     if not parts:
-        raise GlassError("empty sync path")
+        raise GlassError(
+            agent_instruction(
+                "sync path is empty",
+                "Pass the specific markdown file or directory you want to commit.",
+            )
+        )
 
     if role.kind == "player":
         return _validate_player_projected_sync_path(rel, role.actor)
@@ -472,8 +560,11 @@ def _validate_player_projected_sync_path(rel: Path, actor: str) -> bool | str:
         }:
             return "auto"
     raise GlassError(
-        "permission denied: players can sync only their own public/, secrets/, "
-        "notes/, journal/, drafts/, inbox/, or scratchpad.md files"
+        agent_instruction(
+            "players can sync only their own player workspace files",
+            f"Use a path under `players/{actor}/public/`, `players/{actor}/secrets/`, `players/{actor}/notes/`, `players/{actor}/journal/`, `players/{actor}/drafts/`, or `players/{actor}/inbox/`.",
+            "Do not sync another player, DM, shared, arc, or table file from a player turn.",
+        )
     )
 
 
@@ -503,24 +594,41 @@ def _validate_dm_projected_sync_path(
         }:
             return "auto"
     raise GlassError(
-        "permission denied: DM sync paths must be table/, arcs/, shared/, "
-        "dm/workspace/, dm/notes/, dm/journal/, dm/secret/, dm/intake/, "
-        "dm/scratchpad.md, dm/foundation.md, context.md, or summary.md"
+        agent_instruction(
+            "DM sync paths must be durable DM, shared, arc, or table surfaces",
+            "Use `table/`, `arcs/`, `shared/`, `dm/workspace/`, `dm/notes/`, `dm/journal/`, `dm/secret/`, `dm/intake/`, `context.md`, or `summary.md`.",
+            "Use `glass table`, `glass lore`, or `glass scene` commands when those commands express the intent more directly.",
+        )
     )
 
 
 def _validate_arc_path_exists(rel: Path, workspace: _workspace.CampaignWorkspace) -> None:
     parts = rel.parts
     if len(parts) < 3:
-        raise GlassError("arc sync paths must name a file under arcs/<arc>/")
+        raise GlassError(
+            agent_instruction(
+                "arc sync paths must name a file under `arcs/<arc>/`",
+                "Use a path such as `arcs/<arc>/plan.md`, `arcs/<arc>/context.md`, or `arcs/<arc>/scenes/<scene>/summary.md`.",
+            )
+        )
     arc_dir = workspace.root / "arcs" / parts[1]
     if not arc_dir.exists():
-        raise GlassError(f"arc {parts[1]!r} does not exist; run `glass arc create` first")
+        raise GlassError(
+            agent_instruction(
+                f"arc {parts[1]!r} does not exist",
+                f"Create it first with `glass arc create {parts[1]} "
+                "--pull-source <source> --pull-utilization <note>` or sync a file "
+                "under an existing arc.",
+            )
+        )
     if len(parts) >= 5 and parts[2] == "scenes":
         scene_dir = arc_dir / "scenes" / parts[3]
         if not scene_dir.exists():
             raise GlassError(
-                f"scene {parts[3]!r} does not exist; run `glass scene create` first"
+                agent_instruction(
+                    f"scene {parts[3]!r} does not exist under arc {parts[1]!r}",
+                    f"Create it first with `glass scene create {parts[3]} --type <scene-type> --arc {parts[1]}` or sync a file under an existing scene.",
+                )
             )
 
 
@@ -586,7 +694,12 @@ def _read_workspace_bytes(path: Path) -> bytes:
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
         raise GlassError(
-            f"sync could not read projected file as {reader_user}: {path}: {stderr.strip()}"
+            agent_instruction(
+                f"sync could not read projected file as {reader_user}: {path}",
+                "Run from the agent's current projected workspace and pass a readable markdown path.",
+                "If the host user setup changed, repair the workspace users or rerun with the correct `GLASS_WORKSPACE_READER_USER`.",
+                f"Read command detail: {stderr.strip()}",
+            )
         ) from exc
     return result.stdout
 
@@ -600,33 +713,69 @@ def _load_manifest(from_file: str) -> dict[str, Any]:
     try:
         manifest = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise GlassError(f"sync manifest must be JSON: {exc}") from exc
+        raise GlassError(
+            agent_instruction(
+                "sync manifest must be valid JSON",
+                "Fix the manifest JSON or prefer direct path sync with `glass sync apply <path>`.",
+                f"JSON parser detail: {exc}",
+            )
+        ) from exc
     if not isinstance(manifest, dict):
-        raise GlassError("sync manifest must be a JSON object")
+        raise GlassError(
+            agent_instruction(
+                "sync manifest must be a JSON object",
+                "Use an object with a `writes` array, or prefer direct path sync with `glass sync apply <path>`.",
+            )
+        )
     return manifest
 
 
 def _manifest_ops(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     raw = manifest.get("writes", manifest.get("operations"))
     if not isinstance(raw, list):
-        raise GlassError("sync manifest must contain a writes array")
+        raise GlassError(
+            agent_instruction(
+                "sync manifest must contain a `writes` array",
+                "Use `{\"writes\": [{\"kind\": \"note|table|summary\", ...}]}` or prefer direct path sync with `glass sync apply <path>`.",
+            )
+        )
     ops: list[dict[str, Any]] = []
     for index, item in enumerate(raw, start=1):
         if not isinstance(item, dict):
-            raise GlassError(f"sync operation #{index} must be an object")
+            raise GlassError(
+                agent_instruction(
+                    f"sync operation #{index} must be an object",
+                    "Each manifest write must be an object with `kind`, `path` or summary target fields, and `body` or `from`.",
+                )
+            )
         ops.append(item)
     if not ops:
-        raise GlassError("sync manifest has no operations")
+        raise GlassError(
+            agent_instruction(
+                "sync manifest has no operations",
+                "Add at least one write object, or prefer direct path sync with `glass sync apply <path>`.",
+            )
+        )
     return ops
 
 
 def _operation_body(op: dict[str, Any], *, index: int) -> str:
     if "body" in op and "from" in op:
-        raise GlassError(f"sync operation #{index}: use either body or from, not both")
+        raise GlassError(
+            agent_instruction(
+                f"sync operation #{index}: use either `body` or `from`, not both",
+                "Put inline markdown in `body`, or place the body in a scratch file and reference it with `from`.",
+            )
+        )
     if "body" in op:
         body = op["body"]
         if not isinstance(body, str):
-            raise GlassError(f"sync operation #{index}: body must be a string")
+            raise GlassError(
+                agent_instruction(
+                    f"sync operation #{index}: `body` must be a string",
+                    "Set `body` to the markdown text to write.",
+                )
+            )
         return body
     source = _required_str(op, "from", index=index)
     return _read_workspace_text(_scratch_source(source, index=index, field="from"))
@@ -640,8 +789,7 @@ def _scratch_source(path_text: str, *, index: int, field: str) -> Path:
         path,
         scratch,
         (
-            f"sync operation #{index}: {field} files must be under scratch/ "
-            f"(got {path_text!r})"
+            f"sync operation #{index}: {field} file is outside scratch/: {path_text!r}"
         ),
     )
 
@@ -649,7 +797,12 @@ def _scratch_source(path_text: str, *, index: int, field: str) -> Path:
 def _required_str(op: dict[str, Any], key: str, *, index: int) -> str:
     value = op.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise GlassError(f"sync operation #{index}: missing string field {key!r}")
+        raise GlassError(
+            agent_instruction(
+                f"sync operation #{index}: missing string field {key!r}",
+                f"Set `{key}` to a non-empty string.",
+            )
+        )
     return value
 
 

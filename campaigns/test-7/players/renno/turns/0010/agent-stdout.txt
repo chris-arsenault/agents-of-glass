@@ -1,6 +1,0 @@
-Round 2 turn done. Picked two seeds:
-
-- **Seed 11 with Drova** — accepted Sumi's proposal, wrote Fei's side. Fei has been composing the question about the Mernhab intake list for three years; they share a working etiquette of mutual non-asking.
-- **Seed 14 with Tek** — the back-of-hand check Tek taught Fei once, which Fei still does every morning. Two practitioners of self-maintenance who pass each other in the bay without asking.
-
-Sent banter to both Sumi and Tev to coordinate. Committed `players/renno/public/relationships.md` via `glass sync apply` and wrote the public turn prose to `players/renno/turns/0010/out.md`. Drova is no longer an orphan on relationships-in.

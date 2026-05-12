@@ -57,6 +57,14 @@ def render_public_character_mirror(character: dict[str, Any]) -> str:
         f"- **Archetype:** {character['archetype']}",
         f"- **Organization role:** {character['organization_role']}",
         f"- **Pronouns:** {character.get('pronouns') or 'unspecified'}",
+        f"- **Primary drive:** {character.get('primary_drive') or 'unrecorded'}",
+        f"- **Positive trait:** {character.get('positive_trait') or 'unrecorded'}",
+        f"- **Table presence:** {character.get('table_presence') or 'unrecorded'}",
+        f"- **Non-work want:** {character.get('non_work_want') or 'unrecorded'}",
+        (
+            "- **Opening social action:** "
+            f"{character.get('opening_social_action') or 'unrecorded'}"
+        ),
         f"- **Level:** {character['level']} ({character['xp']} XP)",
         f"- **HP:** {character['hp']['current']}/{character['hp']['max']}",
         (
@@ -72,6 +80,19 @@ def render_public_character_mirror(character: dict[str, Any]) -> str:
         "",
     ]
     lines.extend(f"- {goal}" for goal in character.get("goals", []))
+    life_prompt_answers = list(character.get("life_prompt_answers") or [])
+    if life_prompt_answers:
+        lines.extend(["", "## Life Prompt Answers", ""])
+        for prompt in life_prompt_answers:
+            if isinstance(prompt, dict):
+                lines.append(
+                    f"- **{prompt.get('prompt', 'prompt')}:** {prompt.get('answer', '')}"
+                )
+            else:
+                lines.append(f"- {prompt}")
+    pull_note = str(character.get("pull_utilization_note") or "").strip()
+    if pull_note:
+        lines.extend(["", "## Non-Adjacent Pull Utilization", "", pull_note])
     lines.extend(["", "## Attributes", ""])
     for attribute in ATTRIBUTES:
         lines.append(f"- **{attribute}:** {character['attributes'].get(attribute, 'standard')}")

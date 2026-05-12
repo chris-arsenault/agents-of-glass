@@ -3,7 +3,7 @@
 The canonical campaign tree is operator-owned. Agents do not get direct
 filesystem authority over `campaigns/`; they mutate durable state through
 Glass. Each spawned actor runs as a dedicated Unix user inside an actor-owned
-per-turn projection under `.glass-cwd/`.
+stable projection under `.glass-cwd/`.
 
 The chown/chmod operations that require root are delegated to a small helper
 script (`aog-permset`) installed by `scripts/provision-agents.sh` and invoked
@@ -81,7 +81,7 @@ def apply_campaign_permissions(campaign_dir: Path) -> bool:
     """Legacy hook retained for callers.
 
     Campaign workspaces are intentionally left operator-owned. The agent-facing
-    permission boundary is the per-turn projection plus the Glass API.
+    permission boundary is the actor projection plus the Glass API.
     """
     log.debug("permissions: leaving campaign workspace operator-owned: %s", campaign_dir)
     return False
@@ -92,7 +92,7 @@ def apply_projection_permissions(
     *,
     actor_user: str | None = None,
 ) -> bool:
-    """Make a per-turn projection actor-owned.
+    """Make an actor projection actor-owned.
 
     `projection.py` decides which files are visible and which surfaces are
     writable. This helper enforces the Unix ownership model: the spawned actor

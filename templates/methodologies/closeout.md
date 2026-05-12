@@ -7,149 +7,124 @@ applies_to_modes: [scene-play, action, prelude, arc-creation, scene-prep, interm
 
 # Scene and Act Closeout
 
-Use this whenever Mara closes a scene, prelude, act, or arc. This is an ordered
-workflow, not advice. Execute every step in order. A step may end with "no
-lore change," "no journal change," or "no state change," but it must be
-considered and recorded in durable DM notes or workspace files.
+Run this before `glass scene end` or `glass arc close`. Every step must produce
+either a durable update or an explicit "no change" in `glass turn end --state`.
 
-The purpose is commitment. Long-running mysteries can stay unresolved, but the
-core tension of the scene or act cannot close as unknown. Assign consequence
-and impact before calling the close command.
+## Scene Close Sequence
 
-## Before You Start
+1. **Read the closing state.**
+   - `glass scene current`
+   - `glass summary show scene <scene-id> --arc <arc-id>`
+   - `glass turns find --scene <scene-id>`
+   - `glass clock list --scope scene --anchor <scene-id> --all`
+   - `glass scene tracker list --all`
+   - `glass character bulk-get --all`
+   - Read active `table/`, scene `prep.md`, and scene `context.md`.
 
-Read:
+2. **Name the scene answer.**
+   - Write one sentence naming what the scene proved, cost, changed, or left
+     materially unstable.
+   - Do not close on "unclear" or "to be decided" for the scene's core tension.
 
-1. The active `table/` and active scene `summary.md`.
-2. The relevant arc `plan.md`, `context.md`, and `summary.md`.
-3. Relevant `dm/notes/`, `dm/workspace/`, and `dm/secret/` files.
-4. Any unread messages.
-5. Character state if HP, inventory, XP, consequences, or signature moves
-   changed during the scene.
+3. **Apply hard state.**
+   - Use `glass character consequence-add`, `set-hp`, `set-momentum`,
+     `inventory-add`, or `inventory-rm` for character changes.
+   - Use `glass clock tick`, `resolve`, or `archive` for clocks.
+   - Use `glass scene tracker tick` for scene trackers that changed before
+     the scene ends.
+   - Use `glass entity claim`, `link`, `unlink`, or `ratify-claim` for graph
+     changes.
 
-Then create a durable closeout note or workspace section titled:
+4. **Update authored continuity.**
+   - `glass summary write scene <scene-id> --arc <arc-id> --body "<scene summary>"`
+   - `glass summary append arc <arc-id> --body "<arc-relevant result>"` when
+     the scene changed the arc.
+   - `glass summary append campaign --body "<campaign-relevant result>"` when
+     the scene changed campaign-level continuity.
+   - Commit notes/lore with `glass sync apply <paths>`.
 
-```markdown
-## Closeout - <scene-or-act-id>
-```
+5. **Update the public table and quest beats.**
+   - If the final visible state matters for the next scene, update table files
+     with `glass table write` or `glass table append`.
+   - Add party-visible beats with `glass quest beat "<beat>"` or by passing
+     `--beats` to `glass scene end`.
 
-Record the result of each step below under that heading, even when the answer
-is "no change."
+6. **Prepare the scene close command.**
+   - Create one or two outcome bullets. They must be in-universe facts, not DM
+     commentary.
+   - If XP or rewards apply, prepare the `--xp` and reward/state commands.
 
-## Scene Close Steps
-
-1. **Name the core tension.** One sentence: what was this scene actually
-   deciding? If the party only partly succeeded, name the partial. If they
-   failed, name the failure.
-
-2. **Assign consequence and impact.** Write what changed in the world, who paid
-   a cost, who gained leverage, what is delayed, what is exposed, or what option
-   narrowed. Do not write "unclear," "TBD," or "intentionally unresolved" for
-   the scene's core tension.
-
-3. **Enumerate outcomes.** Draft one or two in-universe bullets for
-   `glass scene end --outcome`. These are referenceable facts, not commentary:
-   what became true, changed hands, was lost, was owed, was witnessed, or was
-   filed.
-
-4. **NPC carry-forward.** List every NPC who appeared or was materially affected.
-   For each, choose one:
-   - promote or update a durable `dm/notes/npcs/` entry
-   - add a durable DM note callback if they may return
-   - write "no NPC carry-forward"
-
-5. **Mechanical and fictional state.** Apply persistent changes before close:
-   character consequences, HP, momentum, inventory, signature status, durable
-   clocks, faction clocks, public clocks, or relationship leverage. If nothing
-   persists mechanically, write "no mechanical/state change."
-
-6. **Lore and canon.** If a new public fact should be available later, update
-   `shared/lore/` or import/canonize with the lore tools. If it is DM-only,
-   update `dm/notes/`, `dm/secret/`, or `dm/workspace/`. If none, write
-   "no lore change."
-
-7. **Journals and reflection.** Do not write player journals. If Mara needs a
-   private dated reflection, update `dm/journal/`. Otherwise write "no journal
-   change."
-
-8. **Summaries.** Prepare the scene summary text. Append or update arc and
-   campaign summaries when the scene changed durable continuity. If the scene
-   did not change a higher level, write "no arc summary change" or "no campaign
-   summary change."
-
-9. **Party-visible beats.** Prepare the `--beats` lines for `shared/quest-log.md`.
-   These are party-visible canon beats, not private implications. If none,
-   write "no quest-log beat."
-
-10. **XP and rewards.** Decide XP and any immediate rewards, costs, item
-    requests, training hooks, or ability hooks. If none, write "no reward
-    change."
-
-11. **Run the close command.** Use the outcomes from step 3:
+7. **End the scene.**
 
 ```bash
 glass scene end \
-  --summary "..." \
-  --outcome "..." \
-  --beats "..." \
-  --xp tev=2,sumi=2,renno=2,kit=2
+  --summary "<compact scene summary>" \
+  --outcome "<durable outcome>" \
+  --beats "<party-visible beat>" \
+  --xp tev=0,sumi=0,renno=0,kit=0
 ```
 
-Use a second `--outcome` only when two durable outcomes are clearer than one.
+8. **Stage what follows before ending the DM turn.**
+   - If the act remains open, create/stage the next scene, start its actual
+     play mode, and queue `glass turn housekeeping-round`.
+   - If the act is complete, continue with the Act Close Sequence.
 
-12. **Bridge to what follows.** If the act remains open, do not leave the
-    campaign with no active mode and do not start intermission. In the same DM
-    turn, end the old mode, create/stage the next scene, start the next scene
-    mode, and queue `glass turn housekeeping-round`. If the act is complete,
-    end the mode and move to the Act / Arc Close Steps.
+## Act Close Sequence
 
-## Act / Arc Close Steps
+1. **Read all act material.**
+   - `glass summary show arc <arc-id>`
+   - `glass turns find --scene <scene-id>` for each major scene if needed.
+   - `glass clock list --scope arc --anchor <arc-id> --all`
+   - Read `arcs/<arc>/plan.md`, `context.md`, and scene summaries.
 
-Run this only after all active scenes in the act are closed.
+2. **Name the act answer.**
+   - One sentence: what the act resolved or transformed.
+   - Hidden mysteries can remain hidden; the act's visible pressure cannot
+     close as unknown.
 
-1. **Review scene outcomes.** Read each scene summary and outcome section.
-   Identify what the act proved, cost, changed, or left as a live hook.
+3. **Apply lasting state.**
+   - Resolve or archive act clocks.
+   - Apply cross-scene consequences, rewards, obligations, debts, route
+     changes, faction relationship shifts, or inventory changes with CLI
+     commands where available.
+   - Update recurring NPC/location/faction notes with `glass sync apply`.
 
-2. **Name the act's core tension.** One sentence. Do not close the act on a
-   question mark. The answer may be "they failed," "they only bought time," or
-   "they changed the problem."
+4. **Update continuity.**
+   - `glass summary write arc <arc-id> --body "<act summary>"`
+   - `glass summary append campaign --body "<campaign-level fallout>"`
+   - Update `shared/quest-log.md` or `shared/party-knowledge.md` if players
+     should carry the result forward.
 
-3. **Enumerate act outcomes.** Draft one or two in-universe bullets for
-   `glass arc close --outcome`.
-
-4. **Promote recurring NPCs and locations.** Any NPC, place, object, faction
-   face, or institution that may recur gets a durable note or an explicit
-   carry-forward callback. If none, write "no promoted NPC/location."
-
-5. **Log lasting consequences.** Apply cross-scene character consequences,
-   durable clocks, faction clock ticks, inventory/reward changes, obligations,
-   debts, reputational changes, or route changes. If none, write "no lasting
-   consequence."
-
-6. **Update continuity.** Update the arc summary, campaign summary, `dm/notes/`,
-   `shared/lore/`, quest log, and DM journal as needed. Each surface must get
-   either an update or a written "no change."
-
-7. **Carry hooks forward.** Add a compact durable DM note or workspace list:
-   - callbacks Mara wants to bring back
-   - unresolved mysteries that are intentionally still live
-   - player requests to honor in intermission or scene prep
-   - magic item, ability, training, ally, or payoff requests
-
-8. **Run the close command.**
+5. **Close the arc.**
 
 ```bash
 glass arc close <arc-id> \
-  --summary "..." \
-  --outcome "..."
+  --summary "<compact act summary>" \
+  --outcome "<durable act outcome>"
 ```
 
-Then start intermission or scene prep according to campaign lifecycle.
+6. **Start the next lifecycle mode.**
+   - If the campaign needs player planning, start or let lifecycle enter
+     intermission.
+   - If the next scene is already known and player planning is not needed,
+     start `scene-prep`.
+
+7. **Close the turn.**
+   - Write `TURN.md` with the public closure and handoff.
+   - Run `glass turn end --summary "<scene/act closed and next mode staged>" --state "<closeout commands/files updated>" --rolls "<rolls/checks or none>" --scene-status ended --next default`.
 
 ## Prohibitions
 
-- Do not use "left unresolved" as a substitute for consequence.
-- Do not leave a scene's main roll/failure without impact.
-- Do not rely on final narration alone. If a fact matters later, put it in a
-  summary, note, lore entry, quest beat, state command, or carry-forward callback.
+- Do not close a scene on final narration alone.
+- Do not leave hard state only in prose.
+- Do not end an open act with no active mode and no staged next scene.
 - Do not write player journals for them.
+
+## CLI Encoding Opportunities
+
+These are not commands yet:
+
+- `glass scene close-check` for unresolved trackers, missing summary, missing
+  outcomes, stale table, and open act handoff.
+- `glass arc close-check` for unresolved clocks, missing summaries, and missing
+  campaign fallout.

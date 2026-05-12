@@ -38,11 +38,17 @@ path = "../the-glass-frontier-lore"
 templates = "templates"          # authored content; stable input, copied to campaigns/<id>/ at bootstrap
 campaigns = "campaigns"          # per-campaign live workspaces; created by `aog campaign bootstrap`
 sessions = "sessions"            # runtime per-session state (legacy path; transitional)
-ephemeral_cwd = ".glass-cwd"     # per-turn agent CWDs; not committed
+ephemeral_cwd = ".glass-cwd"     # stable per-actor agent CWDs; not committed
 
 [claude]
 # claude-p invocation tunables
 model = "claude-sonnet-4-6"
+# One Claude Code session id is tracked per actor. When true, the orchestrator
+# creates the first attached invocation with `--session-id` and resumes later
+# attached invocations with `--resume`; when false, ids are still tracked but
+# not attached to invocations. Override for an operator run with `aog campaign
+# run --use-session-id` or `--no-use-session-id`.
+use_session_id = false
 # Per-turn wall-clock cap. The DM during campaign-planning reads the
 # methodology, persona, world bible, does web searches, and writes 8+ files
 # per invocation. 300s was too short. 3600s (60 min) is the default;

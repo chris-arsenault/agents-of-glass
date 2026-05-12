@@ -5,6 +5,7 @@ import { AGENT_DISPLAY, toneFor } from "../agentChroma";
 import { selectLatestDmTurn, useSessionStore } from "../store/sessionStore";
 import type { ClockRecord, SceneTrackerRecord } from "../types";
 import { formatTime, progressPercent } from "../utils";
+import { CampaignSelector } from "./CampaignSelector";
 
 export function Scorebug({ onOpenCommand }: { onOpenCommand: () => void }) {
   const runtime = useSessionStore((state) => state.runtime);
@@ -42,10 +43,7 @@ export function Scorebug({ onOpenCommand }: { onOpenCommand: () => void }) {
 
   return (
     <div className="scorebug">
-      <div className="scorebug__campaign">
-        <span>Campaign</span>
-        <strong>{runtime?.campaign ?? "—"}</strong>
-      </div>
+      <CampaignSelector />
       <div className="scorebug__turn">
         <span className="scorebug__turn-label">Turn</span>
         <span className="scorebug__turn-value">{runtime?.turn_counter ?? 0}</span>

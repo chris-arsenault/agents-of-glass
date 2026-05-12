@@ -9,7 +9,8 @@ This started as a spec. The current implementation is a v0 bootstrap predating t
 - runtime state in Postgres, with scene prose and operator artifacts on disk;
 - transcript, scene context, and audit files at `campaigns/<id>/arcs/<arc>/scenes/<scene>/`;
 - per-turn artifacts (`TURN_START.md`, `TURN.md`, closeout JSON, agent stdout/stderr) under `dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`;
-- agents are spawned inside per-turn read-only campaign-shaped projections (`cwd = .glass-cwd/<campaign>/<turn>-<agent>/`);
+- agents are spawned inside stable per-actor read-only campaign-shaped projections (`cwd = .glass-cwd/<campaign>/<agent>/`), refreshed for each turn;
+- one Claude Code session id is tracked per actor in runtime state; `[claude].use_session_id` controls whether that id is passed to `claude -p`;
 - agent stdout/stderr is streamed line-by-line to the operator's terminal with `[<agent-id>]` prefix, plus captured to disk;
 - real turns invoke `claude -p ...`; `--dry-run` commits synthetic turns for
   wiring checks without spending model time.
@@ -36,7 +37,8 @@ aog campaign run [<id>]                     # IMPLEMENTED — phase-aware lifecy
                                             #   5. advance/run active play
                                             # flags: --max-planning-turns N, --max-creation-turns N,
                                             #        --max-prelude-turns N, --max-turns N,
-                                            #        --skip-prelude, --dry-run
+                                            #        --skip-prelude, --use-session-id,
+                                            #        --no-use-session-id, --dry-run
 aog campaign show <id>                      # IMPLEMENTED — print runtime state summary
 aog campaign list                           # IMPLEMENTED — list all campaigns with phase
 aog campaign clear <id> [--yes]             # IMPLEMENTED — wipe campaign workspace
@@ -67,18 +69,23 @@ Operator concerns only — no agent ever calls `aog`.
 1. **Pick the next agent.** Handoff/rapid-response/housekeeping queue first,
    then persisted action-scene initiative order if present, otherwise the mode
    default (round-robin, DM-only, travel order, etc.).
-2. **Generate `TURN_START.md`** under the spawning agent's canonical campaign turn directory. Contains pointers (relative to the projected campaign workspace) to persona, the methodology for this role + turn type, the player-agent-visible public table, scene framing, campaign-level context, instruction surfaces, recent-turn summary snapshot, actual-play creative influence when applicable, plus the path where the agent must write prose (`TURN.md` in the same relative turn dir).
+2. **Generate `TURN_START.md`** under the spawning agent's canonical numbered campaign turn directory. Contains pointers (relative to the projected campaign workspace) to persona, the methodology for this role + turn type, the player-agent-visible public table, scene framing, campaign-level context, instruction surfaces, recent-turn summary snapshot, actual-play creative influence when applicable, plus the path where the agent must write prose (`turns/TURN.md` in the active projected turn dir).
    The turn-type switch is programmatic here: queued rapid-response turns,
    queued player housekeeping, action-order turns, DM action openings, and DM
    scene transitions each point at their own methodology document. Actual-play
    methodologies must not branch to other actual-play turn types.
+   If `[claude].use_session_id` is true, `TURN_START.md` also includes a
+   required persistent-session startup check: inspect the current workspace,
+   active methodology, table, summary files, and messages before acting, and
+   treat current Glass state as authoritative over remembered Claude Code
+   session context. If the flag is false, that section is omitted.
    Continuity compression lives in authored summary files (`summary.md` at
    campaign, arc/act, and scene levels); TURN_START points at those surfaces
    but does not generate its own summary prose.
-3. **Build the per-turn projection** under `.glass-cwd/<campaign>/<turn>-<agent>/`. It mirrors canonical relative paths but contains only actor-visible files. The projection is chowned to the spawned actor; role-authorized document surfaces and the current turn dir are writable.
+3. **Refresh the actor projection** under `.glass-cwd/<campaign>/<agent>/`. It mirrors actor-visible campaign paths, and exposes the current turn at stable unnumbered `turns/` paths. The projection is chowned to the spawned actor; role-authorized document surfaces and the current turn dir are writable.
 4. **Probe workspace permissions.** Before Claude starts, run as the spawned actor and prove the current turn dir supports arbitrary create, edit, and delete operations. Fail fast if ownership, ACLs, or modes are wrong.
 5. **Mint a role-scoped `glass` grant**. The local API writes to the canonical campaign root while using the projection as cwd, so `glass sync apply` can commit projected document edits by their real relative paths.
-6. **Spawn `claude -p --dangerously-skip-permissions`** with `cwd` set to the projection. Set env vars: `GLASS_ROLE`, `GLASS_CAMPAIGN_ID`, `GLASS_CONFIG`, `GLASS_TURN_ID`, `AOG_TURN_START`, `AOG_TURN_PROSE`, `AOG_TURN_CLOSEOUT`, `GLASS_API_URL`, and `GLASS_API_GRANT`/grant file as available. The prompt is short — it says to read TURN_START, write public prose, run `glass turn end`, and exit.
+6. **Spawn `claude -p --dangerously-skip-permissions`** with `cwd` set to the actor projection. Set env vars: `GLASS_ROLE`, `GLASS_CAMPAIGN_ID`, `GLASS_CONFIG`, `GLASS_TURN_ID`, `AOG_TURN_START`, `AOG_TURN_PROSE`, `AOG_TURN_CLOSEOUT`, `GLASS_API_URL`, and `GLASS_API_GRANT`/grant file as available. If `[claude].use_session_id` is true, use `--session-id <actor-session-id>` for the first attached invocation and `--resume <actor-session-id>` for later attached invocations. The prompt is short — it says to read `turns/TURN_START.md`, write public prose, run `glass turn end`, and exit.
 7. **Stream stdout/stderr** to the operator's terminal line-by-line, prefixed with `[<agent-id>]`. Full captures saved beside the agent's canonical turn files.
 8. **Wait** for the subprocess to exit (with timeout from `claude.turn_timeout_seconds`, default 3600s).
 9. **Copy turn artifacts back to canonical storage.** `TURN.md`, `turn-closeout.json`, and debug logs generated in the actor-owned projection are copied to the canonical turn dir.
@@ -115,6 +122,7 @@ No automatic retries. No automatic recovery. See [`../../docs/design/architectur
 - Markdown content (transcript, framing, lore, journals) → all on disk, git-tracked.
 - Graph state → in FalkorDB.
 - Vector recall state → in Postgres `search_chunks`, including persisted embeddings.
+- Per-actor Claude Code session ids → in Postgres runtime state.
 - Per-agent turn artifacts (`dm/turns/*`, `players/<id>/turns/*`) → discardable after commit; rebuilt on resume as needed.
 
 Operator checkpoints capture and restore all four durable surfaces: campaign

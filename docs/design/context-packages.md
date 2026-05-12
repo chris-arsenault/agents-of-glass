@@ -11,10 +11,10 @@ The orchestrator builds a per-turn `TURN_START.md` file in the agent's
 canonical turn directory and copies it into the projected workspace before each
 invocation. The agent's prompt is essentially:
 
-> Read `TURN_START.md` and take your turn.
+> Read `turns/TURN_START.md` and take your turn.
 
 …spawned as `claude -p --dangerously-skip-permissions` with all tools
-available, inside a per-turn projection of the campaign workspace.
+available, inside a stable per-actor projection of the campaign workspace.
 Role-specific mutation authority is enforced at the `glass` CLI/API boundary,
 not by Claude Code's permission system.
 
@@ -38,9 +38,9 @@ speak or act in fiction, embody only what the character knows and can do.
 It's your turn. Mode: **combat** | Scene: **ringglass-market-chase**.
 
 ## Table
-See [table/index.md](./table/index.md) for the at-a-glance state and
-[table/scene.md](./table/scene.md) for the scene kickoff. Current state: the
-patrol leader is up and angry; Karrith is exposed.
+Read `table/scene.md` for the current visible situation, then read any named
+table artifact relevant to your action, such as `table/patrol-leader.md` or
+`table/market-exit-routes.md`.
 
 ## Scene Summary
 Compact scene continuity is embedded from `arcs/<arc>/scenes/<scene>/summary.md`.
@@ -81,8 +81,8 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - Current mode + scene framing
 - A generated turn type plus one methodology pointer selected by role, mode, and
   turn metadata
-- Current public table: `table/index.md`, `table/scene.md`, `table/handouts/`,
-  and any other files under `table/`
+- Current public table: `table/scene.md`, optional `table/handouts/`, and
+  named table artifacts under `table/`
 - Campaign framing
 - Compact active scene summary, embedded and capped
 - Campaign / arc summaries as pointers
@@ -155,10 +155,10 @@ generated into TURN_START.
 The DM authors each level using the relevant methodology — campaign-level during planning, arc-level during arc creation, scene-level during scene prep. Each has a corresponding DM-only working document (`dm/foundation.md`, `arcs/<arc>/plan.md`, `arcs/<arc>/scenes/<scene>/prep.md`) that holds the full picture; the player-facing `context.md` holds only what's been shown.
 
 The live `table/` is separate from those context documents. It is the
-short-term public board for the current scene: `index.md` for at-a-glance
-state, `scene.md` for the kickoff description, `handouts/` for in-game
-handouts, and freeform table-root markdown files for whatever visible immediate
-reference would prevent repeated clarification turns.
+short-term public board for the current scene: `scene.md` for the current
+visible situation, `handouts/` for optional in-game handouts, and named
+table-root markdown artifacts for visible lore or references that prevent
+repeated clarification turns. There is no authored `table/index.md`.
 
 This is the same boundary the web UI's Active Table uses. The viewer may expose
 DM notes, graph entities, hooks, messages, lore, and other campaign files in
@@ -236,8 +236,9 @@ information.
 
 ## Process Isolation
 
-Each agent runs as a separate `claude -p` subprocess inside a fresh per-turn
-projection at `.glass-cwd/<campaign>/<turn>-<agent>/`. The projection mirrors
+Each agent runs as a separate `claude -p` subprocess inside a stable per-actor
+projection at `.glass-cwd/<campaign>/<agent>/`. The projection is refreshed for
+each turn and mirrors
 the canonical campaign tree's relative paths, but contains only the files that
 actor may read. For example, `table/scene.md` stays `table/scene.md`; Tev's
 private notes stay `players/tev/notes/`; another player's private notes simply
@@ -245,11 +246,12 @@ are not present.
 
 The canonical campaign root remains `campaigns/<id>/`. TURN_START and turn
 artifacts are written canonically under `dm/turns/<NNNN>/` or
-`players/<id>/turns/<NNNN>/`, and copied into the projection at the same
-relative path before the subprocess starts. The agent writes `TURN.md` in the
-projected turn dir and runs `glass turn end` to create `turn-closeout.json`;
-the orchestrator copies them back to canonical storage before committing the
-turn.
+`players/<id>/turns/<NNNN>/`. Inside the stable actor projection, the active
+turn is exposed at an unnumbered `turns/` directory:
+`turns/TURN_START.md`, `turns/TURN.md`, and `turns/turn-closeout.json`. The
+agent writes `TURN.md` there and runs `glass turn end` to create the closeout;
+the orchestrator copies those active-turn artifacts back to the numbered
+canonical turn directory before committing the turn.
 
 The projection is owned by the spawned actor. Projected files are writable only
 on role-authorized document surfaces and in the current turn dir; before Claude
@@ -331,8 +333,8 @@ This is the queryability layer that lets the always-on context stay small. An ag
 The orchestrator decides Sumi is up next during scene `keel-quarter-aftermath` in arc `reconnect-to-vantara`. It:
 
 1. Generates canonical `players/sumi/turns/<NNNN>/TURN_START.md` with an embodied identity paragraph plus pointers to her readable campaign files: `persona.md`, `character.md`, campaign context, arc context, scene context, recent turn summaries, messages, instruction surfaces, notes, and the one methodology selected for this turn.
-2. Builds `.glass-cwd/<campaign>/<NNNN>-sumi/` with the same relative paths for Sumi's visible files.
-3. Spawns `claude -p --dangerously-skip-permissions "Read players/sumi/turns/<NNNN>/TURN_START.md and take your turn."` with CWD set to the projection and the Sumi role grant installed for `glass`.
+2. Refreshes `.glass-cwd/<campaign>/sumi/` with the same relative paths for Sumi's visible files.
+3. Spawns `claude -p --dangerously-skip-permissions "Read turns/TURN_START.md and take your turn."` with CWD set to the projection and the Sumi role grant installed for `glass`.
 4. Waits for the subprocess to exit.
 5. Copies projected turn artifacts back to the canonical turn dir, reads `TURN.md`, and appends the turn plus closeout metadata to Postgres and markdown transcript exports.
 6. Picks the next agent.

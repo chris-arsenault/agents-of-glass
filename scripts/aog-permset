@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # aog-permset — root-privileged helper used by the orchestrator to set
-# ownership and modes on a per-turn ephemeral CWD.
+# ownership and modes on a stable per-actor CWD.
 #
 # Installed by scripts/provision-agents.sh to /usr/local/bin/aog-permset.
 # Invoked via sudo by the orchestrator (sudoers entry permits NOPASSWD).

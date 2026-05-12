@@ -1,68 +1,83 @@
 ---
 title: Intermission Methodology
 status: authored
-audience: dm_and_players
+audience: dm-and-players
 applies_to_modes: [intermission]
 ---
 
 # Intermission
 
-Intermission is the short player-facing planning room between major campaign
-sections: after the prelude, and after an act closes before the next act starts.
-It is not an in-fiction scene. It is collaborative mid- to long-term campaign
-planning.
+Intermission is the table-facing planning room after a prelude or closed act.
+It is not used between ordinary scenes inside an open act.
 
-Intermission is not used between ordinary scenes in an open act. Scene-to-scene
-continuity is preserved by scene summaries, turn closeout summaries, the DM's
-scene-to-scene transition turn, and the players' one housekeeping turn.
+## DM Opening Turn
 
-## Purpose
+1. **Read the closed material.**
+   - `glass summary show campaign`
+   - `glass summary show arc <closed-arc>`
+   - `glass turns feed --after-turn <n>` if recent player intent matters.
+   - Read `shared/quest-log.md`, `shared/party-knowledge.md`, and active
+     `dm/notes/hooks.md`.
 
-Use intermission to let the table say what it wants before Mara frames the next
-act:
+2. **Put the intermission prompt on the table.**
+   - `glass table write scene.md --body "<what the table should choose now>"`
+   - `glass table write <meaningful-slug>.md --body "<visible planning artifact>"`
+     when an option, faction, place, or lead should remain available as lore.
 
-- unresolved threads players want followed up
-- relationships or NPCs they want more time with
-- magic items, equipment, training, repairs, or abilities they hope to pursue
-- tone requests: harder, stranger, quieter, more dangerous, more political
-- boundaries around what should be summarized instead of played out
+3. **Ask for concrete player input.**
+   - Use `glass turn handoff <agent-id>` or normal rotation.
+   - End with `glass turn end --summary "intermission opened" --state "table prompt updated" --rolls none --next default`.
 
-Mara participates as facilitator, not as an adjudicating scene DM. Players speak
-as players; they may reference their characters, but no character takes binding
-in-fiction action here.
+## Player Turn
 
-## Turn Shape
+1. **Read the prompt and recent continuity.**
+   - Read `table/scene.md`, named table artifacts, `shared/quest-log.md`,
+     `shared/party-knowledge.md`, your public character display, and unread messages.
+   - Use `glass turns find` or `glass search` only when specific recall is needed.
 
-The intermission cap is 15 turns total: three passes through Mara, Tev, Sumi,
-Renno, and Kit. Shorter is fine. Do not stretch to fill the cap.
+2. **Answer with concrete requests.**
+   - Name threads you want followed.
+   - Name relationships you want tested or protected.
+   - Name character goals, training, gear, allies, debts, fears, or scenes you
+     want the next act to make relevant.
+   - If you want to add a new declared skill from intermission training and a
+     free slot is available (cap `3 + level`), run
+     `glass character skill-declare <id> <skill-name>`. The skill starts at
+     `fool` and grows by use in the next act.
 
-Mara opens first. In the opening turn:
+3. **Persist only useful player material.**
+   - Update `players/<id>/journal/`, `players/<id>/notes/`, `players/<id>/public/`,
+     or `players/<id>/secrets/` when the material should persist.
+   - Commit with `glass sync apply <paths>`.
 
-- name the broad pressure or tone of the next act without spoiling secrets
-- remind the table which unresolved threads are available
-- invite requests about what the players want to see, resolve, find, learn, or
-  change
+4. **Close the turn.**
+   - Write `TURN.md` with the concrete requests.
+   - Run `glass turn end --summary "<player intermission requests>" --state "<files updated or no state change>" --rolls none --next default`.
 
-Players answer with concrete preferences. Good intermission turns are specific:
-"I want Drova and Tek to have one scene about the tic-tracer" is better than
-"more character stuff."
+## DM Closing Turn
 
-## Outputs
+1. **Synthesize player requests.**
+   - Read all intermission turns with `glass turns find --scene <intermission-id>`.
+   - Update `shared/quest-log.md` or `shared/party-knowledge.md` with
+     player-visible commitments.
+   - Update `dm/workspace/<next-act>.md` or arc prep with private planning.
 
-Before the intermission closes, Mara should write a player-visible synthesis to
-`shared/quest-log.md` or `shared/party-knowledge.md` and private next-act prep
-to the relevant `arcs/<arc>/` or `dm/workspace/` file.
+2. **Create or activate the next arc.**
+   - If a new act is needed, follow `methodologies/arc-creation.md` and run
+     `glass arc create <arc-slug> --pull-source "<real-world source/domain>" --pull-utilization "<which next-arc pressure uses it>"`.
+   - Run `glass arc activate <arc-slug>`.
 
-Players may update their own journals, public notes, or private
-requests to Mara. Keep these concise and commit them with `glass sync apply`.
+3. **Close intermission.**
+   - Commit authored files with `glass sync apply`.
+   - Run `glass summary append campaign --body "<intermission synthesis>"`.
+   - Write `TURN.md` with the synthesis and next-act handoff.
+   - Run `glass turn end --summary "intermission closed and next arc selected" --state "<quest/party/arc/summaries updated>" --rolls none --scene-status ended --next default`.
+   - Run `glass mode end`.
 
-## Ending
+## CLI Encoding Opportunities
 
-Mara may end intermission early once the useful requests are captured:
+These are not commands yet:
 
-```bash
-glass mode end
-```
-
-If nobody ends it manually, the orchestrator stops it at the 15-turn cap. The
-next `aog campaign run` starts Mara in `scene-prep` for the next act.
+- `glass intermission open` for table prompt plus handoff setup.
+- `glass intermission synthesize` for collecting player requests into
+  quest/party surfaces and campaign summary.

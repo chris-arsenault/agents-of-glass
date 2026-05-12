@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .constants import ATTRIBUTES
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 
 
 def validate_key_values(
@@ -14,15 +14,30 @@ def validate_key_values(
     parsed: dict[str, str] = {}
     for value in values:
         if "=" not in value:
-            raise GlassError(f"invalid {label}: expected name=tier, got {value!r}")
+            raise GlassError(
+                agent_instruction(
+                    f"invalid {label} {value!r}",
+                    "Use `name=tier` format for each value.",
+                )
+            )
         name, tier = value.split("=", 1)
         name = name.strip()
         tier = tier.strip()
         if not name:
-            raise GlassError(f"invalid {label}: name cannot be empty")
+            raise GlassError(
+                agent_instruction(
+                    f"invalid {label}: name cannot be empty",
+                    "Put a name before the equals sign, for example `resolve=advanced`.",
+                )
+            )
         if tier not in valid_values:
             options = ", ".join(sorted(valid_values))
-            raise GlassError(f"invalid {label} tier {tier!r}; valid tiers: {options}")
+            raise GlassError(
+                agent_instruction(
+                    f"invalid {label} tier {tier!r}",
+                    f"Use one of: {options}.",
+                )
+            )
         parsed[name] = tier
     return parsed
 
@@ -30,7 +45,10 @@ def validate_key_values(
 def assert_attribute_name(attribute: str) -> None:
     if attribute not in ATTRIBUTES:
         raise GlassError(
-            f"unknown attribute {attribute!r}; valid attributes: {', '.join(ATTRIBUTES)}"
+            agent_instruction(
+                f"unknown attribute {attribute!r}",
+                f"Use one of: {', '.join(ATTRIBUTES)}.",
+            )
         )
 
 

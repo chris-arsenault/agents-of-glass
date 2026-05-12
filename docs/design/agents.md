@@ -70,7 +70,19 @@ The role prompt makes this explicit. The DM's `TURN_START.md` reminds them. The 
 
 ## Invocation
 
-Each person is invoked as a fresh `claude -p` subprocess per turn. The orchestrator builds:
+Each person is invoked as a separate `claude -p` subprocess per turn. The
+orchestrator gives each actor a stable projection cwd and tracks one Claude
+Code session id per actor. By default that id is only recorded; if
+`[claude].use_session_id` is enabled, the orchestrator starts the first
+attached invocation with `--session-id` and resumes later attached invocations
+with `--resume <actor-session-id>`.
+For one operator invocation, `aog campaign run --use-session-id` or
+`aog campaign run --no-use-session-id` overrides the TOML value.
+When that flag is enabled, generated `TURN_START.md` includes a required
+startup check telling the actor to inspect the current workspace, table,
+summaries, methodology, and messages before acting, and to treat current Glass
+state as authoritative over remembered Claude Code session context.
+The orchestrator builds:
 
 ```
 [ROLE]              <- the person's prompt (their identity)
@@ -83,14 +95,18 @@ Each person is invoked as a fresh `claude -p` subprocess per turn. The orchestra
 
 The agent's tool loop runs until it has finished writing its turn (prose) and exits. The orchestrator captures the prose plus the audit log of any `glass` calls the agent made, wraps both in a per-turn header, and moves on. Agents do not emit structured delta blocks — see [`turn-loop.md`](turn-loop.md) for the prose-first principle.
 
-**Agents do not share context across invocations.** Each invocation starts fresh. Continuity comes from:
+**Agents do not share context with each other.** With `use_session_id = false`,
+each invocation starts fresh. With it enabled, only that actor's own Claude
+Code session is reused. Durable continuity still comes from:
 
 - The transcript window (recent turns)
 - The agent's private notes (which they wrote in earlier invocations)
 - The graph (canonical state)
 - The character sheet (for players)
 
-This is a feature, not a bug. It forces durable state into files instead of letting it accumulate in conversation history. It also means an agent can be re-invoked at any point in the session without "forgetting" anything that mattered enough to write down.
+The durable state surfaces remain the source of truth. Claude Code session
+history is optional short-term actor continuity, not canonical campaign state.
+An agent should still be re-invokable from the files, database, and graph.
 
 ## Per-Agent State
 
@@ -104,7 +120,7 @@ The full file layout — what each role can read, what each role can write, wher
 
 Players draft lore in their `drafts/` directory and use `glass note` to push to the DM's intake. The DM canonizes (entry moves to the campaign's `shared/lore/`, graph upserted) or rejects.
 
-The orchestrator spawns each agent in a per-turn projection of the campaign
+The orchestrator spawns each agent in a stable per-actor projection of the campaign
 workspace. Actors can edit writable document surfaces in that projection and
 commit them through `glass sync apply`; the canonical campaign tree stays
 operator-owned and is mutated through Glass. See

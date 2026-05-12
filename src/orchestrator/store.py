@@ -322,6 +322,7 @@ class SessionStore:
             glass_state["aog_status"] = state.status
             glass_state["aog_failure"] = state.failure
             glass_state["aog_run_metadata"] = state.run_metadata
+            glass_state["aog_claude_sessions"] = state.claude_sessions
             glass_state["aog_last_speaker"] = state.last_speaker
             glass_state["aog_turn_number"] = state.turn_number
             _save_runtime_state(paths, glass_state)
@@ -429,6 +430,9 @@ class SessionStore:
         if existing:
             run_metadata.update(existing.run_metadata)
         run_metadata["glass_state"] = "postgres runtime state"
+        claude_sessions = dict(glass_state.get("aog_claude_sessions") or {})
+        if existing:
+            claude_sessions.update(existing.claude_sessions)
 
         closing_raw = glass_state.get("scene_closing_turns")
         scene_closing_turns = int(closing_raw) if closing_raw is not None else None
@@ -443,6 +447,7 @@ class SessionStore:
             last_speaker=last_speaker,
             failure=existing.failure if existing else glass_state.get("aog_failure"),
             run_metadata=run_metadata,
+            claude_sessions=claude_sessions,
             scene_closing_turns=scene_closing_turns,
         )
 

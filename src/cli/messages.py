@@ -9,7 +9,7 @@ from typing import Any
 
 from .config import Paths
 from .constants import STARTER_MESSAGE_TYPES
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 from .role import Role
 
 
@@ -53,7 +53,11 @@ def require_message_type(paths: Paths, message_type: str) -> None:
     suggestion = difflib.get_close_matches(message_type, sorted(valid), n=1)
     suffix = f" Did you mean {suggestion[0]!r}?" if suggestion else ""
     raise GlassError(
-        f"unknown message type {message_type!r}; valid types: {', '.join(sorted(valid))}.{suffix}"
+        agent_instruction(
+            f"unknown message type {message_type!r}",
+            f"Use one of: {', '.join(sorted(valid))}.{suffix}",
+            "Send the message as `glass msg <type> <recipient> <body>`.",
+        )
     )
 
 
@@ -62,7 +66,13 @@ def require_recipient(paths: Paths, state: dict[str, Any], recipient: str) -> No
     if recipient in valid:
         return
     options = ", ".join(sorted(valid))
-    raise GlassError(f"unknown recipient {recipient!r}; valid recipients: {options}")
+    raise GlassError(
+        agent_instruction(
+            f"unknown recipient {recipient!r}",
+            f"Use one of: {options}.",
+            "Use `party` for all players, `dm` for Mara, or a listed player id for a private recipient.",
+        )
+    )
 
 
 def message_visible_to(message: dict[str, Any], role: Role) -> bool:

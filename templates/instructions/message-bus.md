@@ -1,59 +1,41 @@
 ---
-title: Message Bus
+title: Message Bus Instructions
 target: executing-agent
 authority: binding
 ---
 
 # Message Bus
 
-First action of every full turn: read unread messages.
+Messages are typed coordination outside public turn prose. Use them for private
+clarification, proposals, directed table coordination, and DM-readable private
+material.
+
+## Start-of-Turn Sequence
+
+1. Full turns: run `glass msg read --since-checkpoint`.
+2. Rapid-response turns: read messages only when the prompt depends on them.
+3. Respond during the same turn when a message blocks your action.
+
+## Sending Sequence
+
+1. Choose the narrowest recipient: an agent id, `dm`, or `party`.
+2. Choose the type.
+3. Send one concrete message.
 
 ```bash
-glass msg read --since-checkpoint
+glass msg <type> <recipient> "<body>"
 ```
-
-This drains anything new since your last turn: side-channel coordination,
-secret messages, table talk, DM hints, and party plans. Respond to messages
-that require a response before writing your public turn prose.
-
-Rapid-response turns may skip the full menu when `TURN_START.md` explicitly
-says they are single-shot responses.
-
-## Sending
-
-```bash
-glass msg <type> <recipient> <body>
-```
-
-Recipients are `dm`, `party`, or a player id.
 
 ## Types
 
-### `table-talk`
+- `table-talk`: public table coordination or clarification.
+- `banter`: player-to-player color, consent, or relationship offers.
+- `instruction`: direct coordination, usually from DM to party or a specific PC.
+- `plot-hint`: DM-visible or player-visible clue/hook flag.
+- `secret`: DM-readable private player material.
 
-OOC table chatter, rules questions, and coordination that is not in character.
+## Boundary
 
-### `banter`
-
-In-character off-camera dialogue between PCs.
-
-### `instruction`
-
-Coordinated planning or direction, usually sent to `party` or a specific PC.
-
-### `plot-hint`
-
-DM-only sender. A private hint about something a character would know or notice.
-
-### `secret`
-
-Private knowledge or hidden intent between sender and recipient. Player-to-DM
-secret messages are the right place to flag plans other PCs should not see.
-
-## Visibility
-
-The DM can read every message. Players can read messages they sent, messages
-addressed to them, and party messages.
-
-Use the bus instead of public transcript turns for minor clarification,
-coordination, hidden intent, and private answers.
+Do not use messages as the durable home for facts that belong in character
+state, table state, lore, summaries, clocks, or notes. Promote durable material
+with the appropriate `glass` command or `glass sync apply`.

@@ -44,6 +44,10 @@ Breakthrough means the action succeeds and something extra goes right. Collapse
 means the action fails badly and the situation worsens. The middle tiers are
 interpreted by the table through the fiction.
 
+`advance` and `breakthrough` also award skill xp to the rolled skill (+1 and
++2 respectively). Skills auto-promote at fixed thresholds — see
+[`skill-advancement.md`](skill-advancement.md).
+
 ## Player Roll Authority
 
 Players call their own rolls when acting on their own turns. The DM does not

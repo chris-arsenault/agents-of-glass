@@ -2,7 +2,8 @@
 
 A campaign workspace lives at `campaigns/<id>/` and is populated by copying
 the `templates/` tree at campaign-bootstrap time. Bootstrap phase fields
-(init / campaign_planning / character_creation / prelude / active) live in
+(init / organization_bootstrap / character_creation / campaign_planning /
+prelude / active) live in
 the Postgres runtime state row. `state.json` is a stale legacy path only and
 is removed when touched.
 
@@ -25,15 +26,17 @@ from .state import utc_now
 
 
 PHASE_INIT = "init"
-PHASE_PLANNING = "campaign_planning"
+PHASE_ORGANIZATION_BOOTSTRAP = "organization_bootstrap"
 PHASE_CHARACTER_CREATION = "character_creation"
+PHASE_PLANNING = "campaign_planning"
 PHASE_PRELUDE = "prelude"
 PHASE_ACTIVE = "active"
 
 PHASE_ORDER = (
     PHASE_INIT,
-    PHASE_PLANNING,
+    PHASE_ORGANIZATION_BOOTSTRAP,
     PHASE_CHARACTER_CREATION,
+    PHASE_PLANNING,
     PHASE_PRELUDE,
     PHASE_ACTIVE,
 )

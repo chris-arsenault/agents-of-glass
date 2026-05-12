@@ -16,7 +16,7 @@ from typing import Any, Iterator
 from . import db as _db
 from . import workspace as _workspace
 from .config import get_paths, load_config
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 
 
 def active_campaign_id() -> str:
@@ -31,12 +31,20 @@ def active_campaign_id() -> str:
     paths = get_paths()
     if paths.campaigns is None:
         raise GlassError(
-            "active campaign required: set GLASS_CAMPAIGN_ID or configure paths.campaigns"
+            agent_instruction(
+                "active campaign is required",
+                "Run from a campaign workspace, set `GLASS_CAMPAIGN_ID=<campaign-id>`, or configure `paths.campaigns` in `agents-of-glass.toml`.",
+            )
         )
     try:
         return _workspace.resolve_active_campaign(paths.campaigns).campaign_id
     except FileNotFoundError as exc:
-        raise GlassError(str(exc)) from exc
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Start the campaign with `aog campaign run <campaign-id>` or set `GLASS_CAMPAIGN_ID` to an existing campaign.",
+            )
+        ) from exc
 
 
 def active_campaign_root() -> Path:
@@ -83,7 +91,14 @@ def pg_connection() -> Iterator[Any]:
     except GlassError:
         raise
     except Exception as exc:
-        raise GlassError(f"postgres connection failed ({pg_config.describe()}): {exc}") from exc
+        raise GlassError(
+            agent_instruction(
+                f"postgres connection failed ({pg_config.describe()})",
+                "Ensure Postgres is running and the campaign database settings are correct.",
+                "Run `glass db status` or `glass db migrate` after fixing the connection.",
+                f"Connection detail: {exc}",
+            )
+        ) from exc
 
 
 def resolve_active_campaign_workspace() -> _workspace.CampaignWorkspace:
@@ -91,9 +106,19 @@ def resolve_active_campaign_workspace() -> _workspace.CampaignWorkspace:
     workspace.resolve_active_campaign."""
     paths = get_paths()
     if paths.campaigns is None:
-        raise GlassError("paths.campaigns is not configured")
+        raise GlassError(
+            agent_instruction(
+                "`paths.campaigns` is not configured",
+                "Configure `paths.campaigns` in `agents-of-glass.toml` or run from an orchestrated campaign environment.",
+            )
+        )
     env_id = os.environ.get("GLASS_CAMPAIGN_ID")
     try:
         return _workspace.resolve_active_campaign(paths.campaigns, env_id=env_id)
     except FileNotFoundError as exc:
-        raise GlassError(str(exc)) from exc
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Start the campaign with `aog campaign run <campaign-id>` or set `GLASS_CAMPAIGN_ID` to an existing campaign.",
+            )
+        ) from exc

@@ -15,6 +15,7 @@ NON_PLAY_MODES = {
     "wrap",
     "worldbuilding",
     "campaign-bootstrap",
+    "organization-bootstrap",
     "campaign-planning",
     "character-creation",
     "prelude",

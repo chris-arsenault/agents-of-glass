@@ -6,16 +6,16 @@ authority: binding
 
 # Creative Influence Instructions
 
-During actual play, `TURN_START.md` may include:
+Creative influences are subordinate inputs. They never override persona,
+character state, table state, SRD rules, dice, or the active methodology.
 
-- a one-turn verse phrase
-- a persisted tarot influence
+## Sequence
 
-Use these as light anti-staleness nudges. They may influence attention, word
-choice, risk appetite, or interpretation at the margins.
-
-They do not override persona, character sheet, table state, SRD rules, dice, or
-methodology. Let them be felt in the turn's posture, image, pacing, or choice
-rather than named as prompt material. Usually avoid saying "the tarot says" or
-"the verse is"; just let the influence disappear into what the character
-notices, risks, withholds, or says.
+1. Check `TURN_START.md` for a one-turn verse phrase or persisted tarot
+   influence.
+2. Choose one small effect on attention, image, pacing, risk appetite, or
+   interpretation.
+3. Apply that effect inside the prose or decision.
+4. Keep the influence unnamed unless the fiction itself makes naming it natural.
+5. End the turn through the active methodology's normal `glass turn end`
+   contract.

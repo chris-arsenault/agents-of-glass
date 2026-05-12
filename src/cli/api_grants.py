@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 
 
 DEFAULT_API_URL = "http://127.0.0.1:26001"
@@ -101,7 +101,13 @@ def validate_grant(campaigns_dir: Path, token: str, args: list[str]) -> dict[str
     """Return grant claims or raise GlassError."""
 
     if not token:
-        raise GlassError("missing glass API grant")
+        raise GlassError(
+            agent_instruction(
+                "missing glass API grant",
+                "Run Glass CLI commands through the orchestrated turn environment so the grant is supplied automatically.",
+                "If you are doing operator maintenance, run the CLI directly instead of through the player API.",
+            )
+        )
 
     for path in _candidate_store_paths(campaigns_dir):
         data = _read_store(path)
@@ -110,11 +116,21 @@ def validate_grant(campaigns_dir: Path, token: str, args: list[str]) -> dict[str
         if not isinstance(claim, dict):
             continue
         if int(claim.get("expires_at", 0)) < int(time.time()):
-            raise GlassError("expired glass API grant")
+            raise GlassError(
+                agent_instruction(
+                    "expired glass API grant",
+                    "Stop using this stale turn environment and start a fresh orchestrated turn.",
+                )
+            )
         _assert_command_allowed(claim, args)
         return claim
 
-    raise GlassError("invalid glass API grant")
+    raise GlassError(
+        agent_instruction(
+            "invalid glass API grant",
+            "Use the API grant from the current orchestrated turn; do not reuse grants from older turns or other campaigns.",
+        )
+    )
 
 
 def grant_store_path(campaigns_dir: Path, campaign_id: str) -> Path:
@@ -134,7 +150,13 @@ def _assert_command_allowed(claim: dict[str, Any], args: list[str]) -> None:
     if command in _HELP_ARGS:
         return
     if command in _ALWAYS_DENIED:
-        raise GlassError(f"permission denied: glass {command} is not exposed over player API")
+        raise GlassError(
+            agent_instruction(
+                f"`glass {command}` is not exposed over the player API",
+                "Do not run maintenance commands from a player turn.",
+                "Close the turn and ask the operator/DM to perform maintenance if needed.",
+            )
+        )
 
     role = str(claim.get("role", ""))
     if role != "player":
@@ -144,13 +166,23 @@ def _assert_command_allowed(claim: dict[str, Any], args: list[str]) -> None:
     if allowed is None:
         if command in _PLAYER_ALLOWED:
             return
-        raise GlassError(f"permission denied: player grant cannot run glass {command}")
+        raise GlassError(
+            agent_instruction(
+                f"player turns cannot run `glass {command}`",
+                "Use one of the player-facing commands allowed in TURN_START.",
+                "If the DM needs to act, close the turn with `glass turn end --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
+            )
+        )
 
     subcommand = _first_command_token(args[1:])
     if subcommand is None or subcommand in _HELP_ARGS or subcommand in allowed:
         return
     raise GlassError(
-        f"permission denied: player grant cannot run glass {command} {subcommand}"
+        agent_instruction(
+            f"player turns cannot run `glass {command} {subcommand}`",
+            "Use an allowed player-facing subcommand.",
+            "If the DM needs this action, close the turn with `glass turn end --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
+        )
     )
 
 
@@ -170,7 +202,13 @@ def _read_store(path: Path) -> dict[str, Any]:
     except FileNotFoundError:
         return {"grants": {}}
     except json.JSONDecodeError as exc:
-        raise GlassError(f"invalid glass API grant store: {path}: {exc}") from exc
+        raise GlassError(
+            agent_instruction(
+                f"invalid glass API grant store: {path}",
+                "Start a fresh orchestrated turn or regenerate the campaign grant store.",
+                f"JSON parser detail: {exc}",
+            )
+        ) from exc
 
 
 def _write_store(path: Path, data: dict[str, Any]) -> None:

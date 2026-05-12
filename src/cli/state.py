@@ -50,7 +50,7 @@ import click
 from . import db as _db
 from .config import Paths
 from .config import load_config
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 from .ids import new_id, now_iso
 from .role import current_role
 from .yaml_io import emit, make_jsonable
@@ -184,7 +184,13 @@ def load_state(paths: Paths, campaign_id: str) -> dict[str, Any]:
     state = _load_state_from_postgres(campaign_id)
     if state is not None:
         return normalize_state(state)
-    raise GlassError(f"no runtime state for campaign {campaign_id!r} in Postgres")
+    raise GlassError(
+        agent_instruction(
+            f"no runtime state for campaign {campaign_id!r} in Postgres",
+            "Start or initialize the campaign runtime before running turn commands.",
+            f"Use `aog campaign run {campaign_id}` for normal play, or run the campaign setup/migration commands for maintenance.",
+        )
+    )
 
 
 def state_exists(paths: Paths, campaign_id: str) -> bool:
@@ -207,9 +213,11 @@ def _postgres_runtime_enabled() -> bool:
 def _require_postgres_runtime() -> None:
     if not _postgres_runtime_enabled():
         raise GlassError(
-            "Postgres runtime is required. Configure [postgres] in "
-            "agents-of-glass.toml or set libpq environment variables, then "
-            "run `glass db migrate`."
+            agent_instruction(
+                "Postgres runtime is required",
+                "Configure `[postgres]` in `agents-of-glass.toml` or set libpq environment variables.",
+                "Then run `glass db migrate` before using runtime-backed CLI commands.",
+            )
         )
 
 
@@ -232,8 +240,11 @@ def _load_state_from_postgres(campaign_id: str) -> dict[str, Any] | None:
         raise
     except Exception as exc:
         raise GlassError(
-            "postgres runtime state load failed "
-            f"({pg_config.describe()}): {exc}. Run `glass db migrate`."
+            agent_instruction(
+                f"postgres runtime state load failed ({pg_config.describe()})",
+                "Run `glass db migrate`, then retry the command.",
+                f"Database detail: {exc}",
+            )
         ) from exc
 
 
@@ -247,8 +258,11 @@ def _save_state_to_postgres(state: dict[str, Any]) -> None:
         raise
     except Exception as exc:
         raise GlassError(
-            "postgres runtime state save failed "
-            f"({pg_config.describe()}): {exc}. Run `glass db migrate`."
+            agent_instruction(
+                f"postgres runtime state save failed ({pg_config.describe()})",
+                "Run `glass db migrate`, then retry the command.",
+                f"Database detail: {exc}",
+            )
         ) from exc
 
 
@@ -329,7 +343,7 @@ def _refresh_projection_committed_paths(
 ) -> None:
     """Mirror committed canonical files back into a projected cwd.
 
-    Agent-facing `glass` commands run in the per-turn projection but mutate the
+    Agent-facing `glass` commands run in the actor projection but mutate the
     canonical campaign tree. When a command result names committed files, keep
     those paths in the projection and manifest aligned so the post-turn sync
     checker does not report files that were already committed.

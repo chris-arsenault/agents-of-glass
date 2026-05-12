@@ -17,6 +17,7 @@ import sys
 import click
 
 from .commands.arc import arc
+from .commands.campaign import campaign
 from .commands.character import character
 from .commands.clock import clock
 from .commands.db import db
@@ -188,6 +189,7 @@ def _echo_api_daemon(info) -> None:
 main.add_command(session)
 main.add_command(mode)
 main.add_command(roll)
+main.add_command(campaign)
 main.add_command(character)
 main.add_command(clock)
 main.add_command(note)

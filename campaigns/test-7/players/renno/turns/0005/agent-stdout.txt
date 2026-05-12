@@ -1,6 +1,0 @@
-Turn done.
-
-- **Character**: Fei Mern — fae Hab-Worlder waystation listener on the Splitfork, raised on Mernhab (decommissioned 2434), recruited off the Glasswake intake queue by Mereth Kel. Goes diffuse on landing to clear unfamiliar drops; renders quoted speech in first person; refuses to summarize.
-- **Web pull**: court interpretation — first-person rendering, conserve the hesitation, booth fatigue/rotation.
-- **Sheet**: HP 8; superior focus, advanced attunement/resolve, rudimentary vitality; one virtuoso skill (*diffuse-state waystation reading*); one signature move (*Listening Past Last Light*); 4 inventory items including signature Mernhab coherence-aid cuffs.
-- **Files committed**: `players/renno/public/intro.md`, `players/renno/scratchpad.md`, `players/renno/secrets/sidecar-drop-log.md`. Character row + mirror created via `glass character new` and `glass character bulk-update`. DM notified about the secret. Turn prose at `players/renno/turns/0005/out.md`.

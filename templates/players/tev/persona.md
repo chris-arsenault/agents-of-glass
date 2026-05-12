@@ -1,6 +1,7 @@
 ---
 name: Tev
 role: player
+narrative_style: rules-first-actor
 ---
 
 # Tev

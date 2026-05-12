@@ -37,7 +37,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -136,7 +136,13 @@ def turn_append(
     if not source.is_absolute():
         source = Path.cwd() / source
     if not source.exists():
-        raise GlassError(f"turn markdown not found: {markdown_file}")
+        raise GlassError(
+            agent_instruction(
+                f"turn prose file does not exist: {markdown_file}",
+                "Write the public turn prose file first, then let the orchestrator append it.",
+                "During a normal agent turn, finish with `glass turn end ...` and exit; do not call `glass turn append` manually.",
+            )
+        )
     body = source.read_text(encoding="utf-8").strip()
     turn_end = _load_turn_end_metadata(end_file)
     role = current_role()
@@ -427,14 +433,35 @@ def _load_turn_end_metadata(end_file: str | None) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise GlassError(f"turn end metadata not found: {end_file}") from exc
+        raise GlassError(
+            agent_instruction(
+                f"turn closeout file does not exist: {end_file}",
+                "Run `glass turn end --summary <summary> --state <state change or no state change> --rolls <rolls or none>` before the orchestrator appends the turn.",
+            )
+        ) from exc
     except json.JSONDecodeError as exc:
-        raise GlassError(f"invalid turn end metadata: {end_file}: {exc}") from exc
+        raise GlassError(
+            agent_instruction(
+                f"turn closeout file is not valid JSON: {end_file}",
+                "Regenerate it with `glass turn end ...`; do not edit the closeout JSON by hand.",
+                f"JSON parser detail: {exc}",
+            )
+        ) from exc
     if not isinstance(payload, dict):
-        raise GlassError("turn end metadata must be a JSON object")
+        raise GlassError(
+            agent_instruction(
+                "turn closeout must be a JSON object",
+                "Regenerate it by running `glass turn end --summary <summary> --state <state change or no state change> --rolls <rolls or none>`.",
+            )
+        )
     summary = str(payload.get("summary") or "").strip()
     if not summary:
-        raise GlassError("turn end metadata is missing summary")
+        raise GlassError(
+            agent_instruction(
+                "turn closeout is missing `summary`",
+                "Run `glass turn end` again with `--summary` set to the compact continuity summary for the next actor.",
+            )
+        )
     return payload
 
 
@@ -473,7 +500,13 @@ def _turn_search_body(body: str, turn_end: dict[str, Any]) -> str:
 def _required_text(value: str, label: str) -> str:
     text = value.strip()
     if not text:
-        raise GlassError(f"{label} cannot be empty")
+        raise GlassError(
+            agent_instruction(
+                f"{label} cannot be empty",
+                "Provide a real value for every required `glass turn end` field.",
+                "Use `--rolls none` when no roll happened and `--state \"no state change\"` only when nothing durable changed.",
+            )
+        )
     return text
 
 
@@ -482,7 +515,13 @@ def _turn_end_target_path(*, end_file: str | None) -> Path:
     if raw:
         path = Path(raw).expanduser()
         return path if path.is_absolute() else Path.cwd() / path
-    raise GlassError("turn end needs AOG_TURN_CLOSEOUT or --to")
+    raise GlassError(
+        agent_instruction(
+            "`glass turn end` does not know where to write the closeout file",
+            "Run it from an orchestrated turn so `AOG_TURN_CLOSEOUT` is set automatically.",
+            "For tests or manual maintenance only, pass `--to <path>`.",
+        )
+    )
 
 
 def _turn_export_info(scene_id: str) -> dict[str, Any]:
@@ -536,7 +575,11 @@ def turn_handoff(ctx: click.Context, agent_id: str) -> None:
     """
     if agent_id not in _HANDOFF_AGENT_IDS:
         raise GlassError(
-            f"unknown agent id {agent_id!r}; valid: {', '.join(_HANDOFF_AGENT_IDS)}"
+            agent_instruction(
+                f"unknown handoff target {agent_id!r}",
+                f"Use one of: {', '.join(_HANDOFF_AGENT_IDS)}.",
+                "Use `glass turn end --next default` for normal rotation, or `--next dm` only when the DM specifically needs the next turn.",
+            )
         )
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -556,7 +599,7 @@ def turn_handoff(ctx: click.Context, agent_id: str) -> None:
     "--participants",
     "participants_csv",
     default=None,
-    help="Comma-separated agent ids. Defaults to dm,tev,sumi,renno,kit.",
+    help="Comma-separated agent ids. The DM is always included in the roll.",
 )
 @click.option("--label", default="initiative", show_default=True)
 @click.pass_context
@@ -566,7 +609,7 @@ def turn_initiative(
     """DM-only: roll and persist action-scene turn order.
 
     Use this after the DM's opening layout for quickfire action scenes.
-    The DM is a participant by default, so their next turn after the
+    The DM is always a participant, so their next turn after the
     opening layout can land wherever the initiative roll puts it.
     """
     role = require_dm()
@@ -575,7 +618,13 @@ def turn_initiative(
     state = load_state(paths, campaign_id)
     current = current_mode_record(state)
     if not current or current.get("mode") == "none":
-        raise GlassError("cannot roll initiative without an active mode")
+        raise GlassError(
+            agent_instruction(
+                "initiative requires an active mode and scene",
+                "The DM should start action play first with `glass mode start action <scene-id>` or the scene's action mode.",
+                "Then run `glass turn initiative` once, from the DM turn that opens action play.",
+            )
+        )
 
     if participants_csv:
         participants = [
@@ -583,18 +632,32 @@ def turn_initiative(
         ]
     else:
         participants = list(_ACTION_PARTICIPANT_IDS)
+    if "dm" not in participants:
+        participants.append("dm")
     if not participants:
-        raise GlassError("initiative needs at least one participant")
+        raise GlassError(
+            agent_instruction(
+                "initiative needs at least one participant",
+                f"Pass `--participants` with one or more of: {', '.join(_ACTION_PARTICIPANT_IDS)}.",
+            )
+        )
 
     seen: set[str] = set()
     for participant in participants:
         if participant not in _ACTION_PARTICIPANT_IDS:
             raise GlassError(
-                f"unknown participant {participant!r}; valid: "
-                f"{', '.join(_ACTION_PARTICIPANT_IDS)}"
+                agent_instruction(
+                    f"unknown initiative participant {participant!r}",
+                    f"Use only these agent ids: {', '.join(_ACTION_PARTICIPANT_IDS)}.",
+                )
             )
         if participant in seen:
-            raise GlassError(f"duplicate initiative participant {participant!r}")
+            raise GlassError(
+                agent_instruction(
+                    f"duplicate initiative participant {participant!r}",
+                    "List each participant at most once in `--participants`.",
+                )
+            )
         seen.add(participant)
 
     rng = random.SystemRandom()
@@ -695,7 +758,10 @@ def turn_rapid_round(
     for player in targets:
         if player not in _PLAYER_AGENT_IDS:
             raise GlassError(
-                f"unknown player {player!r}; valid: {', '.join(_PLAYER_AGENT_IDS)}"
+                agent_instruction(
+                    f"unknown rapid-round player {player!r}",
+                    f"Use one or more of: {', '.join(_PLAYER_AGENT_IDS)}.",
+                )
             )
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -703,7 +769,12 @@ def turn_rapid_round(
     role = current_role()
     prompt = " ".join(prompt_parts).strip()
     if not prompt:
-        raise GlassError("rapid-round prompt cannot be empty")
+        raise GlassError(
+            agent_instruction(
+                "rapid-round prompt cannot be empty",
+                "Call `glass turn rapid-round <short shared stimulus>` so each queued player sees what to react to.",
+            )
+        )
     for player in targets:
         state["next_speakers"].append({
             "agent": player,
@@ -769,10 +840,18 @@ def turn_housekeeping_round(
     for player in targets:
         if player not in _PLAYER_AGENT_IDS:
             raise GlassError(
-                f"unknown player {player!r}; valid: {', '.join(_PLAYER_AGENT_IDS)}"
+                agent_instruction(
+                    f"unknown housekeeping player {player!r}",
+                    f"Use one or more of: {', '.join(_PLAYER_AGENT_IDS)}.",
+                )
             )
         if player in seen:
-            raise GlassError(f"duplicate player {player!r}")
+            raise GlassError(
+                agent_instruction(
+                    f"duplicate housekeeping player {player!r}",
+                    "List each player at most once in `--players`.",
+                )
+            )
         seen.add(player)
 
     paths = get_paths()
@@ -845,7 +924,11 @@ def turn_restart_order(ctx: click.Context, agent_id: str) -> None:
     require_dm()
     if agent_id not in _HANDOFF_AGENT_IDS:
         raise GlassError(
-            f"unknown agent id {agent_id!r}; valid: {', '.join(_HANDOFF_AGENT_IDS)}"
+            agent_instruction(
+                f"unknown restart target {agent_id!r}",
+                f"Use one of: {', '.join(_HANDOFF_AGENT_IDS)}.",
+                "Use this only when the DM needs to reset the turn queue; otherwise leave normal rotation alone.",
+            )
         )
     paths = get_paths()
     campaign_id = active_campaign_id()

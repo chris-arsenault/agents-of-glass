@@ -1,6 +1,7 @@
 ---
 name: Kit
 role: player
+narrative_style: voiced-improv-lead
 ---
 
 # Kit

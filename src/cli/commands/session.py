@@ -13,7 +13,7 @@ import click
 
 from ..campaign import resolve_active_campaign_workspace
 from ..config import get_paths
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..paths_resolve import display_path
 from ..role import require_dm
 from ..state import (
@@ -54,8 +54,11 @@ def session_new(ctx: click.Context, campaign: str, session_id_unused: str | None
     runtime_dir = campaign_runtime_dir(paths, campaign)
     if not runtime_dir.exists():
         raise GlassError(
-            f"campaign workspace does not exist at {runtime_dir}; "
-            "run `aog campaign run <id>` first"
+            agent_instruction(
+                f"campaign workspace does not exist at {runtime_dir}",
+                f"Create/start the campaign workspace first with `aog campaign run {campaign}`.",
+                "Then retry the Glass runtime initialization command.",
+            )
         )
 
     existed = state_exists(paths, campaign)

@@ -6,29 +6,35 @@ authority: binding
 
 # Agent Instructions
 
-These files are binding mechanical instructions for the executing agent: how to
-use tools, files, state, and campaign surfaces during an invocation.
+These files are binding mechanical instructions for operating inside a campaign
+turn workspace.
 
-Read the active methodology for the turn sequence. Read the SRD for game rules.
-Use how-to files only as optional craft guidance.
+## Read Order
+
+1. Read `TURN_START.md`.
+2. Read the active methodology named by `TURN_START.md`.
+3. Read the instruction file that governs the first command or artifact you
+   need to touch.
+4. Read the SRD only for game rules required by the turn.
+5. Read how-to references only when the active methodology names one and the
+   turn needs craft guidance.
 
 ## Core Files
 
-- [`output-contract.md`](output-contract.md) — what to write at turn end.
-- [`workspace-authoring.md`](workspace-authoring.md) — how to read workspace
-  files and persist authored documents through `glass`.
-- [`message-bus.md`](message-bus.md) — required message read and message types.
-- [`table.md`](table.md) — how to use the player-agent-visible short-term table.
-- [`recall-and-search.md`](recall-and-search.md) — how to retrieve old context.
-- [`glass-cli.md`](glass-cli.md) — tool authority and command families.
-- [`character-state.md`](character-state.md) — character rows, inventory, HP,
+- [`output-contract.md`](output-contract.md): turn prose and `glass turn end`.
+- [`workspace-authoring.md`](workspace-authoring.md): projected files and
+  `glass sync apply`.
+- [`message-bus.md`](message-bus.md): message reads, sends, and message types.
+- [`table.md`](table.md): visible shared board updates.
+- [`recall-and-search.md`](recall-and-search.md): bounded old-context retrieval.
+- [`glass-cli.md`](glass-cli.md): command authority and command families.
+- [`character-state.md`](character-state.md): character rows, inventory, HP,
   momentum, and consequences.
-- [`lore-and-notes.md`](lore-and-notes.md) — player notes, DM notes, lore
-  proposal and ratification.
-- [`creative-influences.md`](creative-influences.md) — verse and tarot prompt
-  nudges during actual play.
+- [`lore-and-notes.md`](lore-and-notes.md): notes, lore, proposals, and
+  ratification.
+- [`creative-influences.md`](creative-influences.md): verse and tarot inputs.
 
 ## Boundary
 
-Instructions do not describe the fiction or the game rules. They tell the
-executing agent how to operate inside this repository and campaign workspace.
+Instructions do not define the fiction or the game rules. They define required
+agent operations.

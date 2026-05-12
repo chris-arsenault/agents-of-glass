@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 from .config import REPO_ROOT, Paths
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 from .role import current_role
 
 
@@ -22,7 +22,13 @@ def clean_relative_path(path_text: str) -> Path:
     if path.is_absolute():
         path = Path(*path.parts[1:])
     if any(part == ".." for part in path.parts):
-        raise GlassError("invalid path: '..' is not allowed")
+        raise GlassError(
+            agent_instruction(
+                "path arguments may not contain `..`",
+                "Use a workspace-relative path under the current campaign, such as `table/scene.md`, `shared/lore/<kind>/<slug>.md`, or `players/<id>/public/<file>.md`.",
+                "If the target is outside the workspace, choose the matching `glass` command that imports or promotes it instead of traversing directories.",
+            )
+        )
     return path
 
 
@@ -31,7 +37,13 @@ def ensure_under(path: Path, root: Path, message: str) -> Path:
     try:
         resolved.relative_to(root.resolve())
     except ValueError as exc:
-        raise GlassError(message) from exc
+        raise GlassError(
+            agent_instruction(
+                message,
+                f"Use a path under `{display_path(root)}`.",
+                "Do not crawl or write outside the active campaign workspace.",
+            )
+        ) from exc
     return resolved
 
 
@@ -44,7 +56,14 @@ def ensure_under_any(path: Path, roots: list[Path], message: str) -> Path:
             return resolved
         except ValueError:
             continue
-    raise GlassError(message)
+    roots_text = ", ".join(display_path(root) for root in roots)
+    raise GlassError(
+        agent_instruction(
+            message,
+            f"Use a path under one of: {roots_text}.",
+            "Prefer workspace-relative paths instead of absolute paths.",
+        )
+    )
 
 
 def display_path(path: Path) -> str:
@@ -70,7 +89,7 @@ def resolve_content_path(paths: Paths, path_text: str) -> Path:
         return ensure_under_any(
             raw,
             allowed,
-            f"invalid path: absolute paths must stay under templates/ or campaigns/; got {raw}",
+            f"absolute path is outside the allowed Glass roots: {raw}",
         )
     rel = clean_relative_path(path_text)
     # Strip a leading 'content' or 'templates' segment for backwards-compat.
@@ -130,9 +149,11 @@ def resolve_note_write_path(
             rel == root or root in rel.parents for root in allowed_roots
         ):
             raise GlassError(
-                "permission denied: players may write only their own public/, "
-                "secrets/, notes/, journal/, drafts/, inbox/, scratchpad.md, "
-                "or use `glass character signature-add` for signature moves"
+                agent_instruction(
+                    "players may write only their own player workspace files",
+                    f"Write under `players/{role.actor}/public/`, `players/{role.actor}/secrets/`, `players/{role.actor}/notes/`, `players/{role.actor}/journal/`, `players/{role.actor}/drafts/`, or `players/{role.actor}/inbox/`.",
+                    "Use `glass character signature-add` for signature moves instead of editing another character or shared campaign file.",
+                )
             )
     elif role.kind == "dm":
         if rel.parts and rel.parts[0] == "workspace":
@@ -169,8 +190,11 @@ def resolve_note_write_path(
             rel == root or root in rel.parents for root in allowed_roots
         ):
             raise GlassError(
-                "permission denied: DM note writes must stay in workspace/, dm/intake/, "
-                "dm/notes/, dm/journal/, dm/secret/, shared/, or arcs/"
+                agent_instruction(
+                    "DM note writes must stay in DM or shared campaign surfaces",
+                    "Write under `workspace/`, `dm/intake/`, `dm/notes/`, `dm/journal/`, `dm/secret/`, `shared/`, or `arcs/`.",
+                    "Use `glass table write`, `glass lore new`, `glass lore promote`, or `glass scene end` when the intent belongs to those surfaces.",
+                )
             )
 
     return paths.campaigns / campaign_id / rel

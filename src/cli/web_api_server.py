@@ -19,7 +19,7 @@ from . import db
 from . import graph as graph_db
 from . import workspace as workspace_db
 from .config import get_paths, load_config
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 
 
 _server: ThreadingHTTPServer | None = None
@@ -938,7 +938,12 @@ def _cursor_from_rows(
 def _parse_created_id_cursor(cursor: str) -> tuple[str, str]:
     parts = cursor.split(_CURSOR_SEPARATOR, 1)
     if len(parts) != 2 or not parts[0] or not parts[1]:
-        raise GlassError("invalid cursor")
+        raise GlassError(
+            agent_instruction(
+                "invalid cursor",
+                "Request the first page without a cursor, then use only cursors returned by the web API response.",
+            )
+        )
     return parts[0], parts[1]
 
 
@@ -1010,14 +1015,14 @@ def _graph_entity_types(g: Any, campaign_id: str) -> list[dict[str, Any]]:
 def _campaign_table_payload(campaign_root: Path) -> dict[str, Any]:
     table_dir = campaign_root / "table"
     payload: dict[str, Any] = {
-        "index": _optional_file_payload(table_dir / "index.md"),
         "scene": _optional_file_payload(table_dir / "scene.md"),
         "files": [],
     }
     if table_dir.exists():
         files = []
         for path in sorted(table_dir.rglob("*"), key=lambda item: item.as_posix()):
-            if path.name in {"index.md", "scene.md"}:
+            rel = path.relative_to(table_dir)
+            if rel in {Path("index.md"), Path("scene.md")}:
                 continue
             if _is_readable_campaign_file(campaign_root, path):
                 files.append({**_file_entry(campaign_root, path), "content": _read_text(path)})
@@ -1146,7 +1151,12 @@ def _file_entry_matches_section(entry: dict[str, Any], section: str) -> bool:
 def _file_content_payload(campaign_root: Path, raw_path: str) -> dict[str, Any]:
     path = _safe_campaign_path(campaign_root, raw_path)
     if not _is_readable_campaign_file(campaign_root, path):
-        raise GlassError(f"campaign file is not readable: {raw_path}")
+        raise GlassError(
+            agent_instruction(
+                f"campaign file is not readable: {raw_path}",
+                "Request a readable markdown/text file inside the campaign workspace.",
+            )
+        )
     entry = _file_entry(campaign_root, path)
     return {
         **entry,
@@ -1157,13 +1167,23 @@ def _file_content_payload(campaign_root: Path, raw_path: str) -> dict[str, Any]:
 
 def _safe_campaign_path(campaign_root: Path, raw_path: str) -> Path:
     if not raw_path or raw_path.startswith(("/", "\\")):
-        raise GlassError("campaign file path must be relative")
+        raise GlassError(
+            agent_instruction(
+                "campaign file path must be relative",
+                "Use a path relative to the campaign root, such as `table/scene.md` or `shared/lore/<kind>/<slug>.md`.",
+            )
+        )
     root = campaign_root.resolve()
     path = (root / raw_path).resolve()
     try:
         path.relative_to(root)
     except ValueError as exc:
-        raise GlassError("campaign file path escapes campaign root") from exc
+        raise GlassError(
+            agent_instruction(
+                "campaign file path escapes campaign root",
+                "Use only campaign-relative paths; do not use `..` or absolute paths.",
+            )
+        ) from exc
     return path
 
 
@@ -1231,15 +1251,30 @@ def _read_text(path: Path) -> str:
 def _campaign_root(campaign_id: str) -> Path:
     campaign_root = get_paths().campaigns / campaign_id
     if not campaign_root.exists() or not campaign_root.is_dir():
-        raise GlassError(f"unknown campaign: {campaign_id}")
+        raise GlassError(
+            agent_instruction(
+                f"unknown campaign: {campaign_id}",
+                "Request an existing campaign id from the campaign list.",
+            )
+        )
     return campaign_root
 
 
 def _validate_campaign_id(campaign_id: str) -> str:
     if not campaign_id or "/" in campaign_id or "\\" in campaign_id:
-        raise GlassError("invalid campaign id")
+        raise GlassError(
+            agent_instruction(
+                "invalid campaign id",
+                "Use a bare campaign id without slashes.",
+            )
+        )
     if campaign_id in {".", ".."} or campaign_id.startswith("."):
-        raise GlassError("invalid campaign id")
+        raise GlassError(
+            agent_instruction(
+                "invalid campaign id",
+                "Use a visible campaign id; hidden dot paths are not valid campaign ids.",
+            )
+        )
     return campaign_id
 
 
@@ -1257,7 +1292,12 @@ def _query_int(
     try:
         value = int(raw)
     except ValueError as exc:
-        raise GlassError(f"invalid {name}: expected integer") from exc
+        raise GlassError(
+            agent_instruction(
+                f"invalid `{name}`: expected integer",
+                f"Pass `{name}` as a whole number.",
+            )
+        ) from exc
     return min(max(value, minimum), maximum)
 
 
@@ -1274,7 +1314,12 @@ def _query_int_or_none(
     try:
         value = int(raw)
     except ValueError as exc:
-        raise GlassError(f"invalid {name}: expected integer") from exc
+        raise GlassError(
+            agent_instruction(
+                f"invalid `{name}`: expected integer",
+                f"Pass `{name}` as a whole number.",
+            )
+        ) from exc
     return min(max(value, minimum), maximum)
 
 

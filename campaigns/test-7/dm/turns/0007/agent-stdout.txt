@@ -1,8 +1,0 @@
-Turn 7 complete.
-
-- Drained 9 unread messages (4 player table-talk announcements, 3 player→DM secrets, 2 kit→player banter setting up Bren's relationships early).
-- Read all four PC intros and character mirrors; mechanically valid across the board (attributes 2/1/1/3, skills 1/2/2, HP, inventory, signature moves).
-- Read all three player→DM secrets and acknowledged each via `glass msg secret` — no revisions requested; renno's line-cross check is answered.
-- Round 1 closed. Kit's already-authored relationships file is grandfathered in. Round 2 (relationships) is open for sumi/renno/tev, with Drova flagged as the unconnected PC.
-- Public turn prose at `dm/turns/0007/out.md`. DM scratchpad updated at `dm/scratchpad.md` with the accidental connections I'm holding (Drova ↔ Veth; the previous drop-pilot's empty month; the Wednesday/Tuesday Shear signature; Mernhab diagnostic; Bren's elven-marked fragment).
-- `table/index.md` and `table/scene.md` updated to reflect character-creation mode with Round 2 open. Mode stays open — I'll close it after Round 2.

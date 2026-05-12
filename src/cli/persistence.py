@@ -18,7 +18,7 @@ from . import embeddings as _embeddings
 from .campaign import pg_connection
 from .config import Paths, load_config
 from .entities import markdown_title, parse_frontmatter, upsert_entity_from_path
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 from .ids import slugify
 from .paths_resolve import display_path
 
@@ -100,8 +100,11 @@ class CampaignPersistence:
     def _index_markdown(self, path: Path, text: str) -> dict[str, Any]:
         if not _db.postgres_configured(load_config()):
             raise GlassError(
-                "Postgres search index is required. Configure [postgres] in "
-                "agents-of-glass.toml or set libpq environment variables."
+                agent_instruction(
+                    "Postgres search index is required",
+                    "Configure `[postgres]` in `agents-of-glass.toml` or set libpq environment variables.",
+                    "Then run `glass db migrate` before syncing durable markdown.",
+                )
             )
         try:
             rel = path.resolve().relative_to(self.campaign_root.resolve())

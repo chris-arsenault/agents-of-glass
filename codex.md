@@ -56,7 +56,7 @@ sudo bash scripts/provision-agents.sh
 
 ## Security model
 
-Spawned agents run as dedicated Unix users: `aog-mara` for the DM and `aog-<player>` for players. The orchestrator/operator remains the operator user. The canonical `campaigns/` tree stays operator-owned; filesystem isolation is enforced by actor-owned per-turn projections under `.glass-cwd/` plus the Glass API boundary. See [`docs/design/architecture.md`](docs/design/architecture.md#process-isolation). Without provisioning, the orchestrator falls through to running agents as the operator for dev/CI only.
+Spawned agents run as dedicated Unix users: `aog-mara` for the DM and `aog-<player>` for players. The orchestrator/operator remains the operator user. The canonical `campaigns/` tree stays operator-owned; filesystem isolation is enforced by actor-owned stable projections under `.glass-cwd/` plus the Glass API boundary. See [`docs/design/architecture.md`](docs/design/architecture.md#process-isolation). Without provisioning, the orchestrator falls through to running agents as the operator for dev/CI only.
 
 ## Key reading order for new agents
 

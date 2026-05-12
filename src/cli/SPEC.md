@@ -20,7 +20,9 @@ This is a **spec, not an implementation**. We fill in details as we build. Align
 The DM scaffolds arcs and scenes through the CLI; the CLI creates the directory and stub files. The DM then writes content into the scaffolded files.
 
 ```
-glass arc create <slug>                        # creates arcs/<slug>/ with plan.md, context.md, scenes/
+glass campaign pull-note --source <text> --used-in <surface> --note <text>
+glass arc create <slug> --pull-source <text> --pull-utilization <text>
+                                               # creates arcs/<slug>/ with plan.md, context.md, pulls.md, scenes/
 glass arc activate <slug>                      # set active_arc for future scene creation
 glass arc current                              # which arc is active
 glass arc list
@@ -35,10 +37,12 @@ glass scene current
 glass scene list [--arc <slug>]
 glass scene end --outcome <text>               # archives table, ends the active scene
                                                # --outcome is repeatable, max 2 bullets
-glass table current                            # show live player-agent-visible table location/files
+glass table current                            # optional/debug: list live player-agent-visible table files
 glass table show [path]                        # read player-agent-visible table file/dir
 glass table write <path> --body <md>           # DM only; replace table file
 glass table append <path> --body <md>          # DM only; append table file
+glass table use <campaign-md> --as <path>      # DM only; copy visible lore onto table
+glass lore promote table/<path> --to <lore-md> # DM only; promote table artifact to lore
 glass table snapshot [--label <text>]          # DM only; archive table snapshot
 ```
 
@@ -82,7 +86,12 @@ fictional effect but does not create a mechanical object.
 ### Characters
 
 ```
-glass character new <id> --player <player-id>           # creates from interactive prose? TBD
+glass character new <id> --player <player-id> \
+  --primary-drive <drive> --positive-trait <text> \
+  --table-presence <text> --non-work-want <text> \
+  --opening-social-action <text> \
+  --life-prompt "<prompt>=<answer>" --life-prompt "<prompt>=<answer>" \
+  --pull-utilization <text>
 glass character get <id>
 glass character bulk-get <id>... [--all] [--no-signatures]
 glass character bulk-update --from update.json          # set fields, inventory, signatures, mirror, hp/momentum

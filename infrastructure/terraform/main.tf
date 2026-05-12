@@ -37,9 +37,8 @@ module "frontend" {
   site_directory = "${path.root}/../../frontend/dist"
 
   runtime_config = {
-    apiBaseUrl        = var.api_base_url
-    defaultCampaignId = var.default_campaign_id
-    pollIntervalMs    = var.poll_interval_ms
-    playerOrder       = var.player_order
+    apiBaseUrl     = var.api_base_url
+    pollIntervalMs = var.poll_interval_ms
+    playerOrder    = var.player_order
   }
 }

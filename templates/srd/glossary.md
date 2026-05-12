@@ -23,4 +23,10 @@ authority: rules
 - **risk level** — `controlled`, `standard`, `risky`, or `desperate`.
 - **signature move** — a recurring pressure-ready move, not a guaranteed power.
 - **skill** — free-form named specialty with a tier.
+- **skill declaration** — putting a skill on the sheet at any tier. Counts
+  against the declared-skill slot cap (`3 + level`).
+- **skill slot** — one of the `3 + level` slots a character can fill with
+  declared skills.
+- **skill xp** — per-skill use counter that auto-promotes the skill tier at
+  fixed thresholds (5/15/30).
 - **tier** — modifier ladder for attributes and skills.

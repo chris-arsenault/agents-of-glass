@@ -1,6 +1,7 @@
 ---
 name: Renno
 role: player
+narrative_style: interrogative-scout
 ---
 
 # Renno

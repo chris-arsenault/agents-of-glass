@@ -17,8 +17,12 @@ instructions have mechanical tool behavior.
   scene patterns, trackers, pressure, and outcome authority.
 - [`archetypes-and-tone.md`](archetypes-and-tone.md) — class-like archetype
   examples, organization role examples, and tone guidance.
-- [`constructive-secrets.md`](constructive-secrets.md) — hidden character
-  information that enriches rather than sabotages.
+- [`narration-craft-dm.md`](narration-craft-dm.md) — DM prose craft, named
+  slop attractors to refuse, commit/advance/resolve rules.
+- [`narration-craft-player.md`](narration-craft-player.md) — player prose
+  craft, named slop attractors to refuse, commit/advance/resolve rules.
+- [`party-organization.md`](party-organization.md) — org-first bootstrap
+  guidance, valid in-world crew examples, and ensemble shape checks.
 - [`scene-hooks.md`](scene-hooks.md) — hooks, strong starts, and player-facing
   invitations.
 - [`scene-play-reference.md`](scene-play-reference.md) — optional speaker

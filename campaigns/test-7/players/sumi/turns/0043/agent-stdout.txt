@@ -1,3 +1,0 @@
-The output file is written and the scene summary is appended. The `out.md` is not a durable sync surface (it's the turn output, not a player workspace document), which is expected — the orchestrator picks it up directly.
-
-Drova's closing beat is complete: she counted to thirty for the ink, closed the day-page, stood briefly with hands flat on the record, then took her hands back. Quiet, procedural, complete.

@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 import json
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -11,6 +12,8 @@ from orchestrator.config import AogConfig, CapsConfig, ClaudeConfig
 from orchestrator.main import main as aog_main
 from orchestrator.main import _consume_review_stop
 from orchestrator.main import _next_mode_after_no_active_mode
+from orchestrator.main import _validate_campaign_planning_complete
+from orchestrator.main import _validate_organization_bootstrap_complete
 from orchestrator.runner import (
     Orchestrator,
     TurnFailure,
@@ -23,14 +26,18 @@ from orchestrator.state import AGENTS_BY_ID, SessionState, speaker_order_for
 from orchestrator.store import SessionStore
 
 
-def make_config(root: Path) -> AogConfig:
+def make_config(root: Path, *, use_session_id: bool = False) -> AogConfig:
     return AogConfig(
         repo_root=root,
         config_path=None,
         templates_dir=root / "templates",
         campaigns_dir=root / "campaigns",
         lore_path=root / "lore",
-        claude=ClaudeConfig(model=None, turn_timeout_seconds=60),
+        claude=ClaudeConfig(
+            model=None,
+            turn_timeout_seconds=60,
+            use_session_id=use_session_id,
+        ),
         caps=CapsConfig(
             session_max_turns=200,
             mode_default_max_turns=12,
@@ -75,7 +82,7 @@ class OrchestratorQueueTests(unittest.TestCase):
             patch.object(permissions, "_run_helper") as run_helper,
         ):
             root = Path(tmp)
-            projection = root / ".glass-cwd" / "c1" / "0001-dm"
+            projection = root / ".glass-cwd" / "c1" / "dm"
             projection.mkdir(parents=True)
 
             self.assertTrue(
@@ -101,8 +108,104 @@ class OrchestratorQueueTests(unittest.TestCase):
         result = CliRunner().invoke(aog_main, ["campaign", "run", "--help"])
 
         self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("--max-organization-turns", result.output)
         self.assertIn("--skip-stops", result.output)
         self.assertIn("--no-review-stops", result.output)
+        self.assertIn("--use-session-id", result.output)
+        self.assertIn("--no-use-session-id", result.output)
+
+    def test_campaign_run_defaults_prelude_cap_to_120(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "templates").mkdir()
+            (root / "campaigns").mkdir()
+            config_path = root / "agents-of-glass.toml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "[paths]",
+                        'templates = "templates"',
+                        'campaigns = "campaigns"',
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            seen: list[int] = []
+
+            def fake_lifecycle(cli, *_args, **kwargs):
+                seen.append(int(kwargs["max_prelude_turns"]))
+
+            with patch(
+                "orchestrator.main._run_campaign_lifecycle",
+                side_effect=fake_lifecycle,
+            ):
+                result = CliRunner().invoke(
+                    aog_main,
+                    [
+                        "--config",
+                        str(config_path),
+                        "campaign",
+                        "run",
+                        "c1",
+                        "--dry-run",
+                    ],
+                )
+
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertEqual(seen, [120])
+
+    def test_campaign_run_session_id_flags_override_toml(self) -> None:
+        for toml_enabled, option, expected in (
+            (False, "--use-session-id", True),
+            (True, "--no-use-session-id", False),
+            (True, None, True),
+        ):
+            with (
+                self.subTest(option=option, toml_enabled=toml_enabled),
+                tempfile.TemporaryDirectory() as tmp,
+            ):
+                root = Path(tmp)
+                (root / "templates").mkdir()
+                (root / "campaigns").mkdir()
+                config_path = root / "agents-of-glass.toml"
+                config_path.write_text(
+                    "\n".join(
+                        [
+                            "[paths]",
+                            'templates = "templates"',
+                            'campaigns = "campaigns"',
+                            "",
+                            "[claude]",
+                            f"use_session_id = {str(toml_enabled).lower()}",
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                args = [
+                    "--config",
+                    str(config_path),
+                    "campaign",
+                    "run",
+                    "c1",
+                    "--dry-run",
+                ]
+                if option:
+                    args.append(option)
+                seen: list[bool] = []
+
+                def fake_lifecycle(cli, *_args, **_kwargs):
+                    seen.append(cli.config.claude.use_session_id)
+
+                with patch(
+                    "orchestrator.main._run_campaign_lifecycle",
+                    side_effect=fake_lifecycle,
+                ):
+                    result = CliRunner().invoke(aog_main, args)
+
+                self.assertEqual(result.exit_code, 0, result.output)
+                self.assertEqual(seen, [expected])
 
     def test_web_stack_commands_are_exposed(self) -> None:
         result = CliRunner().invoke(aog_main, ["web", "--help"])
@@ -114,6 +217,9 @@ class OrchestratorQueueTests(unittest.TestCase):
 
     def test_prelude_coordinator_mode_is_dm_only(self) -> None:
         self.assertEqual(speaker_order_for("prelude"), ("dm",))
+
+    def test_organization_bootstrap_mode_is_dm_only(self) -> None:
+        self.assertEqual(speaker_order_for("organization-bootstrap"), ("dm",))
 
     def test_scene_prep_coordinator_mode_is_dm_only(self) -> None:
         self.assertEqual(speaker_order_for("scene-prep"), ("dm",))
@@ -229,15 +335,17 @@ class OrchestratorQueueTests(unittest.TestCase):
 
             package = orchestrator.prepare_turn(state)
 
-            self.assertEqual(package.spawn_cwd, root / ".glass-cwd" / "c1" / "0001-tev")
+            self.assertEqual(package.spawn_cwd, root / ".glass-cwd" / "c1" / "tev")
             self.assertEqual(
                 package.agent_turn_start_path,
-                package.spawn_cwd / "players" / "tev" / "turns" / "0001" / "TURN_START.md",
+                package.spawn_cwd / "turns" / "TURN_START.md",
             )
             self.assertEqual(
                 package.agent_turn_closeout_path,
-                package.spawn_cwd / "players" / "tev" / "turns" / "0001" / "turn-closeout.json",
+                package.spawn_cwd / "turns" / "turn-closeout.json",
             )
+            self.assertEqual(package.agent_turn_dir, package.spawn_cwd / "turns")
+            self.assertFalse((package.spawn_cwd / "players" / "tev" / "turns").exists())
             self.assertTrue((package.spawn_cwd / "table" / "scene.md").exists())
             self.assertTrue(
                 (package.spawn_cwd / "players" / "tev" / "secrets" / "debt.md").exists()
@@ -288,6 +396,205 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertIn("glass turn end", turn_start)
             self.assertIn("methodologies/scene-play-player.md", turn_start)
             _assert_actor_workspace_ready(package, target_user=None)
+
+    def test_prepare_turn_uses_stable_actor_projection_cwd_across_turns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "tev"})
+
+            first = orchestrator.prepare_turn(state)
+            state.turn_number = 4
+            second = orchestrator.prepare_turn(state)
+
+            expected = root / ".glass-cwd" / "c1" / "tev"
+            self.assertEqual(first.spawn_cwd, expected)
+            self.assertEqual(second.spawn_cwd, expected)
+            self.assertEqual(
+                second.agent_turn_start_path,
+                expected / "turns" / "TURN_START.md",
+            )
+
+    def test_claude_session_ids_are_tracked_but_flag_controls_cli_arg(self) -> None:
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                config = make_config(root, use_session_id=enabled)
+                campaign_root = config.campaigns_dir / "c1"
+                campaign_root.mkdir(parents=True)
+                state = SessionState.new(
+                    campaign="c1",
+                    initial_mode="scene-play",
+                    initial_scene="opening",
+                    initial_budget=None,
+                )
+                orchestrator = Orchestrator(config, SessionStore(config))
+                orchestrator.store.save = Mock()
+                attach_runtime_mocks(orchestrator, next_speaker={"agent": "tev"})
+                package = orchestrator.prepare_turn(state)
+                current_package = package
+                turn_start = package.turn_start_path.read_text(encoding="utf-8")
+                if enabled:
+                    self.assertIn("## Persistent Claude Session", turn_start)
+                    self.assertIn(
+                        "Before acting, inspect the current workspace and turn "
+                        "context instead of relying on remembered conversation state.",
+                        turn_start,
+                    )
+                    self.assertIn("Required startup checks:", turn_start)
+                else:
+                    self.assertNotIn("## Persistent Claude Session", turn_start)
+                commands: list[list[str]] = []
+
+                def fake_stream(command, **_kwargs):
+                    commands.append(command)
+                    current_package.agent_turn_prose_path.write_text(
+                        "Public turn.\n",
+                        encoding="utf-8",
+                    )
+                    current_package.agent_turn_closeout_path.write_text(
+                        json.dumps(
+                            {
+                                "summary": "closed",
+                                "state": ["no state change"],
+                                "rolls": "none",
+                                "next": "default",
+                            }
+                        )
+                        + "\n",
+                        encoding="utf-8",
+                    )
+                    return "", "", 0, False
+
+                with (
+                    patch("orchestrator.runner.ensure_background_server", return_value="http://api"),
+                    patch("orchestrator.runner.mint_grant", return_value="grant"),
+                    patch("orchestrator.runner._stream_subprocess", side_effect=fake_stream),
+                ):
+                    orchestrator._invoke_agent(
+                        state,
+                        AGENTS_BY_ID["tev"],
+                        package,
+                        queued_entry=None,
+                        action_entry=None,
+                    )
+
+                session = state.claude_sessions["tev"]
+                self.assertIn("session_id", session)
+                self.assertEqual(session["cwd"], str(package.spawn_cwd))
+                self.assertEqual(session["last_session_id_flag_enabled"], enabled)
+                command = commands[0]
+                prompt = command[command.index("-p") + 1]
+                self.assertIn("Read turns/TURN_START.md", prompt)
+                self.assertIn("turns/TURN.md", prompt)
+                self.assertNotIn("players/tev/turns", prompt)
+                if enabled:
+                    self.assertIn("--session-id", command)
+                    self.assertEqual(
+                        command[command.index("--session-id") + 1],
+                        session["session_id"],
+                    )
+                    self.assertIn("session_materialized_at", session)
+
+                    state.turn_number = 1
+                    current_package = orchestrator.prepare_turn(state)
+                    with (
+                        patch("orchestrator.runner.ensure_background_server", return_value="http://api"),
+                        patch("orchestrator.runner.mint_grant", return_value="grant"),
+                        patch("orchestrator.runner._stream_subprocess", side_effect=fake_stream),
+                    ):
+                        orchestrator._invoke_agent(
+                            state,
+                            AGENTS_BY_ID["tev"],
+                            current_package,
+                            queued_entry=None,
+                            action_entry=None,
+                        )
+
+                    resumed = commands[1]
+                    self.assertIn("--resume", resumed)
+                    self.assertEqual(
+                        resumed[resumed.index("--resume") + 1],
+                        session["session_id"],
+                    )
+                    self.assertNotIn("--session-id", resumed)
+                else:
+                    self.assertNotIn("--session-id", command)
+                    self.assertNotIn("--resume", command)
+
+    def test_legacy_attached_claude_session_records_resume_by_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root, use_session_id=True)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            session_id = "11111111-2222-4333-8444-555555555555"
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+            state.claude_sessions["tev"] = {
+                "actor": "tev",
+                "role": "player",
+                "session_id": session_id,
+                "cwd": str(root / ".glass-cwd" / "c1" / "tev"),
+                "last_session_id_flag_enabled": True,
+                "last_returncode": 0,
+            }
+            orchestrator = Orchestrator(config, SessionStore(config))
+            orchestrator.store.save = Mock()
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "tev"})
+            package = orchestrator.prepare_turn(state)
+            commands: list[list[str]] = []
+
+            def fake_stream(command, **_kwargs):
+                commands.append(command)
+                package.agent_turn_prose_path.write_text(
+                    "Public turn.\n",
+                    encoding="utf-8",
+                )
+                package.agent_turn_closeout_path.write_text(
+                    json.dumps(
+                        {
+                            "summary": "closed",
+                            "state": ["no state change"],
+                            "rolls": "none",
+                            "next": "default",
+                        }
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return "", "", 0, False
+
+            with (
+                patch("orchestrator.runner.ensure_background_server", return_value="http://api"),
+                patch("orchestrator.runner.mint_grant", return_value="grant"),
+                patch("orchestrator.runner._stream_subprocess", side_effect=fake_stream),
+            ):
+                orchestrator._invoke_agent(
+                    state,
+                    AGENTS_BY_ID["tev"],
+                    package,
+                    queued_entry=None,
+                    action_entry=None,
+                )
+
+            command = commands[0]
+            self.assertIn("--resume", command)
+            self.assertEqual(command[command.index("--resume") + 1], session_id)
+            self.assertNotIn("--session-id", command)
 
     def test_prepare_turn_dm_projection_includes_dm_arc_prep(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -351,7 +658,10 @@ class OrchestratorQueueTests(unittest.TestCase):
             campaign_root = config.campaigns_dir / "c1"
             campaign_root.mkdir(parents=True)
             (campaign_root / "table").mkdir()
-            (campaign_root / "table" / "index.md").write_text("canonical old\n")
+            (campaign_root / "table" / "index.md").write_text("legacy index\n")
+            (campaign_root / "table" / "visible-artifact.md").write_text(
+                "canonical old\n"
+            )
             state = SessionState.new(
                 campaign="c1",
                 initial_mode="scene-play",
@@ -362,9 +672,11 @@ class OrchestratorQueueTests(unittest.TestCase):
             attach_runtime_mocks(orchestrator, next_speaker={"agent": "dm"})
             package = orchestrator.prepare_turn(state)
 
-            projected_table = package.spawn_cwd / "table" / "index.md"
+            projected_table = package.spawn_cwd / "table" / "visible-artifact.md"
             projected_table.write_text("local projected edit\n")
-            (campaign_root / "table" / "index.md").write_text("canonical new\n")
+            (campaign_root / "table" / "visible-artifact.md").write_text(
+                "canonical new\n"
+            )
 
             refresh_projection_from_canonical(
                 config=config,
@@ -375,6 +687,7 @@ class OrchestratorQueueTests(unittest.TestCase):
             )
 
             self.assertEqual(projected_table.read_text(), "local projected edit\n")
+            self.assertFalse((package.spawn_cwd / "table" / "index.md").exists())
 
     def test_character_creation_turn_omits_recent_turn_excerpts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -398,9 +711,90 @@ class OrchestratorQueueTests(unittest.TestCase):
             package = orchestrator.prepare_turn(state)
 
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
-            self.assertIn("Prior character-creation turns are intentionally not embedded", turn_start)
+            self.assertIn(
+                "Prior character-creation turns are intentionally not embedded",
+                turn_start,
+            )
             self.assertIn("character-design turns", turn_start)
             self.assertNotIn("Sumi builds directly around Tev's hook", turn_start)
+            self.assertIn(
+                "Turn type: **character-creation-player-build**",
+                turn_start,
+            )
+            self.assertIn("--table-presence", turn_start)
+            self.assertIn("--non-work-want", turn_start)
+            self.assertIn("--opening-social-action", turn_start)
+            self.assertNotIn("players/tev/secrets", turn_start)
+            self.assertNotIn("glass msg secret dm", turn_start)
+
+    def test_character_creation_turn_type_follows_authored_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            for player_id in ("kit", "renno", "sumi", "tev"):
+                public = campaign_root / "players" / player_id / "public"
+                public.mkdir(parents=True)
+                (public / "intro.md").write_text("intro\n", encoding="utf-8")
+                (public / "character.md").write_text("character\n", encoding="utf-8")
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="character-creation",
+                initial_scene="character-creation",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "dm"})
+
+            package = orchestrator.prepare_turn(state)
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+
+            self.assertIn(
+                "Turn type: **character-creation-dm-relationship-setup**",
+                turn_start,
+            )
+            self.assertIn(
+                "methodologies/character-creation-dm-relationship-setup.md",
+                turn_start,
+            )
+
+            orchestrator._peek_next_speaker_entry_from_postgres.return_value = {
+                "agent": "tev"
+            }
+            package = orchestrator.prepare_turn(state)
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+
+            self.assertIn(
+                "Turn type: **character-creation-player-relationship**",
+                turn_start,
+            )
+            self.assertIn(
+                "methodologies/character-creation-player-relationship.md",
+                turn_start,
+            )
+
+            for player_id in ("kit", "renno", "sumi", "tev"):
+                (
+                    campaign_root
+                    / "players"
+                    / player_id
+                    / "public"
+                    / "relationships.md"
+                ).write_text("relationship\n", encoding="utf-8")
+            orchestrator._peek_next_speaker_entry_from_postgres.return_value = {
+                "agent": "dm"
+            }
+            package = orchestrator.prepare_turn(state)
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+
+            self.assertIn(
+                "Turn type: **character-creation-dm-ratification**",
+                turn_start,
+            )
+            self.assertIn(
+                "methodologies/character-creation-dm-ratification.md",
+                turn_start,
+            )
 
     def test_scene_play_turn_uses_scene_summary_not_recent_turn_prose(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -566,8 +960,8 @@ class OrchestratorQueueTests(unittest.TestCase):
             campaign_root.mkdir(parents=True)
             state = SessionState.new(
                 campaign="c1",
-                initial_mode="campaign-planning",
-                initial_scene="planning",
+                initial_mode="organization-bootstrap",
+                initial_scene="organization-bootstrap",
                 initial_budget=None,
             )
             orchestrator = Orchestrator(config, SessionStore(config))
@@ -576,8 +970,67 @@ class OrchestratorQueueTests(unittest.TestCase):
             package = orchestrator.prepare_turn(state)
 
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("Turn type: **organization-bootstrap**", turn_start)
+            self.assertIn("methodologies/organization-bootstrap.md", turn_start)
             self.assertNotIn("## Creative Influence", turn_start)
             self.assertNotIn("Verse phrase:", turn_start)
+
+    def test_organization_bootstrap_validation_accepts_org_only_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            (campaign_root / "shared" / "lore").mkdir(parents=True)
+            (campaign_root / "dm" / "notes").mkdir(parents=True)
+            (campaign_root / "table").mkdir(parents=True)
+            (campaign_root / "shared" / "lore" / "organization.md").write_text(
+                "org public\n",
+                encoding="utf-8",
+            )
+            (campaign_root / "dm" / "notes" / "organization.md").write_text(
+                "org private\n",
+                encoding="utf-8",
+            )
+            (campaign_root / "table" / "scene.md").write_text(
+                "character creation brief\n",
+                encoding="utf-8",
+            )
+
+            with (
+                patch("cli.config.load_config", return_value={}),
+                patch("cli.db.load_pg_config", return_value=object()),
+                patch("cli.db.clock_list", return_value=[]),
+                patch("cli.db.connect") as connect,
+            ):
+                connect.return_value.__enter__.return_value = object()
+                _validate_organization_bootstrap_complete(
+                    SimpleNamespace(config=config),
+                    "c1",
+                )
+
+    def test_campaign_planning_validation_requires_main_arc_and_prelude(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            (campaign_root / "dm").mkdir(parents=True)
+            (campaign_root / "shared").mkdir(parents=True)
+            (campaign_root / "arcs" / "opening").mkdir(parents=True)
+            (campaign_root / "arcs" / "prelude").mkdir(parents=True)
+            (campaign_root / "dm" / "foundation.md").write_text(
+                "foundation\n",
+                encoding="utf-8",
+            )
+            (campaign_root / "context.md").write_text("context\n", encoding="utf-8")
+            (campaign_root / "shared" / "campaign-framing.md").write_text(
+                "framing\n",
+                encoding="utf-8",
+            )
+
+            _validate_campaign_planning_complete(
+                SimpleNamespace(config=config),
+                "c1",
+            )
 
     def test_creative_influence_omitted_during_prelude_coordinator(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

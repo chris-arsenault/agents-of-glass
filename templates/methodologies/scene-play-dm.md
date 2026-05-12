@@ -15,18 +15,24 @@ and maintains durable state. This sequence is binding for every full DM turn.
    summaries in TURN_START, public clocks/trackers, and any DM notes or lore
    directly implicated by the live scene question.
 3. Resolve pending player needs fairly. Answer clarifications through messages
-   when the answer is private or directed. Roll DM-side PC checks yourself when
-   the rules allow it; do not spend a handoff only to move dice.
+   when the answer is private or directed. When the DM is resolving uncertain
+   consequential opposition, hazard, NPC, or DM-side PC action, use `glass roll`
+   or `glass scene pressure` when the rules fit; do not spend a handoff only to
+   move dice.
 4. Move the scene. Put a decision, consequence, NPC action, clock tick, offer,
    threat, reveal, or narrowed option into play. A DM turn cannot be only recap
    or atmosphere.
 5. Persist changed state before prose. Use the hard-state command that owns the
-   change: `glass table write/append` for visible short-term state, `glass
-   scene tracker` or `glass scene pressure` for scene math, `glass clock` for
-   cross-scene pressure, `glass character` for PC state, `glass quest beat` for
-   story-shifting public beats, and `glass lore`/`glass entity`/`glass note` for
-   durable canon, hooks, NPCs, factions, or locations. Commit authored markdown
-   with `glass sync apply`.
+   change: `glass table write/append scene.md` for the visible situation;
+   `glass table write/append <meaningful-slug>.md` for any reusable visible
+   lore artifact; `glass table use` when existing durable lore is now on screen;
+   `glass lore promote` or `glass lore upsert` when table artifacts become
+   durable canon; `glass scene tracker` or `glass scene pressure` for scene
+   math; `glass clock` for cross-scene pressure; `glass character` for PC
+   state; `glass quest beat` for story-shifting public beats; and
+   `glass entity`/`glass note` for graph or note state. When a portable asset
+   could matter later, offer it concretely and persist it if taken. Commit
+   authored markdown with `glass sync apply`.
 6. Keep the scene honest. Advance the live tension or narrow the board; do not
    add a new problem solely to keep the current frame alive.
 7. Write public turn prose to the `TURN.md` path from TURN_START. Show what
@@ -51,8 +57,13 @@ players to the same immediate stimulus.
 
 ## Done
 
-Your turn is done only when visible table state is current if it changed,
-durable lore/notes/hooks/beats are updated when they changed, public prose
-exists, and `glass turn end` succeeds.
+Your turn is done only when visible table artifacts are current if they
+changed, durable lore/notes/hooks/beats are updated when they changed, public
+prose exists, and `glass turn end` succeeds.
 
 Optional reference: [`how-to/scene-play-reference.md`](../how-to/scene-play-reference.md).
+
+Narration craft (read before writing public prose):
+[`how-to/narration-craft-dm.md`](../how-to/narration-craft-dm.md). The
+methodology drives the scene; the craft doc covers the slop attractors
+the methodology does not. Commit, advance, resolve.

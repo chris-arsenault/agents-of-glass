@@ -34,12 +34,6 @@ variable "api_base_url" {
   default     = "http://127.0.0.1:8765"
 }
 
-variable "default_campaign_id" {
-  description = "Campaign selected on initial page load."
-  type        = string
-  default     = "test-7"
-}
-
 variable "poll_interval_ms" {
   description = "Dashboard polling interval in milliseconds."
   type        = number

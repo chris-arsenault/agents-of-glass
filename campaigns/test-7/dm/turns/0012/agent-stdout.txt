@@ -1,9 +1,0 @@
-Round 2 closed and the character-creation mode is ended. Public turn prose is at `dm/turns/0012/out.md`.
-
-Summary of what I did:
-- Drained the message bus (11 messages — all three player↔player banter exchanges and my own prior turn 7 confirmations).
-- Read all four `players/*/public/relationships.md` files. Verified done criteria: every PC has 1-2 outbound relationships, every PC is pointed at by at least one other PC, no orphans, specifics line up across paired seeds (tev↔kit seed 2, tev↔sumi seed 7, sumi↔renno seed 11, renno↔tev seed 14).
-- Wrote the public turn prose in Mara's voice: per-relationship reflection, what's now canon, what I'm explicitly holding back (Tuesday filing signature, Veth Karran question, Mernhab diagnostic existence, previous drop-pilot identity, elven fragment).
-- Updated `table/index.md` and `table/scene.md` to reflect mode close and the pending prelude-arc transition.
-- Updated `dm/scratchpad.md` with Round 2 closure notes — the relationship web, the texture decisions both PCs went to without prompting, what's still mine, NPC stubs needed before prelude-arc opens — and committed via `glass sync apply`.
-- Ran `glass mode end` to close character-creation. Campaign is between phases; next DM turn opens prelude-arc.

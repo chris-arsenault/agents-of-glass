@@ -1,3 +1,0 @@
-Turn output files are collected automatically — no sync needed. The output is written to `players/kit/turns/0065/out.md`.
-
-Kit's turn covers three concrete requests: the previous drop-pilot (that missing refusal log entry — Bren finding the shape of the gap through rigging or parts discrepancies), the Halfsign's actual damage (Bren knowing the official cause is wrong and quietly sitting on it), and a beat when the Splitfork returns and she finds out if her corridor held. Plus a tone request: one moment where she does something technically wrong by the manifest and gets away with it.

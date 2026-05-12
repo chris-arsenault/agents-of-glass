@@ -145,8 +145,8 @@ campaigns/<id>/                     # per-campaign runtime root
   context.md                        # PLAYER-FACING campaign-level context
   summary.md                        # running campaign continuity summary
   table/                            # player-agent-visible short-term state, reset per scene
-    index.md                        # at-a-glance board
-    scene.md                        # scene kickoff description
+    scene.md                        # current visible situation
+    <meaningful-slug>.md            # named visible table artifacts
     handouts/                       # in-game handouts
   dm/                               # copy of templates/dm/, mutates during play
     persona.md, journal/, notes/, secret/, intake/, workspace/

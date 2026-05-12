@@ -21,7 +21,6 @@ function defaultApiBaseUrl(): string {
 
 const defaults: AppConfig = {
   apiBaseUrl: defaultApiBaseUrl(),
-  defaultCampaignId: import.meta.env.VITE_DEFAULT_CAMPAIGN_ID || "test-7",
   pollIntervalMs: Number(import.meta.env.VITE_POLL_INTERVAL_MS || 120000),
   playerOrder: envPlayerOrder?.length
     ? envPlayerOrder
@@ -31,8 +30,8 @@ const defaults: AppConfig = {
 export function getConfig(): AppConfig {
   const runtime = window.__APP_CONFIG__ ?? {};
   return {
-    ...defaults,
-    ...runtime,
+    apiBaseUrl: runtime.apiBaseUrl ?? defaults.apiBaseUrl,
+    pollIntervalMs: runtime.pollIntervalMs ?? defaults.pollIntervalMs,
     playerOrder: runtime.playerOrder ?? defaults.playerOrder,
   };
 }

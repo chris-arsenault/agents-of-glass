@@ -36,7 +36,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -154,7 +154,10 @@ def note_propose(ctx: click.Context, path_text: str) -> None:
             for root in candidates
         ):
             raise GlassError(
-                "permission denied: players can propose only their own drafts/"
+                agent_instruction(
+                    "players can propose only their own drafts",
+                    f"Write the draft under `players/{role.actor}/drafts/`, then run `glass note propose <that-path>`.",
+                )
             )
         player_id = role.actor
     else:
@@ -168,10 +171,18 @@ def note_propose(ctx: click.Context, path_text: str) -> None:
                 pass
         if not player_id:
             raise GlassError(
-                "operator note propose needs a path under players/<id>/drafts/"
+                agent_instruction(
+                    "operator note propose needs a player draft path",
+                    "Use a path under `players/<id>/drafts/` so Glass knows which player authored the proposal.",
+                )
             )
     if not source.exists():
-        raise GlassError(f"draft not found: {display_path(source)}")
+        raise GlassError(
+            agent_instruction(
+                f"draft does not exist: {display_path(source)}",
+                "Create the draft markdown file first, then run `glass note propose <path>`.",
+            )
+        )
     intake_id = new_id("intake")
     destination_name = f"{intake_id}--{player_id}--{source.name}"
     destination = workspace_root / "dm" / "intake" / destination_name
@@ -204,7 +215,13 @@ def require_intake(state: dict[str, Any], intake_id: str) -> dict[str, Any]:
         if item["intake_id"] == intake_id:
             return item
     pending = ", ".join(item["intake_id"] for item in state.get("note_intake", [])) or "none"
-    raise GlassError(f"unknown intake id {intake_id!r}; known intake ids: {pending}")
+    raise GlassError(
+        agent_instruction(
+            f"unknown intake id {intake_id!r}",
+            f"Use one of the known intake ids: {pending}.",
+            "Read the campaign intake list before ratifying or rejecting a note.",
+        )
+    )
 
 
 @note.command("ratify")
@@ -231,7 +248,12 @@ def note_ratify(
     state = load_state(paths, campaign_id)
     item = require_intake(state, intake_id)
     if item["status"] != "pending":
-        raise GlassError(f"intake {intake_id} is already {item['status']}")
+        raise GlassError(
+            agent_instruction(
+                f"intake {intake_id} is already {item['status']}",
+                "Do not ratify it again; choose a pending intake id.",
+            )
+        )
     source = REPO_ROOT / item["intake_path"]
     workspace_root = active_campaign_root()
     lore_root = workspace_root / "shared" / "lore"
@@ -279,7 +301,12 @@ def note_reject(ctx: click.Context, intake_id: str, reason: str) -> None:
     state = load_state(paths, campaign_id)
     item = require_intake(state, intake_id)
     if item["status"] != "pending":
-        raise GlassError(f"intake {intake_id} is already {item['status']}")
+        raise GlassError(
+            agent_instruction(
+                f"intake {intake_id} is already {item['status']}",
+                "Do not reject it again; choose a pending intake id.",
+            )
+        )
     item["status"] = "rejected"
     item["resolved_at"] = now_iso()
     item["reason"] = reason

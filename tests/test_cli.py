@@ -13,6 +13,7 @@ from cli.commands.character import (
     _inventory_add,
     _normalize_bulk_update_payload,
     _normalize_goals,
+    _normalize_life_prompt_answers,
     _render_public_character_mirror,
     _signature_move_names,
     _signature_move_slots,
@@ -127,6 +128,22 @@ def create_test_character(
             "Get Mara safe passage.",
             "--goal",
             "Pay down the route debt.",
+            "--primary-drive",
+            "care/protection" if character_id == "vel" else "curiosity",
+            "--positive-trait",
+            "Laughs at bad dock jokes and keeps a scorecard of the worst ones.",
+            "--table-presence",
+            "Starts a terrible joke scoreboard on the galley wall and invites edits.",
+            "--non-work-want",
+            "Wants to host a real birthday dinner where nobody talks about routes.",
+            "--opening-social-action",
+            "Hands Mara the first coffee and asks which joke gets retired tonight.",
+            "--life-prompt",
+            "what they do when praised=They redirect credit to the nearest apprentice and pour coffee.",
+            "--life-prompt",
+            "what they collect=They keep bent route tags sorted by harbor color.",
+            "--pull-utilization",
+            "Source: municipal ferry dispatch boards; used in route skills and tag-sorting habit.",
             "--skill",
             "spar reading=artisan",
             "--skill",
@@ -136,6 +153,18 @@ def create_test_character(
         ],
         {**env, "GLASS_ROLE": f"player:{player}"},
     )
+
+
+def arc_create_args(arc_id: str) -> list[str]:
+    return [
+        "arc",
+        "create",
+        arc_id,
+        "--pull-source",
+        "municipal elevator inspection logs",
+        "--pull-utilization",
+        "Inspection delay codes shape the first clock, gatehouse node, and permit clue.",
+    ]
 
 
 class GlassCliTests(unittest.TestCase):
@@ -148,6 +177,18 @@ class GlassCliTests(unittest.TestCase):
             _normalize_goals(("Only one.",))
         with self.assertRaises(GlassError):
             _normalize_goals(("one", "two", "three", "four"))
+
+    def test_character_life_prompt_validation_requires_two_or_three_answers(self) -> None:
+        answers = _normalize_life_prompt_answers(
+            (
+                "what they do when bored=They polish bent washers into counting tokens.",
+                "what they do after a win=They buy breakfast for whoever stayed late.",
+            )
+        )
+
+        self.assertEqual(answers[0]["prompt"], "what they do when bored")
+        with self.assertRaises(GlassError):
+            _normalize_life_prompt_answers(("what they do when bored=They pace.",))
 
     def test_starting_skill_budget_requires_two_apprentice_one_artisan(self) -> None:
         _validate_starting_skill_budget(
@@ -188,6 +229,24 @@ class GlassCliTests(unittest.TestCase):
                 "pronouns": "",
                 "bio": "Keeps doors open for people who cannot be seen asking.",
                 "goals": ["Get Mara safe passage.", "Pay down the route debt."],
+                "primary_drive": "care/protection",
+                "positive_trait": "Laughs at bad dock jokes and keeps a scorecard.",
+                "table_presence": "Runs the galley joke scoreboard between jobs.",
+                "non_work_want": "Wants a birthday dinner where nobody discusses routes.",
+                "opening_social_action": "Hands Mara coffee and asks which joke gets retired.",
+                "life_prompt_answers": [
+                    {
+                        "prompt": "what they do when praised",
+                        "answer": "They redirect credit to the nearest apprentice.",
+                    },
+                    {
+                        "prompt": "what they collect",
+                        "answer": "They keep bent route tags sorted by harbor color.",
+                    },
+                ],
+                "pull_utilization_note": (
+                    "Source: municipal ferry dispatch boards; used in route skills."
+                ),
                 "attributes": {"vitality": "standard", "finesse": "advanced"},
                 "skills": {"quiet entry": "artisan"},
                 "inventory": [
@@ -210,6 +269,13 @@ class GlassCliTests(unittest.TestCase):
         self.assertIn("**Culture:** Sithari", body)
         self.assertIn("**Organization role:** witness handler", body)
         self.assertIn("**Pronouns:** unspecified", body)
+        self.assertIn("**Primary drive:** care/protection", body)
+        self.assertIn("**Positive trait:** Laughs at bad dock jokes", body)
+        self.assertIn("**Table presence:** Runs the galley joke scoreboard", body)
+        self.assertIn("**Non-work want:** Wants a birthday dinner", body)
+        self.assertIn("**Opening social action:** Hands Mara coffee", body)
+        self.assertIn("## Life Prompt Answers", body)
+        self.assertIn("## Non-Adjacent Pull Utilization", body)
         self.assertIn("- Get Mara safe passage.", body)
         self.assertIn("forged-route-seal", body)
 
@@ -220,6 +286,12 @@ class GlassCliTests(unittest.TestCase):
         self.assertEqual(_signature_move_slots(5), 3)
         self.assertEqual(_signature_move_slots(9), 5)
         self.assertEqual(_signature_move_slots(10), 5)
+
+    def test_skill_slot_cap_grows_with_level(self) -> None:
+        self.assertEqual(_db.skill_slot_cap(1), 4)
+        self.assertEqual(_db.skill_slot_cap(2), 5)
+        self.assertEqual(_db.skill_slot_cap(5), 8)
+        self.assertEqual(_db.skill_slot_cap(10), 13)
 
     def test_signature_move_parser_ignores_template_placeholder(self) -> None:
         body = """
@@ -335,6 +407,24 @@ class GlassCliTests(unittest.TestCase):
             self.assertIn("character_id: vel", result.output)
             self.assertIn("character_id: drova", result.output)
 
+            duplicate_drive = runner.invoke(
+                main,
+                [
+                    "character",
+                    "bulk-update",
+                    "--json",
+                    json.dumps(
+                        {
+                            "character_id": "drova",
+                            "set": {"primary_drive": "care/protection"},
+                        }
+                    ),
+                ],
+                env={**env, "GLASS_ROLE": "player:sumi"},
+            )
+            self.assertNotEqual(duplicate_drive.exit_code, 0)
+            self.assertIn("primary drive already claimed", duplicate_drive.output)
+
     def test_character_mutations_refresh_public_mirror(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -440,6 +530,50 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(state["mode_stack"][-1]["mode"], "scene-play")
 
             ended = invoke_ok(runner, ["mode", "end"], {**env, "GLASS_ROLE": "dm"})
+            self.assertIn("ended:", ended.output)
+
+    def test_character_creation_mode_end_requires_relationship_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            campaign_root = tmp_path / "campaigns" / "c1"
+            for player_id in ("kit", "renno", "sumi", "tev"):
+                (campaign_root / "players" / player_id / "public").mkdir(
+                    parents=True
+                )
+
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(
+                runner,
+                ["mode", "start", "character-creation", "character-creation"],
+                dm_env,
+            )
+
+            blocked = runner.invoke(main, ["mode", "end"], env=dm_env)
+
+            self.assertNotEqual(blocked.exit_code, 0)
+            self.assertIn("relationship round is incomplete", blocked.output)
+            self.assertIn(
+                "kit: missing players/kit/public/relationships.md",
+                blocked.output,
+            )
+            self.assertEqual(
+                runtime_state(env)["mode_stack"][-1]["mode"],
+                "character-creation",
+            )
+
+            for player_id in ("kit", "renno", "sumi", "tev"):
+                (
+                    campaign_root
+                    / "players"
+                    / player_id
+                    / "public"
+                    / "relationships.md"
+                ).write_text(f"# {player_id} relationships\n", encoding="utf-8")
+
+            ended = invoke_ok(runner, ["mode", "end"], dm_env)
             self.assertIn("ended:", ended.output)
 
     def test_player_note_write_targets_campaign_not_templates(self) -> None:
@@ -558,7 +692,7 @@ Recipients are `dm`, `party`, or a player id.
             env = make_env(tmp_path)
             dm_env = {**env, "GLASS_ROLE": "dm"}
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
-            invoke_ok(runner, ["arc", "create", "opening"], dm_env)
+            invoke_ok(runner, arc_create_args("opening"), dm_env)
             with runner.isolated_filesystem(temp_dir=tmp_path):
                 (Path("dm") / "workspace").mkdir(parents=True)
                 (Path("dm") / "workspace" / "sync-note.md").write_text(
@@ -566,7 +700,7 @@ Recipients are `dm`, `party`, or a player id.
                     encoding="utf-8",
                 )
                 (Path("table")).mkdir()
-                (Path("table") / "index.md").write_text(
+                (Path("table") / "visible-artifact.md").write_text(
                     "Visible table update.\n",
                     encoding="utf-8",
                 )
@@ -600,7 +734,7 @@ Recipients are `dm`, `party`, or a player id.
                 "DM note from projected workspace.\n",
             )
             self.assertEqual(
-                (root / "table" / "index.md").read_text(encoding="utf-8"),
+                (root / "table" / "visible-artifact.md").read_text(encoding="utf-8"),
                 "Visible table update.\n",
             )
             self.assertEqual(
@@ -616,7 +750,7 @@ Recipients are `dm`, `party`, or a player id.
                 ["search", "text", "Visible table update", "--type", "markdown"],
                 dm_env,
             )
-            self.assertIn("table/index.md", indexed.output)
+            self.assertIn("table/visible-artifact.md", indexed.output)
 
     def test_table_write_refreshes_projected_manifest_path(self) -> None:
         fake_embedding = EmbeddingBatch(
@@ -633,12 +767,12 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
             with runner.isolated_filesystem(temp_dir=tmp_path):
                 Path(".glass-projection-manifest.json").write_text(
-                    json.dumps({"files": {"table/index.md": "old-hash"}}),
+                    json.dumps({"files": {"table/visible-artifact.md": "old-hash"}}),
                     encoding="utf-8",
                 )
                 Path(".glass-projection-manifest.json").chmod(0o440)
                 Path("table").mkdir()
-                (Path("table") / "index.md").write_text(
+                (Path("table") / "visible-artifact.md").write_text(
                     "stale projected edit\n",
                     encoding="utf-8",
                 )
@@ -648,7 +782,7 @@ Recipients are `dm`, `party`, or a player id.
                         [
                             "table",
                             "write",
-                            "table/index.md",
+                            "table/visible-artifact.md",
                             "--body",
                             "canonical table\n",
                         ],
@@ -656,13 +790,16 @@ Recipients are `dm`, `party`, or a player id.
                     )
 
                 self.assertEqual(
-                    (Path("table") / "index.md").read_text(encoding="utf-8"),
+                    (Path("table") / "visible-artifact.md").read_text(encoding="utf-8"),
                     "canonical table\n",
                 )
                 manifest = json.loads(
                     Path(".glass-projection-manifest.json").read_text(encoding="utf-8")
                 )
-                self.assertNotEqual(manifest["files"]["table/index.md"], "old-hash")
+                self.assertNotEqual(
+                    manifest["files"]["table/visible-artifact.md"],
+                    "old-hash",
+                )
 
     def test_semantic_search_ranks_by_embeddings(self) -> None:
         def fake_embed_text(text: str, *, kind: str, config=None) -> EmbeddingBatch:
@@ -737,6 +874,26 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(set(action_order["order"]), {"tev", "dm", "kit"})
             self.assertEqual(len(action_order["rolls"]), 3)
 
+    def test_turn_initiative_auto_includes_dm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "action", "ambush"], dm_env)
+
+            invoke_ok(
+                runner,
+                ["turn", "initiative", "--participants", "tev,kit"],
+                dm_env,
+            )
+
+            state = runtime_state(env)
+            action_order = state["action_order"]
+            self.assertEqual(set(action_order["order"]), {"tev", "dm", "kit"})
+            self.assertEqual(len(action_order["rolls"]), 3)
+
     def test_arc_activate_switches_current_arc(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -745,8 +902,8 @@ Recipients are `dm`, `party`, or a player id.
             dm_env = {**env, "GLASS_ROLE": "dm"}
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
 
-            invoke_ok(runner, ["arc", "create", "main-opening"], dm_env)
-            invoke_ok(runner, ["arc", "create", "prelude"], dm_env)
+            invoke_ok(runner, arc_create_args("main-opening"), dm_env)
+            invoke_ok(runner, arc_create_args("prelude"), dm_env)
             current = invoke_ok(runner, ["arc", "current"], dm_env)
             self.assertIn("prelude", current.output)
 
@@ -756,6 +913,42 @@ Recipients are `dm`, `party`, or a player id.
             state = runtime_state(env)
             self.assertEqual(state["active_arc"], "main-opening")
 
+    def test_campaign_pull_note_records_required_utilization(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+
+            result = invoke_ok(
+                runner,
+                [
+                    "campaign",
+                    "pull-note",
+                    "--source",
+                    "city water-main repair tickets",
+                    "--used-in",
+                    "campaign scarcity",
+                    "--note",
+                    "Valve-tag replacement delays shape the rationing scarcity and first faction dispute.",
+                ],
+                dm_env,
+            )
+
+            self.assertIn("campaign_id: c1", result.output)
+            note = (
+                tmp_path
+                / "campaigns"
+                / "c1"
+                / "dm"
+                / "notes"
+                / "pulls"
+                / "campaign-non-adjacent.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("city water-main repair tickets", note)
+            self.assertIn("Valve-tag replacement delays", note)
+
     def test_scene_create_accepts_custom_type_and_trackers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -763,7 +956,7 @@ Recipients are `dm`, `party`, or a player id.
             env = make_env(tmp_path)
             dm_env = {**env, "GLASS_ROLE": "dm"}
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
-            invoke_ok(runner, ["arc", "create", "first-arc"], dm_env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
 
             scene = invoke_ok(
                 runner,
@@ -773,7 +966,7 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("scene_type: courtroom-standoff", scene.output)
             root = tmp_path / "campaigns" / "c1"
             table_root = root / "table"
-            self.assertTrue((table_root / "index.md").exists())
+            self.assertFalse((table_root / "index.md").exists())
             self.assertTrue((table_root / "scene.md").exists())
             self.assertTrue((table_root / "handouts").is_dir())
             self.assertIn("table_path:", scene.output)
@@ -802,6 +995,62 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertNotEqual(denied.exit_code, 0)
             self.assertIn("DM-only", denied.output)
+
+            retired = runner.invoke(
+                main,
+                ["table", "write", "index.md", "--body", "not allowed"],
+                env=dm_env,
+            )
+            self.assertNotEqual(retired.exit_code, 0)
+            self.assertIn("table/index.md is retired", retired.output)
+
+            lore_source = root / "shared" / "lore" / "ships" / "splitfork.md"
+            lore_source.parent.mkdir(parents=True)
+            lore_source.write_text("# The Splitfork\n\nVisible ship lore.\n", encoding="utf-8")
+            fake_embedding = EmbeddingBatch(
+                vectors=[[1.0] + [0.0] * 767],
+                model="test-embedding",
+                provider="test",
+                dimensions=768,
+            )
+            with (
+                patch("cli.embeddings.embed_text", return_value=fake_embedding),
+                patch(
+                    "cli.commands.entity._mirror_entity_to_graph",
+                    return_value={"status": "mocked"},
+                ),
+            ):
+                used = invoke_ok(
+                    runner,
+                    [
+                        "table",
+                        "use",
+                        "shared/lore/ships/splitfork.md",
+                        "--as",
+                        "splitfork.md",
+                    ],
+                    dm_env,
+                )
+                self.assertIn("table/splitfork.md", used.output)
+                promoted = invoke_ok(
+                    runner,
+                    [
+                        "lore",
+                        "promote",
+                        "table/splitfork.md",
+                        "--to",
+                        "ships/splitfork-copy.md",
+                    ],
+                    dm_env,
+                )
+            self.assertIn("shared/lore/ships/splitfork-copy.md", promoted.output)
+            self.assertEqual(
+                (root / "table" / "splitfork.md").read_text(encoding="utf-8"),
+                "# The Splitfork\n\nVisible ship lore.\n",
+            )
+            self.assertTrue(
+                (root / "shared" / "lore" / "ships" / "splitfork-copy.md").exists()
+            )
 
             invoke_ok(runner, ["mode", "start", "action", "duke-gate"], dm_env)
             turn_file = tmp_path / "scene-turn.md"
@@ -866,7 +1115,7 @@ Recipients are `dm`, `party`, or a player id.
             dm_env = {**env, "GLASS_ROLE": "dm"}
             player_env = {**env, "GLASS_ROLE": "player:tev"}
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
-            invoke_ok(runner, ["arc", "create", "first-arc"], dm_env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
             invoke_ok(runner, ["scene", "create", "opening", "--type", "social"], dm_env)
             invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
 
@@ -920,8 +1169,12 @@ Recipients are `dm`, `party`, or a player id.
             dm_env = {**env, "GLASS_ROLE": "dm"}
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
 
-            arc = invoke_ok(runner, ["arc", "create", "first-arc"], dm_env)
+            arc = invoke_ok(runner, arc_create_args("first-arc"), dm_env)
             self.assertIn("arc_id: first-arc", arc.output)
+            pull_note = (
+                tmp_path / "campaigns" / "c1" / "arcs" / "first-arc" / "pulls.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("municipal elevator inspection logs", pull_note)
 
             scene = invoke_ok(
                 runner,
@@ -934,7 +1187,7 @@ Recipients are `dm`, `party`, or a player id.
                 [
                     "table",
                     "append",
-                    "index.md",
+                    "warrant-clock.md",
                     "--body",
                     "\n- The warrant clock is visible on the table.\n",
                 ],
@@ -993,14 +1246,14 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertIn("The campaign has begun.", campaign_summary.output)
             archived_table = root / "arcs" / "first-arc" / "scenes" / "opening" / "table" / "final"
-            self.assertTrue((archived_table / "index.md").exists())
+            self.assertTrue((archived_table / "warrant-clock.md").exists())
             self.assertIn(
                 "The warrant clock is visible",
-                (archived_table / "index.md").read_text(encoding="utf-8"),
+                (archived_table / "warrant-clock.md").read_text(encoding="utf-8"),
             )
             self.assertIn(
                 "No scene is currently active",
-                (root / "table" / "index.md").read_text(encoding="utf-8"),
+                (root / "table" / "scene.md").read_text(encoding="utf-8"),
             )
 
             closed = invoke_ok(

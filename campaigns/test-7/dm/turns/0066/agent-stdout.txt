@@ -1,6 +1,0 @@
-Intermission closed. The turn is complete:
-
-- **`dm/turns/0066/out.md`** — Mara's second intermission turn: acknowledges all four player requests, names committed scenes (corridor confirmation, tic-tracer/Drova/Tek, four glyphs, misdeclared cell with four entry points) and live threads (Shear run date, Senna letters, Conclave attention, Mernhab cross-reference, drop-pilot gap), confirms tone, closes.
-- **`shared/quest-log.md`** — player-visible synthesis of intermission captures.
-- **`dm/workspace/intermission-01-captures.md`** — private arc prep notes mapping each player request to specific scene beats and NPC/node implications.
-- **Mode ended** — intermission-01 closed; next `aog campaign run` starts Mara in scene-prep for the Caulden Rack arc.

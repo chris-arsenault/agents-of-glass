@@ -15,6 +15,7 @@ import click
 
 from .. import db as _db
 from .. import workspace as _workspace
+from .character import auto_declare_skill_for_roll
 from ..campaign import (
     active_campaign_id,
     active_campaign_root,
@@ -37,7 +38,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -120,12 +121,27 @@ def roll(
     with pg_connection() as conn:
         character = _db.character_get(conn, campaign_id, character_id)
         if character is None:
-            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+            raise GlassError(
+                agent_instruction(
+                    f"unknown character {character_id!r} in campaign {campaign_id!r}",
+                    "Use the character id from TURN_START, `glass character list`, or the player's public character sheet.",
+                )
+            )
         if role.kind == "player" and character.get("player_id") != role.actor:
             raise GlassError(
-                "permission denied: players may roll only their own character "
-                f"(owner: {character.get('player_id')})"
+                agent_instruction(
+                    "players may roll only their own character",
+                    f"This character belongs to `{character.get('player_id')}`; use your own character id.",
+                    "If another character needs to roll, set them up in prose and let that player or the DM take the roll.",
+                )
             )
+
+        character, auto_declared = auto_declare_skill_for_roll(
+            conn,
+            campaign_id=campaign_id,
+            character=character,
+            skill=skill,
+        )
 
         skill_tier = character["skills"].get(skill, "fool")
         attribute_tier = character["attributes"].get(attribute, "standard")
@@ -204,7 +220,12 @@ def roll(
         conn.commit()
         updated_character = _db.character_get(conn, campaign_id, character_id)
         if updated_character is None:
-            raise GlassError(f"unknown character {character_id!r}") from None
+            raise GlassError(
+                agent_instruction(
+                    f"unknown character {character_id!r}",
+                    "Retry with a character id that exists in this campaign.",
+                )
+            ) from None
 
     target_suffix = f" -> {target_id}" if target_id else ""
     summary = (
@@ -212,6 +233,14 @@ def roll(
         f"{outcome} ({momentum_in:+d} to {momentum_out:+d} momentum){target_suffix}"
     )
     queue_event(state, role.actor, summary)
+    if auto_declared:
+        cap = _db.skill_slot_cap(character["level"])
+        used = len(character["skills"])
+        queue_event(
+            state,
+            role.actor,
+            f"{character_id} declared skill {skill} (fool, slot {used}/{cap})",
+        )
     if skill_bumped_to:
         queue_event(
             state,
@@ -221,6 +250,7 @@ def roll(
     roll_row["skill_xp_before"] = skill_xp_before
     roll_row["skill_xp_after"] = skill_xp_after
     roll_row["skill_bumped_to"] = skill_bumped_to
+    roll_row["skill_auto_declared"] = auto_declared
     roll_row["character_mirror"] = write_public_character_mirror(
         paths,
         campaign_id,
@@ -240,4 +270,3 @@ def roll(
         ),
         roll_row,
     )
-

@@ -36,7 +36,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -125,7 +125,12 @@ def quest_beat(
     role = require_dm()
     text = " ".join(text_parts).strip()
     if not text:
-        raise GlassError("beat text cannot be empty")
+        raise GlassError(
+            agent_instruction(
+                "quest beat text cannot be empty",
+                "Pass one concrete campaign-shifting beat after the command, for example `glass quest beat <what changed>`.",
+            )
+        )
     workspace = _campaign_workspace()
     current = _workspace.current_scene(workspace) or {}
     scene = scene_id or current.get("scene_id")
@@ -173,4 +178,3 @@ def _append_quest_beat(
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(f"- {prefix}{text}\n")
     return log_path
-

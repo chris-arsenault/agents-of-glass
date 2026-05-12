@@ -1,1 +1,0 @@
-The cross-pull is still at twelve past light — Bren can feel it on the back of her hand without looking up. She doesn't move from the clip point. The window is open; the line is ready; she knew both before anyone named them. Her hand stays on the chalk-mark. She's a pilot. The question she could answer, she answered. Everything else belongs to the apron.

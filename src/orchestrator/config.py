@@ -13,6 +13,7 @@ import tomllib
 class ClaudeConfig:
     model: str | None
     turn_timeout_seconds: int
+    use_session_id: bool
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "claude": {
         "model": "claude-sonnet-4-6",
+        # Always track one Claude Code session id per actor in runtime state.
+        # When enabled, pass that id to `claude -p --session-id ...`.
+        "use_session_id": False,
         # 60 minutes per turn. The DM in campaign-planning mode reads the
         # methodology, persona, world bible, does web search for the
         # anti-sameness pulls, and writes 8+ files per invocation. Tight
@@ -130,6 +134,7 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
         claude=ClaudeConfig(
             model=_optional_string(claude.get("model")),
             turn_timeout_seconds=int(claude.get("turn_timeout_seconds", 300)),
+            use_session_id=_bool(claude.get("use_session_id", False)),
         ),
         caps=CapsConfig(
             session_max_turns=int(caps.get("session_max_turns", 200)),
@@ -177,3 +182,13 @@ def _optional_string(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)

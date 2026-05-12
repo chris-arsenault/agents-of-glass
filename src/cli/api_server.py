@@ -18,7 +18,7 @@ from click.testing import CliRunner
 
 from .api_grants import DEFAULT_API_URL, validate_grant
 from .config import get_paths
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 
 
 _server: ThreadingHTTPServer | None = None
@@ -143,7 +143,12 @@ class _GlassCommandApiHandler(BaseHTTPRequestHandler):
             token = str(payload.get("grant") or "")
             args = payload.get("args")
             if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
-                raise GlassError("invalid glass API payload: args must be a string list")
+                raise GlassError(
+                    agent_instruction(
+                        "invalid glass API payload: `args` must be a string list",
+                        "Call the API with JSON shaped like `{\"grant\": \"...\", \"args\": [\"table\", \"show\"]}`.",
+                    )
+                )
             paths = get_paths()
             claim = validate_grant(paths.campaigns, token, args)
             result = _invoke_glass(args, claim)
@@ -169,14 +174,30 @@ class _GlassCommandApiHandler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as exc:
-            raise GlassError("invalid Content-Length") from exc
+            raise GlassError(
+                agent_instruction(
+                    "invalid Content-Length",
+                    "Send a valid JSON request through the Glass CLI/API client instead of hand-crafting the HTTP request.",
+                )
+            ) from exc
         raw = self.rfile.read(length).decode("utf-8")
         try:
             payload = json.loads(raw or "{}")
         except json.JSONDecodeError as exc:
-            raise GlassError(f"invalid JSON payload: {exc}") from exc
+            raise GlassError(
+                agent_instruction(
+                    "invalid JSON payload",
+                    "Send a JSON object with `grant` and `args` fields through the Glass CLI/API client.",
+                    f"JSON parser detail: {exc}",
+                )
+            ) from exc
         if not isinstance(payload, dict):
-            raise GlassError("invalid glass API payload: expected object")
+            raise GlassError(
+                agent_instruction(
+                    "invalid glass API payload: expected object",
+                    "Send a JSON object with `grant` and `args` fields.",
+                )
+            )
         return payload
 
     def _write_json(self, status: int, payload: dict[str, Any]) -> None:

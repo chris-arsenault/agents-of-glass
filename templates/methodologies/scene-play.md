@@ -1,5 +1,5 @@
 ---
-title: Scene Play Methodology Router
+title: Scene Play Methodology Index
 status: authored
 audience: players, dm
 applies_to_modes: [scene-play]
@@ -7,8 +7,8 @@ applies_to_modes: [scene-play]
 
 # Scene Play
 
-Compatibility index. Generated TURN_START files link directly to one required
-methodology for the actor's role and turn type.
+Reference index for scene-play turn contracts. Generated `TURN_START.md`
+selects the role-specific methodology for the current actor and turn type.
 
 - DM turns use [`scene-play-dm.md`](scene-play-dm.md).
 - Player turns use [`scene-play-player.md`](scene-play-player.md).

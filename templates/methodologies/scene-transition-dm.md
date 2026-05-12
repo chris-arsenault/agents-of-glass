@@ -19,8 +19,9 @@ to resume.
    `glass scene end` with summary, outcome, beats, and XP/reward values.
 4. End the old mode with `glass mode end`.
 5. Create and stage the next scene. Use `glass scene create <next-scene> --type
-   <protocol-or-toolkit-label>`, write the next scene's context/prep, and write
-   the visible starting board into `table/scene.md` and `table/index.md`.
+   <protocol-or-toolkit-label>`, write the next scene's context/prep, write the
+   current visible situation into `table/scene.md`, and create named table
+   artifacts for reusable visible lore.
 6. Commit authored markdown with `glass sync apply`, covering the next scene
    directory, `table/`, and any changed DM notes, lore, or shared files.
 7. Start the next scene mode with `glass mode start <protocol-or-toolkit-label>
@@ -48,7 +49,7 @@ glass turn housekeeping-round \
   --next default
 glass turn end \
   --summary "<old scene closed; next scene staged>" \
-  --state "<scene/table/notes/lore updates>" \
+  --state "<scene/table artifacts/notes/lore updates>" \
   --rolls "<rolls/checks used or none>" \
   --scene-status ended \
   --next default
@@ -57,5 +58,5 @@ glass turn end \
 ## Done
 
 Your turn is done only when the old scene is closed, the next scene mode is
-active, `table/` shows the next visible board, player housekeeping turns are
+active, `table/` shows the next visible situation and artifacts, player housekeeping turns are
 queued, public prose exists, and `glass turn end` succeeds.

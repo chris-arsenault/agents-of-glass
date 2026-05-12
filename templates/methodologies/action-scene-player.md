@@ -16,12 +16,20 @@ few heartbeats. This sequence is binding for every player initiative turn.
 2. Choose movement or position first: where you are, what you close with, what
    cover/leverage/route/social angle you take, or why position is unchanged.
 3. Choose one action that changes leverage, target state, progress, risk, or the
-   next actor's choice. Use a concrete local affordance when it is reasonable
-   and visible.
+   next actor's choice. When a carried asset, scene object, document, tool,
+   route, or local affordance gives the action a concrete method, put it to
+   work.
 4. Resolve uncertainty before prose. Use `glass roll` for checks and `glass
-   scene pressure` when reducing a tracker/target. Do not hand off just to ask
-   the DM to choose dice for you. If a hidden fact is required before you can act,
-   message the DM and end with `--next dm`.
+   scene pressure` when reducing a tracker/target. In action scenes, uncertain
+   consequential actions normally roll, apply pressure, or change a visible
+   tracker; `rolls none` fits deterministic action, pure positioning, or setup.
+   If your action is not covered by an existing skill and you have a free
+   skill slot (cap `3 + level`), pass a new specific skill name to the roll
+   command and it will auto-declare at `fool`. See
+   [`srd/skill-advancement.md`](../srd/skill-advancement.md). Do not hand off
+   just to ask the DM to choose dice for you. If a hidden fact is required
+   before you can act, message the DM and end with `--next dm` plus
+   `--open-question`.
 5. Persist allowed hard state before prose: character state, inventory,
    consequences you are allowed to view, messages, notes, or proposals. Commit
    authored markdown with `glass sync apply`.
@@ -48,3 +56,8 @@ Your turn is done only when the action is resolved as far as your authority
 allows, public prose exists, and `glass turn end` succeeds.
 
 Optional reference: [`how-to/action-scene-reference.md`](../how-to/action-scene-reference.md).
+
+Narration craft (read before writing public prose):
+[`how-to/narration-craft-player.md`](../how-to/narration-craft-player.md).
+Action scenes especially: commit to the line, advance the board, resolve
+to a new state. Negative-space narration kills action pacing.

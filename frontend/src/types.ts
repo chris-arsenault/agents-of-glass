@@ -1,8 +1,18 @@
 export interface AppConfig {
   apiBaseUrl: string;
-  defaultCampaignId: string;
   pollIntervalMs: number;
   playerOrder: string[];
+}
+
+export interface CampaignListItem {
+  campaign_id: string;
+  dashboard_url: string;
+  files_url: string;
+  updated_at: string;
+}
+
+export interface CampaignListPayload {
+  campaigns: CampaignListItem[];
 }
 
 export interface FileEntry {

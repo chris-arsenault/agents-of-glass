@@ -2,96 +2,20 @@
 
 from __future__ import annotations
 
-import json
-import os
-import random
-import shutil
-import sys
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import Any
-
 import click
 
-from .. import db as _db
-from .. import workspace as _workspace
-from ..campaign import (
-    active_campaign_id,
-    active_campaign_root,
-    lookup_player_character_id,
-    pg_connection,
-    resolve_active_campaign_workspace,
-)
-from ..config import REPO_ROOT, Paths, get_paths, load_config
-from ..constants import (
-    ATTRIBUTE_TIERS,
-    ATTRIBUTES,
-    RISK_THRESHOLDS,
-    SKILL_TIERS,
-    STARTER_MESSAGE_TYPES,
-)
-from ..entities import (
-    markdown_title,
-    parse_frontmatter,
-    parse_sections,
-    upsert_entity_from_path,
-)
-from ..errors import GlassError
-from ..ids import new_id, now_iso, slugify
-from ..messages import (
-    infer_player_from_path,
-    load_message_types,
-    message_visible_to,
-    player_dirs,
-    require_message_type,
-    require_recipient,
-    roster,
-)
-from ..paths_resolve import (
-    clean_relative_path,
-    display_path,
-    ensure_under,
-    ensure_under_any,
-    resolve_content_path,
-    resolve_note_write_path,
-)
-from ..role import (
-    Role,
-    actor_for_turn,
-    assert_character_writable,
-    current_role,
-    require_dm,
-    require_player,
-    role_label_for_turn,
-)
+from ..campaign import active_campaign_id, active_campaign_root
+from ..config import get_paths
+from ..errors import GlassError, agent_instruction
+from ..ids import now_iso, slugify
+from ..role import require_dm
 from ..state import (
-    append_audit,
-    audit_path,
     commit,
     current_mode_record,
-    default_state,
-    inline_event_lines,
     load_state,
-    normalize_state,
     queue_event,
-    save_state,
-    state_path,
-    state_summary,
-    transcript_path,)
-from ..validation import (
-    assert_attribute_name,
-    clamp,
-    outcome_for_margin,
-    validate_key_values,
 )
-from ..yaml_io import (
-    command_params,
-    emit,
-    make_jsonable,
-    read_body,
-    to_yaml,
-    yaml_scalar,
-)
+from ..yaml_io import command_params
 
 
 @click.group()
@@ -143,7 +67,28 @@ def mode_end(ctx: click.Context) -> None:
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     if not state["mode_stack"]:
-        raise GlassError("cannot end mode: mode stack is empty")
+        raise GlassError(
+            agent_instruction(
+                "cannot end mode: there is no active mode on the stack",
+                "Do not call `glass mode end` until the DM has started a mode with `glass mode start <mode> <scene>`.",
+                "If the scene is already inactive, stop trying to close it and continue the current turn normally.",
+            )
+        )
+    ending = state["mode_stack"][-1]
+    if ending.get("mode") == "character-creation":
+        failures = _character_creation_mode_end_failures()
+        if failures:
+            detail = "\n".join(f"- {failure}" for failure in failures)
+            raise GlassError(
+                agent_instruction(
+                    "cannot end character-creation: relationship round is incomplete",
+                    "Do not retry `glass mode end` in this turn.",
+                    "Continue character creation instead: use `glass turn end --summary <what remains> --state <relationship files still needed> --rolls none --next default`.",
+                    "Each listed player must create a non-empty `players/<id>/public/relationships.md`; after all are present, the final DM ratification turn may end the mode.",
+                )
+                + "\n\nStill needed:\n"
+                + detail
+            )
     ended = state["mode_stack"].pop()
     ended["ended_at"] = now_iso()
     action_order = state.get("action_order")
@@ -174,6 +119,40 @@ def mode_end(ctx: click.Context) -> None:
         "mode_stack": state["mode_stack"],
     }
     commit(paths, state, ctx, "mode.end", {}, result)
+
+
+def _character_creation_mode_end_failures() -> list[str]:
+    campaign_root = active_campaign_root()
+    players_root = campaign_root / "players"
+    if not players_root.exists():
+        return []
+    failures: list[str] = []
+    for player_dir in sorted(path for path in players_root.iterdir() if path.is_dir()):
+        player_id = player_dir.name
+        path = player_dir / "public" / "relationships.md"
+        try:
+            has_text = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            failures.append(
+                f"{player_id}: missing players/{player_id}/public/relationships.md"
+            )
+            continue
+        except PermissionError as exc:
+            failures.append(
+                f"{player_id}: cannot read players/{player_id}/public/relationships.md: "
+                f"{exc.strerror or exc}"
+            )
+            continue
+        except OSError:
+            failures.append(
+                f"{player_id}: cannot read players/{player_id}/public/relationships.md"
+            )
+            continue
+        if not has_text:
+            failures.append(
+                f"{player_id}: empty players/{player_id}/public/relationships.md"
+            )
+    return failures
 
 
 @mode.command("current")

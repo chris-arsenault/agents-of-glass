@@ -20,6 +20,8 @@ It is written for players and DMs, not for the repository implementer.
   effects, signature moves, clocks, and trackers.
 - [`character-creation.md`](character-creation.md) — species, culture,
   attributes, skills, HP, inventory, and starting character budget.
+- [`skill-advancement.md`](skill-advancement.md) — declaring new skills, slot
+  cap, per-skill xp, and tier promotion.
 - [`action-scenes.md`](action-scenes.md) — quickfire action scene rules.
 - [`glossary.md`](glossary.md) — mechanical terms.
 

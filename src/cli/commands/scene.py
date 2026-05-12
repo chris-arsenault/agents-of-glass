@@ -15,6 +15,7 @@ import click
 
 from .. import db as _db
 from .. import workspace as _workspace
+from .character import auto_declare_skill_for_roll
 from ..campaign import (
     active_campaign_id,
     active_campaign_root,
@@ -37,7 +38,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -126,8 +127,29 @@ def scene_create(
     paths = get_paths()
     try:
         scene_dir = _workspace.create_scene(workspace, scene_id, scene_type, arc_id=arc_id)
-    except (FileExistsError, FileNotFoundError, ValueError) as exc:
-        raise GlassError(str(exc)) from exc
+    except FileExistsError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Choose a new scene id, or activate/use the existing scene instead of creating it again.",
+            )
+        ) from exc
+    except FileNotFoundError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Create or activate the target arc first with "
+                "`glass arc create <arc-id> --pull-source <source> "
+                "--pull-utilization <note>` or `glass arc activate <arc-id>`.",
+            )
+        ) from exc
+    except ValueError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Use slug-like scene and type names, then retry the scene command.",
+            )
+        ) from exc
     state = load_state(paths, workspace.campaign_id)
     normalized_scene_type = _workspace.slugify(scene_type)
     normalized_scene_id = _workspace.slugify(scene_id)
@@ -145,7 +167,7 @@ def scene_create(
         "path": str(scene_dir),
         "files": ["prep.md", "context.md", "summary.md", "transcript.md", "audit.jsonl"],
         "table_path": str(workspace.table_dir),
-        "table_files": ["index.md", "scene.md", "handouts/"],
+        "table_files": ["scene.md", "handouts/", "<named-artifacts>.md"],
     }
     commit(
         paths,
@@ -191,7 +213,13 @@ def scene_end_cmd(
 
     current = _workspace.current_scene(workspace)
     if not current:
-        raise GlassError("no active scene to end")
+        raise GlassError(
+            agent_instruction(
+                "there is no active scene to end",
+                "Do not call `glass scene end` until a scene has been created or activated.",
+                "If you are transitioning scenes, create/start the next scene first only after the current active scene exists and is ready to close.",
+            )
+        )
     scene_id = current["scene_id"]
     arc_id = current["arc_id"]
     outcome_lines = normalize_outcomes(outcome_values)
@@ -227,8 +255,11 @@ def scene_end_cmd(
                 character_id = lookup_player_character_id(campaign_id, agent)
                 if not character_id:
                     raise GlassError(
-                        f"can't award xp to {agent!r}: no character row "
-                        f"or multiple characters in campaign"
+                        agent_instruction(
+                            f"cannot award scene XP to {agent!r}",
+                            "Use an agent id with exactly one character in this campaign.",
+                            "If the player has no character or multiple rows, resolve the character sheet before awarding scene XP.",
+                        )
                     )
                 try:
                     updated, before, after = _db.character_award_xp(
@@ -242,7 +273,12 @@ def scene_end_cmd(
                         scene_id=scene_id,
                     )
                 except LookupError:
-                    raise GlassError(f"unknown character {character_id!r}") from None
+                    raise GlassError(
+                        agent_instruction(
+                            f"unknown character {character_id!r}",
+                            "Use the character id assigned to the target player in this campaign.",
+                        )
+                    ) from None
                 xp_awards.append({
                     "player": agent,
                     "character_id": character_id,
@@ -273,7 +309,12 @@ def scene_end_cmd(
     try:
         ended = _workspace.end_scene(workspace)
     except ValueError as exc:
-        raise GlassError(str(exc)) from exc
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Check the active scene with `glass scene current`, then end only that scene.",
+            )
+        ) from exc
 
     state["active_scene"] = None
     state["active_scene_arc"] = None
@@ -357,12 +398,22 @@ def scene_closing_down(
     role = require_dm()
     if turn_budget is not None:
         if turn_budget <= 0:
-            raise GlassError("--turns must be positive")
+            raise GlassError(
+                agent_instruction(
+                    "`--turns` must be positive",
+                    "Pass a positive turn count, or omit `--turns` and use `--rounds <n>`.",
+                )
+            )
         commits = turn_budget
         unit_label = f"{turn_budget} turn(s)"
     else:
         if round_budget <= 0:
-            raise GlassError("--rounds must be positive")
+            raise GlassError(
+                agent_instruction(
+                    "`--rounds` must be positive",
+                    "Pass a positive round count, or use `--turns <n>` for a raw turn countdown.",
+                )
+            )
         commits = round_budget * _AGENTS_PER_ROUND
         unit_label = f"~{round_budget} round(s)"
     paths = get_paths()
@@ -428,7 +479,12 @@ def scene_tracker_set(
     """DM-only: create or replace a scene-local generic tracker."""
     role = require_dm()
     if max_value <= 0:
-        raise GlassError("--max must be greater than zero")
+        raise GlassError(
+            agent_instruction(
+                "`--max` must be greater than zero",
+                "Choose the tracker size, for example `--max 4` for a short clock or `--max 10` for a larger pressure track.",
+            )
+        )
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -503,7 +559,13 @@ def scene_tracker_tick(ctx: click.Context, tracker_id: str, delta: int) -> None:
                 actor=role.actor,
             )
         except LookupError:
-            raise GlassError(f"unknown scene tracker {tracker_key!r}") from None
+            raise GlassError(
+                agent_instruction(
+                    f"unknown scene tracker {tracker_key!r}",
+                    "Create the tracker first with `glass scene tracker set <id> --max <n>`.",
+                    "Use `glass scene tracker list` to see trackers for the active scene.",
+                )
+            ) from None
     max_value = int(tracker.get("max", 0))
     trackers[tracker_key] = tracker
     sign = f"{delta:+d}"
@@ -609,13 +671,28 @@ def scene_pressure(
             tracker_id=target_key,
         )
     if tracker is None:
-        raise GlassError(f"unknown scene tracker {target_key!r}")
+        raise GlassError(
+            agent_instruction(
+                f"unknown scene tracker {target_key!r}",
+                "Use `glass scene tracker list` to find active tracker ids.",
+                "The DM can create a pressure target with `glass scene tracker set <id> --max <n>`.",
+            )
+        )
     if tracker.get("scene_id") != scene_id:
         raise GlassError(
-            f"scene tracker {target_key!r} belongs to scene {tracker.get('scene_id')!r}"
+            agent_instruction(
+                f"scene tracker {target_key!r} belongs to scene {tracker.get('scene_id')!r}",
+                "Pressure only trackers in the active scene.",
+                "Use `glass scene tracker list` for the active scene, or have the DM create a new tracker for the current scene.",
+            )
         )
     if role.kind == "player" and not bool(tracker.get("public", True)):
-        raise GlassError("permission denied: players cannot pressure hidden trackers")
+        raise GlassError(
+            agent_instruction(
+                "players cannot pressure hidden trackers",
+                "Choose a public tracker from `glass scene tracker list`, or ask the DM to handle the hidden pressure.",
+            )
+        )
 
     resistance = int(tracker.get("resistance", 0))
     impact_resistance = int(tracker.get("impact_resistance", 0))
@@ -626,12 +703,27 @@ def scene_pressure(
     with pg_connection() as conn:
         character = _db.character_get(conn, campaign_id, character_id)
         if character is None:
-            raise GlassError(f"unknown character {character_id!r} in campaign {campaign_id!r}")
+            raise GlassError(
+                agent_instruction(
+                    f"unknown character {character_id!r} in campaign {campaign_id!r}",
+                    "Use the character id from your TURN_START character context or public character sheet.",
+                )
+            )
         if role.kind == "player" and character.get("player_id") != role.actor:
             raise GlassError(
-                "permission denied: players may pressure only with their own character "
-                f"(owner: {character.get('player_id')})"
+                agent_instruction(
+                    "players may pressure only with their own character",
+                    f"This character belongs to `{character.get('player_id')}`; use your own character id.",
+                    "If another character should act, use prose to set them up and let that player or the DM take the action.",
+                )
             )
+
+        character, auto_declared = auto_declare_skill_for_roll(
+            conn,
+            campaign_id=campaign_id,
+            character=character,
+            skill=skill,
+        )
 
         skill_tier = character["skills"].get(skill, "fool")
         attribute_tier = character["attributes"].get(attribute, "standard")
@@ -729,7 +821,12 @@ def scene_pressure(
         conn.commit()
         updated_character = _db.character_get(conn, campaign_id, character_id)
         if updated_character is None:
-            raise GlassError(f"unknown character {character_id!r}") from None
+            raise GlassError(
+                agent_instruction(
+                    f"unknown character {character_id!r}",
+                    "Retry with a character id that exists in this campaign.",
+                )
+            ) from None
 
     tracker["value"] = after
     tracker["updated_at"] = now_iso()
@@ -761,6 +858,14 @@ def scene_pressure(
             f"{resistance_text}, -{reduction} ({before}/{max_value} -> {after}/{max_value})"
         ),
     )
+    if auto_declared:
+        cap = _db.skill_slot_cap(character["level"])
+        used = len(character["skills"])
+        queue_event(
+            state,
+            role.actor,
+            f"{character_id} declared skill {skill} (fool, slot {used}/{cap})",
+        )
     if skill_bumped_to:
         queue_event(
             state,
@@ -834,7 +939,13 @@ def _active_tracker_scene_id(
     if current and current.get("scene_id") and current["scene_id"] != "none":
         return str(current["scene_id"])
     if required:
-        raise GlassError("cannot use scene trackers without an active mode/scene")
+        raise GlassError(
+            agent_instruction(
+                "scene trackers require an active mode and scene",
+                "The DM should start or activate the scene and mode before using tracker or pressure commands.",
+                "Use `glass scene current` and `glass mode start <mode> <scene-id>` to establish the active context.",
+            )
+        )
     return None
 
 
@@ -852,13 +963,23 @@ def _parse_xp_spec(spec: str) -> list[tuple[str, int]]:
         if not entry:
             continue
         if "=" not in entry:
-            raise GlassError(f"invalid xp award {entry!r}; expected agent=delta")
+            raise GlassError(
+                agent_instruction(
+                    f"invalid XP award {entry!r}",
+                    "Use `agent=delta` entries separated by commas, for example `tev=2,sumi=1`.",
+                )
+            )
         agent, delta_text = entry.split("=", 1)
         agent = agent.strip()
         try:
             delta = int(delta_text.strip())
         except ValueError:
-            raise GlassError(f"invalid xp delta {delta_text!r} (must be int)") from None
+            raise GlassError(
+                agent_instruction(
+                    f"invalid XP delta {delta_text!r}",
+                    "Use an integer XP delta, for example `tev=2`.",
+                )
+            ) from None
         out.append((agent, delta))
     return out
 

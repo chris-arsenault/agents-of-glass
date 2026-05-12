@@ -1,6 +1,7 @@
 ---
 name: Sumi
 role: player
+narrative_style: method-author
 ---
 
 # Sumi

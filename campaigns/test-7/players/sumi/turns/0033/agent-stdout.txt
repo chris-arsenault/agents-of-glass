@@ -1,5 +1,0 @@
-The sync path rejection is expected — the `turns/` directory isn't a durable workspace surface; the output file is written directly as an artifact. The turn is complete.
-
-**What happened:** Drova lifted the shelf-box lid for the first time all scene, read the internal note from the prior refusal entry, and surfaced the one fact she'd been holding back: the prior refusal was about a specific claim — a claim Inka never made. Spoken out of register, spare and concrete. The examiner's formal distance cracked; she stopped looking at the document.
-
-**Scene summary appended.** The board is clear for the final round.

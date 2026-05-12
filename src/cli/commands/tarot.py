@@ -8,7 +8,7 @@ from .. import creative
 from .. import db as _db
 from ..campaign import active_campaign_id, pg_connection
 from ..config import get_paths
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..role import current_role, require_dm
 from ..state import append_audit, load_state
 from ..yaml_io import command_params, emit
@@ -67,7 +67,12 @@ def tarot_list(
 ) -> None:
     """List persisted tarot influences for the campaign."""
     if limit <= 0:
-        raise GlassError("--limit must be greater than zero")
+        raise GlassError(
+            agent_instruction(
+                "`--limit` must be greater than zero",
+                "Use a positive number of tarot influences to list, or omit `--limit`.",
+            )
+        )
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -114,7 +119,12 @@ def tarot_draw(ctx: click.Context, actor: str, duration_turns: int) -> None:
     """DM-only: draw and persist a new tarot influence for an actor."""
     require_dm()
     if duration_turns <= 0:
-        raise GlassError("--turns must be greater than zero")
+        raise GlassError(
+            agent_instruction(
+                "`--turns` must be greater than zero",
+                "Use a positive turn duration for the tarot influence, or omit `--turns`.",
+            )
+        )
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)

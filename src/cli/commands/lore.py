@@ -36,7 +36,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -128,15 +128,34 @@ def lore_import(ctx: click.Context, source_path: str, alias: str | None) -> None
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     if paths.lore is None:
-        raise GlassError("lore.path is not configured")
+        raise GlassError(
+            agent_instruction(
+                "`lore.path` is not configured for world-bible imports",
+                "Do not use `glass lore import` in this campaign.",
+                "Create campaign lore directly with `glass lore new <type> <slug> ...`, or promote a table artifact with `glass lore promote <table-path> --to <shared/lore/path.md>`.",
+            )
+        )
 
     source = Path(source_path)
     if not source.is_absolute():
         source = (paths.lore / source).resolve()
     try:
         dest = _workspace.import_lore(workspace, source, paths.lore, alias=alias)
-    except (FileExistsError, FileNotFoundError) as exc:
-        raise GlassError(str(exc)) from exc
+    except FileExistsError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Choose a different destination name with `--as <filename.md>`, or update the existing campaign lore file instead.",
+            )
+        ) from exc
+    except FileNotFoundError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Use a source path that exists under the configured world-bible lore root.",
+                "If the lore is being invented during play, create it in the campaign with `glass lore new` or `glass lore promote` instead of importing.",
+            )
+        ) from exc
 
     persistence = CampaignPersistence(
         paths=paths,
@@ -196,7 +215,12 @@ def lore_search(ctx: click.Context, query: str, limit: int) -> None:
     require_dm()
     paths = get_paths()
     if paths.lore is None:
-        raise GlassError("lore.path is not configured")
+        raise GlassError(
+            agent_instruction(
+                "`lore.path` is not configured for world-bible search",
+                "Use `glass lore list` for campaign lore, or create/promote campaign lore directly.",
+            )
+        )
     matches = _workspace.search_lore(paths.lore, query, limit=limit)
     emit({"query": query, "lore_root": str(paths.lore), "matches": matches, "count": len(matches)})
 
@@ -249,7 +273,13 @@ def lore_new(
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / f"{slug_clean}.md"
     if dest.exists():
-        raise GlassError(f"lore entry already exists: {dest}")
+        raise GlassError(
+            agent_instruction(
+                f"lore entry already exists: {display_path(dest)}",
+                "Edit and sync the existing file if it is the same entity.",
+                "Use a more specific slug if this is a different entity.",
+            )
+        )
 
     title_value = title or slug_clean.replace("-", " ").title()
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
@@ -348,7 +378,13 @@ def lore_upsert(ctx: click.Context, path_text: str) -> None:
         raw = (Path.cwd() / raw).resolve()
 
     if not raw.exists():
-        raise GlassError(f"file not found: {raw}")
+        raise GlassError(
+            agent_instruction(
+                f"lore file does not exist: {raw}",
+                "Pass the path to an existing authored lore markdown file, usually under `shared/lore/`.",
+                "Create a new entry with `glass lore new <type> <slug>` before upserting it.",
+            )
+        )
 
     persistence = CampaignPersistence(
         paths=paths,
@@ -358,6 +394,116 @@ def lore_upsert(ctx: click.Context, path_text: str) -> None:
     persisted = persistence.register_markdown(raw, state=state, graph=True)
     result = persisted.to_dict()
     commit(paths, state, ctx, "lore.upsert", command_params(path=path_text), result)
+
+
+@lore.command("promote")
+@click.argument("table_path")
+@click.option(
+    "--to",
+    "destination_path",
+    required=True,
+    help=(
+        "Destination under shared/lore/. May be a full shared/lore path or a "
+        "path relative to shared/lore/."
+    ),
+)
+@click.option("--replace", is_flag=True, help="Overwrite an existing lore file.")
+@click.pass_context
+def lore_promote(
+    ctx: click.Context,
+    table_path: str,
+    destination_path: str,
+    replace: bool,
+) -> None:
+    """Promote a player-visible table artifact into durable campaign lore."""
+    require_dm()
+    workspace = _campaign_workspace()
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+
+    source_rel = clean_relative_path(table_path)
+    if source_rel.parts and source_rel.parts[0] == "table":
+        source_rel = Path(*source_rel.parts[1:])
+    if source_rel == Path("index.md"):
+        raise GlassError(
+            agent_instruction(
+                "table/index.md is retired and cannot be promoted",
+                "Promote a named table artifact instead, such as `npc-<slug>.md`, `locale-<slug>.md`, `ship-<slug>.md`, or `handouts/<slug>.md`.",
+                "If the content only exists in the scene description, first create a named table artifact with `glass table write <kind>-<slug>.md --body <markdown>`.",
+            )
+        )
+    source = ensure_under(
+        (workspace.table_dir / source_rel).resolve(),
+        workspace.table_dir,
+        "promote source must stay under table/",
+    )
+    if not source.exists() or not source.is_file():
+        raise GlassError(
+            agent_instruction(
+                f"table artifact does not exist: {display_path(source)}",
+                "Run `glass table show` to list player-visible artifacts.",
+                "Create the table artifact first with `glass table write <kind>-<slug>.md --body <markdown>`, then promote it.",
+            )
+        )
+    if source.suffix.lower() != ".md":
+        raise GlassError(
+            agent_instruction(
+                "table artifact must be a markdown file",
+                "Promote a `.md` artifact from the table, not a directory or non-markdown file.",
+            )
+        )
+
+    destination_rel = clean_relative_path(destination_path)
+    if destination_rel.suffix.lower() != ".md":
+        destination_rel = destination_rel.with_suffix(".md")
+    if destination_rel.parts[:2] != ("shared", "lore"):
+        destination_rel = Path("shared") / "lore" / destination_rel
+    destination = ensure_under(
+        (workspace.root / destination_rel).resolve(),
+        workspace.lore_dir,
+        "promoted lore must land under shared/lore/",
+    )
+    if destination.exists() and not replace:
+        raise GlassError(
+            agent_instruction(
+                f"lore entry already exists: {display_path(destination)}",
+                "Use `--replace` only when intentionally replacing that lore entry.",
+                "Otherwise choose a more specific destination path under `shared/lore/`.",
+            )
+        )
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    persistence = CampaignPersistence(
+        paths=paths,
+        campaign_id=campaign_id,
+        campaign_root=workspace.root,
+    )
+    persisted = persistence.register_markdown(destination, state=state, graph=True)
+    queue_event(
+        state,
+        "dm",
+        f"lore promote {display_path(source)} -> {display_path(destination)}",
+    )
+    result = {
+        "source": display_path(source),
+        "destination": display_path(destination),
+        "replace": replace,
+        "persistence": persisted.to_dict(),
+    }
+    commit(
+        paths,
+        state,
+        ctx,
+        "lore.promote",
+        command_params(
+            table_path=table_path,
+            destination_path=destination_path,
+            replace=replace,
+        ),
+        result,
+    )
 
 
 if __name__ == "__main__":

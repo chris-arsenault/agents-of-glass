@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Paths
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 from .ids import now_iso, slugify
 from .paths_resolve import display_path, ensure_under_any
 
@@ -77,7 +77,12 @@ def upsert_entity_from_path(paths: Paths, state: dict[str, Any], path: Path) -> 
         f"entity paths must stay under templates/ or campaigns/; got {path}",
     )
     if not path.exists():
-        raise GlassError(f"entity source not found: {display_path(path)}")
+        raise GlassError(
+            agent_instruction(
+                f"entity source does not exist: {display_path(path)}",
+                "Pass an existing markdown lore/entity file, usually under `shared/lore/` or an arc/scene document.",
+            )
+        )
     text = path.read_text(encoding="utf-8")
     frontmatter = parse_frontmatter(text)
     entity_id = frontmatter.get("id") or slugify(path.stem)

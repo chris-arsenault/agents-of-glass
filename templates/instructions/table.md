@@ -6,50 +6,58 @@ authority: binding
 
 # Public Table Instructions
 
-The public table is the current short-term visible scene state in the
-player-agent CWD. It exists to reduce clarification turns.
+`table/` is the shared visible board. If players should reason from a visible
+fact in the current scene, it must appear in `table/` or another
+player-readable file.
 
-The table root is `table/`:
+There is no authored `table/index.md`. Do not create one. The table is made of
+`table/scene.md` plus named markdown artifacts such as `vel-hasken.md`,
+`ref-0042-sr.md`, or any other meaningful slug the scene needs. These names are
+examples, not a taxonomy or allow list.
 
-- `table/index.md` — at-a-glance visible state.
-- `table/scene.md` — scene kickoff description.
-- `table/handouts/` — in-game handouts.
-- Any other markdown file at table root — freeform visible references created
-  because this scene needs them.
+## Player Sequence
 
-## Players
+1. Read `table/scene.md` and the named table artifacts relevant to your action.
+2. Use `glass table show [path]` when a table file needs command-visible output.
+3. Ask the DM only when the table is absent, ambiguous, or newly relevant.
+4. Do not edit `table/`.
 
-Read the table before asking the DM to repeat visible information: room
-descriptions, NPC posture, monster condition, routes, public stakes, handouts,
-and public trackers.
+## DM Sequence
 
-Ask the DM only when the table is absent, ambiguous, newly relevant, or secret.
-
-## DM
-
-Update the table before ending your turn when visible short-term state changed.
-Do not put secrets in `table/`.
-
-Only material under `table/` is on the active table. Human viewers may inspect
-DM notes, hooks, lore, graph entities, messages, and other files elsewhere in
-the web UI; that does not make those files player-agent-visible table state.
-If the players should reason from it as shared scene information, summarize it
-or link it from `table/index.md`, `table/scene.md`, `table/handouts/`, or a
-freeform table markdown file.
-
-Use:
+1. Update `table/scene.md` before ending any turn that changes the current
+   visible situation.
+2. Create or update a named table artifact for every reusable visible NPC,
+   locale, ship, document, faction, clue, object, relationship, or other lore
+   item players are expected to reason from.
+3. When existing durable lore enters the scene, put the visible portion on the
+   table with `glass table use` or a named table artifact that links to the
+   durable lore.
+4. When a table artifact becomes durable canon, promote or copy it into
+   `shared/lore/` with `glass lore promote` or the `glass lore new` /
+   `glass lore upsert` sequence.
+5. Use command writes for table state:
 
 ```bash
-glass table current
-glass table show [path]
-glass sync apply table/index.md
-glass sync apply table/scene.md table/<reference>.md
-glass sync apply table
-glass table snapshot
+glass table write scene.md --body "<visible scene description>"
+glass table write <meaningful-slug>.md --body "<visible artifact>"
+glass table append <meaningful-slug>.md --body "<new visible detail>"
+glass table use shared/lore/<path>.md --as <meaningful-slug>.md
+glass lore promote table/<meaningful-slug>.md --to shared/lore/<path>.md
+glass table snapshot --label "<reason>"
 ```
 
-Edit table markdown in place in `table/`, then commit the changed files or the
-whole table directory with one `glass sync apply`.
+6. Use `glass sync apply table` only for table files already edited directly.
+7. Mention table updates and lore promotions in `glass turn end --state`.
 
-Hard state remains in Postgres and the CLI: rolls, HP, inventory, action order,
-scene trackers, durable clocks, consequences, and turns.
+## Boundary
+
+Only `table/` is the active table. DM notes, graph entities, hooks, NPC files,
+lore, messages, and human-visible UI panels are separate surfaces unless the
+DM puts their visible content into `table/`.
+
+## CLI Encoding Opportunities
+
+These are not commands yet:
+
+- `glass table check` for stale scene state, missing named artifacts, unpromoted
+  durable lore, and stale table snapshots.

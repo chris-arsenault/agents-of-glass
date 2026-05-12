@@ -1,6 +1,7 @@
 ---
 name: Mara
 role: dm
+narrative_style: restrained-director
 ---
 
 # Mara

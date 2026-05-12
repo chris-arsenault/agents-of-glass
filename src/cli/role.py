@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 
 
 @dataclass(frozen=True)
@@ -40,8 +40,11 @@ def current_role() -> Role:
         if actor:
             return Role(kind="player", actor=actor, raw=raw)
     raise GlassError(
-        "invalid GLASS_ROLE: expected unset/operator, 'dm', or 'player:<id>' "
-        f"(got {raw!r})"
+        agent_instruction(
+            f"invalid GLASS_ROLE {raw!r}",
+            "Run agent CLI commands with `GLASS_ROLE=dm` for Mara, `GLASS_ROLE=player:<id>` for a player, or leave it unset only for operator maintenance.",
+            "Use player ids such as `tev`, `sumi`, `renno`, or `kit`.",
+        )
     )
 
 
@@ -49,14 +52,26 @@ def require_dm() -> Role:
     role = current_role()
     if role.can_do_anything or role.kind == "dm":
         return role
-    raise GlassError("permission denied: this command is DM-only")
+    raise GlassError(
+        agent_instruction(
+            "this command is DM-only",
+            "Do not run this command from a player turn.",
+            "If the DM needs to perform this action, close the current player turn with `glass turn end --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
+        )
+    )
 
 
 def require_player() -> Role:
     role = current_role()
     if role.can_do_anything or role.kind == "player":
         return role
-    raise GlassError("permission denied: this command is player-only")
+    raise GlassError(
+        agent_instruction(
+            "this command is player-only",
+            "Do not run this command from a DM turn.",
+            "Use a player turn for this action, or choose the DM-facing command for the same intent.",
+        )
+    )
 
 
 def role_label_for_turn(role: Role, explicit_role: str | None) -> str:
@@ -87,6 +102,9 @@ def assert_character_writable(character: dict) -> Role:
     if role.kind == "player" and character.get("player_id") == role.actor:
         return role
     raise GlassError(
-        "permission denied: players may mutate only their own character "
-        f"(owner: {character.get('player_id')})"
+        agent_instruction(
+            "players may mutate only their own character",
+            f"This character belongs to `{character.get('player_id')}`; use your own character id for player-side updates.",
+            "If another character must change, end the turn with `--next dm` and ask the DM to make the update.",
+        )
     )

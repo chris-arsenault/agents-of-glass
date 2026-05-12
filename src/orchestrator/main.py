@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import json
 import os
@@ -14,6 +15,7 @@ from .campaign import (
     CampaignSpace,
     PHASE_ACTIVE,
     PHASE_CHARACTER_CREATION,
+    PHASE_ORGANIZATION_BOOTSTRAP,
     PHASE_PLANNING,
     PHASE_PRELUDE,
 )
@@ -44,6 +46,21 @@ class CliState:
         self.store = SessionStore(self.config)
         self.orchestrator = Orchestrator(self.config, self.store)
         self.campaign_manager = CampaignManager(self.config)
+
+
+def _apply_use_session_id_override(
+    cli: CliState,
+    use_session_id: bool | None,
+) -> None:
+    if use_session_id is None:
+        return
+    cli.config = replace(
+        cli.config,
+        claude=replace(cli.config.claude, use_session_id=use_session_id),
+    )
+    cli.store = SessionStore(cli.config)
+    cli.orchestrator = Orchestrator(cli.config, cli.store)
+    cli.campaign_manager = CampaignManager(cli.config)
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -187,8 +204,9 @@ def web() -> None:
 def web_start(cli: CliState, campaign_id: str | None, url: str | None) -> None:
     """Start the local web UI and read-only web API if needed."""
 
-    campaign = campaign_id or cli.store.latest_campaign() or "test-7"
-    _echo_webui_daemon(_start_webui_for_campaign(cli, campaign, url=url))
+    if campaign_id:
+        click.echo("campaign selection is handled in the web UI; ignoring start argument")
+    _echo_webui_daemon(_start_webui(cli, url=url))
 
 
 @web.command("restart")
@@ -200,12 +218,12 @@ def web_restart(cli: CliState, campaign_id: str | None, url: str | None) -> None
 
     from .webui_daemon import restart_webui
 
-    campaign = campaign_id or cli.store.latest_campaign() or "test-7"
+    if campaign_id:
+        click.echo("campaign selection is handled in the web UI; ignoring restart argument")
     _echo_webui_daemon(
         restart_webui(
             repo_root=cli.config.repo_root,
             config_path=config_env_value(cli.config),
-            campaign_id=campaign,
             url=url or _webui_url(None),
             web_api_url=_web_api_url(None),
         )
@@ -255,6 +273,7 @@ def _run_campaign_lifecycle(
     cli: CliState,
     campaign_id: str | None,
     *,
+    max_organization_turns: int,
     max_planning_turns: int,
     max_creation_turns: int,
     max_prelude_turns: int,
@@ -302,31 +321,34 @@ def _run_campaign_lifecycle(
     click.echo(f"      workspace: {space.campaign_dir}")
     click.echo("      state:     Postgres runtime row")
 
-    # Phase 2: campaign planning
+    # Phase 2: organization bootstrap
     cm_state = _run_bootstrap_phase(
         cli,
         campaign_id=campaign_id,
         cm_state=cm_state,
-        phase_name=PHASE_PLANNING,
-        mode_name="campaign-planning",
-        scene_id="planning",
-        phase_label="campaign planning",
-        step_label="[2/5] Campaign planning",
-        start_message=f"[2/5] Invoking DM for campaign planning (max {max_planning_turns} turns)",
-        max_turns=max_planning_turns,
-        checkpoint_label="after-campaign-planning",
+        phase_name=PHASE_ORGANIZATION_BOOTSTRAP,
+        mode_name="organization-bootstrap",
+        scene_id="organization-bootstrap",
+        phase_label="organization bootstrap",
+        step_label="[2/6] Organization bootstrap",
+        start_message=(
+            "[2/6] Invoking Mara for organization bootstrap "
+            f"(max {max_organization_turns} turn)"
+        ),
+        max_turns=max_organization_turns,
+        checkpoint_label="after-organization-bootstrap",
         next_phase=PHASE_CHARACTER_CREATION,
         dry_run=dry_run,
-        validate=None,
+        validate=_validate_organization_bootstrap_complete,
     )
 
     # Phase 3: character creation
     if skip_character_creation:
-        click.secho("[3/5] Character creation skipped (--skip-character-creation).",
+        click.secho("[3/6] Character creation skipped (--skip-character-creation).",
                     fg="yellow")
         click.echo()
         click.secho(
-            f"Campaign '{campaign_id}' advanced through campaign_planning.",
+            f"Campaign '{campaign_id}' advanced through organization_bootstrap.",
             fg="green",
         )
         click.echo(f"Next phase: {PHASE_CHARACTER_CREATION}")
@@ -340,24 +362,45 @@ def _run_campaign_lifecycle(
         mode_name="character-creation",
         scene_id="character-creation",
         phase_label="character creation",
-        step_label="[3/5] Character creation",
+        step_label="[3/6] Character creation",
         start_message=(
-            f"[3/5] Invoking players + DM for character creation "
+            f"[3/6] Invoking players + DM for character creation "
             f"(max {max_creation_turns} turns)"
         ),
         max_turns=max_creation_turns,
         checkpoint_label="after-character-creation",
-        next_phase=PHASE_PRELUDE,
+        next_phase=PHASE_PLANNING,
         dry_run=dry_run,
         validate=_validate_character_creation_complete,
     )
 
-    # Phase 4: prelude shakedown
+    # Phase 4: campaign planning
+    cm_state = _run_bootstrap_phase(
+        cli,
+        campaign_id=campaign_id,
+        cm_state=cm_state,
+        phase_name=PHASE_PLANNING,
+        mode_name="campaign-planning",
+        scene_id="planning",
+        phase_label="campaign planning",
+        step_label="[4/6] Campaign planning",
+        start_message=(
+            f"[4/6] Invoking Mara for campaign planning "
+            f"(max {max_planning_turns} turns)"
+        ),
+        max_turns=max_planning_turns,
+        checkpoint_label="after-campaign-planning",
+        next_phase=PHASE_PRELUDE,
+        dry_run=dry_run,
+        validate=_validate_campaign_planning_complete,
+    )
+
+    # Phase 5: prelude shakedown
     if skip_prelude:
-        click.secho("[4/5] Prelude skipped (--skip-prelude).", fg="yellow")
+        click.secho("[5/6] Prelude skipped (--skip-prelude).", fg="yellow")
         click.echo()
         click.secho(
-            f"Campaign '{campaign_id}' advanced through character_creation.",
+            f"Campaign '{campaign_id}' advanced through campaign_planning.",
             fg="green",
         )
         click.echo(f"Next phase: {PHASE_PRELUDE}")
@@ -371,8 +414,8 @@ def _run_campaign_lifecycle(
         mode_name="prelude",
         scene_id="prelude",
         phase_label="prelude",
-        step_label="[4/5] Prelude",
-        start_message=f"[4/5] Running bootstrap prelude (max {max_prelude_turns} turns)",
+        step_label="[5/6] Prelude",
+        start_message=f"[5/6] Running bootstrap prelude (max {max_prelude_turns} turns)",
         max_turns=max_prelude_turns,
         checkpoint_label="after-prelude",
         next_phase=PHASE_ACTIVE,
@@ -380,10 +423,10 @@ def _run_campaign_lifecycle(
         validate=None,
     )
 
-    # Phase 5: active campaign handoff
+    # Phase 6: active campaign handoff
     if cm_state.get("phase") != PHASE_ACTIVE:
         cm_state = cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
-    click.secho("[5/5] Active campaign", fg="green")
+    click.secho("[6/6] Active campaign", fg="green")
     active_state = cli.store.load(campaign_id)
     turns_remaining = max_active_turns
     while True:
@@ -907,6 +950,131 @@ def _require_bootstrap_mode_ended(
     )
 
 
+def _validate_organization_bootstrap_complete(
+    cli: CliState,
+    campaign_id: str,
+) -> None:
+    from cli import db as _db
+    from cli.config import load_config as _load_glass_config
+
+    campaign_root = cli.config.campaigns_dir / campaign_id
+    failures: list[str] = []
+
+    organization_public = campaign_root / "shared" / "lore" / "organization.md"
+    organization_private = campaign_root / "dm" / "notes" / "organization.md"
+    table_scene = campaign_root / "table" / "scene.md"
+
+    for path, label in (
+        (organization_public, "shared/lore/organization.md"),
+        (organization_private, "dm/notes/organization.md"),
+        (table_scene, "table/scene.md"),
+    ):
+        try:
+            body = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            failures.append(f"missing {label}")
+            continue
+        if not body:
+            failures.append(f"empty {label}")
+
+    try:
+        scene_body = table_scene.read_text(encoding="utf-8")
+    except OSError:
+        scene_body = ""
+    if "No scene is currently active." in scene_body:
+        failures.append("table/scene.md still has the inactive table stub")
+
+    if (campaign_root / "dm" / "foundation.md").exists():
+        failures.append("dm/foundation.md exists; campaign planning started too early")
+
+    arcs_root = campaign_root / "arcs"
+    if arcs_root.exists() and any(path.is_dir() for path in arcs_root.iterdir()):
+        failures.append("arcs/ exists; organization bootstrap must not create arcs")
+
+    for rel in (
+        Path("dm/notes/factions"),
+        Path("dm/notes/npcs"),
+        Path("dm/notes/locales"),
+        Path("dm/notes/creatures"),
+        Path("dm/notes/ships"),
+        Path("dm/notes/artifacts"),
+        Path("dm/notes/hooks.md"),
+        Path("dm/notes/secrets.md"),
+        Path("dm/notes/philosophy"),
+    ):
+        if (campaign_root / rel).exists():
+            failures.append(f"{rel} exists; org bootstrap must stay org-only")
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        pg_config = _db.load_pg_config(_load_glass_config())
+        with _db.connect(pg_config) as conn:
+            clocks = _db.clock_list(
+                conn,
+                campaign_id=campaign_id,
+                include_archived=True,
+            )
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
+    if clocks:
+        failures.append("durable clocks exist; org bootstrap must not create pressures")
+
+    if failures:
+        detail = "\n".join(f"- {failure}" for failure in failures)
+        raise click.ClickException(
+            "organization bootstrap validation failed; not advancing bootstrap "
+            f"phase:\n{detail}"
+        )
+
+
+def _validate_campaign_planning_complete(cli: CliState, campaign_id: str) -> None:
+    campaign_root = cli.config.campaigns_dir / campaign_id
+    failures: list[str] = []
+
+    foundation = campaign_root / "dm" / "foundation.md"
+    context = campaign_root / "context.md"
+    framing = campaign_root / "shared" / "campaign-framing.md"
+
+    for path, label in (
+        (foundation, "dm/foundation.md"),
+        (context, "context.md"),
+        (framing, "shared/campaign-framing.md"),
+    ):
+        try:
+            body = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            failures.append(f"missing {label}")
+            continue
+        if not body:
+            failures.append(f"empty {label}")
+            continue
+        if label == "shared/campaign-framing.md" and "**Stub.**" in body:
+            failures.append("shared/campaign-framing.md still has the stub content")
+
+    arcs_root = campaign_root / "arcs"
+    arc_dirs = (
+        sorted(path.name for path in arcs_root.iterdir() if path.is_dir())
+        if arcs_root.exists()
+        else []
+    )
+    if "prelude" not in arc_dirs:
+        failures.append("arcs/prelude is missing")
+    main_arcs = [arc_id for arc_id in arc_dirs if arc_id != "prelude"]
+    if not main_arcs:
+        failures.append("no non-prelude opening arc was created")
+
+    if failures:
+        detail = "\n".join(f"- {failure}" for failure in failures)
+        raise click.ClickException(
+            "campaign planning validation failed; not advancing bootstrap phase:\n"
+            f"{detail}"
+        )
+
+
 def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> None:
     from cli import db as _db
     from cli.config import load_config as _load_glass_config
@@ -1018,9 +1186,8 @@ def _ensure_glass_api_for_run(cli: CliState) -> None:
     )
 
 
-def _start_webui_for_campaign(
+def _start_webui(
     cli: CliState,
-    campaign_id: str,
     *,
     url: str | None = None,
 ):
@@ -1029,7 +1196,6 @@ def _start_webui_for_campaign(
     return start_webui(
         repo_root=cli.config.repo_root,
         config_path=config_env_value(cli.config),
-        campaign_id=campaign_id,
         url=url or _webui_url(None),
         web_api_url=_web_api_url(None),
     )
@@ -1258,9 +1424,20 @@ def campaign_reconcile(cli: CliState, campaign_id: str, repair: bool) -> None:
 
 @campaign.command("prepare-turn")
 @click.argument("campaign_id", required=False)
+@click.option(
+    "--use-session-id/--no-use-session-id",
+    "use_session_id",
+    default=None,
+    help="Override [claude].use_session_id for this prepared turn.",
+)
 @click.pass_obj
-def campaign_prepare_turn(cli: CliState, campaign_id: str | None) -> None:
+def campaign_prepare_turn(
+    cli: CliState,
+    campaign_id: str | None,
+    use_session_id: bool | None,
+) -> None:
     """Build the next turn's TURN_START context without invoking the agent."""
+    _apply_use_session_id_override(cli, use_session_id)
     _ensure_db_migrated(cli)
     _ensure_falkor_reachable(cli)
     state = cli.store.load(campaign_id)
@@ -1300,11 +1477,18 @@ def campaign_prepare_turn(cli: CliState, campaign_id: str | None) -> None:
     ),
 )
 @click.option(
+    "--max-organization-turns",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Safety net only. Organization bootstrap should finish in a single Mara turn.",
+)
+@click.option(
     "--max-planning-turns",
     type=int,
     default=15,
     show_default=True,
-    help="Safety net only. The DM ends campaign planning when done.",
+    help="Safety net only. Mara ends post-character campaign planning when done.",
 )
 @click.option(
     "--max-creation-turns",
@@ -1316,19 +1500,25 @@ def campaign_prepare_turn(cli: CliState, campaign_id: str | None) -> None:
 @click.option(
     "--max-prelude-turns",
     type=int,
-    default=35,
+    default=120,
     show_default=True,
     help="Safety net only. The DM ends prelude when done.",
 )
 @click.option(
     "--skip-character-creation",
     is_flag=True,
-    help="Stop after campaign planning. Useful for inspecting planning output.",
+    help="Stop after organization bootstrap. Useful for inspecting the party org.",
 )
 @click.option(
     "--skip-prelude",
     is_flag=True,
-    help="Stop after character creation without running the bootstrap prelude.",
+    help="Stop after campaign planning without running the bootstrap prelude.",
+)
+@click.option(
+    "--use-session-id/--no-use-session-id",
+    "use_session_id",
+    default=None,
+    help="Override [claude].use_session_id for this run.",
 )
 @click.option("--dry-run", is_flag=True, help="Synthetic turns without Claude.")
 @click.pass_obj
@@ -1338,18 +1528,22 @@ def campaign_run(
     max_turns: int | None,
     skip_review_stops: int,
     no_review_stops: bool,
+    max_organization_turns: int,
     max_planning_turns: int,
     max_creation_turns: int,
     max_prelude_turns: int,
     skip_character_creation: bool,
     skip_prelude: bool,
+    use_session_id: bool | None,
     dry_run: bool,
 ) -> None:
     """Create or continue a campaign from its durable phase/mode state."""
 
+    _apply_use_session_id_override(cli, use_session_id)
     _run_campaign_lifecycle(
         cli,
         campaign_id,
+        max_organization_turns=max_organization_turns,
         max_planning_turns=max_planning_turns,
         max_creation_turns=max_creation_turns,
         max_prelude_turns=max_prelude_turns,

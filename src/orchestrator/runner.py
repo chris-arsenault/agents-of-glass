@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 
 from cli.api_grants import DEFAULT_API_URL, mint_grant
 from cli.api_server import ensure_background_server
@@ -61,6 +62,138 @@ _GLASS_COMMAND_LINE_RE = re.compile(
     r"scene|table|mode|turn|thread|msg|turns|sync)\b"
 )
 _SCENE_PLAY_MODES = {"scene-play", "action", "combat", "chase", "social-pressure"}
+
+
+def _ensure_actor_claude_session(
+    state: SessionState,
+    agent: Agent,
+    *,
+    cwd: Path,
+) -> dict[str, Any]:
+    """Ensure durable per-actor Claude Code session metadata exists."""
+
+    now = utc_now()
+    cwd_text = str(cwd)
+    existing_raw = state.claude_sessions.get(agent.id)
+    existing = dict(existing_raw) if isinstance(existing_raw, dict) else {}
+    session_id = str(existing.get("session_id") or "")
+    existing_cwd = str(existing.get("cwd") or "")
+    needs_new_session = not _valid_uuid(session_id) or (
+        bool(existing_cwd) and existing_cwd != cwd_text
+    )
+
+    if needs_new_session:
+        record: dict[str, Any] = {
+            "actor": agent.id,
+            "role": agent.role,
+            "session_id": str(uuid.uuid4()),
+            "cwd": cwd_text,
+            "created_at": now,
+            "updated_at": now,
+        }
+        if session_id:
+            record["previous_session_id"] = session_id
+        if existing_cwd:
+            record["previous_cwd"] = existing_cwd
+    else:
+        record = existing
+        record.setdefault("actor", agent.id)
+        record.setdefault("role", agent.role)
+        record.setdefault("created_at", now)
+        record["session_id"] = session_id
+        record["cwd"] = cwd_text
+        record["updated_at"] = now
+
+    state.claude_sessions[agent.id] = record
+    return record
+
+
+def _record_actor_claude_invocation(
+    state: SessionState,
+    agent: Agent,
+    *,
+    turn_id: str,
+    session_id_enabled: bool,
+    session_cli_mode: str | None = None,
+    session_materialized: bool = False,
+    returncode: int | None = None,
+    timed_out: bool | None = None,
+) -> dict[str, Any]:
+    record = dict(state.claude_sessions.get(agent.id) or {})
+    now = utc_now()
+    record["last_turn_id"] = turn_id
+    record["last_invoked_at"] = now
+    record["last_session_id_flag_enabled"] = session_id_enabled
+    if session_cli_mode is not None:
+        record["last_claude_session_cli_mode"] = session_cli_mode
+    if session_materialized:
+        record.setdefault("session_materialized_at", now)
+    if returncode is not None:
+        record["last_returncode"] = returncode
+    if timed_out is not None:
+        record["last_timed_out"] = timed_out
+    state.claude_sessions[agent.id] = record
+    return record
+
+
+def _claude_session_cli_args(
+    claude_session: dict[str, Any],
+    *,
+    use_session_id: bool,
+) -> tuple[list[str], str]:
+    if not use_session_id:
+        return [], "disabled"
+    session_id = str(claude_session.get("session_id") or "")
+    if _claude_session_should_resume(claude_session):
+        return ["--resume", session_id], "resume"
+    return ["--session-id", session_id], "new"
+
+
+def _claude_session_should_resume(claude_session: dict[str, Any]) -> bool:
+    if claude_session.get("session_materialized_at"):
+        return True
+    if claude_session.get("last_claude_session_cli_mode") == "resume":
+        return True
+
+    # Backward compatibility for records written before we distinguished
+    # Claude Code's new-session flag from the resume flag. If the CLI was
+    # actually invoked with the session flag, assume the local Claude session
+    # exists and resume it on the next turn.
+    invoked_with_session_id = claude_session.get("last_session_id_flag_enabled") is True
+    process_returned = (
+        claude_session.get("last_returncode") is not None
+        or claude_session.get("last_timed_out") is not None
+    )
+    return invoked_with_session_id and process_returned
+
+
+def _claude_session_materialized_after_run(
+    *,
+    session_cli_mode: str,
+    returncode: int,
+    timed_out: bool,
+    stderr_text: str,
+) -> bool:
+    if session_cli_mode == "disabled":
+        return False
+    lower_stderr = stderr_text.lower()
+    if "session" in lower_stderr and (
+        "not found" in lower_stderr
+        or "does not exist" in lower_stderr
+        or "no conversation" in lower_stderr
+    ):
+        return False
+    if "session id" in lower_stderr and "already in use" in lower_stderr:
+        return True
+    return timed_out or returncode == 0
+
+
+def _valid_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return True
 
 
 class Orchestrator:
@@ -664,6 +797,23 @@ class Orchestrator:
         # the canonical campaign tree.
         target_user = permissions.player_user_for(agent.id)
         _assert_actor_workspace_ready(package, target_user=target_user)
+        claude_session = _ensure_actor_claude_session(
+            state,
+            agent,
+            cwd=package.spawn_cwd,
+        )
+        claude_session_args, claude_session_cli_mode = _claude_session_cli_args(
+            claude_session,
+            use_session_id=self.config.claude.use_session_id,
+        )
+        _record_actor_claude_invocation(
+            state,
+            agent,
+            turn_id=package.turn_id,
+            session_id_enabled=self.config.claude.use_session_id,
+            session_cli_mode=claude_session_cli_mode,
+        )
+        self.store.save(state)
         glass_api_url = ensure_background_server(
             url=os.environ.get("GLASS_API_URL", DEFAULT_API_URL),
             config_path=config_env_value(self.config),
@@ -697,6 +847,7 @@ class Orchestrator:
         actor_command.append("claude")
         if self.config.claude.model:
             actor_command.extend(["--model", self.config.claude.model])
+        actor_command.extend(claude_session_args)
         claude_debug_path = package.agent_turn_dir / "claude-debug.log"
         claude_debug_ref = _agent_path(claude_debug_path, package.spawn_cwd)
         actor_command.extend([
@@ -761,6 +912,9 @@ class Orchestrator:
             timeout_seconds=self.config.claude.turn_timeout_seconds,
             phase="before_spawn",
             claude_debug_path=claude_debug_path,
+            claude_session=claude_session,
+            claude_session_enabled=self.config.claude.use_session_id,
+            claude_session_cli_mode=claude_session_cli_mode,
         )
         _write_json(debug_path, debug_payload)
 
@@ -804,6 +958,21 @@ class Orchestrator:
         duration_seconds = time.monotonic() - turn_started
         status = "timed out" if timed_out else f"exit {returncode}"
         _print_turn_duration(agent, package, duration_seconds, status=status)
+        _record_actor_claude_invocation(
+            state,
+            agent,
+            turn_id=package.turn_id,
+            session_id_enabled=self.config.claude.use_session_id,
+            session_cli_mode=claude_session_cli_mode,
+            session_materialized=_claude_session_materialized_after_run(
+                session_cli_mode=claude_session_cli_mode,
+                returncode=returncode,
+                timed_out=timed_out,
+                stderr_text=stderr_text,
+            ),
+            returncode=returncode,
+            timed_out=timed_out,
+        )
 
         _normalize_actor_projection(package, target_user=target_user)
         copy_turn_artifacts_to_canonical(
@@ -1062,6 +1231,9 @@ def _agent_debug_payload(
     timeout_seconds: int,
     phase: str,
     claude_debug_path: Path,
+    claude_session: dict[str, Any],
+    claude_session_enabled: bool,
+    claude_session_cli_mode: str,
 ) -> dict[str, Any]:
     return {
         "phase": phase,
@@ -1087,6 +1259,18 @@ def _agent_debug_payload(
             "operator_euid": os.geteuid(),
             "target_home": _home_for_user(target_user) if target_user else None,
             "claude_debug_path": str(claude_debug_path),
+        },
+        "claude_session": {
+            "enabled": claude_session_enabled,
+            "actor": claude_session.get("actor"),
+            "session_id": claude_session.get("session_id"),
+            "cwd": claude_session.get("cwd"),
+            "created_at": claude_session.get("created_at"),
+            "updated_at": claude_session.get("updated_at"),
+            "previous_session_id": claude_session.get("previous_session_id"),
+            "previous_cwd": claude_session.get("previous_cwd"),
+            "session_materialized_at": claude_session.get("session_materialized_at"),
+            "cli_mode": claude_session_cli_mode,
         },
         "env": _env_debug(env, preserved_env),
         "paths_before": _turn_path_debug(package),

@@ -87,6 +87,11 @@ Unlisted skills default to `fool`.
 Skill names should be specific, world-grounded, and broad enough to matter
 without becoming universal.
 
+Characters can declare additional skills during play, up to a cap of
+`3 + character_level` declared skills total (4 at level 1, 5 at level 2,
+etc.). New declarations start at `fool` and grow by use. See
+[`skill-advancement.md`](skill-advancement.md).
+
 ## HP
 
 Starting HP defaults to 10. Take 8 for a fragile or specialized character. Take

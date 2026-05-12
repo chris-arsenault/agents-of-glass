@@ -304,7 +304,7 @@ campaigns = "{campaigns}"
             campaigns = root / "campaigns"
             campaign_root = campaigns / "c1"
             campaign_root.mkdir(parents=True)
-            projection = root / ".glass-cwd" / "c1" / "0001-tev"
+            projection = root / ".glass-cwd" / "c1" / "tev"
             (projection / "players" / "tev" / "public").mkdir(parents=True)
             (projection / "players" / "tev" / "public" / "intro.md").write_text(
                 "hello from projection\n",

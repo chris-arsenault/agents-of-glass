@@ -1,10 +1,10 @@
 """Per-turn context generation.
 
 The canonical campaign tree remains under campaigns/<id>/, but agents are
-spawned inside a per-turn projection under .glass-cwd/. The projection uses the
-same relative paths as the canonical tree and contains only the files the actor
-may read. Role-authorized document surfaces are writable drafts; persistent
-mutations still go through `glass`.
+spawned inside a stable per-actor projection under .glass-cwd/. Most projected
+paths mirror the canonical tree; the active turn is exposed through stable
+unnumbered `turns/` paths. Role-authorized document surfaces are writable
+drafts; persistent mutations still go through `glass`.
 """
 
 from __future__ import annotations
@@ -17,8 +17,10 @@ from typing import Any
 from .config import AogConfig
 from .projection import (
     ProjectionPaths,
+    assigned_style_id,
     build_projection,
     projected_path,
+    projected_turn_artifact_path,
     projection_root_for,
 )
 from .state import Agent, SessionState
@@ -31,7 +33,7 @@ class ContextPackage:
     turn_number: int
     agent: Agent
     campaign_root: Path         # canonical campaigns/<id>/
-    spawn_cwd: Path             # per-turn projected campaign workspace; agent's cwd
+    spawn_cwd: Path             # stable actor projected campaign workspace; agent's cwd
     projection: ProjectionPaths
     turn_dir: Path              # campaigns/<id>/<agent>/turns/<NNNN>/
     turn_start_path: Path       # canonical TURN_START.md
@@ -87,9 +89,7 @@ class ContextBuilder:
             turn_number=turn_number,
             agent=agent,
         )
-        agent_turn_prose_path = projected_path(
-            campaign_root, spawn_cwd, turn_prose_path
-        )
+        agent_turn_prose_path = projected_turn_artifact_path(spawn_cwd, "TURN.md")
         turn_start_path.write_text(
             self._render_turn_start(
                 state, agent, turn_id, spawn_cwd, agent_turn_prose_path,
@@ -136,8 +136,16 @@ class ContextBuilder:
         *,
         turn_meta: dict[str, Any] | None = None,
     ) -> str:
-        turn_meta = turn_meta or {}
+        turn_meta = dict(turn_meta or {})
         active = state.active_mode
+        campaign_root = self.config.campaigns_dir / state.campaign
+        character_creation_turn_type = self._character_creation_turn_type(
+            state,
+            agent,
+            campaign_root,
+        )
+        if character_creation_turn_type:
+            turn_meta["_turn_type_override"] = character_creation_turn_type
         turn_type = _turn_type_for(
             active.mode,
             role=agent.role,
@@ -153,12 +161,24 @@ class ContextBuilder:
         )
         transcript_path = _agent_path(self.store.transcript_path(state.campaign), spawn_cwd)
         turn_prose_ref = _agent_path(turn_prose_path, spawn_cwd)
-        table_section = self._table_section(agent, spawn_cwd)
+        table_section = self._table_section(state, agent, spawn_cwd)
         scene_summary_section = self._scene_summary_section(state, agent, spawn_cwd)
         turn_summaries_section = self._recent_turn_summaries_section(state)
         history_lookup_section = self._history_lookup_section(
             state,
             transcript_path=transcript_path,
+        )
+        session_context_section = self._session_context_section()
+
+        style_id = assigned_style_id(campaign_root, agent)
+        style_pointer = f"styles/{style_id}.md" if style_id else None
+        style_line = (
+            f"Your prose-craft register is at "
+            f"[`{style_pointer}`]({style_pointer}) — read this once before "
+            "writing public turn prose; the reflexes there override the "
+            "corpus's drift toward house-style sameness. "
+            if style_pointer
+            else ""
         )
 
         if agent.role == "dm":
@@ -167,8 +187,10 @@ class ContextBuilder:
                 f"You are **{agent.display_name}**, the DM for a Glass Frontier "
                 "TTRPG campaign. Run the table as this person: use the voice, "
                 f"tastes, pacing, and table habits in "
-                f"[`{persona_pointer}`]({persona_pointer}). Keep your attention "
-                "on the table, the scene, and the players' choices.\n\n"
+                f"[`{persona_pointer}`]({persona_pointer}). "
+                f"{style_line}"
+                "Keep your attention on the table, the scene, and the players' "
+                "choices.\n\n"
             )
             workspace_section = self._dm_workspace_section(
                 active.mode,
@@ -188,8 +210,10 @@ class ContextBuilder:
                 f"character summarized at "
                 f"[`{character_pointer}`]({character_pointer}) when that file "
                 "exists; otherwise use the character files in your player "
-                "workspace. Make choices as the player, and when you speak or "
-                "act in fiction, embody only what the character knows and can do.\n\n"
+                "workspace. "
+                f"{style_line}"
+                "Make choices as the player, and when you speak or act in "
+                "fiction, embody only what the character knows and can do.\n\n"
             )
             workspace_section = self._player_workspace_section(
                 agent.id,
@@ -223,7 +247,10 @@ class ContextBuilder:
                 "inventory, lore/state checks), ask the DM clarifying questions "
                 "if a real decision depends on the answer, then write the public "
                 "turn prose, run `glass turn end`, and exit. Do not hand off "
-                "merely to move dice around. "
+                "merely to move dice around or ask what happens next. Default "
+                "closeout is `--next default`; use `--next dm` only for a "
+                "blocking hidden fact, and include the blocking question in "
+                "`--open-question`. "
                 "If public scene trackers are present, treat their numbers as "
                 "authoritative.\n\n"
                 f"- Order: `{order}`\n"
@@ -350,6 +377,7 @@ class ContextBuilder:
             "active mode/table/scene framing. Use `instructions/` for tool and "
             "file behavior, `methodologies/` for required sequences, `srd/` "
             "for public rules, and `how-to/` for optional examples.\n\n"
+            f"{session_context_section}"
             "## Authoring Surface\n\n"
             "Read and edit the workspace-relative files named in this turn. "
             "The turn `TURN.md` file is collected automatically; do not sync "
@@ -382,6 +410,25 @@ class ContextBuilder:
             f"{world_lore_section}\n"
             "## Your tools\n\n"
             f"{tools_section}\n"
+        )
+
+    def _session_context_section(self) -> str:
+        if not self.config.claude.use_session_id:
+            return ""
+        return (
+            "## Persistent Claude Session\n\n"
+            "This invocation runs on this actor's persistent Claude Code "
+            "session. Before acting, inspect the current workspace and turn "
+            "context instead of relying on remembered conversation state.\n\n"
+            "Required startup checks:\n"
+            "- Read this `turns/TURN_START.md` file fully.\n"
+            "- Read the active methodology named below.\n"
+            "- Read `table/` and the scene/campaign summary files named below.\n"
+            "- Drain messages exactly as this turn requires.\n\n"
+            "Treat current files, Glass commands, and durable Glass state as "
+            "authoritative over remembered Claude Code session context. If "
+            "remembered context conflicts with the workspace or Glass state, "
+            "use the workspace and Glass state.\n\n"
         )
 
     def _housekeeping_section(self, turn_meta: dict[str, Any]) -> str:
@@ -581,38 +628,57 @@ class ContextBuilder:
             "the scene any moment.\n\n"
         )
 
-    def _table_section(self, agent: Agent, spawn_cwd: Path) -> str:
-        index_path = _agent_path(spawn_cwd / "table" / "index.md", spawn_cwd)
+    def _table_section(self, state: SessionState, agent: Agent, spawn_cwd: Path) -> str:
         scene_path = _agent_path(spawn_cwd / "table" / "scene.md", spawn_cwd)
-        handouts_path = _agent_path(spawn_cwd / "table" / "handouts", spawn_cwd)
+        artifact_lines = self._table_artifact_lines(state, spawn_cwd)
         if agent.role == "dm":
             role_line = (
-                "Before ending your turn, update `table/` if visible short-term "
-                "state changed: room descriptions, visible NPC or monster "
-                "condition, current stakes, obvious routes, public questions, "
-                "or links to relevant freeform table-root files. Use "
-                "`glass table write` or `glass table append` for those updates. "
-                "Keep secrets out of `table/`. Do not assume DM notes, graph "
-                "entities, hooks, or NPC files are on the player table unless "
-                "you put the visible part under `table/`."
+                "Before ending your turn, update `table/` when visible state "
+                "changed. `table/scene.md` is only the current visible situation. "
+                "Any reusable visible NPC, locale, ship, document, faction, clue, "
+                "object, or relationship must be a named markdown artifact under "
+                "`table/`, using whatever meaningful slug fits the fiction. Use "
+                "`glass table write/append <slug>.md` for table artifacts, "
+                "`glass table use <shared/lore/...>` to bring existing lore onto "
+                "the table, and `glass lore promote table/<slug>.md --to "
+                "<shared/lore/...>` when a table artifact becomes durable canon. "
+                "Keep DM-only material out of `table/`."
             )
         else:
             role_line = (
-                "Check the table before asking the DM to repeat visible "
-                "short-term information. Read the relevant table files, then "
-                "ask only for information that is absent, "
-                "ambiguous, or newly important."
+                "Read `table/scene.md` and any named table artifact relevant to "
+                "your action before asking the DM to repeat visible information. "
+                "Ask only for information that is absent, ambiguous, or newly "
+                "important."
             )
         return (
             "## Table\n\n"
             "The public table is the short-term state visible in player-agent "
-            "CWDs for the current scene. It exists to reduce clarification "
-            "back-and-forth. In the web viewer, Active Table means exactly "
-            "these `table/` files, not DM notes or graph state.\n\n"
-            f"- At a glance: `{index_path}`\n"
-            f"- Scene kickoff: `{scene_path}`\n"
-            f"- In-game handouts: `{handouts_path}`\n\n"
+            "CWDs for the current scene. It is artifact-shaped: no authored "
+            "`table/index.md` summary exists. In the web viewer, Active Table "
+            "means exactly these `table/` files, not DM notes or graph state.\n\n"
+            f"- Current visible situation: `{scene_path}`\n"
+            "- Named visible artifacts:\n"
+            f"{artifact_lines}\n\n"
             f"{role_line}\n\n"
+        )
+
+    def _table_artifact_lines(self, state: SessionState, spawn_cwd: Path) -> str:
+        table_root = self.config.campaigns_dir / state.campaign / "table"
+        files: list[Path] = []
+        if table_root.exists():
+            for path in sorted(table_root.rglob("*.md")):
+                if not path.is_file():
+                    continue
+                rel = path.relative_to(table_root)
+                if rel in {Path("scene.md"), Path("index.md")}:
+                    continue
+                files.append(rel)
+        if not files:
+            return "  - No named table artifacts are present yet."
+        return "\n".join(
+            f"  - `{_agent_path(spawn_cwd / 'table' / rel, spawn_cwd)}`"
+            for rel in files
         )
 
     def _history_lookup_section(
@@ -843,11 +909,12 @@ class ContextBuilder:
             "and DM note/workspace directories. Edit files at their relative "
             "paths, then commit them with "
             "`glass sync apply <path-or-directory> ...`.\n"
-            "- `table/` is the player-agent-visible short-term table state: `index.md`, "
-            "`scene.md`, `handouts/`, and any freeform root markdown files "
-            "that prevent repeated clarification questions. DM notes, graph "
-            "entities, hooks, and lore are not table material unless visible "
-            "parts are put or linked here.\n"
+            "- `table/` is player-agent-visible short-term table state. "
+            "`scene.md` holds the current visible situation. Every reusable "
+            "visible thing belongs in its own named markdown artifact under "
+            "`table/`; there is no authored `table/index.md` summary. DM notes, "
+            "graph entities, hooks, and lore are not table material unless "
+            "visible parts are put here or copied here with `glass table use`.\n"
             "- `instructions/` holds binding tool/file behavior. Start at "
             "`instructions/index.md`.\n"
             "- `methodologies/` holds required ordered workflows. TURN_START "
@@ -890,6 +957,14 @@ class ContextBuilder:
             )
         else:
             methodology_line = ""
+        secrets_line = ""
+        if mode.lower() != "character-creation":
+            secrets_line = (
+                f"- `{base}/secrets/` is **DM-readable, party-private**: optional "
+                "hidden-knowledge files. Edit them in place, commit with "
+                f"`glass sync apply {base}/secrets`, and use `glass msg secret dm` "
+                "to flag it for the DM.\n"
+            )
         return (
             "## Player workspace\n\n"
             f"- `{base}/persona.md` is who you are at the table.\n"
@@ -903,10 +978,7 @@ class ContextBuilder:
             f"- `{base}/public/` is **party-readable**: drop intros, relationships, "
             "the cached character display, and any party-shared artifacts here. "
             f"Edit these files in place, then commit with `glass sync apply {base}/public`.\n"
-            f"- `{base}/secrets/` is **DM-readable, party-private**: optional "
-            "hidden-knowledge files. Edit them in place, commit with "
-            f"`glass sync apply {base}/secrets`, and use `glass msg secret dm` "
-            "to flag it for the DM.\n"
+            f"{secrets_line}"
             f"- `{base}/notes/` is your personal encyclopedia "
             f"(start at `{base}/notes/index.md`). "
             f"`{base}/journal/` is dated reflection. "
@@ -932,6 +1004,47 @@ class ContextBuilder:
             f"{methodology_line}"
         )
 
+    def _character_creation_turn_type(
+        self,
+        state: SessionState,
+        agent: Agent,
+        campaign_root: Path,
+    ) -> str | None:
+        if state.active_mode.mode != "character-creation":
+            return None
+        if agent.role == "player":
+            public_root = campaign_root / "players" / agent.id / "public"
+            if _has_text(public_root / "intro.md") and _has_text(
+                public_root / "character.md"
+            ):
+                return "character-creation-player-relationship"
+            return "character-creation-player-build"
+        if agent.role != "dm":
+            return None
+
+        players_root = campaign_root / "players"
+        player_dirs = (
+            sorted(path for path in players_root.iterdir() if path.is_dir())
+            if players_root.exists()
+            else []
+        )
+        if not player_dirs:
+            return "character-creation-dm-setup"
+        all_built = all(
+            _has_text(player_dir / "public" / "intro.md")
+            and _has_text(player_dir / "public" / "character.md")
+            for player_dir in player_dirs
+        )
+        if not all_built:
+            return "character-creation-dm-setup"
+        all_relationships = all(
+            _has_text(player_dir / "public" / "relationships.md")
+            for player_dir in player_dirs
+        )
+        if not all_relationships:
+            return "character-creation-dm-relationship-setup"
+        return "character-creation-dm-ratification"
+
     def _dm_world_lore_section(self) -> str:
         if not self.config.lore_path.exists():
             return ""
@@ -944,6 +1057,13 @@ class ContextBuilder:
             "this campaign, use `glass lore import` to bring it into "
             "`shared/lore/` rather than referencing from afar.\n\n"
         )
+
+
+def _has_text(path: Path) -> bool:
+    try:
+        return bool(path.read_text(encoding="utf-8").strip())
+    except OSError:
+        return False
 
 
 def _agent_turn_dir(campaigns_dir: Path, campaign: str, agent: Agent) -> Path:
@@ -994,6 +1114,9 @@ def _clear_stale_turn_artifacts(turn_dir: Path) -> None:
 def _dm_tools() -> list[str]:
     return [
         "glass roll",
+        "glass campaign pull-note",
+        "glass character new --primary-drive --positive-trait --table-presence "
+        "--non-work-want --opening-social-action --life-prompt --pull-utilization",
         "glass character bulk-get / bulk-update",
         "glass character get / mirror / set-hp / set-momentum / inventory-add / inventory-rm",
         "glass character signature-status / signature-add",
@@ -1011,13 +1134,13 @@ def _dm_tools() -> list[str]:
         "(use after writing the body)",
         "glass lore import <world-bible-path> [--as <name>] — copies a world-bible entry "
         "into shared/lore/ AND graph-upserts it (curate, don't bulk-copy)",
-        "glass lore list / search",
+        "glass lore list / search / promote",
         "glass note ratify / reject",
-        "glass arc create / activate / current / list / close",
+        "glass arc create --pull-source --pull-utilization / activate / current / list / close",
         "glass scene create / end --outcome",
         "glass scene tracker set / tick / list",
         "glass scene pressure",
-        "glass table current / show / write / append / snapshot",
+        "glass table show / write / append / use / snapshot",
         "glass mode start / end / current",
         "glass turn end / initiative / handoff / rapid-round / "
         "housekeeping-round / restart-order / clear-handoff",
@@ -1030,6 +1153,8 @@ def _dm_tools() -> list[str]:
 def _player_tools() -> list[str]:
     return [
         "glass roll",
+        "glass character new --primary-drive --positive-trait --table-presence "
+        "--non-work-want --opening-social-action --life-prompt --pull-utilization",
         "glass character bulk-get / bulk-update (bulk-update your character only)",
         "glass character get / mirror / set-hp / set-momentum / inventory-add / inventory-rm "
         "(single-character convenience commands; your character only for mutations)",
@@ -1046,7 +1171,7 @@ def _player_tools() -> list[str]:
         "glass turn end / handoff",
         "glass scene tracker list",
         "glass scene pressure",
-        "glass table current / show",
+        "glass table show",
         "glass msg read",
         "glass turns find / feed",
     ]
@@ -1065,6 +1190,9 @@ def _turn_type_for(
 ) -> str | None:
     normalized = mode.lower()
     meta = turn_meta or {}
+    override = meta.get("_turn_type_override")
+    if isinstance(override, str) and override:
+        return override
     if role == "player":
         if meta.get("housekeeping"):
             return "scene-housekeeping-player"
@@ -1088,6 +1216,7 @@ def _turn_type_for(
         if normalized == "scene-play":
             return "scene-play-dm"
     return {
+        "organization-bootstrap": "organization-bootstrap",
         "campaign-planning": "campaign-planning",
         "character-creation": "character-creation",
         "prelude": "prelude-arc",
@@ -1114,6 +1243,7 @@ def _methodology_for_turn(
         return f"{turn_type}.md"
     normalized = mode.lower()
     return {
+        "organization-bootstrap": "organization-bootstrap.md",
         "campaign-planning": "campaign-planning.md",
         "character-creation": "character-creation.md",
         "prelude": "prelude-arc.md",

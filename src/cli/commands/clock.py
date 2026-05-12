@@ -10,7 +10,7 @@ from .. import db as _db
 from .. import workspace as _workspace
 from ..campaign import active_campaign_id, pg_connection, resolve_active_campaign_workspace
 from ..config import get_paths
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import slugify
 from ..role import current_role, require_dm
 from ..state import append_audit, commit, load_state, queue_event
@@ -61,9 +61,19 @@ def clock_set(
     """DM-only: create or replace a durable clock."""
     role = require_dm()
     if max_value <= 0:
-        raise GlassError("--max must be greater than zero")
+        raise GlassError(
+            agent_instruction(
+                "`--max` must be greater than zero",
+                "Choose the size of the durable clock, for example `--max 4`, `--max 6`, or `--max 10`.",
+            )
+        )
     if value < 0 or value > max_value:
-        raise GlassError("--value must be between 0 and --max")
+        raise GlassError(
+            agent_instruction(
+                "`--value` must be between 0 and `--max`",
+                "Set the current clock value within the clock bounds, or omit `--value` to start at 0.",
+            )
+        )
     clock_key = slugify(clock_id)
     scope_key = slugify(scope)
     anchor_key = slugify(anchor_id) if anchor_id else None
@@ -138,7 +148,13 @@ def clock_tick(ctx: click.Context, clock_id: str, delta: int, note: str) -> None
                 note=note,
             )
         except LookupError:
-            raise GlassError(f"unknown clock {clock_key!r}") from None
+            raise GlassError(
+                agent_instruction(
+                    f"unknown clock {clock_key!r}",
+                    "Use `glass clock list` to find existing durable clock ids.",
+                    "Create the clock first with `glass clock set <clock-id> --max <n>` if it should exist.",
+                )
+            ) from None
         _write_public_clock_projections(conn, workspace)
 
     sign = f"{delta:+d}"
@@ -215,9 +231,19 @@ def clock_show(ctx: click.Context, clock_id: str) -> None:
     with pg_connection() as conn:
         record = _db.clock_get(conn, campaign_id=campaign_id, clock_id=clock_key)
     if record is None:
-        raise GlassError(f"unknown clock {clock_key!r}")
+        raise GlassError(
+            agent_instruction(
+                f"unknown clock {clock_key!r}",
+                "Use `glass clock list` to find existing durable clock ids.",
+            )
+        )
     if role.kind == "player" and record["visibility"] != "public":
-        raise GlassError("permission denied: players cannot read hidden clocks")
+        raise GlassError(
+            agent_instruction(
+                "players cannot read hidden clocks",
+                "Use `glass clock list` to see public clocks, or ask the DM to reveal/update hidden pressure if appropriate.",
+            )
+        )
     result = {"clock": record}
     append_audit(
         paths,
@@ -272,7 +298,12 @@ def _set_clock_status(
                 note=note,
             )
         except LookupError:
-            raise GlassError(f"unknown clock {clock_key!r}") from None
+            raise GlassError(
+                agent_instruction(
+                    f"unknown clock {clock_key!r}",
+                    "Use `glass clock list --all` to find the durable clock before resolving or archiving it.",
+                )
+            ) from None
         _write_public_clock_projections(conn, workspace)
 
     queue_event(state, role.actor, f"clock {status} {record['label']}")

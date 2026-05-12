@@ -1,3 +1,0 @@
-The `turns/` path is collected automatically — that sync error is expected per the output contract ("do not sync `turns/` paths"). The turn is complete.
-
-**What happened this turn:** Drova picked up Per Vask's delivery form and ran The Angle on it — breakthrough roll (margin 4). The dispatch slip's ghost impression shows rack serial 7C-AA7 while the form claims 7C-AA9: two racks, one set of papers. Per Vask saw her work the document and is now watching her hands. Drova passed the finding to Mereth at low voice. The paperwork discrepancy is now in the room alongside the charge variance Tek'iris found.

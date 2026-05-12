@@ -211,6 +211,13 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         pronouns,
         bio,
         goals,
+        primary_drive,
+        positive_trait,
+        table_presence,
+        non_work_want,
+        opening_social_action,
+        life_prompt_answers,
+        pull_utilization_note,
         attributes,
         skills,
         momentum_current,
@@ -238,6 +245,13 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         "pronouns": pronouns,
         "bio": bio,
         "goals": list(goals or []),
+        "primary_drive": primary_drive,
+        "positive_trait": positive_trait,
+        "table_presence": table_presence,
+        "non_work_want": non_work_want,
+        "opening_social_action": opening_social_action,
+        "life_prompt_answers": list(life_prompt_answers or []),
+        "pull_utilization_note": pull_utilization_note,
         "attributes": attributes or {},
         "skills": skills or {},
         "momentum": {
@@ -258,7 +272,9 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
 
 _CHARACTER_COLUMNS = (
     "campaign_id, character_id, player_id, name, archetype, species, culture, "
-    "organization_role, pronouns, bio, goals, attributes, skills, "
+    "organization_role, pronouns, bio, goals, primary_drive, positive_trait, "
+    "table_presence, non_work_want, opening_social_action, life_prompt_answers, "
+    "pull_utilization_note, attributes, skills, "
     "momentum_current, momentum_floor, momentum_ceiling, "
     "hp_current, hp_max, inventory, tags, xp, level, skill_xp, "
     "created_at, updated_at"
@@ -285,6 +301,17 @@ SKILL_AUTO_BUMP_THRESHOLDS = [
 ATTRIBUTE_TIER_LADDER = ["rudimentary", "standard", "advanced", "superior"]
 
 
+# Declared skills are capped per character: 3 starter slots filled at creation
+# (2 apprentice + 1 artisan), plus one additional slot per character level.
+# Level 1 -> 4 slots; level 2 -> 5; level N -> 3 + N.
+STARTING_SKILL_SLOTS = 3
+
+
+def skill_slot_cap(level: int) -> int:
+    """Total declared-skill slots available at the given character level."""
+    return STARTING_SKILL_SLOTS + int(level)
+
+
 def earned_skill_tier(xp: int) -> str:
     """Return the highest tier earned for a given skill_xp count."""
     tier = "fool"
@@ -292,6 +319,18 @@ def earned_skill_tier(xp: int) -> str:
         if xp >= threshold:
             tier = t
     return tier
+
+
+class SkillSlotCapFull(Exception):
+    """Raised when a character has no declared-skill slots left."""
+
+    def __init__(self, *, level: int, cap: int, used: int) -> None:
+        self.level = level
+        self.cap = cap
+        self.used = used
+        super().__init__(
+            f"skill slot cap reached: {used}/{cap} declared at level {level}"
+        )
 
 
 def _iso(value: Any) -> str | None:
@@ -593,6 +632,13 @@ def character_create(
     pronouns: str,
     bio: str,
     goals: list[str],
+    primary_drive: str,
+    positive_trait: str,
+    table_presence: str,
+    non_work_want: str,
+    opening_social_action: str,
+    life_prompt_answers: list[dict[str, str]],
+    pull_utilization_note: str,
     attributes: dict[str, str],
     skills: dict[str, str],
     hp_max: int,
@@ -603,9 +649,17 @@ def character_create(
             f"""
             INSERT INTO characters (
                 campaign_id, character_id, player_id, name, archetype, species,
-                culture, organization_role, pronouns, bio, goals, attributes,
-                skills, hp_current, hp_max, tags
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                culture, organization_role, pronouns, bio, goals, primary_drive,
+                positive_trait, table_presence, non_work_want,
+                opening_social_action, life_prompt_answers, pull_utilization_note,
+                attributes, skills, hp_current, hp_max, tags
+            ) VALUES (
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s
+            )
             RETURNING {_CHARACTER_COLUMNS}
             """,
             (
@@ -620,6 +674,13 @@ def character_create(
                 pronouns,
                 bio,
                 json.dumps(goals),
+                primary_drive,
+                positive_trait,
+                table_presence,
+                non_work_want,
+                opening_social_action,
+                json.dumps(life_prompt_answers),
+                pull_utilization_note,
                 json.dumps(attributes),
                 json.dumps(skills),
                 hp_max,
@@ -648,6 +709,13 @@ def character_update_fields(
         "pronouns",
         "bio",
         "goals",
+        "primary_drive",
+        "positive_trait",
+        "table_presence",
+        "non_work_want",
+        "opening_social_action",
+        "life_prompt_answers",
+        "pull_utilization_note",
         "attributes",
         "skills",
         "tags",
@@ -664,7 +732,7 @@ def character_update_fields(
     set_parts: list[str] = []
     values: list[Any] = []
     for name, value in fields.items():
-        if name in {"goals", "attributes", "skills"}:
+        if name in {"goals", "life_prompt_answers", "attributes", "skills"}:
             value = json.dumps(value)
             set_parts.append(f"{name} = %s::jsonb")
         else:
@@ -938,6 +1006,59 @@ def character_apply_skill_xp(
             (json.dumps(skills), json.dumps(skill_xp), campaign_id, character_id),
         )
     return before, after, bumped_to
+
+
+def character_declare_skill(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    skill: str,
+    starting_tier: str = "fool",
+) -> tuple[dict[str, Any], bool]:
+    """Declare a skill at `starting_tier` if the cap allows.
+
+    Returns (character, was_newly_added). If the skill is already declared,
+    the existing record is returned unchanged and `was_newly_added` is False.
+
+    Raises:
+      LookupError: character not found.
+      SkillSlotCapFull: cap is full and the skill is not already declared.
+      ValueError: empty skill name, or unsupported starting tier.
+    """
+    skill_key = (skill or "").strip()
+    if not skill_key:
+        raise ValueError("empty skill name")
+    if starting_tier not in SKILL_TIER_RANK:
+        raise ValueError(f"unsupported starting tier: {starting_tier}")
+    added = False
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT skills, level FROM characters "
+            "WHERE campaign_id = %s AND character_id = %s FOR UPDATE",
+            (campaign_id, character_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(character_id)
+        skills = dict(row[0] or {})
+        level = int(row[1])
+        if skill_key not in skills:
+            cap = skill_slot_cap(level)
+            if len(skills) >= cap:
+                raise SkillSlotCapFull(level=level, cap=cap, used=len(skills))
+            skills[skill_key] = starting_tier
+            cur.execute(
+                "UPDATE characters SET skills = %s::jsonb "
+                "WHERE campaign_id = %s AND character_id = %s",
+                (json.dumps(skills), campaign_id, character_id),
+            )
+            added = True
+    conn.commit()
+    refreshed = character_get(conn, campaign_id, character_id)
+    if refreshed is None:
+        raise LookupError(character_id)
+    return refreshed, added
 
 
 def character_set_inventory(

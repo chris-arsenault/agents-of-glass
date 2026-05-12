@@ -29,6 +29,10 @@ early play is to see what the character reaches for enough to earn mastery.
 Good skill names are specific enough to create choices and broad enough to come
 up more than once. They should sound like something a person could practice.
 
+See [`srd/skill-advancement.md`](../srd/skill-advancement.md) for how skills
+grow during play (per-skill xp, auto-promotion thresholds) and how to pick up
+new skills inside the `3 + level` slot cap.
+
 Useful apprentice skills:
 
 - dockyard talk
@@ -179,3 +183,39 @@ Reframed into moves:
 - Archetype: Witness-Binder. Org role: outside specialist on retainer. Skills:
   low-angle document reading (`artisan`), Conclave intake protocol
   (`apprentice`), old-hab etiquette (`apprentice`). Signature move: The Angle.
+
+## Earning New Skills
+
+Characters can add new skills during play. The cap is `3 + character_level`
+declared skills total: 4 at level 1, 5 at level 2, etc. The three creation
+slots are filled with the starting budget; one slot is free at level 1, and
+each level-up adds another.
+
+The fastest way to declare is to just roll a new skill name on a turn where
+the fiction reaches for it:
+
+```bash
+glass roll <new-skill-name> <attribute> --risk <level> --character <id>
+```
+
+If you have a free slot, the CLI silently adds the skill at `fool` and runs
+the roll. The roll modifier is the same as if you had improvised (fool, −2),
+but now the skill is on your sheet, gathers xp, and ranks up. If the cap is
+full, the command errors and you have to pick an existing skill (or wait for
+the next level).
+
+You can also declare without rolling — usually during intermission training
+or as a quiet decision between scenes:
+
+```bash
+glass character skill-declare <character-id> <new-skill-name>
+```
+
+Skill xp from `advance` (+1) and `breakthrough` (+2) auto-promotes the skill
+through `apprentice` (5 xp), `artisan` (15), and `virtuoso` (30). No separate
+"spend xp" step exists.
+
+When choosing a name for a new declared skill, the same naming rules apply as
+at character creation: specific enough to create choices, broad enough to come
+up more than once. Do not burn a slot on something so narrow it can only be
+rolled once.

@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 
 from .config import load_config
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 
 
 DEFAULT_EMBEDDING_URL = "http://192.168.66.3:5361/v1/embeddings"
@@ -100,7 +100,13 @@ def embed_texts(
 
     dimensions = len(vectors[0]) if vectors else 0
     if any(len(vector) != dimensions for vector in vectors):
-        raise GlassError("embedding provider returned vectors with inconsistent dimensions")
+        raise GlassError(
+            agent_instruction(
+                "embedding provider returned vectors with inconsistent dimensions",
+                "Do not retry the same sync/search command until the embedding service is fixed.",
+                "Ask the operator to verify the embedding model and provider response shape.",
+            )
+        )
     return EmbeddingBatch(
         vectors=vectors,
         model=returned_model,
@@ -148,16 +154,39 @@ def _post_embeddings(config: EmbeddingConfig, payload: dict[str, Any]) -> dict[s
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise GlassError(
-            f"embedding provider failed at {config.url}: HTTP {exc.code}: {detail}"
+            agent_instruction(
+                f"embedding provider failed at {config.url}: HTTP {exc.code}",
+                "Do not keep retrying this command in the same turn.",
+                "Ask the operator to repair the embedding service, or continue play using visible table/lore context.",
+                f"Provider detail: {detail}",
+            )
         ) from exc
     except Exception as exc:
-        raise GlassError(f"embedding provider failed at {config.url}: {exc}") from exc
+        raise GlassError(
+            agent_instruction(
+                f"embedding provider failed at {config.url}",
+                "Do not keep retrying this command in the same turn.",
+                "Ask the operator to repair the embedding service, or continue play using visible table/lore context.",
+                f"Provider detail: {exc}",
+            )
+        ) from exc
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise GlassError(f"embedding provider returned invalid JSON: {exc}") from exc
+        raise GlassError(
+            agent_instruction(
+                "embedding provider returned invalid JSON",
+                "Ask the operator to repair the embedding service response.",
+                f"JSON parser detail: {exc}",
+            )
+        ) from exc
     if not isinstance(parsed, dict):
-        raise GlassError("embedding provider returned a non-object response")
+        raise GlassError(
+            agent_instruction(
+                "embedding provider returned a non-object response",
+                "Ask the operator to repair the embedding service response shape.",
+            )
+        )
     return parsed
 
 
@@ -169,19 +198,31 @@ def _parse_embedding_response(
     rows = data.get("data")
     if not isinstance(rows, list) or len(rows) != expected:
         raise GlassError(
-            f"embedding provider returned {len(rows) if isinstance(rows, list) else 'no'} "
-            f"vectors; expected {expected}"
+            agent_instruction(
+                f"embedding provider returned {len(rows) if isinstance(rows, list) else 'no'} vectors; expected {expected}",
+                "Ask the operator to repair the embedding service response shape.",
+            )
         )
     ordered = sorted(rows, key=lambda row: int(row.get("index", 0)))
     vectors: list[list[float]] = []
     for row in ordered:
         vector = row.get("embedding")
         if not isinstance(vector, list) or not vector:
-            raise GlassError("embedding provider returned a row without an embedding")
+            raise GlassError(
+                agent_instruction(
+                    "embedding provider returned a row without an embedding",
+                    "Ask the operator to repair the embedding service response shape.",
+                )
+            )
         try:
             vectors.append([float(value) for value in vector])
         except (TypeError, ValueError) as exc:
-            raise GlassError("embedding provider returned a non-numeric embedding") from exc
+            raise GlassError(
+                agent_instruction(
+                    "embedding provider returned a non-numeric embedding",
+                    "Ask the operator to repair the embedding service response shape.",
+                )
+            ) from exc
     return vectors, str(data.get("model") or "")
 
 

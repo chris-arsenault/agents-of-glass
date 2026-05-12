@@ -35,12 +35,13 @@ directly instead of asking a player to take an extra turn just to roll dice.
 
 ## How a Turn Begins
 
-The orchestrator builds a canonical per-turn `TURN_START.md` file, then
-copies it into the agent's projected workspace at the same relative path. The
-agent's prompt is essentially "Read `TURN_START.md` and take your turn." TURN_START is
-a thin pointer file — links to the role, public table, scene framing, recent
-turn summaries, unread messages, instruction surfaces, the selected methodology,
-and the tool allowlist. Full layout in [`context-packages.md`](context-packages.md).
+The orchestrator builds a canonical per-turn `TURN_START.md` file in the
+numbered campaign history, then copies the active turn into the actor's stable
+projected workspace at `turns/TURN_START.md`. The agent's prompt is
+essentially "Read `turns/TURN_START.md` and take your turn." TURN_START is a
+thin pointer file — links to the role, public table, scene framing, recent turn
+summaries, unread messages, instruction surfaces, the selected methodology, and
+the tool allowlist. Full layout in [`context-packages.md`](context-packages.md).
 
 The methodology switch is programmatic. Normal player scene play points to
 `scene-play-player.md`; queued player cleanup points to
@@ -49,7 +50,9 @@ The methodology switch is programmatic. Normal player scene play points to
 DM scene-boundary turns point to `scene-transition-dm.md`. A methodology is not
 allowed to route the agent to a different actual-play turn type.
 
-The orchestrator builds a fresh CWD per turn with only the files the agent's role is allowed to see. Process-level isolation, not policy. See [`architecture.md`](architecture.md) for how.
+The orchestrator refreshes a stable actor CWD each turn with only the files the
+agent's role is allowed to see. Process-level isolation, not policy. See
+[`architecture.md`](architecture.md) for how.
 
 ## What an Agent's Turn Is
 

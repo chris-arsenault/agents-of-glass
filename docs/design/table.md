@@ -19,25 +19,27 @@ The live table is always at:
 
 ```text
 campaigns/<id>/table/
-  index.md
   scene.md
+  <meaningful-slug>.md
   handouts/
-  <freeform-root-files>.md
 ```
 
-Only three names are reserved:
+Only two names are reserved:
 
-- `index.md` — at-a-glance board for the current visible state.
-- `scene.md` — the DM's scene kickoff description.
-- `handouts/` — in-game handouts: notices, letters, pictures, maps, diagrams,
-  evidence, generated images, and similar player-visible artifacts.
+- `scene.md` — the current visible situation.
+- `handouts/` — optional in-game handouts: notices, letters, pictures, maps,
+  diagrams, evidence, generated images, and similar player-visible artifacts.
 
-Everything else at `table/` root is freeform markdown. The DM creates files
-only when they help the table: `npc-korth.md`, `west-balcony.md`,
-`the-dukes-mental-state.md`, `broken-elevator.md`, or whatever the scene needs.
+Everything else at `table/` root is arbitrary markdown. There is no authored
+`table/index.md`. The DM creates named files only when they help the table:
+`ossa-treen.md`, `ref-0042-sr.md`, `sable-side-waystation.md`,
+`broken-elevator.md`, or whatever the scene needs. These names are examples,
+not a type system or allow list.
 
-Do not introduce typed table schemas unless play shows a concrete drift problem
-that prose files cannot solve.
+Table artifacts are intentionally close to durable lore shape. A table artifact
+can be promoted into `shared/lore/` when it becomes lasting public canon, and an
+existing `shared/lore/` entry can be copied onto the table when it becomes
+scene-relevant.
 
 ## Boundary
 
@@ -64,8 +66,8 @@ Secrets stay out of `table/` until they become visible. Use `dm/secret/`,
 The web UI's **Active Table** panel must render only `table/**` from the live
 campaign root. If a viewer wants to know which NPCs, monsters, routes, hooks, or
 handouts the player agents could see, the answer must be legible from
-`table/index.md`, `table/scene.md`, `table/handouts/**`, or another file in
-`table/`. Do not infer table visibility from graph rows or DM notes.
+`table/scene.md`, `table/handouts/**`, or another named artifact in `table/`.
+Do not infer table visibility from graph rows or DM notes.
 
 ## Lifecycle
 
@@ -94,13 +96,16 @@ arcs/<arc>/scenes/<scene>/table/final/
 ## CLI
 
 ```bash
-glass table current
 glass table show [path]
 glass table write <path> --body <markdown>
 glass table append <path> --body <markdown>
+glass table use <campaign-markdown-path> --as <table-artifact>.md
+glass lore promote table/<artifact>.md --to shared/lore/<path>.md
 glass table snapshot [--label <text>]
 glass table archive
 ```
 
 Players read the table. The DM writes it. This keeps public visible state
-authoritative without creating a second player-authored lore surface.
+authoritative without creating a second player-authored lore surface. `glass
+table current` exists only as an operator/debug listing command; normal agent
+turns read the projected files named in TURN_START directly.

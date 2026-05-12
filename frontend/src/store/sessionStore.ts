@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { create } from "zustand";
 
 import {
+  fetchCampaigns,
   fetchCampaignFile,
   fetchFileSection,
   fetchLive,
@@ -11,14 +12,15 @@ import {
 import { getConfig } from "../config";
 import { sectionTerms } from "../sections";
 import type {
+  CampaignListItem,
   CharacterRecord,
   ClockRecord,
+  DmSurfacePayload,
   EventRecord,
   FileContent,
   FileEntry,
   GraphSnapshot,
   LiveCursors,
-  DmSurfacePayload,
   MessageRecord,
   RollRecord,
   RuntimeState,
@@ -53,8 +55,10 @@ const initialCursors: LiveCursors = {
   events: null,
   rolls: null,
 };
+const campaignStorageKey = "agents-of-glass:selected-campaign";
 
 interface SessionStore {
+  campaigns: CampaignListItem[];
   campaignId: string;
   playerOrder: string[];
   activeSection: string;
@@ -82,14 +86,90 @@ interface SessionStore {
   bootstrap: () => Promise<void>;
   pollLive: () => Promise<void>;
   refreshCurrentState: () => Promise<void>;
+  setCampaign: (campaignId: string) => Promise<void>;
   setActiveSection: (section: string) => Promise<void>;
   loadFile: (path: string) => Promise<void>;
+}
+
+type CampaignDataState = Pick<
+  SessionStore,
+  | "generatedAt"
+  | "runtime"
+  | "characters"
+  | "turns"
+  | "messages"
+  | "events"
+  | "rolls"
+  | "clocks"
+  | "sceneTrackers"
+  | "tarot"
+  | "graph"
+  | "table"
+  | "dmSurface"
+  | "cursors"
+  | "fileLists"
+  | "selectedFile"
+  | "databaseError"
+>;
+
+function emptyCampaignData(): CampaignDataState {
+  return {
+    generatedAt: null,
+    runtime: null,
+    characters: [],
+    turns: [],
+    messages: [],
+    events: [],
+    rolls: [],
+    clocks: [],
+    sceneTrackers: [],
+    tarot: [],
+    graph: emptyGraph,
+    table: emptyTable,
+    dmSurface: emptyDmSurface,
+    cursors: { ...initialCursors },
+    fileLists: {},
+    selectedFile: null,
+    databaseError: null,
+  };
+}
+
+async function fetchCampaignSnapshot(
+  campaignId: string,
+  activeSection: string,
+): Promise<CampaignDataState> {
+  const [summary, table, live, files] = await Promise.all([
+    fetchSummary(campaignId),
+    fetchTable(campaignId),
+    fetchLive(campaignId, {}),
+    fetchFileSection(campaignId, activeSection),
+  ]);
+  return {
+    runtime: summary.runtime,
+    characters: summary.characters,
+    clocks: summary.clocks,
+    sceneTrackers: summary.scene_trackers,
+    tarot: summary.tarot,
+    graph: summary.graph,
+    table: table.table,
+    dmSurface: summary.dm_surface ?? emptyDmSurface,
+    turns: live.turns,
+    messages: live.messages,
+    events: live.events,
+    rolls: live.rolls,
+    cursors: live.cursors,
+    generatedAt: live.generated_at,
+    fileLists: { [activeSection]: files.files },
+    selectedFile: null,
+    databaseError: summary.database_error ?? live.database_error ?? null,
+  };
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => {
   const config = getConfig();
   return {
-    campaignId: config.defaultCampaignId,
+    campaigns: [],
+    campaignId: "",
     playerOrder: config.playerOrder,
     activeSection: "journal",
     generatedAt: null,
@@ -115,39 +195,36 @@ export const useSessionStore = create<SessionStore>((set, get) => {
     databaseError: null,
     bootstrap: async () => {
       const { campaignId, activeSection } = get();
-      set({ isBootstrapping: true, error: null });
+      set({ isBootstrapping: true, isFileLoading: true, error: null });
       try {
-        const [summary, table, live] = await Promise.all([
-          fetchSummary(campaignId),
-          fetchTable(campaignId),
-          fetchLive(campaignId, {}),
-        ]);
+        const campaigns = sortCampaigns((await fetchCampaigns()).campaigns);
+        const nextCampaignId = chooseCampaignId(campaigns, campaignId);
+        if (!nextCampaignId) {
+          set({
+            campaigns,
+            campaignId: "",
+            ...emptyCampaignData(),
+          });
+          return;
+        }
+        rememberCampaignId(nextCampaignId);
+        const data = await fetchCampaignSnapshot(nextCampaignId, activeSection);
         set({
-          runtime: summary.runtime,
-          characters: summary.characters,
-          clocks: summary.clocks,
-          sceneTrackers: summary.scene_trackers,
-          tarot: summary.tarot,
-          graph: summary.graph,
-          table: table.table,
-          dmSurface: summary.dm_surface ?? emptyDmSurface,
-          turns: live.turns,
-          messages: live.messages,
-          events: live.events,
-          rolls: live.rolls,
-          cursors: live.cursors,
-          generatedAt: live.generated_at,
-          databaseError: summary.database_error ?? live.database_error ?? null,
+          campaigns,
+          campaignId: nextCampaignId,
+          ...data,
         });
-        await get().setActiveSection(activeSection);
       } catch (err) {
         set({ error: messageFromError(err) });
       } finally {
-        set({ isBootstrapping: false });
+        set({ isBootstrapping: false, isFileLoading: false });
       }
     },
     pollLive: async () => {
       const { campaignId, cursors } = get();
+      if (!campaignId) {
+        return;
+      }
       set({ isPolling: true, error: null });
       try {
         const live = await fetchLive(campaignId, cursors, {
@@ -180,14 +257,20 @@ export const useSessionStore = create<SessionStore>((set, get) => {
     },
     refreshCurrentState: async () => {
       const { campaignId } = get();
+      if (!campaignId) {
+        await get().bootstrap();
+        return;
+      }
       set({ isPolling: true, error: null });
       try {
-        const [summary, table, live] = await Promise.all([
+        const [campaignsResponse, summary, table, live] = await Promise.all([
+          fetchCampaigns(),
           fetchSummary(campaignId),
           fetchTable(campaignId),
           fetchLive(campaignId, get().cursors, { includeState: true }),
         ]);
         set((state) => ({
+          campaigns: sortCampaigns(campaignsResponse.campaigns),
           runtime: live.runtime ?? summary.runtime,
           characters: summary.characters,
           clocks: live.clocks ?? summary.clocks,
@@ -215,14 +298,41 @@ export const useSessionStore = create<SessionStore>((set, get) => {
         set({ isPolling: false });
       }
     },
+    setCampaign: async (campaignId: string) => {
+      const nextCampaignId = campaignId.trim();
+      if (!nextCampaignId || nextCampaignId === get().campaignId) {
+        return;
+      }
+      rememberCampaignId(nextCampaignId);
+      const { activeSection } = get();
+      set({
+        campaignId: nextCampaignId,
+        isBootstrapping: true,
+        isFileLoading: true,
+        error: null,
+        ...emptyCampaignData(),
+      });
+      try {
+        const data = await fetchCampaignSnapshot(nextCampaignId, activeSection);
+        set(data);
+      } catch (err) {
+        set({ error: messageFromError(err) });
+      } finally {
+        set({ isBootstrapping: false, isFileLoading: false });
+      }
+    },
     setActiveSection: async (section: string) => {
       set({ activeSection: section, error: null });
+      const { campaignId } = get();
+      if (!campaignId) {
+        return;
+      }
       if (get().fileLists[section]) {
         return;
       }
       set({ isFileLoading: true });
       try {
-        const response = await fetchFileSection(get().campaignId, section);
+        const response = await fetchFileSection(campaignId, section);
         set((state) => ({
           fileLists: { ...state.fileLists, [section]: response.files },
         }));
@@ -233,9 +343,13 @@ export const useSessionStore = create<SessionStore>((set, get) => {
       }
     },
     loadFile: async (path: string) => {
+      const { campaignId } = get();
+      if (!campaignId) {
+        return;
+      }
       set({ isFileLoading: true, error: null });
       try {
-        const selectedFile = await fetchCampaignFile(get().campaignId, path);
+        const selectedFile = await fetchCampaignFile(campaignId, path);
         set({ selectedFile });
       } catch (err) {
         set({ error: messageFromError(err) });
@@ -369,6 +483,44 @@ function mergeByKey<T extends object, K extends keyof T>(
     byKey.set(item[key] as PropertyKey, item);
   }
   return Array.from(byKey.values()).slice(-maxItems);
+}
+
+function sortCampaigns(campaigns: CampaignListItem[]): CampaignListItem[] {
+  return [...campaigns].sort((a, b) => {
+    const byUpdated = b.updated_at.localeCompare(a.updated_at);
+    return byUpdated || a.campaign_id.localeCompare(b.campaign_id);
+  });
+}
+
+function chooseCampaignId(
+  campaigns: CampaignListItem[],
+  currentCampaignId: string,
+): string {
+  const ids = new Set(campaigns.map((campaign) => campaign.campaign_id));
+  const storedCampaignId = readStoredCampaignId();
+  if (currentCampaignId && ids.has(currentCampaignId)) {
+    return currentCampaignId;
+  }
+  if (storedCampaignId && ids.has(storedCampaignId)) {
+    return storedCampaignId;
+  }
+  return campaigns[0]?.campaign_id ?? "";
+}
+
+function readStoredCampaignId(): string | null {
+  try {
+    return window.localStorage.getItem(campaignStorageKey);
+  } catch {
+    return null;
+  }
+}
+
+function rememberCampaignId(campaignId: string): void {
+  try {
+    window.localStorage.setItem(campaignStorageKey, campaignId);
+  } catch {
+    return;
+  }
 }
 
 function messageFromError(err: unknown): string {

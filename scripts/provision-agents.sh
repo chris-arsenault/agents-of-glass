@@ -88,7 +88,7 @@ install -o root -g root -m 0755 "$HELPER_SOURCE" "$HELPER_INSTALLED"
 # --- sudoers ---
 # The operator needs two privileges:
 #   1. spawn claude as an isolated agent user (sudo -u aog-<agent>)
-#   2. invoke the permset helper to chown/chmod per-turn projections
+#   2. invoke the permset helper to chown/chmod actor projections
 
 AGENT_LIST="$(IFS=,; echo "${AGENT_USERS[*]}")"
 TMP_SUDOERS="$(mktemp)"

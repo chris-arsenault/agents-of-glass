@@ -6,39 +6,50 @@ authority: binding
 
 # Workspace Authoring
 
-Your turn has a workspace with files you can read and document surfaces you can
-author. Use workspace-relative paths exactly as they appear in the files and in
-TURN_START.
+Your turn workspace contains readable campaign files and writable projected
+documents. Use workspace-relative paths exactly as they appear in `TURN_START`.
 
-Read files directly from normal paths such as `table/scene.md`,
-`players/<id>/public/intro.md`, `shared/lore/`, `srd/`, and `instructions/`.
+## Sequence
 
-File edits are drafts until committed. Persistent mutations must go through
-`glass`: `glass sync apply`, `glass character`, `glass scene`, `glass clock`,
-`glass entity`, and related commands.
+1. Read the output paths and writable roots named in `TURN_START`.
+2. Read normal campaign files directly:
 
-Edit authored markdown at the real relative path, then sync that path:
+   ```text
+   table/scene.md
+   players/<id>/public/intro.md
+   shared/lore/
+   srd/
+   instructions/
+   ```
 
-```bash
-glass sync apply players/<id>/public/intro.md
-glass sync apply players/<id>/secrets/debt.md
-glass sync apply table/index.md
-```
+3. Edit authored markdown at the real relative path where the document belongs.
+4. Commit authored markdown with `glass sync apply`:
 
-When you have several edits, sync files or directories together:
+   ```bash
+   glass sync apply players/<id>/public/intro.md
+   glass sync apply players/<id>/notes/route-ledger.md
+   glass sync apply table/<meaningful-slug>.md
+   ```
 
-```bash
-glass sync apply players/<id>/public players/<id>/notes
-glass sync apply arcs/<arc> table
-```
+5. Commit several authored paths together when the turn creates a package:
 
-With no path arguments, `glass sync apply` commits changed writable markdown
-files. It does not commit hard state; use the dedicated `glass` commands for
-rolls, HP, clocks, trackers, inventory, graph edges, and character mechanics.
+   ```bash
+   glass sync apply players/<id>/public players/<id>/notes
+   glass sync apply arcs/<arc> table
+   ```
 
-After a successful `glass` command, files created through `glass` are readable
-at the same relative paths.
+6. Run `glass sync apply` with no path arguments only after all intended
+   writable markdown edits are ready.
+7. Use dedicated commands instead of sync for hard state: `glass character`,
+   `glass scene`, `glass clock`, `glass entity`, `glass roll`, `glass table`,
+   `glass lore`, and `glass note`.
+8. Read back command-created files or command output when verification is
+   needed.
+9. Write final public prose to the `TURN.md` path from `TURN_START`.
+10. Run `glass turn end --summary ... --state ... --rolls ...`.
 
-At turn end, write final public prose to the `TURN.md` path named in
-TURN_START, then run `glass turn end --summary ... --state ... --rolls ...`.
-Do not sync turn artifact paths; the runner copies them back automatically.
+## Boundary
+
+Do not sync turn artifact paths such as `dm/turns/<n>/TURN.md` or
+`dm/turns/<n>/turn-closeout.json`; the runner copies those back automatically.
+Do not use markdown edits as substitutes for hard-state commands.

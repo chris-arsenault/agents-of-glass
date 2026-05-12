@@ -41,11 +41,11 @@ All prose lives in markdown, in three layers:
   agents have local binding tool instructions, workflows, public rules, and
   optional examples. See [`instruction-surface.md`](instruction-surface.md).
 - **Public table** — `campaigns/<id>/table/`. The immediate shared state that
-  player agents can see in their projected CWD: `index.md`, `scene.md`,
-  `handouts/`, plus any freeform table-root markdown files the DM creates to
-  avoid repeated clarification turns. Reset on scene create, archived on scene
-  end. The table is not a graph query, DM-note mirror, or "everything visible in
-  the web UI"; see [`table.md`](table.md).
+  player agents can see in their projected CWD: `scene.md`, optional
+  `handouts/`, plus named table-root markdown artifacts the DM creates for
+  visible lore in play. There is no authored `table/index.md`. Reset on scene
+  create, archived on scene end. The table is not a graph query, DM-note mirror,
+  or "everything visible in the web UI"; see [`table.md`](table.md).
 - **Personal notes** — agent-private. Player journals (free-form, may have subdirectories) and the DM workspace (planning drafts, in-progress NPCs). **Journal-shaped, not encyclopedia-shaped.** For thinking; not the canonical record.
 
 Plus derived transcript exports for human review and git history. The public turn corpus itself is structured Postgres rows (see [`../principles/transcripts-as-corpus.md`](../principles/transcripts-as-corpus.md)).
@@ -101,7 +101,7 @@ Postgres is on the LAN.
 A Python process. Its job is small:
 
 1. Hold the campaign + scene state machine (which phase, which arc, which scene, which mode, which budgets, whose turn).
-2. Build the next agent's per-turn `TURN_START.md` under `dm/turns/` or `players/<id>/turns/`, then project the actor-visible campaign files into `.glass-cwd/`.
+2. Build the next agent's per-turn `TURN_START.md` under `dm/turns/` or `players/<id>/turns/`, then refresh that actor's visible campaign projection in `.glass-cwd/`.
 3. Spawn `claude -p --dangerously-skip-permissions` in the projection. All tools are available; the role-specific state grant is enforced by the local `glass` API/CLI boundary.
 4. Wait for the subprocess to exit.
 5. Commit the agent's prose through `glass turn append`, which inserts a structured `turns` row and writes a derived markdown transcript export.
@@ -146,7 +146,7 @@ glass scene current | list | end
 glass scene tracker set|tick|list         # DM clocks/progress trackers
 glass scene pressure                      # roll-mediated reduction of scene targets
 glass clock set|tick|list|show|resolve    # durable cross-scene clocks
-glass table current|show|write|append|snapshot
+glass table show|write|append|use|snapshot
 glass mode push <mode> | pop | current    # nested modes within a scene
 glass turn initiative                     # DM only — roll/persist action-scene order
 glass turn handoff <agent>                # one-off next-speaker override
@@ -196,8 +196,8 @@ directly instead of handing to a player just to request dice. See
 ## Data Flow Per Turn
 
 1. Orchestrator decides whose turn it is (mode-dependent — see [`modes.md`](modes.md)).
-2. Orchestrator writes the agent's per-turn `TURN_START.md` into that agent's canonical campaign turn directory, then builds an actor-owned projected workspace containing only files that actor may see (same relative paths as the campaign root).
-3. Orchestrator spawns `claude -p "Read <turn-start path> and take your turn."` with CWD set to the projection and a role-scoped `glass` grant.
+2. Orchestrator writes the agent's per-turn `TURN_START.md` into that agent's canonical numbered campaign turn directory, then refreshes an actor-owned projected workspace containing only files that actor may see.
+3. Orchestrator exposes the active turn inside that projection at `turns/` and spawns `claude -p "Read turns/TURN_START.md and take your turn."` with CWD set to the projection and a role-scoped `glass` grant.
 4. Agent runs its own tool loop. May call `glass roll`, `glass entity neighborhood`, `glass character set-hp`, `glass msg`, etc. — each call is logged to the audit trail.
 5. Agent writes public prose to `TURN.md`, records compact closeout with `glass turn end`, and exits.
 6. Orchestrator calls `glass turn append` with `TURN.md` and the closeout JSON. The CLI writes the structured turn row to Postgres and refreshes the markdown transcript export.
@@ -208,8 +208,9 @@ Note: agents do not emit structured delta blocks. Whose turn is next, what mode 
 
 ## Process Isolation
 
-Each agent runs as a separate `claude -p` subprocess inside a fresh per-turn
-projection (`cwd = .glass-cwd/<campaign>/<turn>-<agent>/`). The projection is
+Each agent runs as a separate `claude -p` subprocess inside a stable per-actor
+projection (`cwd = .glass-cwd/<campaign>/<agent>/`). The projection is refreshed
+for each turn and is
 campaign-shaped: paths such as `table/scene.md`,
 `players/tev/public/intro.md`, and `shared/lore/` keep the same relative
 location they have in `campaigns/<id>/`, but only files visible to that actor
@@ -221,7 +222,7 @@ are copied in.
 - Spawned agent processes run as dedicated Unix users: `aog-mara` for the DM, plus `aog-tev`, `aog-sumi`, `aog-renno`, and `aog-kit` for players.
 - A shared group `aog-agents` contains all agents. Each actor also has a primary group matching their Unix user. Projection roots are owned by the actor and grouped to the operator's primary group, so the spawned actor can work in the projection while the operator/API can inspect and refresh it without depending on refreshed supplementary groups.
 - Canonical campaign workspace files stay operator-owned. Agents do not get direct filesystem authority over `campaigns/<id>/`; durable mutation goes through Glass commands and the local Glass API.
-- Per-turn artifacts live under the spawning agent's canonical campaign directory (`dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`) and are also present at the same relative path in the projection for the subprocess.
+- Per-turn artifacts live under the spawning agent's canonical campaign directory (`dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`). The actor projection exposes only the active turn at stable unnumbered `turns/` paths.
 - Each projection root is owned by the spawned actor (`aog-mara`, `aog-tev`, etc.). Read-only projection material is read-only to the actor but writable by the operator group so the API can refresh same-turn canonical changes; role-authorized document surfaces plus the current projected turn dir are writable to the actor. The current turn dir must pass a create/edit/delete probe as that actor before Claude starts. Persistent mutations go through `glass`: document edits are committed with `glass sync apply`, while hard state uses purpose-built CLI commands. The local API uses the projection as cwd but writes to the canonical campaign root.
 - Agent invocations spawn via `sudo -u aog-<actor>` (NOPASSWD per a sudoers entry installed at provisioning time).
 

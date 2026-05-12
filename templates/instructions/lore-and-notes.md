@@ -6,58 +6,84 @@ authority: binding
 
 # Lore and Notes Instructions
 
-Use the right writing surface. Read workspace files directly, edit writable
-note/lore files in place, and persist authored markdown with `glass sync apply`
-or a more specific `glass` command.
+Use the narrowest durable surface. Use `glass` commands when lore or entity
+state needs registration.
 
-## DM Notes
+## DM Sequence
 
-DM-only working notes live under `dm/notes/`, `dm/workspace/`, and `dm/secret/`.
+1. Choose the destination.
+   - DM-private notes: `dm/notes/`, `dm/workspace/`, `dm/secret/`.
+   - Player-visible canon: `shared/lore/`.
+   - Current visible board: `table/`.
+
+2. For table-visible material that should become durable public canon, promote
+   it instead of leaving it only on the table:
 
 ```bash
-glass sync apply dm/workspace/<name>.md
+glass lore promote table/<meaningful-slug>.md --to shared/lore/<path>.md
+```
+
+3. For durable lore already created elsewhere that becomes relevant in-scene,
+   put the visible portion on the table:
+
+```bash
+glass table use shared/lore/<path>.md --as <meaningful-slug>.md
+```
+
+4. For world-bible material, import instead of copying:
+
+```bash
+glass lore search "<query>"
+glass lore import <world-bible-path>
+```
+
+5. For new public lore, scaffold and register:
+
+```bash
+glass lore new <type> <slug>
+glass lore upsert shared/lore/<type>/<slug>.md
+```
+
+6. For DM notes, edit the file and commit:
+
+```bash
 glass sync apply dm/notes/<category>/<slug>.md
+glass sync apply dm/workspace/<name>.md
 glass sync apply dm/secret/<name>.md
 ```
 
-Entity-shaped note writes are registered through the same persistence facade.
-If you need to refresh graph/search state for an existing authored lore file,
-use:
+7. For graph relationships, use entity commands:
 
 ```bash
-glass lore upsert shared/lore/<category>/<slug>.md
+glass entity claim <a> <REL> <b> --summary "<what is claimed>"
+glass entity link <a> <REL> <b> --prop summary="<durable relation>"
 ```
 
-## Player Notes
+## Player Sequence
 
-Player private reference lives under `players/<id>/notes/`, `journal/`,
-`drafts/`, and `secrets/`.
+1. Choose the destination.
+   - Private reference: `players/<id>/notes/`.
+   - Dated reflection: `players/<id>/journal/`.
+   - DM-readable private request: `players/<id>/secrets/`.
+   - Party-readable material: `players/<id>/public/`.
+
+2. Edit the file and commit:
 
 ```bash
 glass sync apply players/<id>/notes/<slug>.md
 glass sync apply players/<id>/journal/<date>.md
-glass sync apply players/<id>/drafts/<slug>.md
 glass sync apply players/<id>/secrets/<slug>.md
+glass sync apply players/<id>/public/<slug>.md
 ```
 
-For multiple note writes in one turn, pass directories to one `glass sync
-apply` call.
-
-Players propose canon with:
+3. Propose player-authored canon with:
 
 ```bash
-glass note propose <path>
+glass note propose players/<id>/drafts/<slug>.md
 ```
 
-## Player-Visible Lore
+## Boundary
 
-Canonical player-visible lore lives in `shared/lore/` and is DM-ratified.
-
-```bash
-glass lore new <type> <slug>
-glass lore upsert <path>
-glass lore import <world-bible-path>
-```
-
-Curate from the world bible. Do not bulk-copy it. The world bible is DM
-reference; campaign lore is the subset that matters to this campaign.
+Do not put player-visible canon only in DM notes or only in the running table
+after it becomes durable. Do not put DM-only material in `shared/lore/`,
+`table/`, or player-public files.

@@ -17,13 +17,20 @@ This sequence is binding for every full player turn.
 3. Choose one contribution that changes the scene: a decision, action, offer,
    refusal, discovery attempt, cost accepted, concrete question, or visible
    local detail your character can act on.
-4. Resolve uncertainty before prose. If the action is uncertain and
-   consequential, use `glass roll` or `glass scene pressure` as allowed by the
-   SRD. If hidden information is required before the action is valid, send the
-   DM one clear message and end with `--next dm`.
+4. Resolve uncertainty before prose. If a discovery attempt, social push,
+   technical read, risky concealment, or contested interpretation has real
+   stakes, use `glass roll` or `glass scene pressure` unless the table already
+   makes the answer obvious. If your action is not covered by an existing
+   skill on your sheet and you have a free skill slot (cap `3 + level`), pass
+   a new specific skill name to the roll command and it will auto-declare at
+   `fool`. See [`srd/skill-advancement.md`](../srd/skill-advancement.md). If
+   hidden information is required before the action is valid, send the DM one
+   clear message and end with `--next dm` plus `--open-question`.
 5. Persist any durable player-side changes before prose: character state,
    inventory, messages, public/secrets/notes/journal edits, or note proposals.
-   Commit authored markdown with `glass sync apply`.
+   When your character takes, spends, receives, breaks, or keeps a meaningful
+   portable asset, use the inventory command that owns it. Commit authored
+   markdown with `glass sync apply`.
 6. Write public turn prose to the `TURN.md` path from TURN_START. Put the visible
    story beat first. Keep OOC process notes brief and only include what another
    actor or viewer needs.
@@ -50,3 +57,8 @@ Your turn is done only when the public prose exists, durable updates are
 committed or explicitly reported as unchanged, and `glass turn end` succeeds.
 
 Optional reference: [`how-to/scene-play-reference.md`](../how-to/scene-play-reference.md).
+
+Narration craft (read before writing public prose):
+[`how-to/narration-craft-player.md`](../how-to/narration-craft-player.md).
+The methodology drives the turn; the craft doc covers the slop attractors
+the methodology does not. Commit, advance, resolve.

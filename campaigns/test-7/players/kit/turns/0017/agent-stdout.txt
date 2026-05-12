@@ -1,3 +1,0 @@
-Turn file is written. The output path is the harness-managed turn artifact, not a sync surface — no other writable surfaces changed this turn, so nothing else to commit.
-
-Bren did her morning read of the day-page from the cargo side, counted Drova's cross-reference, walked back to the hatch without chalking the packet onto manifest and without throwing the streamer — patience-before-force play on the signature move, with the wind read and the hab-worker read held in reserve for if the crew asks her seat directly.

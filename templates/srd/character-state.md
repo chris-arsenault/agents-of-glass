@@ -26,20 +26,24 @@ that the table honors until resolved.
 
 ## Inventory
 
-Inventory is arbitrary and narrative. A sword, net, forged seal, climbing rig,
-drugged wine, resonance fork, or signed letter can all matter when the fiction
-supports it.
+Inventory is arbitrary and narrative, but it should be actionable. A sword, net,
+forged seal, climbing rig, drugged wine, resonance fork, or signed letter can
+all matter when the fiction supports it.
 
-Characters should carry at least one pressure-use item: a favored weapon,
-instrument, apparatus, trade tool, restraint, protective rig, or leverage token
-that can plausibly matter in an action scene. Sentimental objects are welcome;
-they should not crowd out everything the character can actually use.
+Characters should carry practical assets: favored weapons, instruments,
+apparatus, trade tools, restraints, protective rigs, consumables, documents,
+permits, keys, samples, maps, or leverage tokens that can plausibly matter in
+future scenes. Sentimental objects are welcome when they can affect a future
+roll, access, cost, risk, or choice; otherwise they belong in traits, bio,
+notes, or secrets.
 
 Players may cite inventory to justify bonuses, lower risk, larger impact dice,
 constraints, changed positioning, or other prose effects. These are examples,
 not limits.
 
-Item effect tags are reminders. They are not mechanics by themselves.
+Item effect tags are reminders. They are not mechanics by themselves, but they
+should point to an affordance: what the item opens, proves, protects, detects,
+cuts, spends, hides, or changes.
 
 ## Effects
 

@@ -1,5 +1,5 @@
 ---
-title: Action Scene Methodology Router
+title: Action Scene Methodology Index
 status: authored
 audience: players, dm
 applies_to_modes: [action, combat, chase, social-pressure]
@@ -8,8 +8,8 @@ toolkit_examples: [combat, chase, social-pressure, escape, duel, infiltration, d
 
 # Action Scene
 
-Compatibility index. Generated TURN_START files link directly to one required
-methodology for the actor's role and turn type.
+Reference index for action-scene turn contracts. Generated `TURN_START.md`
+selects the role-specific methodology for the current actor and turn type.
 
 - DM opening layout turns use
   [`action-scene-opening-dm.md`](action-scene-opening-dm.md).
@@ -22,7 +22,9 @@ methodology for the actor's role and turn type.
   [`rapid-response-player.md`](rapid-response-player.md).
 
 Public rules live in [`srd/action-scenes.md`](../srd/action-scenes.md),
-[`srd/checks.md`](../srd/checks.md), [`srd/shared-narrative.md`](../srd/shared-narrative.md),
-and [`srd/pressure.md`](../srd/pressure.md).
+[`srd/checks.md`](../srd/checks.md),
+[`srd/shared-narrative.md`](../srd/shared-narrative.md), and
+[`srd/pressure.md`](../srd/pressure.md).
+
 Optional craft/reference material lives in
 [`how-to/action-scene-reference.md`](../how-to/action-scene-reference.md).

@@ -21,8 +21,8 @@ templates/
   srd/                     public game rules for players and DMs
   how-to/                  optional player/DM examples and craft guidance
   table/                   player-agent-visible short-term table state (reset per scene)
-    index.md               at-a-glance board
-    scene.md               scene kickoff description
+    scene.md               current visible situation
+    <meaningful-slug>.md   named player-visible table artifacts
     handouts/              in-game handouts
   dm/                      DM workspace template
     persona.md             who Mara is at the table
@@ -61,11 +61,12 @@ The orchestrator copies `templates/` into a per-campaign root at campaign creati
 - **Encyclopedia-shaped** (frontmatter + prose + sections, FalkorDB-mirrored when canonized) — `shared/lore/`, players' `drafts/`, players' `notes/`, DM's `notes/`.
 - **Journal-shaped** (free-form, no schema) — players' `journal/`, DM's `journal/`, `workspace/`, `secret/`, and `intake/`.
 - **Table-shaped** (short, current, player-agent-visible) —
-  `table/index.md`, `table/scene.md`, `table/handouts/`, and any freeform
-  markdown files at `table/` root that prevent repeated clarification
-  questions. This is the material projected to player CWDs and shown in the web
-  UI's Active Table. DM notes, hooks, lore, graph entities, and messages are
-  separate surfaces even when human viewers can inspect them elsewhere.
+  `table/scene.md` plus named markdown artifacts at `table/` root. These
+  artifacts are player-visible lore candidates: NPCs, places, documents, ships,
+  clues, objects, or anything else the scene needs. There is no authored
+  `table/index.md`. This is the material projected to player CWDs and shown in
+  the web UI's Active Table. DM notes, hooks, lore, graph entities, and messages
+  are separate surfaces even when human viewers can inspect them elsewhere.
 - **Summary-shaped** (authored continuity compression) — `summary.md` at
   campaign, arc/act, and scene level. These are summaries of what remains true,
   not immediate scene boards.

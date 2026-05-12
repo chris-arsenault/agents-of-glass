@@ -83,6 +83,7 @@ class SessionState:
     last_speaker: str | None = None
     failure: dict[str, Any] | None = None
     run_metadata: dict[str, Any] = field(default_factory=dict)
+    claude_sessions: dict[str, dict[str, Any]] = field(default_factory=dict)
     scene_closing_turns: int | None = None
 
     @classmethod
@@ -140,6 +141,11 @@ class SessionState:
             last_speaker=data.get("last_speaker"),
             failure=data.get("failure"),
             run_metadata=dict(data.get("run_metadata", {})),
+            claude_sessions=dict(
+                data.get("claude_sessions")
+                or data.get("aog_claude_sessions")
+                or {}
+            ),
             scene_closing_turns=int(closing_raw) if closing_raw is not None else None,
         )
 
@@ -154,6 +160,7 @@ class SessionState:
             "last_speaker": self.last_speaker,
             "failure": self.failure,
             "run_metadata": self.run_metadata,
+            "claude_sessions": self.claude_sessions,
             "scene_closing_turns": self.scene_closing_turns,
         }
 
@@ -203,7 +210,13 @@ class SessionState:
 
 def speaker_order_for(mode: str) -> tuple[str, ...]:
     normalized = mode.lower()
-    if normalized in {"wrap", "campaign-planning", "prelude", "scene-prep"}:
+    if normalized in {
+        "wrap",
+        "organization-bootstrap",
+        "campaign-planning",
+        "prelude",
+        "scene-prep",
+    }:
         return ("dm",)
     if normalized == "intermission":
         return tuple(agent.id for agent in AGENTS)

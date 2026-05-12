@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from .errors import GlassError
+from .errors import GlassError, agent_instruction
 
 
 def normalize_outcomes(values: Iterable[str], *, label: str = "--outcome") -> list[str]:
@@ -16,9 +16,19 @@ def normalize_outcomes(values: Iterable[str], *, label: str = "--outcome") -> li
             if text:
                 outcomes.append(text)
     if not outcomes:
-        raise GlassError(f"{label} is required; provide 1-2 in-universe outcome bullets")
+        raise GlassError(
+            agent_instruction(
+                f"{label} is required",
+                "Provide 1-2 in-universe outcome bullets that state what changed because this scene or arc ended.",
+            )
+        )
     if len(outcomes) > 2:
-        raise GlassError(f"{label} accepts at most 2 outcome bullets")
+        raise GlassError(
+            agent_instruction(
+                f"{label} accepts at most 2 outcome bullets",
+                "Keep outcomes focused: choose the one or two durable consequences that matter most.",
+            )
+        )
     return outcomes
 
 

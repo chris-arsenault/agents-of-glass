@@ -26,6 +26,8 @@ frontend/coverage/
 *.swo
 
 # Project-specific
+# local campaign workspaces should remain local-only
+campaigns/
 # local campaign runtime secrets/debug exports
 campaigns/**/.glass-grants.json
 campaigns/.checkpoints/

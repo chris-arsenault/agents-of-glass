@@ -36,7 +36,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -120,7 +120,13 @@ def thread_beat(ctx: click.Context, thread_id: str) -> None:
     record = state.get("threads", {}).get(thread_id)
     if not record:
         known = ", ".join(state["threads"]) or "none"
-        raise GlassError(f"unknown thread {thread_id!r}; known threads: {known}")
+        raise GlassError(
+            agent_instruction(
+                f"unknown thread {thread_id!r}",
+                f"Use one of the known thread ids: {known}.",
+                "Run `glass thread current` to inspect available threads before referencing one.",
+            )
+        )
     result = {"thread": record}
     append_audit(
         paths,
@@ -170,5 +176,4 @@ class MessageGroup(click.Group):
         if args and args[0] in self.commands:
             return super().resolve_command(ctx, args)
         return super().resolve_command(ctx, ["send", *args])
-
 

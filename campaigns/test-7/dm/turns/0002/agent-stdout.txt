@@ -1,5 +1,0 @@
-Turn 2 complete. Foundation built: 3 factions, 6 NPCs (Veth Karran flagged antagonist with 4-segment clock), 2 creatures, 5 named things, 5 locations, 10 atomic secrets (Three-Clue check done on the Caulden Rack), 4 hooks, 1 philosophy entry, and the opening arc `caulden-rack` scaffolded with full plan.md (stakes question, four threats, three clocks, five end-state shapes, strong start, seven nodes, five arc-secrets, done criteria). Public durable clock `article-14-amendment` (0/5) is live. Mode ended; phase advanced to character creation. Final prose at `dm/turns/0002/out.md`.
-
-Sources (web pull, methodology-required citation):
-- [Night auditor — Wikipedia](https://en.wikipedia.org/wiki/Night_auditor)
-- [What Does a Night Auditor Do? — Indeed](https://www.indeed.com/career-advice/careers/what-does-a-night-auditor-do)

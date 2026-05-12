@@ -13,7 +13,7 @@ from ..campaign import (
     resolve_active_campaign_workspace,
 )
 from ..config import get_paths
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..paths_resolve import display_path
 from ..persistence import CampaignPersistence
 from ..role import current_role
@@ -191,14 +191,21 @@ def _assert_summary_write_allowed(
     normalized = "arc" if level == "act" else level
     if role.kind != "player" or not append or normalized != "scene":
         raise GlassError(
-            "permission denied: players may only append to the active scene summary"
+            agent_instruction(
+                "players may only append to the active scene summary",
+                "Use `glass summary append scene --body <brief update>` from a player turn.",
+                "Ask the DM to write arc/campaign summaries or replace summary files.",
+            )
         )
     active = current_mode_record(state) or {}
     active_scene = str(active.get("scene_id") or "")
     requested = _workspace.slugify(target_id or active_scene)
     if not active_scene or requested != _workspace.slugify(active_scene):
         raise GlassError(
-            "permission denied: players may only append to the active scene summary"
+            agent_instruction(
+                "players may only append to the active scene summary",
+                "Append only to the current active scene; do not write summaries for inactive scenes from a player turn.",
+            )
         )
 
 
@@ -208,8 +215,11 @@ def _assert_summary_body_allowed(role, level: str, *, append: bool, text: str) -
         max_chars = 1500
         if len(text.strip()) > max_chars:
             raise GlassError(
-                "scene summary append is too long for a player turn "
-                f"({len(text.strip())}/{max_chars} chars); keep it to 2-4 sentences or bullets"
+                agent_instruction(
+                    f"scene summary append is too long for a player turn ({len(text.strip())}/{max_chars} chars)",
+                    "Keep the append to 2-4 sentences or bullets.",
+                    "Use `glass turn end --summary` for compact turn continuity; do not duplicate a full transcript here.",
+                )
             )
 
 
@@ -227,15 +237,30 @@ def _summary_path(
     if normalized == "arc":
         arc = _workspace.slugify(target_id or state.get("active_arc") or "")
         if not arc:
-            raise GlassError("arc summary needs an arc id or active arc")
+            raise GlassError(
+                agent_instruction(
+                    "arc summary needs an arc id or active arc",
+                    "Pass the arc id, or activate the intended arc before reading/writing its summary.",
+                )
+            )
         return workspace.arc_dir(arc) / "summary.md"
     if normalized == "scene":
         scene = _workspace.slugify(target_id or state.get("active_scene") or "")
         if not scene:
-            raise GlassError("scene summary needs a scene id or active scene")
+            raise GlassError(
+                agent_instruction(
+                    "scene summary needs a scene id or active scene",
+                    "Pass the scene id, or create/activate the intended scene first.",
+                )
+            )
         arc = _resolve_scene_arc(workspace, state, scene, arc_id)
         return workspace.scene_dir(arc, scene) / "summary.md"
-    raise GlassError(f"unknown summary level {level!r}")
+    raise GlassError(
+        agent_instruction(
+            f"unknown summary level {level!r}",
+            "Use one of: campaign, arc, act, scene.",
+        )
+    )
 
 
 def _resolve_scene_arc(
@@ -262,9 +287,14 @@ def _resolve_scene_arc(
         return matches[0]
     if not matches:
         raise GlassError(
-            f"can't find scene {scene_id!r}; pass --arc <arc-id> to choose a path"
+            agent_instruction(
+                f"cannot find scene {scene_id!r}",
+                "Pass `--arc <arc-id>` if the scene belongs to a specific arc, or create the scene first.",
+            )
         )
     raise GlassError(
-        f"scene {scene_id!r} exists in multiple arcs: {', '.join(sorted(matches))}; "
-        "pass --arc <arc-id>"
+        agent_instruction(
+            f"scene {scene_id!r} exists in multiple arcs: {', '.join(sorted(matches))}",
+            "Pass `--arc <arc-id>` to choose the intended scene summary path.",
+        )
     )

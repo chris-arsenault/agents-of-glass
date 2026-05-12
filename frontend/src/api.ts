@@ -1,5 +1,6 @@
 import { getConfig } from "./config";
 import type {
+  CampaignListPayload,
   FileContent,
   FileListPayload,
   LiveCursors,
@@ -20,6 +21,10 @@ async function getJson<T>(path: string): Promise<T> {
     throw new Error(`${response.status} ${response.statusText}: ${body}`);
   }
   return response.json() as Promise<T>;
+}
+
+export function fetchCampaigns(): Promise<CampaignListPayload> {
+  return getJson<CampaignListPayload>("/v1/campaigns");
 }
 
 export function fetchSummary(campaignId: string): Promise<SummaryPayload> {

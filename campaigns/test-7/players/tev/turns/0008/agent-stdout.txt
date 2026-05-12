@@ -1,1 +1,0 @@
-Done. Wrote relationships.md with seeds 2 (Bren, Shear) and 7 (Drova, the diagnostic), committed via `glass sync apply`, sent banters to kit (confirming + small enrichment) and sumi (proposing the Drova framing), and wrote the turn prose to `out.md`.

@@ -36,7 +36,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -109,25 +109,134 @@ def arc() -> None:
 
 @arc.command("create")
 @click.argument("arc_id")
+@click.option(
+    "--pull-source",
+    required=True,
+    help="Non-adjacent real-world source/domain used to shape this arc.",
+)
+@click.option(
+    "--pull-utilization",
+    required=True,
+    help="Where the source's concrete details appear in the arc pressure.",
+)
 @click.pass_context
-def arc_create(ctx: click.Context, arc_id: str) -> None:
+def arc_create(
+    ctx: click.Context,
+    arc_id: str,
+    pull_source: str,
+    pull_utilization: str,
+) -> None:
     require_dm()
+    pull_source = _require_text(pull_source, "--pull-source")
+    pull_utilization = _require_concrete_note(
+        pull_utilization,
+        "--pull-utilization",
+        "Name the arc element changed by the pull: threat, node, clock, "
+        "scarcity, strong start, clue, hazard, or end-state pressure.",
+    )
     workspace = _campaign_workspace()
     paths = get_paths()
     try:
         arc_dir = _workspace.create_arc(workspace, arc_id)
-    except (FileExistsError, ValueError) as exc:
-        raise GlassError(str(exc)) from exc
+    except FileExistsError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Use the existing arc with `glass arc activate <arc-id>`, or choose a new arc id.",
+            )
+        ) from exc
+    except ValueError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Use a slug-like arc id, then retry `glass arc create <arc-id> "
+                "--pull-source <source> --pull-utilization <note>`.",
+            )
+        ) from exc
     state = load_state(paths, workspace.campaign_id)
     normalized_arc_id = _workspace.slugify(arc_id)
-    queue_event(state, "dm", f"arc create: {normalized_arc_id}")
+    pull_note = _write_arc_pull_note(
+        arc_dir,
+        arc_id=normalized_arc_id,
+        pull_source=pull_source,
+        pull_utilization=pull_utilization,
+    )
+    queue_event(state, "dm", f"arc create: {normalized_arc_id} (pull note recorded)")
     result = {
         "campaign_id": workspace.campaign_id,
         "arc_id": normalized_arc_id,
         "path": str(arc_dir),
-        "files": ["plan.md", "context.md", "scenes/"],
+        "files": ["plan.md", "context.md", "pulls.md", "scenes/"],
+        "pull_note": {
+            "source": pull_source,
+            "utilization": pull_utilization,
+            "path": display_path(pull_note),
+        },
     }
-    commit(paths, state, ctx, "arc.create", command_params(arc_id=arc_id), result)
+    commit(
+        paths,
+        state,
+        ctx,
+        "arc.create",
+        command_params(
+            arc_id=arc_id,
+            pull_source=pull_source,
+            pull_utilization=pull_utilization,
+        ),
+        result,
+    )
+
+
+def _write_arc_pull_note(
+    arc_dir: Path,
+    *,
+    arc_id: str,
+    pull_source: str,
+    pull_utilization: str,
+) -> Path:
+    path = arc_dir / "pulls.md"
+    body = "\n".join(
+        [
+            "---",
+            f"title: {arc_id} Non-Adjacent Pull",
+            "status: authored",
+            "type: arc-pull-utilization",
+            "---",
+            "",
+            "# Non-Adjacent Pull Utilization",
+            "",
+            f"- **Source/domain:** {pull_source}",
+            f"- **Utilization:** {pull_utilization}",
+            f"- **Recorded:** {now_iso()}",
+            "",
+        ]
+    )
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def _require_text(value: str, option_name: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise GlassError(
+            agent_instruction(
+                f"{option_name} is required",
+                f"Provide a non-empty value for `{option_name}`.",
+            )
+        )
+    return cleaned
+
+
+def _require_concrete_note(value: str, option_name: str, instruction: str) -> str:
+    cleaned = _require_text(value, option_name)
+    if len(cleaned.split()) < 6:
+        raise GlassError(
+            agent_instruction(
+                f"{option_name} is too vague",
+                instruction,
+            )
+        )
+    return cleaned
 
 
 @arc.command("list")
@@ -163,8 +272,22 @@ def arc_activate(ctx: click.Context, arc_id: str) -> None:
     paths = get_paths()
     try:
         arc_dir = _workspace.activate_arc(workspace, arc_id)
-    except (FileNotFoundError, ValueError) as exc:
-        raise GlassError(str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Create the arc first with `glass arc create <arc-id> "
+                "--pull-source <source> --pull-utilization <note>`, or activate "
+                "an arc returned by `glass arc list`.",
+            )
+        ) from exc
+    except ValueError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Use the slug-like arc id shown by `glass arc list`.",
+            )
+        ) from exc
     state = load_state(paths, workspace.campaign_id)
     normalized_arc_id = _workspace.slugify(arc_id)
     queue_event(state, "dm", f"arc activate: {normalized_arc_id}")
@@ -197,20 +320,36 @@ def arc_close(
     current_scene = _workspace.current_scene(workspace)
     if current_scene:
         raise GlassError(
-            "cannot close an arc while a scene is active; end the scene first"
+            agent_instruction(
+                "cannot close an arc while a scene is active",
+                "End the active scene first with `glass scene end --outcome <outcome>`.",
+                "Then run `glass arc close <arc-id> --outcome <outcome>`.",
+            )
         )
 
     if arc_id is None:
         current_arc = _workspace.current_arc(workspace)
         if not current_arc:
-            raise GlassError("no active arc to close; pass an arc id")
+            raise GlassError(
+                agent_instruction(
+                    "there is no active arc to close",
+                    "Pass the arc id explicitly, or activate the intended arc with `glass arc activate <arc-id>` before closing it.",
+                )
+            )
         normalized_arc_id = str(current_arc["arc_id"])
     else:
         normalized_arc_id = _workspace.slugify(arc_id)
 
     arc_dir = workspace.arc_dir(normalized_arc_id)
     if not arc_dir.exists():
-        raise GlassError(f"arc {normalized_arc_id!r} does not exist")
+        raise GlassError(
+            agent_instruction(
+                f"arc {normalized_arc_id!r} does not exist",
+                "Use an arc id from `glass arc list`, or create the arc first "
+                "with `glass arc create <arc-id> --pull-source <source> "
+                "--pull-utilization <note>`.",
+            )
+        )
 
     outcome_lines = normalize_outcomes(outcome_values)
     summary_path = _write_arc_summary(

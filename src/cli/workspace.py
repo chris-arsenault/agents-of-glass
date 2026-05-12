@@ -158,7 +158,9 @@ def activate_arc(workspace: CampaignWorkspace, arc_id: str) -> Path:
     arc_dir = workspace.arc_dir(arc_id)
     if not arc_dir.exists():
         raise FileNotFoundError(
-            f"arc {arc_id!r} does not exist; run `glass arc create {arc_id}` first"
+            f"arc {arc_id!r} does not exist; run "
+            f"`glass arc create {arc_id} --pull-source <source> "
+            "--pull-utilization <note>` first"
         )
     state = load_campaign_state(workspace)
     arcs = state.setdefault("arcs", [])
@@ -190,13 +192,16 @@ def create_scene(
     if not arc:
         raise ValueError(
             "no active arc and no --arc specified; "
-            "run `glass arc create <slug>` first or pass --arc"
+            "run `glass arc create <slug> --pull-source <source> "
+            "--pull-utilization <note>` first or pass --arc"
         )
 
     arc_dir = workspace.arc_dir(arc)
     if not arc_dir.exists():
         raise FileNotFoundError(
-            f"arc {arc!r} does not exist; run `glass arc create {arc}` first"
+            f"arc {arc!r} does not exist; run "
+            f"`glass arc create {arc} --pull-source <source> "
+            "--pull-utilization <note>` first"
         )
 
     scene_dir = workspace.scene_dir(arc, scene_id)
@@ -308,10 +313,6 @@ def initialize_table(
         shutil.rmtree(root)
     root.mkdir(parents=True)
     (root / "handouts").mkdir()
-    (root / "index.md").write_text(
-        _table_index_stub(scene_id=scene_id, scene_type=scene_type, arc_id=arc_id),
-        encoding="utf-8",
-    )
     (root / "scene.md").write_text(
         _table_scene_stub(scene_id=scene_id, scene_type=scene_type, arc_id=arc_id),
         encoding="utf-8",
@@ -369,28 +370,17 @@ def _write_inactive_table(
     root.mkdir(parents=True)
     (root / "handouts").mkdir()
     rel_archive = archive_path.relative_to(workspace.root)
-    (root / "index.md").write_text(
+    (root / "scene.md").write_text(
         (
             "---\n"
             "status: inactive\n"
             f"previous_scene: {scene_id}\n"
             f"archive: {rel_archive}\n"
             "---\n\n"
-            "# Table\n\n"
+            "# Scene\n\n"
             "No scene is currently active.\n\n"
             f"The final table for `{scene_id}` is archived at "
             f"`{rel_archive}`.\n"
-        ),
-        encoding="utf-8",
-    )
-    (root / "scene.md").write_text(
-        (
-            "---\n"
-            "status: inactive\n"
-            f"previous_scene: {scene_id}\n"
-            "---\n\n"
-            "# Scene\n\n"
-            "No scene is currently active.\n"
         ),
         encoding="utf-8",
     )
@@ -582,31 +572,6 @@ def _scene_summary_stub(scene_id: str, scene_type: str) -> str:
         f"---\nscene_id: {scene_id}\nscene_type: {scene_type}\nstatus: stub\n---\n\n"
         f"# {scene_id} - summary\n\n"
         "_Scene summary is finalized by `glass scene end --summary --outcome`._\n"
-    )
-
-
-def _table_index_stub(scene_id: str, scene_type: str, arc_id: str) -> str:
-    return (
-        "---\n"
-        "status: active\n"
-        f"arc_id: {arc_id}\n"
-        f"scene_id: {scene_id}\n"
-        f"scene_type: {scene_type}\n"
-        "---\n\n"
-        "# Table\n\n"
-        f"- **Scene:** `{scene_id}`\n"
-        f"- **Type:** `{scene_type}`\n"
-        "- **Kickoff:** [`scene.md`](scene.md)\n"
-        "- **Handouts:** [`handouts/`](handouts/)\n\n"
-        "## At A Glance\n\n"
-        "_DM: keep the immediate visible state here. Link any freeform table "
-        "root files that players should read before asking for repeated "
-        "information._\n\n"
-        "## Relevant Table Files\n\n"
-        "- [`scene.md`](scene.md)\n\n"
-        "## Public Questions\n\n"
-        "_Questions the table can answer from visible state, or that the DM "
-        "should answer on the next update._\n"
     )
 
 

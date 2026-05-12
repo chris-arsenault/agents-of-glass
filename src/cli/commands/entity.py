@@ -37,7 +37,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -98,6 +98,23 @@ from ..yaml_io import (
 @click.group()
 def entity() -> None:
     """Campaign-lore graph mirror commands."""
+
+
+def _graph_unavailable_message(target: str) -> str:
+    return agent_instruction(
+        f"FalkorDB is not reachable at {target}",
+        "Use the markdown/table/lore files that are already in TURN_START or the campaign workspace for this turn.",
+        "If graph data is required, ask the operator to start FalkorDB and rerun the graph command.",
+    )
+
+
+def _graph_failure_message(action: str, detail: Exception) -> str:
+    return agent_instruction(
+        f"FalkorDB {action} failed",
+        "Do not keep retrying this graph command in the same turn.",
+        "Use visible table/lore files for immediate play, and ask the operator to inspect the graph service if the relationship query is required.",
+        f"Graph detail: {detail}",
+    )
 
 
 @entity.command("upsert")
@@ -195,16 +212,21 @@ def entity_neighborhood(ctx: click.Context, entity_id: str) -> None:
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
     try:
         with _graph.connect(config) as g:
             payload = _graph.neighborhood(
                 g, entity_id, campaign_id=campaign_id
             )
     except Exception as exc:
-        raise GlassError(f"falkordb neighborhood failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("neighborhood lookup", exc)) from exc
     if not payload.get("found"):
-        raise GlassError(f"unknown entity {entity_id!r} in graph")
+        raise GlassError(
+            agent_instruction(
+                f"unknown entity {entity_id!r} in graph",
+                "Search first with `glass entity find --query <text>` or use a lore/table file path you know exists.",
+            )
+        )
     result = {**payload, "source": "falkordb", "target": config.describe()}
     append_audit(
         paths, state, ctx, "entity.neighborhood",
@@ -241,7 +263,7 @@ def entity_relations(
     state = load_state(paths, campaign_id)
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
     try:
         with _graph.connect(config) as g:
             rows = _graph.relations(
@@ -254,7 +276,7 @@ def entity_relations(
                 limit=limit,
             )
     except Exception as exc:
-        raise GlassError(f"falkordb relations failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("relations lookup", exc)) from exc
     result = {
         "target": config.describe(),
         "entity_id": entity_id,
@@ -285,14 +307,14 @@ def entity_between(ctx: click.Context, src_id: str, dst_id: str) -> None:
     state = load_state(paths, campaign_id)
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
     try:
         with _graph.connect(config) as g:
             rows = _graph.between(
                 g, campaign_id=campaign_id, src_id=src_id, dst_id=dst_id
             )
     except Exception as exc:
-        raise GlassError(f"falkordb between failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("between lookup", exc)) from exc
     result = {
         "target": config.describe(),
         "source": src_id,
@@ -324,14 +346,14 @@ def entity_edges(ctx: click.Context, edge_type: str, limit: int) -> None:
     state = load_state(paths, campaign_id)
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
     try:
         with _graph.connect(config) as g:
             rows = _graph.edges_by_type(
                 g, campaign_id=campaign_id, edge_type=edge_type, limit=limit
             )
     except Exception as exc:
-        raise GlassError(f"falkordb edges failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("edges lookup", exc)) from exc
     result = {
         "target": config.describe(),
         "edge_type": edge_type,
@@ -366,14 +388,14 @@ def entity_stance(ctx: click.Context, src_id: str, dst_id: str) -> None:
     state = load_state(paths, campaign_id)
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
     try:
         with _graph.connect(config) as g:
             rows = _graph.between(
                 g, campaign_id=campaign_id, src_id=src_id, dst_id=dst_id
             )
     except Exception as exc:
-        raise GlassError(f"falkordb stance failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("stance lookup", exc)) from exc
     result = {
         "target": config.describe(),
         "source": src_id,
@@ -410,7 +432,13 @@ def entity_similar(ctx: click.Context, section_id: str, limit: int) -> None:
                 target = merged
     if target is None:
         known = ", ".join(section["section_id"] for section in sections) or "none"
-        raise GlassError(f"unknown section {section_id!r}; known sections: {known}")
+        raise GlassError(
+            agent_instruction(
+                f"unknown section {section_id!r}",
+                f"Use one of the known section ids: {known}.",
+                "Run `glass entity neighborhood <entity-id>` or inspect the lore file before asking for similar sections.",
+            )
+        )
     target_words = set(re.findall(r"[a-z0-9]+", target["text"].lower()))
     scored = []
     for section in sections:
@@ -451,12 +479,17 @@ def entity_find(
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
 
     role = current_role()
     active_campaign = active_campaign_id()
     if role.kind == "player" and campaign_id and campaign_id != active_campaign:
-        raise GlassError("permission denied: players cannot query another campaign graph")
+        raise GlassError(
+            agent_instruction(
+                "players cannot query another campaign graph",
+                "Query the active campaign only; omit `--campaign-id` from player turns.",
+            )
+        )
     campaign = campaign_id or active_campaign
     try:
         with _graph.connect(config) as g:
@@ -468,7 +501,7 @@ def entity_find(
                 limit=limit,
             )
     except Exception as exc:
-        raise GlassError(f"falkordb find failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("find query", exc)) from exc
 
     emit({
         "target": config.describe(),
@@ -504,12 +537,17 @@ def entity_link(
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
 
     properties: dict[str, Any] = {}
     for raw in props:
         if "=" not in raw:
-            raise GlassError(f"--prop must be key=value: {raw!r}")
+            raise GlassError(
+                agent_instruction(
+                    f"invalid `--prop` value {raw!r}",
+                    "Use `--prop key=value` for each relationship property.",
+                )
+            )
         k, v = raw.split("=", 1)
         properties[k.strip()] = v.strip()
 
@@ -524,7 +562,7 @@ def entity_link(
                 properties=properties,
             )
     except (ValueError, Exception) as exc:
-        raise GlassError(f"falkordb link failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("link mutation", exc)) from exc
 
     emit({
         "target": config.describe(),
@@ -553,7 +591,12 @@ def entity_claim(
 ) -> None:
     """Propose a graph relationship without mutating the canonical graph."""
     if not re.fullmatch(r"[A-Z][A-Z0-9_]*", edge_type):
-        raise GlassError(f"edge type must be UPPERCASE_SNAKE_CASE: {edge_type!r}")
+        raise GlassError(
+            agent_instruction(
+                f"edge type must be UPPERCASE_SNAKE_CASE: {edge_type!r}",
+                "Use a relationship type like `ALLIED_WITH`, `OWES`, `LOCATED_IN`, or another uppercase snake-case verb phrase.",
+            )
+        )
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -622,7 +665,7 @@ def entity_ratify_claim(ctx: click.Context, claim_id: str) -> None:
     claim = _relationship_claim(state, claim_id)
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
     try:
         with _graph.connect(config) as g:
             _graph.link_entities(
@@ -634,7 +677,7 @@ def entity_ratify_claim(ctx: click.Context, claim_id: str) -> None:
                 properties=claim.get("properties", {}),
             )
     except Exception as exc:
-        raise GlassError(f"falkordb claim ratify failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("claim ratification", exc)) from exc
     claim["status"] = "ratified"
     claim["resolved_at"] = now_iso()
     result = {"claim": claim, "target": config.describe(), "status": "ratified"}
@@ -660,7 +703,7 @@ def entity_unlink(ctx: click.Context, src_id: str, edge_type: str, dst_id: str) 
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
     try:
         with _graph.connect(config) as g:
             removed = _graph.unlink_entities(
@@ -671,7 +714,7 @@ def entity_unlink(ctx: click.Context, src_id: str, edge_type: str, dst_id: str) 
                 dst_id=dst_id,
             )
     except Exception as exc:
-        raise GlassError(f"falkordb unlink failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("unlink mutation", exc)) from exc
     emit({"src": src_id, "edge_type": edge_type, "dst": dst_id, "removed": removed})
 
 
@@ -695,12 +738,17 @@ def entity_query(ctx: click.Context, cypher: str, params: tuple[str, ...]) -> No
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
 
     parameters: dict[str, Any] = {}
     for raw in params:
         if "=" not in raw:
-            raise GlassError(f"--param must be key=value: {raw!r}")
+            raise GlassError(
+                agent_instruction(
+                    f"invalid `--param` value {raw!r}",
+                    "Use `--param key=value` for each Cypher parameter.",
+                )
+            )
         k, v = raw.split("=", 1)
         parameters[k.strip()] = v.strip()
 
@@ -708,7 +756,7 @@ def entity_query(ctx: click.Context, cypher: str, params: tuple[str, ...]) -> No
         with _graph.connect(config) as g:
             payload = _graph.run_query(g, cypher, parameters)
     except Exception as exc:
-        raise GlassError(f"falkordb query failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("Cypher query", exc)) from exc
 
     emit({"target": config.describe(), "cypher": cypher, "params": parameters, **payload})
 
@@ -721,12 +769,12 @@ def entity_stats(ctx: click.Context) -> None:
 
     config = _graph.load_falkor_config(load_config())
     if not _graph.is_available(config):
-        raise GlassError(f"falkordb is not reachable at {config.describe()}")
+        raise GlassError(_graph_unavailable_message(config.describe()))
     try:
         with _graph.connect(config) as g:
             stats = _graph.graph_stats(g)
     except Exception as exc:
-        raise GlassError(f"falkordb stats failed: {exc}") from exc
+        raise GlassError(_graph_failure_message("stats query", exc)) from exc
     emit({"target": config.describe(), **stats})
 
 
@@ -734,7 +782,12 @@ def _parse_edge_props(props: tuple[str, ...]) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     for raw in props:
         if "=" not in raw:
-            raise GlassError(f"--prop must be key=value: {raw!r}")
+            raise GlassError(
+                agent_instruction(
+                    f"invalid `--prop` value {raw!r}",
+                    "Use `--prop key=value` for each relationship property.",
+                )
+            )
         k, v = raw.split("=", 1)
         properties[k.strip()] = v.strip()
     return properties
@@ -745,13 +798,29 @@ def _relationship_claim(state: dict[str, Any], claim_id: str) -> dict[str, Any]:
         if item.get("intake_id") != claim_id:
             continue
         if item.get("kind") != "relationship-claim":
-            raise GlassError(f"intake {claim_id!r} is not a relationship claim")
+            raise GlassError(
+                agent_instruction(
+                    f"intake {claim_id!r} is not a relationship claim",
+                    "Use an intake id created by `glass entity claim`, not a note intake id.",
+                )
+            )
         if item.get("status") != "pending":
-            raise GlassError(f"relationship claim {claim_id!r} is already {item.get('status')}")
+            raise GlassError(
+                agent_instruction(
+                    f"relationship claim {claim_id!r} is already {item.get('status')}",
+                    "Do not ratify it again; choose a pending relationship claim.",
+                )
+            )
         return item
     known = ", ".join(
         item.get("intake_id", "")
         for item in state.get("note_intake", [])
         if item.get("kind") == "relationship-claim"
     ) or "none"
-    raise GlassError(f"unknown relationship claim {claim_id!r}; known claims: {known}")
+    raise GlassError(
+        agent_instruction(
+            f"unknown relationship claim {claim_id!r}",
+            f"Use one of the known relationship claims: {known}.",
+            "Create a new claim with `glass entity claim <src> <EDGE_TYPE> <dst> --summary <why>` if needed.",
+        )
+    )

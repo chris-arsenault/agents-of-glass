@@ -36,7 +36,7 @@ from ..entities import (
     parse_sections,
     upsert_entity_from_path,
 )
-from ..errors import GlassError
+from ..errors import GlassError, agent_instruction
 from ..ids import new_id, now_iso, slugify
 from ..messages import (
     infer_player_from_path,
@@ -109,7 +109,13 @@ def db_migrate(ctx: click.Context) -> None:
         with _db.connect(pg_config) as conn:
             actions = _db.migrate(conn)
     except Exception as exc:
-        raise GlassError(f"db migrate failed against {pg_config.describe()}: {exc}") from exc
+        raise GlassError(
+            agent_instruction(
+                f"db migrate failed against {pg_config.describe()}",
+                "Fix the Postgres connection/settings, then rerun `glass db migrate`.",
+                f"Database detail: {exc}",
+            )
+        ) from exc
 
     result = {"target": pg_config.describe(), "actions": actions}
     # Best-effort audit: skip if no active session, or if the active-session
@@ -135,7 +141,13 @@ def db_status(ctx: click.Context) -> None:
         with _db.connect(pg_config) as conn:
             report = _db.status(conn)
     except Exception as exc:
-        raise GlassError(f"db status failed against {pg_config.describe()}: {exc}") from exc
+        raise GlassError(
+            agent_instruction(
+                f"db status failed against {pg_config.describe()}",
+                "Fix the Postgres connection/settings, then rerun `glass db status`.",
+                f"Database detail: {exc}",
+            )
+        ) from exc
     report["target"] = pg_config.describe()
     emit(report)
 
@@ -148,10 +160,19 @@ def db_status(ctx: click.Context) -> None:
 def _campaign_workspace() -> _workspace.CampaignWorkspace:
     paths = get_paths()
     if paths.campaigns is None:
-        raise GlassError("paths.campaigns is not configured")
+        raise GlassError(
+            agent_instruction(
+                "`paths.campaigns` is not configured",
+                "Configure `paths.campaigns` in `agents-of-glass.toml` or run from an orchestrated campaign environment.",
+            )
+        )
     env_id = os.environ.get("GLASS_CAMPAIGN_ID")
     try:
         return _workspace.resolve_active_campaign(paths.campaigns, env_id=env_id)
     except FileNotFoundError as exc:
-        raise GlassError(str(exc)) from exc
-
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Start the campaign with `aog campaign run <campaign-id>` or set `GLASS_CAMPAIGN_ID` to an existing campaign.",
+            )
+        ) from exc

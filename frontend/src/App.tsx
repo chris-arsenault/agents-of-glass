@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AgentLanes } from "./components/AgentLanes";
 import { ArchiveBrowser } from "./components/ArchiveBrowser";
+import { CampaignSelector } from "./components/CampaignSelector";
 import { CommandPalette } from "./components/CommandPalette";
 import { ContextRail } from "./components/ContextRail";
 import { LeftMenu } from "./components/LeftMenu";
@@ -149,13 +150,9 @@ function RouteTopBar({
   name: string;
   onOpenCommand: () => void;
 }) {
-  const runtime = useSessionStore((state) => state.runtime);
   return (
     <div className="scorebug">
-      <div className="scorebug__campaign">
-        <span>Campaign</span>
-        <strong>{runtime?.campaign ?? "—"}</strong>
-      </div>
+      <CampaignSelector />
       <div className="scorebug__scene">
         <span className="scorebug__scene-mode">{eyebrow}</span>
         <span className="scorebug__scene-id">{name}</span>

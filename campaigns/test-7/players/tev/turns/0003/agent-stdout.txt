@@ -1,1 +1,0 @@
-Built Tek'iris Korr — a gnome Hab-Worlder kite-wright on the Splitfork who's losing her resonance sense and hiding it with a self-built tic-tracer. Character row, inventory, signature move, public mirror, and intro all committed. Turn output written to `players/tev/turns/0003/out.md`.

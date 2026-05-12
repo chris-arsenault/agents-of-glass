@@ -1,10 +1,14 @@
-"""Per-turn actor-owned campaign workspace projections.
+"""Actor-owned campaign workspace projections.
 
-Agents are good at reading files directly, so each turn gets a campaign-shaped
-workspace containing only the files that actor may see. The relative paths are
-the same as the canonical campaign tree. The spawned actor owns the projection,
-but persistent mutations still go through `glass`, not direct writes to the
-canonical campaign tree.
+Agents are good at reading files directly, so each actor gets a stable
+campaign-shaped workspace containing only the files that actor may see. The
+spawned actor owns the projection, but persistent mutations still go through
+`glass`, not direct writes to the canonical campaign tree.
+
+Most projected paths mirror the canonical campaign tree. The current turn is
+the deliberate exception: canonical history remains numbered under
+dm/turns/<NNNN>/ or players/<id>/turns/<NNNN>/, while the actor cwd exposes the
+active turn at the stable unnumbered turns/ directory.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ WRITABLE_DIR_MODE = 0o2770
 PROJECTION_PARENT_DIR_MODE = 0o710
 WRITABLE_FILE_MODE = 0o660
 PROJECTION_MANIFEST = ".glass-projection-manifest.json"
+CURRENT_TURN_DIR = Path("turns")
 
 _TOP_LEVEL_FILES = {
     "README.md",
@@ -90,18 +95,24 @@ def projection_root_for(
     turn_number: int,
     agent: Agent,
 ) -> Path:
-    """Return the per-turn projected cwd for an agent."""
+    """Return the stable projected cwd for an actor."""
 
     return (
         config.repo_root
         / ".glass-cwd"
         / campaign
-        / f"{turn_number:04d}-{agent.id}"
+        / agent.id
     )
 
 
 def projected_path(campaign_root: Path, projection_root: Path, canonical_path: Path) -> Path:
     return projection_root / canonical_path.relative_to(campaign_root)
+
+
+def projected_turn_artifact_path(projection_root: Path, name: str) -> Path:
+    """Return the actor-facing path for the active turn artifact."""
+
+    return projection_root / CURRENT_TURN_DIR / name
 
 
 def build_projection(
@@ -114,7 +125,7 @@ def build_projection(
     canonical_turn_prose_path: Path,
     canonical_turn_closeout_path: Path,
 ) -> ProjectionPaths:
-    """Create a fresh actor-owned projection for one actor turn."""
+    """Rebuild the actor-owned projection for one actor turn."""
 
     root = projection_root_for(
         config,
@@ -126,21 +137,18 @@ def build_projection(
     _remove_tree(root)
     root.mkdir(parents=True, exist_ok=True)
 
-    current_turn_dir_rel = canonical_turn_start_path.parent.relative_to(campaign_root)
-    current_turn_start_rel = canonical_turn_start_path.relative_to(campaign_root)
-    current_turn_prose_rel = canonical_turn_prose_path.relative_to(campaign_root)
-    current_turn_closeout_rel = canonical_turn_closeout_path.relative_to(campaign_root)
+    style_id = assigned_style_id(campaign_root, agent)
 
     # Create visible empty directories first so table/handouts and similar
     # roots are still discoverable even before they contain files.
     for directory in sorted(_iter_dirs(campaign_root), key=lambda item: item[0]):
         rel, source = directory
-        if _directory_visible(rel, agent, current_turn_dir_rel):
+        if _directory_visible(rel, agent, style_id=style_id):
             (root / rel).mkdir(parents=True, exist_ok=True)
 
     manifest: dict[str, str] = {}
     for rel, source in sorted(_iter_files(campaign_root), key=lambda item: item[0]):
-        if not _file_visible(rel, agent, current_turn_start_rel):
+        if not _file_visible(rel, agent, style_id=style_id):
             continue
         target = root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -148,8 +156,17 @@ def build_projection(
         if target.exists() and target.is_file():
             manifest[str(rel)] = _hash_file(target)
 
-    projected_turn_dir = root / current_turn_dir_rel
+    projected_turn_dir = root / CURRENT_TURN_DIR
     projected_turn_dir.mkdir(parents=True, exist_ok=True)
+    projected_turn_start = projected_turn_dir / "TURN_START.md"
+    projected_turn_prose = projected_turn_dir / "TURN.md"
+    projected_turn_closeout = projected_turn_dir / "turn-closeout.json"
+    _copy_file(
+        canonical_turn_start_path,
+        projected_turn_start,
+        campaign_root=campaign_root,
+    )
+    manifest[str(CURRENT_TURN_DIR / "TURN_START.md")] = _hash_file(projected_turn_start)
     _prepare_tool_runtime_files(root)
     _write_projection_manifest(root, manifest)
     _ensure_authoring_surfaces(root, agent)
@@ -168,9 +185,9 @@ def build_projection(
     return ProjectionPaths(
         root=root,
         turn_dir=projected_turn_dir,
-        turn_start_path=root / current_turn_start_rel,
-        turn_prose_path=root / current_turn_prose_rel,
-        turn_closeout_path=root / current_turn_closeout_rel,
+        turn_start_path=projected_turn_start,
+        turn_prose_path=projected_turn_prose,
+        turn_closeout_path=projected_turn_closeout,
     )
 
 
@@ -199,7 +216,7 @@ def refresh_projection_from_canonical(
     turn_number: int,
     projection_root: Path | None = None,
 ) -> None:
-    """Refresh canonical files into an existing per-turn projection.
+    """Refresh canonical files into an existing actor projection.
 
     The local glass API mutates canonical campaign storage while the agent's
     cwd stays pointed at the projection. Refreshing after successful commands
@@ -216,18 +233,17 @@ def refresh_projection_from_canonical(
     if not root.exists() or not root.is_dir():
         return
 
-    current_turn_dir_rel = _current_turn_dir_rel(agent, turn_number)
-    current_turn_start_rel = current_turn_dir_rel / "TURN_START.md"
-    projected_turn_dir = root / current_turn_dir_rel
+    projected_turn_dir = root / CURRENT_TURN_DIR
 
     _make_owner_writable(root)
+    style_id = assigned_style_id(campaign_root, agent)
     manifest = _load_projection_manifest(root)
     for rel, _source in sorted(_iter_dirs(campaign_root), key=lambda item: item[0]):
-        if _directory_visible(rel, agent, current_turn_dir_rel):
+        if _directory_visible(rel, agent, style_id=style_id):
             (root / rel).mkdir(parents=True, exist_ok=True)
 
     for rel, source in sorted(_iter_files(campaign_root), key=lambda item: item[0]):
-        if not _file_visible(rel, agent, current_turn_start_rel):
+        if not _file_visible(rel, agent, style_id=style_id):
             continue
         target = root / rel
         source_hash = _hash_file(source)
@@ -322,17 +338,69 @@ def _iter_files(root: Path) -> list[tuple[Path, Path]]:
     return items
 
 
-def _directory_visible(rel: Path, agent: Agent, current_turn_dir_rel: Path) -> bool:
+def _persona_relpath(agent: Agent) -> Path:
+    if agent.role == "dm":
+        return Path("dm/persona.md")
+    return Path("players") / agent.id / "persona.md"
+
+
+def assigned_style_id(campaign_root: Path, agent: Agent) -> str | None:
+    """Read `narrative_style:` from the agent's persona frontmatter, if any.
+
+    The styles library is private-by-owner: each agent sees only their
+    assigned style file projected under `styles/`. The persona frontmatter
+    is the single source of truth for that assignment. Returns None when
+    the persona is missing, has no frontmatter, or carries no assignment.
+    """
+
+    persona_path = campaign_root / _persona_relpath(agent)
+    try:
+        text = persona_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError, UnicodeDecodeError):
+        return None
+    if not text.startswith("---"):
+        return None
+    end = text.find("\n---", 3)
+    if end == -1:
+        return None
+    block = text[3:end]
+    for line in block.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        key, sep, value = stripped.partition(":")
+        if not sep:
+            continue
+        if key.strip() != "narrative_style":
+            continue
+        candidate = value.strip().strip('"').strip("'")
+        if not candidate:
+            return None
+        # style ids are filename-safe: alnum, hyphen, underscore only.
+        if not all(ch.isalnum() or ch in "-_" for ch in candidate):
+            return None
+        return candidate
+    return None
+
+
+def _directory_visible(
+    rel: Path, agent: Agent, *, style_id: str | None = None
+) -> bool:
     if rel == Path("."):
         return True
     parts = rel.parts
     if not parts:
         return True
     if _is_turn_path(rel):
-        return rel == current_turn_dir_rel or rel in current_turn_dir_rel.parents
+        return False
     first = parts[0]
     if first in _PUBLIC_DIRS:
         return True
+    if first == "styles":
+        # The styles dir is created in the projection only when the
+        # agent has an assigned style. Subdirectories under styles/ are
+        # not used (the library is flat).
+        return style_id is not None and len(parts) == 1
     if first == "arcs":
         return True
     if agent.role == "dm":
@@ -349,14 +417,16 @@ def _directory_visible(rel: Path, agent: Agent, current_turn_dir_rel: Path) -> b
     return False
 
 
-def _file_visible(rel: Path, agent: Agent, current_turn_start_rel: Path) -> bool:
+def _file_visible(
+    rel: Path, agent: Agent, *, style_id: str | None = None
+) -> bool:
     parts = rel.parts
     if not parts:
         return False
     if rel.name in _SKIP_FILE_NAMES:
         return False
-    if rel == current_turn_start_rel:
-        return True
+    if rel == Path("table") / "index.md":
+        return False
     if _is_turn_path(rel):
         return False
     if len(parts) == 1:
@@ -364,6 +434,14 @@ def _file_visible(rel: Path, agent: Agent, current_turn_start_rel: Path) -> bool
     first = parts[0]
     if first in _PUBLIC_DIRS:
         return True
+    if first == "styles":
+        # Strict per-owner visibility — only the agent's assigned style
+        # file is projected. README.md and the other style files stay
+        # invisible to prevent the cross-contamination that produced the
+        # test-7 house-style problem.
+        if style_id is None:
+            return False
+        return rel == Path("styles") / f"{style_id}.md"
     if first == "arcs":
         if agent.role == "dm":
             return True
@@ -533,6 +611,8 @@ def _is_syncable_authoring_path(rel: Path, *, root: Path, agent: Agent) -> bool:
         return False
     if _is_turn_path(rel):
         return False
+    if rel == Path("table") / "index.md":
+        return False
     if rel.name in {"transcript.md", "audit.jsonl"}:
         return False
 
@@ -604,12 +684,6 @@ def _copy_artifact(source: Path, target: Path, *, reader_user: str | None) -> No
     )
     target.write_bytes(result.stdout)
     os.chmod(target, 0o600)
-
-
-def _current_turn_dir_rel(agent: Agent, turn_number: int) -> Path:
-    if agent.role == "dm":
-        return Path("dm") / "turns" / f"{turn_number:04d}"
-    return Path("players") / agent.id / "turns" / f"{turn_number:04d}"
 
 
 def _remove_tree(root: Path) -> None:

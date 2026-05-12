@@ -1,6 +1,0 @@
-Turn complete. Built **Drova Korvanis** — Sithari orc, ex-Echo Ledger Conclave intake clerk, now refusal-log clerk on the Ledger Run — grounded in a forensic-document-examination texture pull (ESDA / indented writing / graduated certainty). Character row + inventory + signature move "The Angle" + public mirror are all persisted; intro at `players/sumi/public/intro.md`, secret about Senna's undelivered letters at `players/sumi/secrets/letters.md` (DM notified), and the public turn prose is at `players/sumi/turns/0004/out.md`.
-
-Sources:
-- [Electrostatic detection device — Wikipedia](https://en.wikipedia.org/wiki/Electrostatic_detection_device)
-- [A Simplified Guide To Forensic Document Examination](https://www.forensicsciencesimplified.org/docs/QuestionedDocuments.pdf)
-- [ESDA in Forensic Document Analysis](https://handwritingexperts.in/esda-in-forensic-document-analysis/)

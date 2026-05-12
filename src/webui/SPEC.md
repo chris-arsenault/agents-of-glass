@@ -18,10 +18,9 @@ There are two different visibility questions, and the UI must not blur them:
 The **Active Table** panel answers the second question for shared scene state.
 It renders only `campaigns/<id>/table/**`:
 
-- `table/index.md`
 - `table/scene.md`
+- named `table/*.md` artifacts
 - `table/handouts/**`
-- freeform markdown files under `table/`
 
 Do not populate Active Table from graph entities, DM notes, hooks, NPC notes,
 monster files, messages, transcript text, clocks, rolls, or the viewer's file
@@ -31,6 +30,9 @@ player-agent table unless the DM explicitly puts or links them under `table/`.
 ## Current Local Architecture
 
 - REST API: `src/cli/web_api_server.py`, under `/v1/campaigns/<id>/...`.
+- Campaign selection: the frontend lists campaigns from `/v1/campaigns` and
+  lets the viewer switch between them in the top bar. The selected campaign is
+  UI state, not a build-time or runtime config value.
 - Frontend: `frontend/`, Vite/React.
 - Local helper: `scripts/run-webui-local.sh`, which starts the read-only web API
   and frontend in the mapped Docker port range.
