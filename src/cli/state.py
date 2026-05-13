@@ -138,6 +138,30 @@ def default_state(campaign_id: str) -> dict[str, Any]:
         "action_order": None,
         "scene_trackers": {},
         "scene_closing_turns": None,
+        "active_turn_id": None,
+        "active_turn_number": None,
+        "active_turn_actor": None,
+        "active_turn_role": None,
+        "active_turn_mode": None,
+        "active_turn_scene_id": None,
+        "active_turn_character_id": None,
+        "active_turn_kind": None,
+        "active_turn_turn_type_required": False,
+        "active_turn_allow_player_scene_close": False,
+        "active_turn_beat_checked_at": None,
+        "active_turn_audit_ran_at": None,
+        "closeout_summary": None,
+        "closeout_next_speaker": None,
+        "closeout_scene_status": None,
+        "closeout_state_changes": [],
+        "closeout_rolls": None,
+        "closeout_open_questions": [],
+        "closeout_position": None,
+        "closeout_pressure": None,
+        "closeout_turn_type": None,
+        "closeout_valid": None,
+        "closeout_problems": [],
+        "closeout_updated_at": None,
     }
 
 
@@ -166,6 +190,30 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
     state.setdefault("action_order", None)
     state.setdefault("scene_trackers", {})
     state.setdefault("scene_closing_turns", None)
+    state.setdefault("active_turn_id", None)
+    state.setdefault("active_turn_number", None)
+    state.setdefault("active_turn_actor", None)
+    state.setdefault("active_turn_role", None)
+    state.setdefault("active_turn_mode", None)
+    state.setdefault("active_turn_scene_id", None)
+    state.setdefault("active_turn_character_id", None)
+    state.setdefault("active_turn_kind", None)
+    state.setdefault("active_turn_turn_type_required", False)
+    state.setdefault("active_turn_allow_player_scene_close", False)
+    state.setdefault("active_turn_beat_checked_at", None)
+    state.setdefault("active_turn_audit_ran_at", None)
+    state.setdefault("closeout_summary", None)
+    state.setdefault("closeout_next_speaker", None)
+    state.setdefault("closeout_scene_status", None)
+    state.setdefault("closeout_state_changes", [])
+    state.setdefault("closeout_rolls", None)
+    state.setdefault("closeout_open_questions", [])
+    state.setdefault("closeout_position", None)
+    state.setdefault("closeout_pressure", None)
+    state.setdefault("closeout_turn_type", None)
+    state.setdefault("closeout_valid", None)
+    state.setdefault("closeout_problems", [])
+    state.setdefault("closeout_updated_at", None)
 
     legacy_next = state.pop("next_speaker", None)
     if isinstance(legacy_next, str) and legacy_next:

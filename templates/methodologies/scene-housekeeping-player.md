@@ -17,8 +17,8 @@ bookkeeping before play resumes.
    private requests, inventory reminders, or viewer-facing OOC bookkeeping.
 3. Commit authored markdown with `glass sync apply`.
 4. Write a short process-only public note to the `TURN.md` path from TURN_START.
-5. End with `glass turn end`. Use `rolls none`, `--scene-status ended`, and
-   `--next default`.
+5. Run `glass turn audit`, then end with `glass turn end`. Use `rolls none`,
+   `--scene-status ended`, and `--next default`.
 
 This turn does not take in-fiction action, advance the new scene, roll dice, or
 design mid- or long-term story; that belongs in intermission.
@@ -26,6 +26,7 @@ design mid- or long-term story; that belongs in intermission.
 Required closeout shape:
 
 ```bash
+glass turn audit
 glass turn end \
   --summary "housekeeping only: <what you cleaned up>" \
   --state "<notes/files updated or no state change>" \

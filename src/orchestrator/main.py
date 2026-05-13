@@ -69,7 +69,7 @@ def _apply_cli_overrides(
         return
     provider = cli.config.agent_provider
     if use_codex is not None:
-        provider = "codex" if use_codex else "claude"
+        provider = "mixed-codex" if use_codex else "claude"
     session_flag = (
         cli.config.claude.use_session_id
         if use_session_id is None
@@ -366,7 +366,6 @@ def _run_campaign_lifecycle(
         dry_run=dry_run,
         validate=_validate_organization_bootstrap_complete,
     )
-
     # Phase 3: character creation
     if skip_character_creation:
         click.secho("[3/6] Character creation skipped (--skip-character-creation).",
@@ -398,7 +397,6 @@ def _run_campaign_lifecycle(
         dry_run=dry_run,
         validate=_validate_character_creation_complete,
     )
-
     # Phase 4: campaign planning
     cm_state = _run_bootstrap_phase(
         cli,
@@ -419,7 +417,6 @@ def _run_campaign_lifecycle(
         dry_run=dry_run,
         validate=_validate_campaign_planning_complete,
     )
-
     # Phase 5: prelude shakedown
     if skip_prelude:
         click.secho("[5/6] Prelude skipped (--skip-prelude).", fg="yellow")
@@ -447,7 +444,6 @@ def _run_campaign_lifecycle(
         dry_run=dry_run,
         validate=None,
     )
-
     # Phase 6: active campaign handoff
     if cm_state.get("phase") != PHASE_ACTIVE:
         cm_state = cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
@@ -821,6 +817,7 @@ def _run_bootstrap_phase(
     except TurnFailure as exc:
         detail = json.dumps(exc.failure, indent=2, sort_keys=True)
         raise click.ClickException(f"{phase_label} failed: {exc}\n{detail}") from exc
+    runtime_state = cli.store.load(campaign_id)
     _require_bootstrap_mode_ended(
         cli,
         campaign_id=campaign_id,
@@ -1453,7 +1450,7 @@ def campaign_reconcile(cli: CliState, campaign_id: str, repair: bool) -> None:
     "--use-codex/--use-claude",
     "use_codex",
     default=None,
-    help="Override [agent].provider for this prepared turn.",
+    help="Switch between the mixed Codex table preset and the all-Claude baseline for this prepared turn.",
 )
 @click.option(
     "--skip-player-persona/--no-skip-player-persona",
@@ -1562,7 +1559,7 @@ def campaign_prepare_turn(
     "--use-codex/--use-claude",
     "use_codex",
     default=None,
-    help="Override [agent].provider for this run.",
+    help="Switch between the mixed Codex table preset and the all-Claude baseline for this run.",
 )
 @click.option(
     "--skip-player-persona/--no-skip-player-persona",

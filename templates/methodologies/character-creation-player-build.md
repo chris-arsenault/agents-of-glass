@@ -78,7 +78,7 @@ applies_to_modes: [character-creation]
 18. Write `TURN.md` as the public character introduction. Use the narration craft
     guidance: put what the character says, does, wants, carries, and changes on
     the page.
-19. Run `glass turn end --summary "<character created and public intro committed>" --state "<character id, files, inventory/signature/mirror updated>" --rolls none --next default`.
+19. Run `glass turn audit`, then `glass turn end --summary "<character created and public intro committed>" --state "<character id, files, inventory/signature/mirror updated>" --rolls none --next default`.
 
 Do not write `players/<id>/public/relationships.md` on this turn unless the
 turn type is `character-creation-player-relationship`.

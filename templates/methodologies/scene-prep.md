@@ -9,7 +9,8 @@ applies_to_modes: [scene-prep]
 
 Run this as a DM-only bridge into actual play. A scene-prep turn is complete
 only after the next scene exists, the active table is written, the actual play
-mode is started, and `glass turn end` succeeds.
+mode is started, any required active-play scene clock and first beat are live,
+and `glass turn end` succeeds.
 
 ## Sequence
 
@@ -34,6 +35,11 @@ mode is started, and `glass turn end` succeeds.
 4. **Write `arcs/<arc>/scenes/<scene>/prep.md` in this order.**
    - Recap: why this scene exists now.
    - Strong start: what is immediately on screen.
+   - Adventure draw: what makes this scene worth playing as fantasy adventure
+     rather than only a plausible incident, errand, claim, or logistics problem.
+     This does not have to be spectacle, but it should give the table something
+     vivid, strange, funny, dangerous, beautiful, gross, mythic, or physically
+     playable to engage with.
    - Possible directions: 3-5 plausible player routes.
    - NPCs in play.
    - Threats, creatures, antagonists, or pressure sources.
@@ -66,16 +72,29 @@ mode is started, and `glass turn end` succeeds.
 9. **Hand into actual play.**
    - If `scene-prep` is the active mode, run `glass mode end`.
    - Run `glass mode start <scene-type> <scene-slug>`.
+   - If the started mode is `scene-play`, `action`, `combat`, `chase`, or
+     `social-pressure`, declare at least one scene-specific clock with
+     `glass scene clock declare <clock-id> --label ... --goal ... --value 0 --max <n> --direction progress|countdown --visibility public|dm`.
+   - If the started mode is `scene-play`, `action`, `combat`, `chase`, or
+     `social-pressure`, start the first beat with
+     `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`.
+   - If the started mode is `scene-play`, `action`, `combat`, `chase`, or
+     `social-pressure`, run `glass beat check` before handing off.
    - If the first actor is not the normal default, run `glass turn handoff <agent-id>`.
 
 10. **Close the prep turn.**
     - Write `TURN.md` with the visible scene opening.
+    - Run `glass turn audit`.
     - Run `glass turn end --summary "<scene staged and mode started>" --state "<scene/context/table artifacts/tracker updates>" --rolls none --next default`.
 
 ## Prohibitions
 
 - Do not prep a solution path or required dialogue.
 - Do not leave player-visible scene facts only in `prep.md`.
+- Do not default to documents, manifests, claims, counts, labels, or other
+  procedural artifacts as the whole scene. Those can be the fuse; make sure
+  something alive, strange, volatile, personal, or adventure-facing is pushing
+  through them.
 - Do not end the turn still in bare `scene-prep`.
 - Do not start an action scene without action-order setup in the opening DM
   turn or a clear handoff to do it.

@@ -14,15 +14,23 @@ and maintains durable state. This sequence is binding for every full DM turn.
 2. Read the immediate board: `table/`, the active scene summary, recent turn
    summaries in TURN_START, public clocks/trackers, and any DM notes or lore
    directly implicated by the live scene question.
-3. Resolve pending player needs fairly. Answer clarifications through messages
+3. Run `glass beat check`. If the scene has no scene clock or no active beat,
+   first decide whether this is a closure gap. If the current scene question has
+   landed, several beats or clocks have resolved, or the remaining material is
+   mostly logistics, close or transition the scene. If you are continuing active
+   play, declare at least one scene clock and start the first beat.
+4. Resolve pending player needs fairly. Answer clarifications through messages
    when the answer is private or directed. When the DM is resolving uncertain
    consequential opposition, hazard, NPC, or DM-side PC action, use `glass roll`
    or `glass scene pressure` when the rules fit; do not spend a handoff only to
    move dice.
-4. Move the scene. Put a decision, consequence, NPC action, clock tick, offer,
-   threat, reveal, or narrowed option into play. A DM turn cannot be only recap
-   or atmosphere.
-5. Persist changed state before prose. Use the hard-state command that owns the
+5. Move the scene. Put a decision, consequence, NPC action, clock tick, offer,
+   threat, reveal, or narrowed option into play. If the live frame is becoming
+   only paperwork, logistics, or procedure, put something adventure-facing on
+   screen: a vivid object, impossible behavior, strange creature, funny human
+   tell, environmental turn, or practical affordance the players can use. A DM
+   turn cannot be only recap or atmosphere.
+6. Persist changed state before prose. Use the hard-state command that owns the
    change: `glass table write/append scene.md` for the visible situation;
    `glass table write/append <meaningful-slug>.md` for any reusable visible
    lore artifact; `glass table use` when existing durable lore is now on screen;
@@ -33,17 +41,21 @@ and maintains durable state. This sequence is binding for every full DM turn.
    `glass entity`/`glass note` for graph or note state. When a portable asset
    could matter later, offer it concretely and persist it if taken. Commit
    authored markdown with `glass sync apply`.
-6. Keep the scene honest. Advance the live tension or narrow the board; do not
-   add a new problem solely to keep the current frame alive.
-7. Write public turn prose to the `TURN.md` path from TURN_START. Show what
+7. Keep the scene honest. Advance the live tension or narrow the board; do not
+   add a new problem solely to keep the current frame alive. An empty clock/beat
+   contract after resolved material is a scene-closure signal. Do not make every
+   turn a spectacle beat; calibrate to the fiction, but do not let restraint
+   become the default answer.
+8. Write public turn prose to the `TURN.md` path from TURN_START. Show what
    changed on screen and give the next actor a clear board.
-8. End the turn with `glass turn end`. Include summary, durable state changes,
+9. Run `glass turn audit`, then end the turn with `glass turn end`. Include summary, durable state changes,
    rolls/checks, and normal `--next default` unless an explicit override is
    needed.
 
 Required closeout shape:
 
 ```bash
+glass turn audit
 glass turn end \
   --summary "<what changed and what is live for the next actor>" \
   --state "<table/state/lore/notes/beats updated or no state change>" \

@@ -38,6 +38,12 @@ planning should already have created the `prelude` arc shell.
      for each reusable public lore item the prelude puts on screen.
    - `glass sync apply arcs/prelude/scenes/prelude-opening`
    - `glass mode start scene-play prelude-opening`
+   - Declare at least one scene-specific clock with
+     `glass scene clock declare <clock-id> --label ... --goal ... --value 0 --max <n> --direction progress|countdown --visibility public|dm`.
+   - Start the first beat with
+     `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`.
+   - Run `glass beat check` and do not finish the prelude turn until the new
+     scene shows a live clock and beat.
 
 4. **Run Scene 1 to a real consequence.**
    - Use normal scene-play methodologies.
@@ -52,6 +58,12 @@ planning should already have created the `prelude` arc shell.
    - Create public trackers or clocks before the first action turn.
    - `glass sync apply arcs/prelude/scenes/prelude-action`
    - `glass mode start action prelude-action`
+   - Declare at least one scene-specific clock with
+     `glass scene clock declare <clock-id> --label ... --goal ... --value 0 --max <n> --direction progress|countdown --visibility public|dm`.
+   - Start the first beat with
+     `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`.
+   - Run `glass beat check` and do not finish the prelude turn until the new
+     action scene shows a live clock and beat.
    - Establish order with `glass turn initiative`.
      The DM is always included in the roll, even when a custom participant
      list is used.
@@ -73,6 +85,7 @@ planning should already have created the `prelude` arc shell.
 8. **Handoff to active campaign play.**
    - Activate the main opening arc with `glass arc activate <main-arc>`.
    - Name the time jump in `TURN.md`.
+   - Run `glass turn audit`.
    - Run `glass turn end --summary "prelude complete and main arc activated" --state "<summaries/arc/quest state updated>" --rolls "<rolls/checks or none>" --scene-status ended --next default`.
    - Run `glass mode end` only when the prelude mode is still active.
 

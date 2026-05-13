@@ -15,12 +15,13 @@ player turn.
    answer that prompt.
 3. Write a brief direct response to the `TURN.md` path from TURN_START: usually
    one paragraph, one line, or one image.
-4. End with `glass turn end` using `no state change`, `rolls none`, and
-   `--next default`.
+4. Run `glass turn audit`, then end with `glass turn end` using
+   `no state change`, `rolls none`, and `--next default`.
 
 Required closeout shape:
 
 ```bash
+glass turn audit
 glass turn end \
   --summary "<what changed or no state change>" \
   --state "no state change" \

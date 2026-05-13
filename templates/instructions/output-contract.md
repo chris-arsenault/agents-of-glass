@@ -15,8 +15,9 @@ Every turn has two outputs:
 
 1. Finish required `glass` mutations and `glass sync apply` commits.
 2. Write public prose to the `TURN.md` path named in TURN_START.
-3. Run `glass turn end`.
-4. Exit.
+3. Run `glass turn audit`.
+4. Run `glass turn end`.
+5. Exit.
 
 ## Public Prose
 
@@ -35,12 +36,22 @@ the command audit stores actual mutations.
 ## Closeout
 
 ```bash
+glass turn audit
 glass turn end \
   --summary "<1-3 sentence continuity for the next actor>" \
   --state "<durable updates or no state change>" \
   --rolls "<rolls/checks used or none>" \
   --next default
 ```
+
+For normal active-play player turns, add:
+
+```bash
+--turn-type "<act|answer|support|pass>"
+```
+
+`pass` is a real visible turn, not empty filler. It also requires
+`--state "no state change"` and `--rolls none`.
 
 Add fields when relevant:
 
@@ -52,3 +63,5 @@ Add fields when relevant:
 ```
 
 Use `--next <agent-id>` only when overriding normal rotation or action order.
+On active-play turns, run `glass beat check` before the prose pass; the audit
+will tell you if that requirement is still missing.

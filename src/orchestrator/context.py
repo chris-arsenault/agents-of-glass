@@ -14,7 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .config import AogConfig
+from cli.entities import parse_frontmatter
+
+from .config import AogConfig, provider_for_actor
 from .projection import (
     PLAYER_SURFACE_CHARACTER,
     PLAYER_SURFACE_PLAYER,
@@ -25,7 +27,7 @@ from .projection import (
     projected_turn_artifact_path,
     projection_root_for,
 )
-from .state import Agent, SessionState
+from .state import Agent, PLAYER_IDS, SessionState
 from .store import SessionStore
 
 
@@ -209,7 +211,14 @@ class ContextBuilder:
             state,
             transcript_path=transcript_path,
         )
-        session_context_section = self._session_context_section()
+        actor_provider = provider_for_actor(
+            self.config,
+            actor_id=agent.id,
+            role=agent.role,
+        )
+        session_context_section = self._session_context_section(
+            actor_provider=actor_provider,
+        )
 
         style_id = assigned_style_id(campaign_root, agent)
         style_pointer = f"styles/{style_id}.md" if style_id else None
@@ -303,10 +312,13 @@ class ContextBuilder:
                 "You are in quickfire action order. Keep the turn tight: "
                 "fictional time is seconds or a few heartbeats. Move if needed, "
                 "take one action, do any necessary upkeep (messages, "
-                "inventory, lore/state checks), ask the DM clarifying questions "
-                "if a real decision depends on the answer, then write the public "
-                "turn prose, run `glass turn end`, and exit. Do not hand off "
-                "merely to move dice around or ask what happens next. Default "
+                "inventory, lore/state checks), leave durable bus traffic when "
+                "your move changes another actor's immediate options or likely "
+                "next choice, ask the DM clarifying questions if a real "
+                "decision depends on the answer, run `glass beat check`, then "
+                "write the public turn prose, run `glass turn audit`, run "
+                "`glass turn end`, and exit. Do not hand off merely "
+                "to move dice around or ask what happens next. Default "
                 "closeout is `--next default`; use `--next dm` only for a "
                 "blocking hidden fact, and include the blocking question in "
                 "`--open-question`. "
@@ -317,6 +329,13 @@ class ContextBuilder:
                 f"- Current slot: `{action_order.get('agent')}`\n\n"
             )
 
+        scene_contract_nudge = str(turn_meta.get("scene_contract_nudge") or "").strip()
+        scene_contract_nudge_section = (
+            "## Scene Contract Notice\n\n"
+            f"{scene_contract_nudge}\n\n"
+            if scene_contract_nudge
+            else ""
+        )
         housekeeping_section = (
             self._housekeeping_section(turn_meta) if housekeeping_turn else ""
         )
@@ -336,6 +355,7 @@ class ContextBuilder:
                 "`instructions/output-contract.md`.\n\n"
                 "Required closeout command shape:\n\n"
                 "```bash\n"
+                "glass turn audit\n"
                 "glass turn end --summary \"<what changed or no state change>\" "
                 "--state \"no state change\" --rolls none --next default\n"
                 "```\n\n"
@@ -350,6 +370,7 @@ class ContextBuilder:
                 "`instructions/output-contract.md`.\n\n"
                 "Required closeout command shape:\n\n"
                 "```bash\n"
+                "glass turn audit\n"
                 "glass turn end --summary \"housekeeping only: <what you cleaned up>\" "
                 "--state \"<notes/files updated or no state change>\" "
                 "--rolls none --scene-status ended --next default\n"
@@ -364,6 +385,7 @@ class ContextBuilder:
                 "screen. Full rules: `instructions/output-contract.md`.\n\n"
                 "Required closeout command shape:\n\n"
                 "```bash\n"
+                "glass turn audit\n"
                 "glass turn end --summary \"<old scene closed and next scene staged>\" "
                 "--state \"<scene/table/notes/lore updates>\" "
                 "--rolls \"<rolls/checks used or none>\" "
@@ -371,6 +393,21 @@ class ContextBuilder:
                 "```\n\n"
             )
         else:
+            player_turn_type_line = ""
+            player_turn_type_guidance = ""
+            if (
+                agent.role == "player"
+                and active.mode in _ACTIVE_PLAY_MODES
+            ):
+                player_turn_type_line = (
+                    "--turn-type \"<act|answer|support|pass>\" "
+                )
+                player_turn_type_guidance = (
+                    "For normal active-play player turns, `--turn-type` is "
+                    "required. Use `pass` only for a short visible yield; "
+                    "`pass` also requires `--state \"no state change\"` and "
+                    "`--rolls none`. "
+                )
             output_contract_section = (
                 "## Output contract\n\n"
                 f"Write your final public turn prose to **`{turn_prose_ref}`** "
@@ -382,10 +419,16 @@ class ContextBuilder:
                 "`instructions/output-contract.md`.\n\n"
                 "Required closeout command shape:\n\n"
                 "```bash\n"
+                "glass turn audit\n"
                 "glass turn end --summary \"<1-3 sentence compact continuity>\" "
                 "--state \"<durable updates or no state change>\" "
-                "--rolls \"<rolls/checks used or none>\" --next default\n"
+                f"--rolls \"<rolls/checks used or none>\" {player_turn_type_line}--next default\n"
                 "```\n\n"
+                f"{player_turn_type_guidance}"
+                "For active-play turns, run `glass beat check` before writing "
+                "and `glass turn audit` before `glass turn end`. The audit "
+                "will tell you if you still owe the beat check or other hard "
+                "requirements. "
                 "Use `--next <agent-id>` only when the next turn must override "
                 "normal rotation or action order. Add `--open-question`, "
                 "`--position`, or `--pressure` when those changed.\n\n"
@@ -400,6 +443,11 @@ class ContextBuilder:
             "instructions/message-bus-character.md"
             if character_surface
             else "instructions/message-bus.md"
+        )
+        message_recipients_section = self._message_recipients_section(
+            state,
+            campaign_root=campaign_root,
+            character_surface=character_surface,
         )
         context_boundary = (
             "Treat transcripts, messages, journals, lore, and notes as session "
@@ -426,6 +474,10 @@ class ContextBuilder:
                 "```\n"
                 "glass msg read --since-checkpoint\n"
                 "```\n\n"
+                "Use the bus during normal play for durable dialogue, "
+                "coordination, questions, warnings, offers, and DM-visible "
+                "private intent when the prompt calls for it.\n\n"
+                f"{message_recipients_section}"
                 "Full rules, message types, and visibility: "
                 f"`{message_bus_doc}`.\n\n"
             )
@@ -436,6 +488,10 @@ class ContextBuilder:
                 "```\n"
                 "glass msg read --since-checkpoint\n"
                 "```\n\n"
+                "Use the bus during normal play for durable dialogue, "
+                "coordination, offers, warnings, clarifications, and DM-visible "
+                "private intent. Do not reserve it only for hidden-info blockers.\n\n"
+                f"{message_recipients_section}"
                 "Full rules, message types, and visibility: "
                 f"`{message_bus_doc}`.\n\n"
             )
@@ -451,6 +507,7 @@ class ContextBuilder:
             "\n"
             f"{rapid_section}"
             f"{action_order_section}"
+            f"{scene_contract_nudge_section}"
             f"{housekeeping_section}"
             f"{trackers_section}"
             f"{closing_section}"
@@ -468,7 +525,12 @@ class ContextBuilder:
             "or run `glass sync apply` to commit changed writable markdown files. "
             "Use purpose-built `glass` commands for hard state. If command "
             "usage is unclear, use `glass <command> --help`; do not spend turn "
-            "time reading CLI source files.\n\n"
+            "time reading CLI source files. This is a campaign authoring turn, "
+            "not a software development task: do not inspect or edit repo "
+            "source, tests, migrations, templates, or config. If a Glass "
+            "command blocks on a mechanical requirement, report the blocker "
+            "through messages or closeout and follow `glass turn audit`; do "
+            "not patch the tools from inside the turn.\n\n"
             f"{table_section}"
             "## Scene framing\n\n"
             f"Legacy scene framing is at `{scene_framing_path}`. Prefer the "
@@ -494,11 +556,62 @@ class ContextBuilder:
             f"{tools_section}\n"
         )
 
-    def _session_context_section(self) -> str:
-        if (
-            self.config.agent_provider != "claude"
-            or not self.config.claude.use_session_id
-        ):
+    def _message_recipients_section(
+        self,
+        state: SessionState,
+        *,
+        campaign_root: Path,
+        character_surface: bool,
+    ) -> str:
+        if character_surface:
+            entries = self._character_message_recipient_entries(campaign_root)
+            roster_lines = "\n".join(f"- `{entry}`" for entry in entries)
+            guidance = (
+                "On character surface, prefer character ids for private "
+                "recipients. Do not guess ids; use this roster or "
+                "`glass character bulk-get --all`.\n\n"
+            )
+        else:
+            entries = ["party", "dm", *self._player_message_recipient_entries(state)]
+            roster_lines = "\n".join(f"- `{entry}`" for entry in entries)
+            guidance = ""
+        return (
+            "Valid recipients this turn:\n"
+            f"{roster_lines}\n\n"
+            f"{guidance}"
+        )
+
+    def _player_message_recipient_entries(self, state: SessionState) -> list[str]:
+        entries = [agent_id for agent_id in _message_recipient_player_ids(state) if agent_id != "dm"]
+        return entries
+
+    def _character_message_recipient_entries(self, campaign_root: Path) -> list[str]:
+        entries = ["party", "dm"]
+        for player_id in _message_recipient_player_ids(None):
+            if player_id == "dm":
+                continue
+            character_id = self._campaign_character_id_for_player(campaign_root, player_id)
+            if character_id:
+                entries.append(f"{character_id} ({player_id})")
+            else:
+                entries.append(player_id)
+        return entries
+
+    def _campaign_character_id_for_player(
+        self,
+        campaign_root: Path,
+        player_id: str,
+    ) -> str | None:
+        character_path = campaign_root / "players" / player_id / "public" / "character.md"
+        if not character_path.exists():
+            return None
+        text = character_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        character_id = str(frontmatter.get("character_id") or "").strip()
+        return character_id or None
+
+    def _session_context_section(self, *, actor_provider: str) -> str:
+        if actor_provider != "claude" or not self.config.claude.use_session_id:
             return ""
         return (
             "## Persistent Claude Session\n\n"
@@ -875,7 +988,11 @@ class ContextBuilder:
                 continue
             next_speaker = str(record.get("next_speaker") or "default")
             rolls = str(record.get("rolls") or "").strip()
-            suffix_parts = [f"next `{next_speaker}`"]
+            turn_type = str(record.get("turn_type") or "").strip()
+            suffix_parts = []
+            if turn_type:
+                suffix_parts.append(f"type `{turn_type}`")
+            suffix_parts.append(f"next `{next_speaker}`")
             if rolls and rolls.lower() != "none":
                 suffix_parts.append(f"rolls: {rolls}")
             lines.append(
@@ -1276,11 +1393,13 @@ def _dm_tools() -> list[str]:
         "glass note ratify / reject",
         "glass arc create --pull-source --pull-utilization / activate / current / list / close",
         "glass scene create / end --outcome",
+        "glass scene clock declare",
         "glass scene tracker set / tick / list",
         "glass scene pressure",
+        "glass beat check / start / close / convert",
         "glass table show / write / append / use / snapshot",
         "glass mode start / end / current",
-        "glass turn end / initiative / handoff / rapid-round / "
+        "glass turn audit / end / initiative / handoff / rapid-round / "
         "housekeeping-round / restart-order / clear-handoff",
         "glass thread current / beat / advance",
         "glass msg <type> <recipient> <body>",
@@ -1306,7 +1425,8 @@ def _player_tools() -> list[str]:
         "glass tarot current / list",
         "glass note propose",
         "glass msg <type> <recipient> <body>",
-        "glass turn end / handoff",
+        "glass beat check / start / close / convert",
+        "glass turn audit / end / handoff",
         "glass scene tracker list",
         "glass scene pressure",
         "glass table show",
@@ -1330,13 +1450,19 @@ def _character_tools() -> list[str]:
         "glass search text / semantic",
         "glass tarot current / list",
         "glass msg <type> <recipient> <body>",
-        "glass turn end / handoff",
+        "glass beat check / start / close / convert",
+        "glass turn audit / end / handoff",
         "glass scene tracker list",
         "glass scene pressure",
         "glass table show",
         "glass msg read",
         "glass turns find / feed",
     ]
+
+
+def _message_recipient_player_ids(state: SessionState | None) -> list[str]:
+    del state
+    return list(PLAYER_IDS)
 
 
 _ACTION_SCENE_MODES = {"action", "combat", "chase", "social-pressure"}

@@ -1,5 +1,6 @@
 import type {
   EventRecord,
+  MessageRecord,
   RollRecord,
   TarotRecord,
   TurnRecord,
@@ -45,11 +46,22 @@ export interface TranscriptFailEntry {
   message: string;
 }
 
+export interface TranscriptMessageEntry {
+  kind: "message";
+  id: string;
+  timestamp: number;
+  message: MessageRecord;
+}
+
 export type TranscriptEntry =
   | TranscriptTurnEntry
   | TranscriptModeEntry
   | TranscriptTarotEntry
   | TranscriptFailEntry;
+
+export type TranscriptTimelineEntry =
+  | TranscriptEntry
+  | TranscriptMessageEntry;
 
 export interface ProseBlock {
   kind: "ic" | "ooc";
@@ -303,6 +315,10 @@ interface BuildStreamArgs {
 
 export type TranscriptFilter = "all" | "narrative" | "mechanics";
 
+interface BuildInterleavedStreamArgs extends BuildStreamArgs {
+  messages: MessageRecord[];
+}
+
 export function buildTranscriptStream({
   turns,
   events,
@@ -368,13 +384,37 @@ export function buildTranscriptStream({
     }
   }
 
-  entries.sort((a, b) => {
-    if (a.timestamp === b.timestamp) {
-      return a.id.localeCompare(b.id);
-    }
-    return a.timestamp - b.timestamp;
-  });
+  entries.sort(compareTimelineEntries);
 
+  return entries;
+}
+
+export function buildMessageStream(
+  messages: MessageRecord[],
+): TranscriptMessageEntry[] {
+  const entries = messages.map((message) => ({
+    kind: "message" as const,
+    id: `message-${message.id}`,
+    timestamp: parseTimestamp(message.created_at),
+    message,
+  }));
+  entries.sort(compareTimelineEntries);
+  return entries;
+}
+
+export function buildInterleavedStream({
+  turns,
+  events,
+  tarot,
+  rolls,
+  messages,
+  filter = "all",
+}: BuildInterleavedStreamArgs): TranscriptTimelineEntry[] {
+  const entries: TranscriptTimelineEntry[] = [
+    ...buildTranscriptStream({ turns, events, tarot, rolls, filter }),
+    ...buildMessageStream(messages),
+  ];
+  entries.sort(compareTimelineEntries);
   return entries;
 }
 
@@ -408,6 +448,16 @@ function enrichMechanics(
     }
     return event;
   });
+}
+
+function compareTimelineEntries(
+  a: { timestamp: number; id: string },
+  b: { timestamp: number; id: string },
+): number {
+  if (a.timestamp === b.timestamp) {
+    return a.id.localeCompare(b.id);
+  }
+  return a.timestamp - b.timestamp;
 }
 
 function parseTimestamp(value: string | null | undefined): number {

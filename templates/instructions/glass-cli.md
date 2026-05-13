@@ -17,7 +17,8 @@ use the command instead of prose or ad hoc markdown.
 4. Commit authored markdown with `glass sync apply <path-or-directory> ...`.
 5. Read the same path or command output only when verification is needed.
 6. Write `TURN.md`.
-7. Run `glass turn end`.
+7. Run `glass turn audit`.
+8. Run `glass turn end`.
 
 ## Read Commands
 
@@ -49,6 +50,11 @@ glass character consequence-add <id> <label>
 glass character skill-declare <id> <skill-name>
 glass clock set <id> --max <n> [--scope <scope>] [--anchor <id>] [--public]
 glass clock tick <id> [delta] [--note "<note>"]
+glass scene clock declare <id> --label "<label>" --goal "<goal>" --value <n> --max <n> --direction progress|countdown [--visibility public|dm]
+glass beat check
+glass beat start <id> --clock <clock-id> --label "<label>" --question "<question>"
+glass beat close <id> --outcome "<outcome>" [--clock-delta <n>]
+glass beat convert <id> --to-clock <clock-id> --reason "<reason>"
 glass table write <path> --body "<markdown>"
 glass table append <path> --body "<markdown>"
 glass table use <campaign-markdown-path> --as <table-artifact>.md
@@ -84,6 +90,7 @@ automatically.
 Every turn ends with:
 
 ```bash
+glass turn audit
 glass turn end \
   --summary "<compact continuity for the next actor>" \
   --state "<durable updates or no state change>" \
@@ -91,9 +98,23 @@ glass turn end \
   --next default
 ```
 
+For normal active-play player turns, also include:
+
+```bash
+--turn-type "<act|answer|support|pass>"
+```
+
 Use `--next <agent-id>` only when normal rotation or action order must be
 overridden. Use `--open-question`, `--position`, and `--pressure` when those
-fields changed.
+fields changed. `pass` requires `--state "no state change"` and `--rolls none`.
+On active-play turns, run `glass beat check` before writing the turn. `glass turn audit`
+must run before `glass turn end`; if the beat check is still missing, the audit
+will say so explicitly. If the beat check or audit reports no active scene clock
+or no active beat after completed beats, treat that as a closure gap: players
+should hand to the DM with `--next dm` instead of opening a replacement beat
+unless the DM explicitly instructed it. After eight or more completed beats,
+prefer a short visible `pass` and `--next dm` unless you have a decisive
+blockbuster-scale contribution.
 
 ## Command Failure
 

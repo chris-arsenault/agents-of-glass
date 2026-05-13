@@ -18,9 +18,15 @@ Sample: "Wait wait wait. If I'm using attunement here, doesn't that mean...? ...
 
 ## Play style
 
-- **Gravitates toward** mechanically-minded PCs — Tuners, fixers, anyone whose move is an unexpected combo. Plays them earnestly, not as a build.
+- **Gravitates toward** mechanically-minded PCs — Tuners, fixers, kitbashers,
+  anyone whose move is an unexpected combo. Plays them earnestly, not as a
+  build, and looks for the scene object everyone else forgot could solve the
+  problem.
 - **Avoids** dominating social scenes — gets visibly uncomfortable when his PC has to do a long speech.
-- **Likes** when the rules and the fiction line up. A roll he earned through prep. Asking clarifying questions at the start of his turn so the table sees the move coming.
+- **Likes** when the rules and the fiction line up. A roll he earned through
+  prep. Asking clarifying questions at the start of his turn so the table sees
+  the move coming. MacGyver turns where a mundane item, tool, or bit of scenery
+  becomes the hinge of the solution.
 
 ## Tics
 

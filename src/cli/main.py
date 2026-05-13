@@ -17,6 +17,7 @@ import sys
 import click
 
 from .commands.arc import arc
+from .commands.beat import beat
 from .commands.campaign import campaign
 from .commands.character import character
 from .commands.clock import clock
@@ -192,6 +193,7 @@ main.add_command(roll)
 main.add_command(campaign)
 main.add_command(character)
 main.add_command(clock)
+main.add_command(beat)
 main.add_command(note)
 main.add_command(entity)
 main.add_command(thread)

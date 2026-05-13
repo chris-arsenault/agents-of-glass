@@ -24,6 +24,7 @@ _GRANT_FILE = ".glass-grants.json"
 _DEFAULT_TTL_SECONDS = 7200
 
 _PLAYER_ALLOWED: dict[str, set[str] | None] = {
+    "beat": {"check", "start", "close", "convert"},
     "character": None,
     "clock": {"list", "show"},
     "msg": None,
@@ -42,7 +43,7 @@ _PLAYER_ALLOWED: dict[str, set[str] | None] = {
     },
     "note": {"write", "propose"},
     "search": {"text", "semantic"},
-    "turn": {"end", "handoff"},
+    "turn": {"audit", "end", "handoff"},
     "turns": {"find", "feed"},
     "summary": {"show", "append"},
     "sync": {"apply"},

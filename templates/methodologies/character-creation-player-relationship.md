@@ -16,7 +16,7 @@ applies_to_modes: [character-creation]
    `glass msg banter <recipient> "<specific relationship proposal or question>"`.
 6. Commit with `glass sync apply players/<id>/public/relationships.md`.
 7. Write `TURN.md` with only the public relationship commitments.
-8. Run `glass turn end --summary "<relationship commitments updated>" --state "players/<id>/public/relationships.md updated" --rolls none --next default`.
+8. Run `glass turn audit`, then `glass turn end --summary "<relationship commitments updated>" --state "players/<id>/public/relationships.md updated" --rolls none --next default`.
 
 Do not alter hard character numbers on this turn unless the DM explicitly asked
 for a correction.

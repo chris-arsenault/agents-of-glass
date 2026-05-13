@@ -4,11 +4,17 @@ import { sigilFor, toneFor } from "../agentChroma";
 import type { MessageRecord } from "../types";
 import { formatTime } from "../utils";
 
-export function MessageCard({ message }: { message: MessageRecord }) {
+export function MessageCard({
+  message,
+  fresh = false,
+}: {
+  message: MessageRecord;
+  fresh?: boolean;
+}) {
   const tone = toneFor(message.sender);
   const sigil = sigilFor(message.sender);
   return (
-    <article className="message-card" data-tone={tone}>
+    <article className={`message-card${fresh ? " is-fresh" : ""}`} data-tone={tone}>
       <span className="message-card__stripe" aria-hidden="true" />
       <div className="message-card__body">
         <header className="message-card__head">

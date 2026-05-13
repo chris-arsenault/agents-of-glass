@@ -652,7 +652,10 @@ def _runtime_payload(conn: Any, campaign_id: str) -> dict[str, Any] | None:
             """
             SELECT campaign_id, status, created_at, updated_at, wrapped_at, summary,
                    turn_counter, mode_stack, pending_events, note_intake,
-                   next_speakers, scene_closing_turns
+                   next_speakers, scene_closing_turns,
+                   active_turn_id, active_turn_number, active_turn_actor,
+                   active_turn_role, active_turn_mode, active_turn_scene_id,
+                   active_turn_kind, closeout_valid, closeout_problems
             FROM campaign_runtime_states
             WHERE campaign_id = %s
             """,
@@ -679,6 +682,15 @@ def _runtime_payload(conn: Any, campaign_id: str) -> dict[str, Any] | None:
         note_intake,
         next_speakers,
         scene_closing_turns,
+        active_turn_id,
+        active_turn_number,
+        active_turn_actor,
+        active_turn_role,
+        active_turn_mode,
+        active_turn_scene_id,
+        active_turn_kind,
+        closeout_valid,
+        closeout_problems,
     ) = row
     turn_count = int(turn_row[0] or 0) if turn_row else 0
     latest_turn_id = int(turn_row[1]) if turn_row and turn_row[1] is not None else None
@@ -696,6 +708,21 @@ def _runtime_payload(conn: Any, campaign_id: str) -> dict[str, Any] | None:
         "note_intake": list(note_intake or []),
         "next_speakers": list(next_speakers or []),
         "scene_closing_turns": scene_closing_turns,
+        "active_turn": (
+            {
+                "turn_id": active_turn_id,
+                "turn_number": active_turn_number,
+                "actor": active_turn_actor,
+                "role": active_turn_role,
+                "mode": active_turn_mode,
+                "scene_id": active_turn_scene_id,
+                "kind": active_turn_kind,
+                "closeout_valid": closeout_valid,
+                "closeout_problems": list(closeout_problems or []),
+            }
+            if active_turn_id
+            else None
+        ),
         "turns": {
             "count": turn_count,
             "latest_turn_id": latest_turn_id,

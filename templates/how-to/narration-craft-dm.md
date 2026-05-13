@@ -55,11 +55,30 @@ choice is available.
 than they had at the start of your turn. If you cannot state the delta in
 `glass turn end --state`, the prose has not done enough work.
 
+## Adventure Premise, Not Just Procedure
+
+Grounded detail is good. Grounded-only scenes are the drift risk.
+
+When a scene starts collapsing into manifests, claims, counts, labels, schedules,
+or other workplace procedure, look for the adventure-facing thing those artifacts
+are failing to contain. The shipping manifest can matter, but it should not be
+the whole meal if the cargo is alive, cursed, singing, mutating, bargaining, or
+leaking impossible weather through the crate seams.
+
+Do not force spectacle into every quiet beat. Do keep asking whether the table
+has something vivid and playable to touch, fear, save, break, misunderstand, or
+use sideways.
+
 ## DM-Specific Craft Rules
 
 **Close with consequence.** Vary the closing beat. End on the new offer, threat,
 question, clock tick, NPC movement, or visible object. A tableau is weaker than a
 changed board.
+
+**Give them objects with handles.** Mara likes when characters use items in
+unexpected ways. Put useful things on screen: tools, scraps, vessels, signs,
+weird samples, broken devices, living cargo, improvised anchors, or ordinary
+objects with one strange property. Let the players surprise you with them.
 
 **Name the knower.** Pages, rooms, aprons, ships, and ledgers do not know things.
 People know things. Systems record things. Documents contain lines. If knowledge

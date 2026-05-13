@@ -237,6 +237,7 @@ def _turn_index_body(turn: dict[str, Any]) -> str:
         str(turn.get("prose") or ""),
         str(turn.get("turn_summary") or ""),
         str(turn.get("rolls") or ""),
+        str(turn.get("turn_type") or ""),
         str(turn.get("position") or ""),
         str(turn.get("pressure") or ""),
     ]

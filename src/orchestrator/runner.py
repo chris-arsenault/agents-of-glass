@@ -21,7 +21,7 @@ import uuid
 from cli.api_grants import DEFAULT_API_URL, mint_grant
 from cli.api_server import ensure_background_server
 
-from .config import AogConfig, config_env_value
+from .config import AogConfig, config_env_value, provider_for_actor
 from .context import ContextBuilder, ContextPackage
 from .glass_bridge import GlassBridgeError
 from . import permissions
@@ -66,6 +66,54 @@ _PROVIDER_EXECUTABLES = {
     "claude": "claude",
     "codex": "codex",
 }
+_RECOVERABLE_TURN_FAILURE_REASONS = {"invalid_turn_end"}
+_MAX_CONSECUTIVE_RECOVERY_REDIRECTS = 8
+
+
+def _active_turn_kind_for(
+    *,
+    state: SessionState,
+    agent: Agent,
+    turn_meta: dict[str, Any],
+    queued_entry: dict[str, Any] | None,
+    action_entry: dict[str, Any] | None,
+) -> str:
+    active = state.active_mode
+    if queued_entry and queued_entry.get("housekeeping"):
+        return "housekeeping"
+    if queued_entry and queued_entry.get("rapid_prompt"):
+        return "rapid-response"
+    if (
+        agent.role == "dm"
+        and active.mode in _SCENE_PLAY_MODES
+        and state.scene_closing_turns is not None
+        and state.scene_closing_turns <= 0
+    ):
+        return "scene-transition"
+    if agent.role == "player" and (action_entry or active.mode in _SCENE_PLAY_MODES):
+        return "active-play"
+    if agent.role == "dm" and (action_entry or active.mode in _SCENE_PLAY_MODES):
+        return "active-play-dm"
+    if turn_meta.get("action_order"):
+        return "active-play"
+    return active.mode
+
+
+def _turn_type_required_for(
+    *,
+    state: SessionState,
+    agent: Agent,
+    turn_meta: dict[str, Any],
+    queued_entry: dict[str, Any] | None,
+    action_entry: dict[str, Any] | None,
+) -> bool:
+    if agent.role != "player":
+        return False
+    if queued_entry and (queued_entry.get("housekeeping") or queued_entry.get("rapid_prompt")):
+        return False
+    if turn_meta.get("housekeeping") or turn_meta.get("rapid_prompt"):
+        return False
+    return bool(action_entry) or state.active_mode.mode in _SCENE_PLAY_MODES
 
 
 def _ensure_actor_claude_session(
@@ -395,6 +443,84 @@ class Orchestrator:
             else:
                 os.environ["GLASS_CONFIG"] = previous
 
+    def _begin_turn_via_glass(
+        self,
+        *,
+        state: SessionState,
+        agent: Agent,
+        package: ContextPackage,
+        turn_kind: str,
+        turn_type_required: bool,
+        allow_player_scene_close: bool,
+    ) -> None:
+        args = [
+            "turn",
+            "begin",
+            "--turn-id",
+            package.turn_id,
+            "--actor",
+            agent.id,
+            "--role",
+            agent.role,
+            "--mode",
+            state.active_mode.mode,
+            "--scene",
+            state.active_mode.scene_id,
+            "--kind",
+            turn_kind,
+        ]
+        if agent.character_id:
+            args.extend(["--character", agent.character_id])
+        if turn_type_required:
+            args.append("--turn-type-required")
+        else:
+            args.append("--no-turn-type-required")
+        if allow_player_scene_close:
+            args.append("--allow-player-scene-close")
+        else:
+            args.append("--disallow-player-scene-close")
+        try:
+            self.store.glass.invoke(
+                args,
+                campaign=state.campaign,
+            )
+        except GlassBridgeError as exc:
+            raise TurnFailure(
+                "glass turn begin failed.",
+                {
+                    "reason": "glass_turn_begin_failed",
+                    "turn_id": package.turn_id,
+                    "speaker": agent.id,
+                    "turn_dir": str(package.turn_dir),
+                    "glass_output": exc.result.output,
+                },
+            ) from exc
+
+    def _collect_turn_end_from_postgres(
+        self,
+        campaign: str,
+        *,
+        expected_turn_id: str,
+    ) -> dict[str, Any]:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise ValueError("Postgres runtime is required for active turn closeout")
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                runtime_turn = _glass_db.runtime_active_turn_get(conn, campaign)
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
+        return _collect_turn_end(runtime_turn, expected_turn_id=expected_turn_id)
+
     def run_loop(
         self,
         state: SessionState,
@@ -413,13 +539,64 @@ class Orchestrator:
             self.store.save(state)
 
         turns_run = 0
+        consecutive_redirects = 0
         try:
             while self._should_continue(state, turns_run, max_turns):
                 self._ensure_turn_allowed(state)
                 state.mark_running()
                 self.store.save(state)
-                result = self.run_one_turn(state, dry_run=dry_run)
-                self.commit_turn(state, result)
+                try:
+                    result = self.run_one_turn(state, dry_run=dry_run)
+                    self.commit_turn(state, result)
+                except TurnFailure as exc:
+                    if _is_recoverable_turn_failure(exc.failure):
+                        try:
+                            self._redirect_recoverable_turn_failure(state, exc.failure)
+                        except Exception as redirect_exc:
+                            failure = {
+                                "reason": "recoverable_turn_redirect_failed",
+                                "turn_id": str(exc.failure.get("turn_id") or ""),
+                                "speaker": str(exc.failure.get("speaker") or ""),
+                                "error": repr(redirect_exc),
+                            }
+                            state.mark_failed(failure)
+                            self.store.save(state)
+                            self.store.append_audit(
+                                state.campaign, {"event": "turn.failed", **failure}
+                            )
+                            raise TurnFailure(
+                                "failed to redirect recoverable turn repair.", failure
+                            ) from redirect_exc
+                        consecutive_redirects += 1
+                        if (
+                            consecutive_redirects
+                            >= _MAX_CONSECUTIVE_RECOVERY_REDIRECTS
+                        ):
+                            failure = {
+                                "reason": "recoverable_turn_redirect_limit",
+                                "turn_id": str(exc.failure.get("turn_id") or ""),
+                                "speaker": str(exc.failure.get("speaker") or ""),
+                                "error": (
+                                    "too many consecutive recoverable turn redirects; "
+                                    "the agents are not correcting the turn contract"
+                                ),
+                            }
+                            state.mark_failed(failure)
+                            self.store.save(state)
+                            self.store.append_audit(
+                                state.campaign, {"event": "turn.failed", **failure}
+                            )
+                            raise TurnFailure(
+                                "recoverable turn redirects exceeded limit.", failure
+                            ) from exc
+                        continue
+                    state.mark_failed(exc.failure)
+                    self.store.save(state)
+                    self.store.append_audit(
+                        state.campaign, {"event": "turn.failed", **exc.failure}
+                    )
+                    raise
+                consecutive_redirects = 0
                 turns_run += 1
             if state.status == "running":
                 state.mark_ready()
@@ -429,11 +606,6 @@ class Orchestrator:
             state.status = "interrupted"
             state.updated_at = utc_now()
             self.store.save(state)
-            raise
-        except TurnFailure as exc:
-            state.mark_failed(exc.failure)
-            self.store.save(state)
-            self.store.append_audit(state.campaign, {"event": "turn.failed", **exc.failure})
             raise
 
     def run_one_turn(self, state: SessionState, *, dry_run: bool) -> TurnResult:
@@ -462,6 +634,7 @@ class Orchestrator:
             state,
             agent,
             package,
+            turn_meta=turn_meta,
             queued_entry=queued_entry,
             action_entry=action_entry,
         )
@@ -531,17 +704,7 @@ class Orchestrator:
             "turn",
             "append",
             str(result.turn_prose_path),
-            "--speaker",
-            result.agent.id,
-            "--role",
-            result.agent.role,
-            "--mode",
-            active.mode,
-            "--scene",
-            active.scene_id,
         ]
-        if result.turn_closeout_path is not None:
-            append_args.extend(["--end-file", str(result.turn_closeout_path)])
         try:
             self.store.glass.invoke(
                 append_args,
@@ -599,6 +762,8 @@ class Orchestrator:
         state.__dict__.update(synced.__dict__)
         self._validate_prelude_dm_handoff(state, result, active)
         self._validate_scene_prep_dm_handoff(state, result, active)
+        self._validate_active_play_scene_contract_handoff(state, result, active)
+        self._redirect_active_play_contract_gap_to_dm(state, result, active)
         self._validate_scene_boundary_dm_handoff(state, result, active)
 
     def _append_turn_warning(
@@ -621,6 +786,386 @@ class Orchestrator:
         reason = str(payload.get("reason") or "turn_warning")
         message = str(payload.get("message") or reason)
         print(f"Warning: {result.turn_id}: {message}", flush=True)
+
+    def _actor_display_name(self, actor_id: str) -> str:
+        agent = AGENTS_BY_ID.get(actor_id)
+        if agent is not None:
+            return agent.display_name
+        return actor_id or "agent"
+
+    def _redirect_recoverable_turn_failure(
+        self, state: SessionState, failure: dict[str, Any]
+    ) -> None:
+        turn_id = str(failure.get("turn_id") or "").strip()
+        speaker = str(failure.get("speaker") or "").strip()
+        error = str(failure.get("error") or "").strip()
+        runtime_turn = self._load_active_turn_runtime(state.campaign)
+        problems = _turn_end_problem_list(runtime_turn, fallback_error=error)
+        recipient = self._recovery_recipient_for_problems(problems, speaker=speaker)
+        scene_id = None
+        if isinstance(runtime_turn, dict):
+            raw_scene_id = str(runtime_turn.get("scene_id") or "").strip()
+            scene_id = raw_scene_id or None
+        body = self._recovery_message_body(
+            turn_id=turn_id,
+            speaker=speaker,
+            recipient=recipient,
+            scene_id=scene_id,
+            problems=problems,
+        )
+        self._prepend_next_speaker_entry(state.campaign, {"agent": recipient})
+        self._send_system_instruction(
+            state.campaign,
+            recipient=recipient,
+            body=body,
+        )
+        state.mark_ready()
+        self.store.save(state)
+        payload: dict[str, Any] = {
+            "event": "turn.redirected",
+            "reason": str(failure.get("reason") or "invalid_turn_end"),
+            "turn_id": turn_id,
+            "speaker": speaker,
+            "recipient": recipient,
+            "problems": problems,
+            "message": body,
+        }
+        for key in ("turn_dir", "debug_path", "duration_seconds", "exit_code"):
+            if failure.get(key) is not None:
+                payload[key] = failure.get(key)
+        self.store.append_audit(state.campaign, payload)
+
+    def _redirect_scene_contract_repair_to_dm(
+        self,
+        state: SessionState,
+        result: TurnResult,
+        *,
+        previous_mode: str,
+        active_mode: str,
+        active_scene: str,
+        failures: list[str],
+    ) -> None:
+        body = self._scene_contract_dm_message(
+            turn_id=result.turn_id,
+            speaker=result.agent.id,
+            previous_mode=previous_mode,
+            active_mode=active_mode,
+            scene_id=active_scene,
+            failures=failures,
+        )
+        self._prepend_next_speaker_entry(state.campaign, {"agent": "dm"})
+        self._send_system_instruction(
+            state.campaign,
+            recipient="dm",
+            body=body,
+        )
+        self.store.append_audit(
+            state.campaign,
+            {
+                "event": "turn.redirected",
+                "reason": "scene_contract_missing",
+                "turn_id": result.turn_id,
+                "speaker": result.agent.id,
+                "recipient": "dm",
+                "previous_mode": previous_mode,
+                "active_mode": active_mode,
+                "active_scene": active_scene,
+                "problems": failures,
+                "message": body,
+            },
+        )
+
+    def _redirect_active_play_contract_gap_to_dm(
+        self,
+        state: SessionState,
+        result: TurnResult,
+        previous_active: Any,
+    ) -> None:
+        """Route empty active-play contract gaps to the DM instead of players."""
+        if result.dry_run:
+            return
+        if not state.has_active_mode or state.active_mode.mode not in _SCENE_PLAY_MODES:
+            return
+        if result.agent.id == "dm" and previous_active.mode in {"prelude", "scene-prep"}:
+            return
+        snapshot = self._scene_contract_snapshot_for_scene(
+            campaign=state.campaign,
+            scene_id=state.active_mode.scene_id,
+        )
+        active_clock_count = int(snapshot.get("active_clock_count", 0) or 0)
+        active_beat_count = int(snapshot.get("active_beat_count", 0) or 0)
+        if active_clock_count > 0 and active_beat_count > 0:
+            return
+
+        completed_beats = int(snapshot.get("completed_beats", 0) or 0)
+        body = self._scene_contract_closure_gap_message(
+            turn_id=result.turn_id,
+            speaker=result.agent.id,
+            scene_id=state.active_mode.scene_id,
+            active_clock_count=active_clock_count,
+            active_beat_count=active_beat_count,
+            completed_beats=completed_beats,
+            scene_note=str(snapshot.get("scene_note") or "").strip() or None,
+        )
+        queued_entry = self._peek_next_speaker_entry(state.campaign)
+        if not (isinstance(queued_entry, dict) and queued_entry.get("agent") == "dm"):
+            self._prepend_next_speaker_entry(
+                state.campaign,
+                {"agent": "dm", "scene_contract_nudge": body},
+            )
+        self._send_system_instruction(
+            state.campaign,
+            recipient="dm",
+            body=body,
+        )
+        self.store.append_audit(
+            state.campaign,
+            {
+                "event": "turn.redirected",
+                "reason": "scene_contract_closure_gap",
+                "turn_id": result.turn_id,
+                "speaker": result.agent.id,
+                "recipient": "dm",
+                "active_mode": state.active_mode.mode,
+                "active_scene": state.active_mode.scene_id,
+                "active_clock_count": active_clock_count,
+                "active_beat_count": active_beat_count,
+                "completed_beats": completed_beats,
+                "scene_note": snapshot.get("scene_note"),
+                "message": body,
+            },
+        )
+
+    def _recovery_recipient_for_problems(
+        self, problems: list[str], *, speaker: str
+    ) -> str:
+        if any(_problem_requires_dm_recovery(problem) for problem in problems):
+            return "dm"
+        if speaker in AGENTS_BY_ID:
+            return speaker
+        return "dm"
+
+    def _recovery_message_body(
+        self,
+        *,
+        turn_id: str,
+        speaker: str,
+        recipient: str,
+        scene_id: str | None,
+        problems: list[str],
+    ) -> str:
+        if recipient == "dm" and any(
+            _problem_requires_dm_recovery(problem) for problem in problems
+        ):
+            return self._scene_contract_dm_message(
+                turn_id=turn_id,
+                speaker=speaker,
+                previous_mode=None,
+                active_mode=None,
+                scene_id=scene_id,
+                failures=problems,
+            )
+        speaker_name = self._actor_display_name(speaker)
+        fixes = _turn_end_fix_suggestions(problems)
+        lines = [
+            f"System recovery notice: your turn `{turn_id}` did not close cleanly.",
+            f"Review the reported problems, correct them, then rerun `glass turn audit` and `glass turn end`.",
+            "",
+            "Problems:",
+        ]
+        lines.extend(f"- {problem}" for problem in problems)
+        if fixes:
+            lines.extend(["", "Required fixes:"])
+            lines.extend(f"- {fix}" for fix in fixes)
+        lines.extend(
+            [
+                "",
+                f"This notice is for {speaker_name}. Once the closeout is valid, continue normal play.",
+            ]
+        )
+        return "\n".join(lines).strip()
+
+    def _scene_contract_dm_message(
+        self,
+        *,
+        turn_id: str,
+        speaker: str,
+        previous_mode: str | None,
+        active_mode: str | None,
+        scene_id: str | None,
+        failures: list[str],
+    ) -> str:
+        speaker_name = self._actor_display_name(speaker)
+        scene_label = scene_id or "the active scene"
+        lines = [
+            f"System recovery notice: {speaker_name}'s turn `{turn_id}` cannot hand active play forward yet.",
+            f"Scene `{scene_label}` is missing a valid beat/clock contract or still needs DM repair.",
+        ]
+        if previous_mode and active_mode:
+            lines.append(
+                f"The handoff moved from `{previous_mode}` into `{active_mode}` without a complete scene contract."
+            )
+        lines.extend(["", "Current problems:"])
+        lines.extend(f"- {failure}" for failure in failures)
+        lines.extend(
+            [
+                "",
+                "On your next turn, do one of the following before handing back to players:",
+                "- If active play should continue, declare a scene clock with `glass scene clock declare ...`, start or repair the active beat with `glass beat start ...` or `glass beat close`/`glass beat convert`, then run `glass beat check`, `glass turn audit`, and `glass turn end`.",
+                "- If the scene is already done, close or transition the scene instead of continuing active play.",
+            ]
+        )
+        return "\n".join(lines).strip()
+
+    def _scene_contract_closure_gap_message(
+        self,
+        *,
+        turn_id: str,
+        speaker: str,
+        scene_id: str,
+        active_clock_count: int,
+        active_beat_count: int,
+        completed_beats: int,
+        scene_note: str | None,
+    ) -> str:
+        speaker_name = self._actor_display_name(speaker)
+        missing: list[str] = []
+        if active_clock_count <= 0:
+            missing.append("no active scene clock")
+        if active_beat_count <= 0:
+            missing.append("no active beat")
+        missing_text = " and ".join(missing) if missing else "an incomplete contract"
+        lines = [
+            f"System pacing notice: {speaker_name}'s turn `{turn_id}` left scene `{scene_id}` with {missing_text}.",
+            f"The scene has {completed_beats} completed beat(s). Do not hand this gap to another player by default.",
+        ]
+        if scene_note:
+            lines.append(f"`glass beat check` says: {scene_note}")
+        if completed_beats > 8:
+            lines.append(
+                "Strong closure nudge: this is enough resolved material. Prefer closing or transitioning unless a genuinely new scene question still belongs in this scene."
+            )
+        lines.extend(
+            [
+                "",
+                "On your next turn, run `glass beat check`, then choose deliberately:",
+                "- If the scene has landed, close or transition it now with the scene-transition workflow and `glass scene end`.",
+                "- If play must continue, declare the next scene clock/beat yourself; treat it as a new scene question, not an automatic replacement beat.",
+            ]
+        )
+        return "\n".join(lines).strip()
+
+    def _load_active_turn_runtime(self, campaign: str) -> dict[str, Any] | None:
+        return self._load_active_turn_runtime_from_postgres(campaign)
+
+    def _load_active_turn_runtime_from_postgres(
+        self, campaign: str
+    ) -> dict[str, Any] | None:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                return _glass_db.runtime_active_turn_get(conn, campaign)
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
+
+    def _prepend_next_speaker_entry(
+        self, campaign: str, entry: dict[str, Any]
+    ) -> None:
+        if not self._prepend_next_speaker_entry_in_postgres(campaign, entry):
+            raise RuntimeError(
+                f"could not prepend next-speaker entry for campaign {campaign}"
+            )
+
+    def _prepend_next_speaker_entry_in_postgres(
+        self, campaign: str, entry: dict[str, Any]
+    ) -> bool:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                return _glass_db.runtime_next_speaker_prepend(
+                    conn,
+                    campaign_id=campaign,
+                    entry=entry,
+                )
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
+
+    def _send_system_instruction(
+        self, campaign: str, *, recipient: str, body: str
+    ) -> None:
+        if not self._send_system_instruction_in_postgres(
+            campaign,
+            recipient=recipient,
+            body=body,
+        ):
+            raise RuntimeError(
+                f"could not send recovery instruction to {recipient} for {campaign}"
+            )
+
+    def _send_system_instruction_in_postgres(
+        self,
+        campaign: str,
+        *,
+        recipient: str,
+        body: str,
+    ) -> bool:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                _glass_db.message_send(
+                    conn,
+                    campaign_id=campaign,
+                    session_id=campaign,
+                    sender="system",
+                    recipient=recipient,
+                    type_="instruction",
+                    body=body,
+                )
+            return True
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
 
     def _validate_prelude_dm_handoff(
         self,
@@ -735,6 +1280,98 @@ class Orchestrator:
             },
         )
 
+    def _validate_active_play_scene_contract_handoff(
+        self,
+        state: SessionState,
+        result: TurnResult,
+        previous_active: Any,
+    ) -> None:
+        """Fail fast if a DM handoff enters active play without clocks/beats."""
+        if result.dry_run or result.agent.id != "dm":
+            return
+        if previous_active.mode not in {"prelude", "scene-prep"}:
+            return
+        if not state.has_active_mode or state.active_mode.mode not in _SCENE_PLAY_MODES:
+            return
+        failures = self._scene_contract_failures_for_scene(
+            campaign=state.campaign,
+            scene_id=state.active_mode.scene_id,
+        )
+        if not failures:
+            return
+        try:
+            self._redirect_scene_contract_repair_to_dm(
+                state,
+                result,
+                previous_mode=previous_active.mode,
+                active_mode=state.active_mode.mode,
+                active_scene=state.active_mode.scene_id,
+                failures=failures,
+            )
+        except Exception as exc:
+            raise TurnFailure(
+                "failed to queue DM repair for missing scene contract.",
+                {
+                    "reason": "scene_contract_redirect_failed",
+                    "turn_id": result.turn_id,
+                    "speaker": result.agent.id,
+                    "turn_dir": str(result.turn_dir),
+                    "active_mode": state.active_mode.mode,
+                    "active_scene": state.active_mode.scene_id,
+                    "error": repr(exc),
+                },
+            ) from exc
+
+    def _scene_contract_failures_for_scene(
+        self,
+        *,
+        campaign: str,
+        scene_id: str,
+    ) -> list[str]:
+        from cli.scene_beats import scene_contract_failures
+
+        return scene_contract_failures(
+            self._scene_contract_snapshot_for_scene(
+                campaign=campaign,
+                scene_id=scene_id,
+            )
+        )
+
+    def _scene_contract_snapshot_for_scene(
+        self,
+        *,
+        campaign: str,
+        scene_id: str,
+    ) -> dict[str, Any]:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+        from cli.scene_beats import scene_contract_snapshot
+
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise RuntimeError(
+                    "Postgres runtime is required; configure [postgres] in "
+                    "agents-of-glass.toml or libpq environment variables"
+                )
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                snapshot = scene_contract_snapshot(
+                    conn,
+                    campaign_id=campaign,
+                    scene_id=scene_id,
+                    role_kind="dm",
+                    reference_turn_number=None,
+                )
+            return snapshot
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
+
     def _campaign_has_open_active_arc(self, campaign: str) -> bool:
         try:
             glass_state = self.store._load_glass_state(campaign)
@@ -783,6 +1420,7 @@ class Orchestrator:
         agent: Agent,
         package: ContextPackage,
         *,
+        turn_meta: dict[str, Any],
         queued_entry: dict[str, Any] | None,
         action_entry: dict[str, Any] | None,
     ) -> TurnResult:
@@ -795,13 +1433,39 @@ class Orchestrator:
             f"Write your final public prose to {turn_prose_ref}, run "
             "`glass turn end`, and exit."
         )
+        turn_kind = _active_turn_kind_for(
+            state=state,
+            agent=agent,
+            turn_meta=turn_meta,
+            queued_entry=queued_entry,
+            action_entry=action_entry,
+        )
+        turn_type_required = _turn_type_required_for(
+            state=state,
+            agent=agent,
+            turn_meta=turn_meta,
+            queued_entry=queued_entry,
+            action_entry=action_entry,
+        )
+        self._begin_turn_via_glass(
+            state=state,
+            agent=agent,
+            package=package,
+            turn_kind=turn_kind,
+            turn_type_required=turn_type_required,
+            allow_player_scene_close=False,
+        )
 
         # Agents run in an actor-owned projection. `glass` uses the local API
         # so file reads can come from the projection while mutations land in
         # the canonical campaign tree.
         target_user = permissions.player_user_for(agent.id)
         _assert_actor_workspace_ready(package, target_user=target_user)
-        provider = self.config.agent_provider
+        provider = provider_for_actor(
+            self.config,
+            actor_id=agent.id,
+            role=agent.role,
+        )
         provider_executable = _resolve_provider_executable(provider)
         claude_session: dict[str, Any] = {}
         claude_session_args: list[str] = []
@@ -918,8 +1582,11 @@ class Orchestrator:
                 env["GLASS_API_GRANT_FILE"] = str(glass_api_grant_file)
 
         prefix = f"[{agent.id}] "
+        stderr_prefix = _stderr_prefix_for_provider(provider, prefix)
+        stream_stdout, stream_stderr = _live_stream_policy_for_provider(provider)
         print(
             f"\n--- {agent.display_name} (mode: {state.active_mode.mode}, "
+            f"provider {provider}, "
             f"turn {package.turn_number}, timeout {self.config.claude.turn_timeout_seconds}s) ---",
             flush=True,
         )
@@ -953,7 +1620,9 @@ class Orchestrator:
                 env=env,
                 timeout=self.config.claude.turn_timeout_seconds,
                 stdout_prefix=prefix,
-                stderr_prefix=prefix + "(err) ",
+                stderr_prefix=stderr_prefix,
+                stream_stdout=stream_stdout,
+                stream_stderr=stream_stderr,
                 stdout_capture_path=package.turn_dir / "agent-stdout.txt",
                 stderr_capture_path=package.turn_dir / "agent-stderr.txt",
             )
@@ -1079,7 +1748,10 @@ class Orchestrator:
                 },
             )
         try:
-            turn_end = _collect_turn_end(package.turn_closeout_path)
+            turn_end = self._collect_turn_end_from_postgres(
+                state.campaign,
+                expected_turn_id=package.turn_id,
+            )
         except ValueError as exc:
             output_debug = _turn_path_debug(package)
             raise TurnFailure(
@@ -1153,6 +1825,8 @@ def _stream_subprocess(
     timeout: int,
     stdout_prefix: str,
     stderr_prefix: str,
+    stream_stdout: bool = True,
+    stream_stderr: bool = True,
     stdout_capture_path: Path | None = None,
     stderr_capture_path: Path | None = None,
 ) -> tuple[str, str, int, bool]:
@@ -1182,7 +1856,7 @@ def _stream_subprocess(
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
 
-    def pump(stream, sink, prefix, target_io, capture_path):
+    def pump(stream, sink, prefix, target_io, capture_path, should_stream):
         capture_handle = None
         try:
             if capture_path is not None:
@@ -1192,8 +1866,9 @@ def _stream_subprocess(
                 if capture_handle is not None:
                     capture_handle.write(line)
                     capture_handle.flush()
-                target_io.write(prefix + line)
-                target_io.flush()
+                if should_stream:
+                    target_io.write(prefix + line)
+                    target_io.flush()
         finally:
             if capture_handle is not None:
                 capture_handle.close()
@@ -1207,6 +1882,7 @@ def _stream_subprocess(
             stdout_prefix,
             sys.stdout,
             stdout_capture_path,
+            stream_stdout,
         ),
         daemon=True,
     )
@@ -1218,6 +1894,7 @@ def _stream_subprocess(
             stderr_prefix,
             sys.stderr,
             stderr_capture_path,
+            stream_stderr,
         ),
         daemon=True,
     )
@@ -1643,6 +2320,18 @@ def _provider_preserved_env(provider: str) -> list[str]:
     return [key for key in keys if key in os.environ or key.startswith(("GLASS_", "AOG_"))]
 
 
+def _stderr_prefix_for_provider(provider: str, prefix: str) -> str:
+    if provider == "codex":
+        return prefix + "(log) "
+    return prefix + "(err) "
+
+
+def _live_stream_policy_for_provider(provider: str) -> tuple[bool, bool]:
+    if provider == "codex":
+        return False, False
+    return True, True
+
+
 def _player_path(extra_dirs: list[str] | None = None) -> str:
     parts = list(extra_dirs or [])
     parts.extend(
@@ -1733,6 +2422,81 @@ def _preview(text: str, *, limit: int = 2000) -> str:
     return text[:limit] + f"\n... <truncated {len(text) - limit} chars>"
 
 
+def _is_recoverable_turn_failure(failure: dict[str, Any] | None) -> bool:
+    if not isinstance(failure, dict):
+        return False
+    return str(failure.get("reason") or "") in _RECOVERABLE_TURN_FAILURE_REASONS
+
+
+def _problem_requires_dm_recovery(problem: str) -> bool:
+    return any(
+        marker in problem
+        for marker in (
+            "0 scene clocks",
+            "0 active beats",
+            "3-beat cap",
+            "No active scene is staged for beat tracking",
+        )
+    )
+
+
+def _turn_end_problem_list(
+    runtime_turn: dict[str, Any] | None,
+    *,
+    fallback_error: str,
+) -> list[str]:
+    if isinstance(runtime_turn, dict):
+        closeout = runtime_turn.get("closeout")
+        if isinstance(closeout, dict):
+            problems = [
+                str(item).strip()
+                for item in closeout.get("problems", [])
+                if str(item).strip()
+            ]
+            if problems:
+                return problems
+    detail = fallback_error.strip()
+    if detail.startswith("turn closeout is invalid:"):
+        detail = detail.split(":", 1)[1].strip()
+    if not detail:
+        return ["turn closeout is still invalid"]
+    return [item.strip() for item in detail.split(";") if item.strip()] or [detail]
+
+
+def _turn_end_fix_suggestions(problems: list[str]) -> list[str]:
+    fixes: list[str] = []
+    seen: set[str] = set()
+    for problem in problems:
+        if "--turn-type" in problem:
+            fix = "Rerun `glass turn end` with `--turn-type act|answer|support|pass`."
+        elif "run `glass turn audit` before `glass turn end`" in problem:
+            fix = "Run `glass turn audit`, address any hard requirements it prints, then rerun `glass turn end`."
+        elif "You MUST still run glass beat check" in problem:
+            fix = "Run `glass beat check`, then rerun `glass turn end`."
+        elif "0 scene clocks" in problem:
+            fix = "Have the DM declare a scene clock with `glass scene clock declare ...`."
+        elif "0 active beats" in problem:
+            fix = "Have the DM start a beat with `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`."
+        elif "3-beat cap" in problem:
+            fix = "Close or convert an active beat before continuing active play."
+        elif "Resolve or convert it before another non-pass turn" in problem:
+            fix = "Resolve the beat with `glass beat close`, convert it with `glass beat convert`, or pass instead of taking another non-pass turn."
+        elif "requires exactly `--state \"no state change\"`" in problem:
+            fix = "Rerun with `--state \"no state change\"` and no other `--state` values."
+        elif "`pass` requires `--rolls none`" in problem:
+            fix = "Rerun with `--rolls none`."
+        elif "`--scene-status" in problem or "must keep `--scene-status active`" in problem:
+            fix = "Rerun with a valid `--scene-status`, usually `active`."
+        elif "`--next" in problem:
+            fix = "Rerun with `--next default|dm|tev|sumi|renno|kit`."
+        else:
+            fix = "Rerun `glass turn end` after correcting the reported field."
+        if fix not in seen:
+            fixes.append(fix)
+            seen.add(fix)
+    return fixes
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
@@ -1756,18 +2520,27 @@ def _collect_prose(turn_prose_path: Path, stdout: str | None) -> str:
     return ""
 
 
-def _collect_turn_end(turn_closeout_path: Path) -> dict[str, Any]:
-    try:
-        raw = json.loads(turn_closeout_path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
+def _collect_turn_end(
+    runtime_turn: dict[str, Any] | None,
+    *,
+    expected_turn_id: str,
+) -> dict[str, Any]:
+    if not isinstance(runtime_turn, dict):
         raise ValueError(
-            f"missing turn closeout metadata at {turn_closeout_path}; run `glass turn end` "
-            "after writing public prose"
-        ) from exc
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"invalid turn closeout JSON at {turn_closeout_path}: {exc}") from exc
+            "missing active turn closeout in Postgres; run `glass turn end` after writing public prose"
+        )
+    turn_id = str(runtime_turn.get("turn_id") or "").strip()
+    if turn_id != expected_turn_id:
+        raise ValueError(
+            f"active turn closeout belongs to {turn_id or 'no turn'}; expected {expected_turn_id}"
+        )
+    raw = runtime_turn.get("closeout")
     if not isinstance(raw, dict):
-        raise ValueError("turn closeout metadata must be a JSON object")
+        raise ValueError("active turn closeout is missing from Postgres")
+    if raw.get("valid") is not True:
+        problems = [str(item).strip() for item in raw.get("problems", []) if str(item).strip()]
+        detail = "; ".join(problems) if problems else "closeout is still invalid"
+        raise ValueError(f"turn closeout is invalid: {detail}")
     summary = str(raw.get("summary") or "").strip()
     if not summary:
         raise ValueError("turn closeout metadata is missing a non-empty summary")

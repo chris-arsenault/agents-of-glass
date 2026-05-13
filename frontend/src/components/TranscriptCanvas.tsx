@@ -1,4 +1,10 @@
-import { AlertTriangle, Bookmark, Filter, ScrollText } from "lucide-react";
+import {
+  AlertTriangle,
+  Bookmark,
+  Filter,
+  MessagesSquare,
+  ScrollText,
+} from "lucide-react";
 import {
   useEffect,
   useLayoutEffect,
@@ -9,16 +15,18 @@ import {
 
 import { useSessionStore } from "../store/sessionStore";
 import {
+  buildInterleavedStream,
+  buildMessageStream,
   buildTranscriptStream,
-  type TranscriptEntry,
   type TranscriptFilter,
+  type TranscriptTimelineEntry,
 } from "../transcriptModel";
 import { MessageCard } from "./MessageCard";
 import { ModeMarquee } from "./ModeMarquee";
 import { TarotReveal } from "./TarotReveal";
 import { TurnCard } from "./TurnCard";
 
-type StageView = "transcript" | "bus";
+type StageView = "transcript" | "interleaved" | "bus";
 
 interface CanvasProps {
   jumpTurnId: number | null;
@@ -40,6 +48,20 @@ export function TranscriptCanvas({ jumpTurnId, onJumpHandled }: CanvasProps) {
     () => buildTranscriptStream({ turns, events, tarot, rolls, filter }),
     [turns, events, tarot, rolls, filter],
   );
+  const messageStream = useMemo(() => buildMessageStream(messages), [messages]);
+  const interleavedStream = useMemo(
+    () => buildInterleavedStream({ turns, events, tarot, rolls, messages, filter }),
+    [turns, events, tarot, rolls, messages, filter],
+  );
+  const visibleEntries = useMemo(() => {
+    if (view === "bus") {
+      return messageStream;
+    }
+    if (view === "interleaved") {
+      return interleavedStream;
+    }
+    return stream;
+  }, [interleavedStream, messageStream, stream, view]);
 
   const characterByPlayer = useMemo(() => {
     const map = new Map<string, string>();
@@ -53,11 +75,18 @@ export function TranscriptCanvas({ jumpTurnId, onJumpHandled }: CanvasProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastEntryIdRef = useRef<string | null>(null);
   const freshEntryIdRef = useRef<string | null>(null);
+  const lastViewRef = useRef<StageView>(view);
 
   // Autoscroll on new entries.
   useLayoutEffect(() => {
-    const last = stream.at(-1);
+    const last = visibleEntries.at(-1);
     if (!last) {
+      return;
+    }
+    if (lastViewRef.current !== view) {
+      lastViewRef.current = view;
+      lastEntryIdRef.current = last.id;
+      freshEntryIdRef.current = null;
       return;
     }
     if (lastEntryIdRef.current !== last.id) {
@@ -68,7 +97,7 @@ export function TranscriptCanvas({ jumpTurnId, onJumpHandled }: CanvasProps) {
         node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
       }
     }
-  }, [stream]);
+  }, [view, visibleEntries]);
 
   // Jump-to-turn (from agent lane click or cmd-k).
   useEffect(() => {
@@ -89,37 +118,43 @@ export function TranscriptCanvas({ jumpTurnId, onJumpHandled }: CanvasProps) {
       <header className="stage__head">
         <div className="stage__head-title">
           <span className="stage__head-eyebrow">
-            {view === "transcript" ? "Conclave transcript" : "Message bus"}
+            {view === "transcript"
+              ? "Conclave transcript"
+              : view === "interleaved"
+                ? "Interleaved ledger"
+                : "Message bus"}
           </span>
           <span className="stage__head-name">
-            {view === "transcript" ? "Live ledger" : "Inter-agent comms"}
+            {view === "transcript"
+              ? "Live ledger"
+              : view === "interleaved"
+                ? "Turns + bus traffic"
+                : "Inter-agent comms"}
           </span>
         </div>
         <div className="stage__head-controls" role="tablist">
           <ViewToggle view={view} setView={setView} />
-          {view === "transcript" && (
+          {view !== "bus" && (
             <FilterToggle filter={filter} setFilter={setFilter} />
           )}
         </div>
       </header>
       <div className="stage__transcript" ref={scrollRef}>
-        {view === "transcript" ? (
-          stream.length === 0 ? (
-            <div className="empty-state">No transcript entries yet.</div>
-          ) : (
-            stream.map((entry) =>
-              renderEntry(
-                entry,
-                characterByPlayer,
-                freshEntryIdRef.current === entry.id,
-              ),
-            )
-          )
-        ) : messages.length === 0 ? (
-          <div className="empty-state">No bus traffic.</div>
+        {visibleEntries.length === 0 ? (
+          <div className="empty-state">
+            {view === "bus"
+              ? "No bus traffic."
+              : view === "interleaved"
+                ? "No transcript or bus entries yet."
+                : "No transcript entries yet."}
+          </div>
         ) : (
-          messages.map((message) => (
-            <MessageCard key={message.id} message={message} />
+          visibleEntries.map((entry) => (
+            renderEntry(
+              entry,
+              characterByPlayer,
+              freshEntryIdRef.current === entry.id,
+            )
           ))
         )}
       </div>
@@ -128,10 +163,15 @@ export function TranscriptCanvas({ jumpTurnId, onJumpHandled }: CanvasProps) {
 }
 
 function renderEntry(
-  entry: TranscriptEntry,
+  entry: TranscriptTimelineEntry,
   characterByPlayer: Map<string, string>,
   fresh: boolean,
 ) {
+  if (entry.kind === "message") {
+    return (
+      <MessageCard fresh={fresh} key={entry.id} message={entry.message} />
+    );
+  }
   if (entry.kind === "turn") {
     const character =
       characterByPlayer.get(entry.turn.speaker) ??
@@ -180,6 +220,14 @@ function ViewToggle({
       >
         <ScrollText aria-hidden="true" size={12} />
         Transcript
+      </button>
+      <button
+        className={`stage__filter${view === "interleaved" ? " is-active" : ""}`}
+        onClick={() => setView("interleaved")}
+        type="button"
+      >
+        <MessagesSquare aria-hidden="true" size={12} />
+        Mixed
       </button>
       <button
         className={`stage__filter${view === "bus" ? " is-active" : ""}`}

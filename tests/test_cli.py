@@ -26,6 +26,7 @@ from cli.local_env import load_repo_env
 from cli.embeddings import EmbeddingBatch
 from cli.main import main
 from cli.messages import load_message_types
+from cli.scene_beats import scene_close_note
 from cli.state import load_state
 
 
@@ -57,7 +58,13 @@ campaigns = "{campaigns}"
         encoding="utf-8",
     )
     reset_postgres_runtime(config, campaign_id)
-    return {"GLASS_CONFIG": str(config), "GLASS_CAMPAIGN_ID": campaign_id}
+    return {
+        "GLASS_CONFIG": str(config),
+        "GLASS_CAMPAIGN_ID": campaign_id,
+        "GLASS_ROLE": "",
+        "GLASS_TURN_ID": "",
+        "AOG_PLAYER_SURFACE": "",
+    }
 
 
 def reset_postgres_runtime(config: Path, campaign_id: str) -> None:
@@ -168,6 +175,20 @@ def arc_create_args(arc_id: str) -> list[str]:
 
 
 class GlassCliTests(unittest.TestCase):
+    def test_scene_close_note_frames_closure_as_available_not_overlong(self) -> None:
+        self.assertIsNone(scene_close_note(3))
+        self.assertEqual(
+            scene_close_note(4),
+            "this scene has enough resolved material to close when the current "
+            "scene clock lands; keep any next clock choice deliberate.",
+        )
+        self.assertEqual(
+            scene_close_note(5),
+            "this scene has ample resolved material; when the current scene clock "
+            "lands, close or transition unless a genuinely new scene question "
+            "needs its own clock.",
+        )
+
     def test_character_goal_validation_requires_two_or_three_goals(self) -> None:
         self.assertEqual(_normalize_goals(("Find Rin.", "Pay the debt.")), [
             "Find Rin.",
@@ -695,9 +716,68 @@ Recipients are `dm`, `party`, or a player id.
             dm_env = {**env, "GLASS_ROLE": "dm"}
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
             invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live problem for the party.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-problem",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Frame the first problem",
+                    "--question",
+                    "What immediate pressure is now live for the party?",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "dm",
+                    "--role",
+                    "dm",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play-dm",
+                    "--no-turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
             turn_file = tmp_path / "turn.md"
             turn_file.write_text("Mara frames the scene.", encoding="utf-8")
             end_file = tmp_path / "turn-closeout.json"
+            invoke_ok(runner, ["beat", "check"], dm_env)
+            invoke_ok(runner, ["turn", "audit"], dm_env)
             ended = invoke_ok(
                 runner,
                 [
@@ -712,18 +792,15 @@ Recipients are `dm`, `party`, or a player id.
                     "--next",
                     "default",
                 ],
-                {
-                    **dm_env,
-                    "AOG_TURN_CLOSEOUT": str(end_file),
-                    "GLASS_TURN_ID": "c1-t0001",
-                },
+                {**dm_env, "AOG_TURN_CLOSEOUT": str(end_file)},
             )
             self.assertIn("summary: \"Mara frames the opening choice.\"", ended.output)
+            self.assertIn("valid: true", ended.output)
             self.assertTrue(end_file.exists())
 
             appended = invoke_ok(
                 runner,
-                ["turn", "append", str(turn_file), "--speaker", "dm", "--end-file", str(end_file)],
+                ["turn", "append", str(turn_file), "--speaker", "dm"],
                 dm_env,
             )
             self.assertIn("turn_id: 1", appended.output)
@@ -749,6 +826,871 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertIn("## Turn 1 - dm (dm) - scene-play, opening", transcript)
             self.assertIn("Mara frames the scene.", transcript)
+
+    def test_turn_end_reports_invalid_player_turn_type_advisory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live player decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the first call",
+                    "--question",
+                    "What does Tev decide to do with the opening pressure?",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["beat", "check"], player_env)
+            invoke_ok(runner, ["turn", "audit"], player_env)
+
+            invalid = invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Tev hesitates.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                    "--next",
+                    "default",
+                ],
+                player_env,
+            )
+            self.assertIn("valid: false", invalid.output)
+            self.assertIn("problems:", invalid.output)
+            self.assertIn("`--turn-type` is required", invalid.output)
+
+            valid = invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Tev taps the rail once and yields the beat.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                    "--turn-type",
+                    "pass",
+                    "--next",
+                    "default",
+                ],
+                player_env,
+            )
+            self.assertIn("valid: true", valid.output)
+            self.assertIn("turn_type: pass", valid.output)
+
+    def test_turn_end_requires_turn_audit_before_closeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live player decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the first call",
+                    "--question",
+                    "What does Tev do with the opening pressure?",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["beat", "check"], player_env)
+            ended = invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Tev yields for a beat.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                    "--turn-type",
+                    "pass",
+                ],
+                player_env,
+            )
+            self.assertIn("valid: false", ended.output)
+            self.assertIn("run `glass turn audit` before `glass turn end`", ended.output)
+
+    def test_turn_audit_reports_and_clears_soft_and_hard_requirements(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live player decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the first call",
+                    "--question",
+                    "What does Tev do with the opening pressure?",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+
+            first_audit = invoke_ok(runner, ["turn", "audit"], player_env)
+            self.assertIn("ready_for_turn_end: false", first_audit.output)
+            self.assertIn("You MUST still run glass beat check.", first_audit.output)
+            self.assertIn(
+                "You sent 0 messages this turn; consider sending something.",
+                first_audit.output,
+            )
+            self.assertIn(
+                "You ran 0 recall/search checks this turn; consider checking the available surfaces if you are uncertain.",
+                first_audit.output,
+            )
+            self.assertIn(
+                "You recorded 0 durable state updates this turn; if the turn changed canon or table state, commit it before closing.",
+                first_audit.output,
+            )
+
+            invoke_ok(runner, ["beat", "check"], player_env)
+            invoke_ok(
+                runner,
+                ["msg", "send", "banter", "dm", "Tev asks Mara to hold the next reveal for one beat."],
+                player_env,
+            )
+            second_audit = invoke_ok(runner, ["turn", "audit"], player_env)
+            self.assertIn("ready_for_turn_end: true", second_audit.output)
+            self.assertIn("soft_considerations: []", second_audit.output)
+            self.assertIn("hard_requirements: []", second_audit.output)
+            self.assertNotIn("You MUST still run glass beat check.", second_audit.output)
+            self.assertNotIn(
+                "You sent 0 messages this turn; consider sending something.",
+                second_audit.output,
+            )
+
+    def test_prelude_turn_end_requires_scene_contract_before_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "prelude", "prelude"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "dm",
+                    "--role",
+                    "dm",
+                    "--mode",
+                    "prelude",
+                    "--scene",
+                    "prelude",
+                    "--kind",
+                    "prelude",
+                    "--no-turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["mode", "start", "scene-play", "prelude-opening"], dm_env)
+
+            first_audit = invoke_ok(runner, ["turn", "audit"], dm_env)
+            self.assertIn("ready_for_turn_end: false", first_audit.output)
+            self.assertIn("You MUST still run glass beat check.", first_audit.output)
+            self.assertIn("This active scene has 0 scene clocks.", first_audit.output)
+            self.assertIn("This active scene has 0 active beats.", first_audit.output)
+
+            invalid = invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Prelude opening staged.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                ],
+                dm_env,
+            )
+            self.assertIn("valid: false", invalid.output)
+            self.assertIn("You MUST still run glass beat check.", invalid.output)
+            self.assertIn(
+                "the active scene has 0 scene clocks; the DM must declare one before active play can continue.",
+                invalid.output,
+            )
+            self.assertIn(
+                "the active scene has 0 active beats; start one before active play can continue.",
+                invalid.output,
+            )
+
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the prelude scene",
+                    "--goal",
+                    "Land the first visible prelude decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Open the first choice",
+                    "--question",
+                    "What does the crew do first?",
+                ],
+                dm_env,
+            )
+            invoke_ok(runner, ["beat", "check"], dm_env)
+            second_audit = invoke_ok(runner, ["turn", "audit"], dm_env)
+            self.assertIn("ready_for_turn_end: true", second_audit.output)
+            self.assertIn("hard_requirements: []", second_audit.output)
+
+            valid = invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Prelude opening staged.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                ],
+                dm_env,
+            )
+            self.assertIn("valid: true", valid.output)
+
+    def test_turn_audit_allows_scene_closing_after_last_beat_resolves(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live player decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "1",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the first call",
+                    "--question",
+                    "What does Tev do with the opening pressure?",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["beat", "check"], player_env)
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "close",
+                    "first-decision",
+                    "--outcome",
+                    "Tev resolves the opening lane call.",
+                    "--clock-delta",
+                    "1",
+                ],
+                player_env,
+            )
+            audit = invoke_ok(runner, ["turn", "audit"], player_env)
+            self.assertIn("ready_for_turn_end: true", audit.output)
+            self.assertNotIn("This active scene has 0 scene clocks.", audit.output)
+            self.assertNotIn("This active scene has 0 active beats.", audit.output)
+            self.assertIn("This scene has 0 active scene clocks.", audit.output)
+            self.assertIn("This scene has 0 active beats.", audit.output)
+            self.assertIn("end with `--next dm`", audit.output)
+
+            ended = invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Tev resolves the opening lane call and leaves the scene ready to close.",
+                    "--state",
+                    "Closed beat first-decision and resolved opening-contract 1/1.",
+                    "--rolls",
+                    "none",
+                    "--turn-type",
+                    "act",
+                    "--scene-status",
+                    "closing",
+                ],
+                player_env,
+            )
+            self.assertIn("valid: true", ended.output)
+
+    def test_turn_audit_pushes_pass_guidance_after_many_completed_beats(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Keep the scene's live question visible.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "20",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            for index in range(9):
+                beat_id = f"resolved-beat-{index}"
+                invoke_ok(
+                    runner,
+                    [
+                        "beat",
+                        "start",
+                        beat_id,
+                        "--clock",
+                        "opening-contract",
+                        "--label",
+                        f"Resolved beat {index}",
+                        "--question",
+                        f"What resolves beat {index}?",
+                    ],
+                    dm_env,
+                )
+                invoke_ok(
+                    runner,
+                    [
+                        "beat",
+                        "close",
+                        beat_id,
+                        "--outcome",
+                        f"Beat {index} resolves.",
+                    ],
+                    dm_env,
+                )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["beat", "check"], player_env)
+
+            audit = invoke_ok(runner, ["turn", "audit"], player_env)
+
+            self.assertIn("ready_for_turn_end: true", audit.output)
+            self.assertIn("This scene already has 9 completed beats.", audit.output)
+            self.assertIn("`--turn-type pass`", audit.output)
+            self.assertIn("`--next dm`", audit.output)
+
+    def test_beat_check_allows_recovery_after_last_beat_already_resolved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live player decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "1",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the first call",
+                    "--question",
+                    "What does Tev do with the opening pressure?",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "close",
+                    "first-decision",
+                    "--outcome",
+                    "Tev resolves the opening lane call.",
+                    "--clock-delta",
+                    "1",
+                ],
+                player_env,
+            )
+
+            checked = invoke_ok(runner, ["beat", "check"], player_env)
+            self.assertIn("required: true", checked.output)
+            self.assertIn("clock_count: 0", checked.output)
+            self.assertIn("active_beats: []", checked.output)
+
+            audit = invoke_ok(runner, ["turn", "audit"], player_env)
+            self.assertIn("ready_for_turn_end: true", audit.output)
+            self.assertIn("hard_requirements: []", audit.output)
+
+    def test_scene_beats_skip_pass_turns_and_age_on_non_pass_commits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live player decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the first call",
+                    "--question",
+                    "What does Tev do with the opening pressure?",
+                ],
+                dm_env,
+            )
+
+            pass_turn = tmp_path / "pass-turn.md"
+            pass_turn.write_text("Tev yields the floor for a moment.", encoding="utf-8")
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["beat", "check"], player_env)
+            invoke_ok(runner, ["turn", "audit"], player_env)
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Tev yields the beat for a moment.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                    "--turn-type",
+                    "pass",
+                ],
+                player_env,
+            )
+            invoke_ok(runner, ["turn", "append", str(pass_turn), "--speaker", "tev"], player_env)
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
+            try:
+                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                    beat = _db.scene_beat_get(
+                        conn,
+                        campaign_id="c1",
+                        scene_id="opening",
+                        beat_id="first-decision",
+                    )
+                self.assertEqual(beat["non_pass_turns"], 0)
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+
+            action_turn = tmp_path / "action-turn.md"
+            action_turn.write_text("Mara forces the question back onto the table.", encoding="utf-8")
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0002",
+                    "--actor",
+                    "dm",
+                    "--role",
+                    "dm",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play-dm",
+                    "--no-turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["beat", "check"], dm_env)
+            invoke_ok(runner, ["turn", "audit"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Mara forces the question back onto the table.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                ],
+                dm_env,
+            )
+            invoke_ok(runner, ["turn", "append", str(action_turn), "--speaker", "dm"], dm_env)
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
+            try:
+                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                    beat = _db.scene_beat_get(
+                        conn,
+                        campaign_id="c1",
+                        scene_id="opening",
+                        beat_id="first-decision",
+                    )
+                self.assertEqual(beat["non_pass_turns"], 1)
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
 
     def test_sync_apply_commits_projected_paths_and_directories(self) -> None:
         fake_embedding = EmbeddingBatch(
@@ -899,7 +1841,118 @@ Recipients are `dm`, `party`, or a player id.
             with patch("cli.embeddings.embed_text", side_effect=fake_embed_text):
                 invoke_ok(
                     runner,
+                    [
+                        "scene",
+                        "clock",
+                        "declare",
+                        "opening-contract",
+                        "--label",
+                        "Open the scene",
+                        "--goal",
+                        "Move the scene through two public turns.",
+                        "--value",
+                        "0",
+                        "--max",
+                        "4",
+                        "--direction",
+                        "progress",
+                    ],
+                    dm_env,
+                )
+                invoke_ok(
+                    runner,
+                    [
+                        "beat",
+                        "start",
+                        "first-problem",
+                        "--clock",
+                        "opening-contract",
+                        "--label",
+                        "Open the problem",
+                        "--question",
+                        "What immediate pressure is visible at the gate?",
+                    ],
+                    dm_env,
+                )
+                invoke_ok(
+                    runner,
+                    [
+                        "turn",
+                        "begin",
+                        "--turn-id",
+                        "c1-t0001",
+                        "--actor",
+                        "dm",
+                        "--role",
+                        "dm",
+                        "--mode",
+                        "scene-play",
+                        "--scene",
+                        "opening",
+                        "--kind",
+                        "active-play-dm",
+                        "--no-turn-type-required",
+                        "--disallow-player-scene-close",
+                    ],
+                    env,
+                )
+                invoke_ok(runner, ["beat", "check"], dm_env)
+                invoke_ok(runner, ["turn", "audit"], dm_env)
+                invoke_ok(
+                    runner,
+                    [
+                        "turn",
+                        "end",
+                        "--summary",
+                        "The castle gate opens for the party.",
+                        "--state",
+                        "no state change",
+                        "--rolls",
+                        "none",
+                    ],
+                    dm_env,
+                )
+                invoke_ok(
+                    runner,
                     ["turn", "append", str(castle_turn), "--speaker", "dm"],
+                    dm_env,
+                )
+                invoke_ok(
+                    runner,
+                    [
+                        "turn",
+                        "begin",
+                        "--turn-id",
+                        "c1-t0002",
+                        "--actor",
+                        "dm",
+                        "--role",
+                        "dm",
+                        "--mode",
+                        "scene-play",
+                        "--scene",
+                        "opening",
+                        "--kind",
+                        "active-play-dm",
+                        "--no-turn-type-required",
+                        "--disallow-player-scene-close",
+                    ],
+                    env,
+                )
+                invoke_ok(runner, ["beat", "check"], dm_env)
+                invoke_ok(runner, ["turn", "audit"], dm_env)
+                invoke_ok(
+                    runner,
+                    [
+                        "turn",
+                        "end",
+                        "--summary",
+                        "The river barge slips into fog.",
+                        "--state",
+                        "no state change",
+                        "--rolls",
+                        "none",
+                    ],
                     dm_env,
                 )
                 invoke_ok(
@@ -1124,8 +2177,81 @@ Recipients are `dm`, `party`, or a player id.
             )
 
             invoke_ok(runner, ["mode", "start", "action", "duke-gate"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "gate-access",
+                    "--label",
+                    "Gain gate access",
+                    "--goal",
+                    "Open the duke's gate without losing leverage.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-push",
+                    "--clock",
+                    "gate-access",
+                    "--label",
+                    "Push the gate",
+                    "--question",
+                    "Can the party force a way through the duke's gate?",
+                ],
+                dm_env,
+            )
             turn_file = tmp_path / "scene-turn.md"
             turn_file.write_text("Mara points to the castle gate.", encoding="utf-8")
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "dm",
+                    "--role",
+                    "dm",
+                    "--mode",
+                    "action",
+                    "--scene",
+                    "duke-gate",
+                    "--kind",
+                    "active-play-dm",
+                    "--no-turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["beat", "check"], dm_env)
+            invoke_ok(runner, ["turn", "audit"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Mara points the party at the castle gate.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                ],
+                dm_env,
+            )
             invoke_ok(
                 runner,
                 ["turn", "append", str(turn_file), "--speaker", "dm"],

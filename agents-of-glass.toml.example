@@ -35,9 +35,13 @@ query_prefix = "search_query: "
 path = "../the-glass-frontier-lore"
 
 [agent]
-# Orchestrator provider selection. Override per run with
-# `aog campaign run --use-codex` or `--use-claude`.
+# Orchestrator provider policy. `mixed-codex` means Mara plus the selected
+# players below use Codex across all of their turns; everyone else uses Claude.
+# Override per run with `aog campaign run --use-codex` or `--use-claude`.
 provider = "claude"
+# Players routed to Codex when provider = "mixed-codex". Default mixed table is
+# the first two players: tev and sumi.
+codex_players = ["tev", "sumi"]
 # When true, active-play player turns use the character branch: no
 # player-persona file, no player notes/journal/drafts, and character-framed
 # methodologies/instructions. Override per run with

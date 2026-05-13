@@ -18,6 +18,6 @@ before player build turns.
    `glass table write scene.md --body "<who the organization is, what roles it needs, and what kinds of people fit>"`.
 4. Run `glass lore list`.
 5. Write `TURN.md` with the player-facing creation brief.
-6. Run `glass turn end --summary "character creation brief is ready" --state "organization brief refreshed on the table" --rolls none --next default`.
+6. Run `glass turn audit`, then `glass turn end --summary "character creation brief is ready" --state "organization brief refreshed on the table" --rolls none --next default`.
 
 Do not run `glass mode end`.

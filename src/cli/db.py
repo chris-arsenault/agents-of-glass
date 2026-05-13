@@ -360,7 +360,21 @@ def runtime_state_get(
             """
             SELECT campaign_id, status, created_at, updated_at, wrapped_at, summary,
                    turn_counter, mode_stack, pending_events, note_intake, entities,
-                   threads, next_speakers, scene_closing_turns, state_extra
+                   threads, next_speakers, scene_closing_turns,
+                   active_turn_id, active_turn_number, active_turn_actor,
+                   active_turn_role, active_turn_mode, active_turn_scene_id,
+                   active_turn_character_id, active_turn_kind,
+                   active_turn_turn_type_required,
+                   active_turn_allow_player_scene_close,
+                   active_turn_beat_checked_at,
+                   active_turn_audit_ran_at,
+                   closeout_summary, closeout_next_speaker,
+                   closeout_scene_status, closeout_state_changes,
+                   closeout_rolls, closeout_open_questions,
+                   closeout_position, closeout_pressure,
+                   closeout_turn_type, closeout_valid,
+                   closeout_problems, closeout_updated_at,
+                   state_extra
             FROM campaign_runtime_states
             WHERE campaign_id = %s
             """,
@@ -384,6 +398,30 @@ def runtime_state_get(
         threads,
         next_speakers,
         scene_closing_turns,
+        active_turn_id,
+        active_turn_number,
+        active_turn_actor,
+        active_turn_role,
+        active_turn_mode,
+        active_turn_scene_id,
+        active_turn_character_id,
+        active_turn_kind,
+        active_turn_turn_type_required,
+        active_turn_allow_player_scene_close,
+        active_turn_beat_checked_at,
+        active_turn_audit_ran_at,
+        closeout_summary,
+        closeout_next_speaker,
+        closeout_scene_status,
+        closeout_state_changes,
+        closeout_rolls,
+        closeout_open_questions,
+        closeout_position,
+        closeout_pressure,
+        closeout_turn_type,
+        closeout_valid,
+        closeout_problems,
+        closeout_updated_at,
         state_extra,
     ) = row
     state = {
@@ -403,6 +441,36 @@ def runtime_state_get(
         "turns": turn_list(conn, campaign_id=campaign_id, limit=10000),
         "next_speakers": list(next_speakers or []),
         "scene_closing_turns": scene_closing_turns,
+        "active_turn_id": active_turn_id,
+        "active_turn_number": (
+            int(active_turn_number) if active_turn_number is not None else None
+        ),
+        "active_turn_actor": active_turn_actor,
+        "active_turn_role": active_turn_role,
+        "active_turn_mode": active_turn_mode,
+        "active_turn_scene_id": active_turn_scene_id,
+        "active_turn_character_id": active_turn_character_id,
+        "active_turn_kind": active_turn_kind,
+        "active_turn_turn_type_required": bool(active_turn_turn_type_required),
+        "active_turn_allow_player_scene_close": bool(
+            active_turn_allow_player_scene_close
+        ),
+        "active_turn_beat_checked_at": _iso(active_turn_beat_checked_at),
+        "active_turn_audit_ran_at": _iso(active_turn_audit_ran_at),
+        "closeout_summary": closeout_summary,
+        "closeout_next_speaker": closeout_next_speaker,
+        "closeout_scene_status": closeout_scene_status,
+        "closeout_state_changes": list(closeout_state_changes or []),
+        "closeout_rolls": closeout_rolls,
+        "closeout_open_questions": list(closeout_open_questions or []),
+        "closeout_position": closeout_position,
+        "closeout_pressure": closeout_pressure,
+        "closeout_turn_type": closeout_turn_type,
+        "closeout_valid": (
+            bool(closeout_valid) if closeout_valid is not None else None
+        ),
+        "closeout_problems": list(closeout_problems or []),
+        "closeout_updated_at": _iso(closeout_updated_at),
     }
     if isinstance(state_extra, dict):
         for key, value in state_extra.items():
@@ -432,6 +500,30 @@ def runtime_state_upsert(
         "turns",
         "next_speakers",
         "scene_closing_turns",
+        "active_turn_id",
+        "active_turn_number",
+        "active_turn_actor",
+        "active_turn_role",
+        "active_turn_mode",
+        "active_turn_scene_id",
+        "active_turn_character_id",
+        "active_turn_kind",
+        "active_turn_turn_type_required",
+        "active_turn_allow_player_scene_close",
+        "active_turn_beat_checked_at",
+        "active_turn_audit_ran_at",
+        "closeout_summary",
+        "closeout_next_speaker",
+        "closeout_scene_status",
+        "closeout_state_changes",
+        "closeout_rolls",
+        "closeout_open_questions",
+        "closeout_position",
+        "closeout_pressure",
+        "closeout_turn_type",
+        "closeout_valid",
+        "closeout_problems",
+        "closeout_updated_at",
     }
     extra = {key: value for key, value in state.items() if key not in known}
     with conn.cursor() as cur:
@@ -440,11 +532,60 @@ def runtime_state_upsert(
             INSERT INTO campaign_runtime_states (
                 campaign_id, status, created_at, updated_at, wrapped_at, summary,
                 turn_counter, mode_stack, pending_events, note_intake, entities,
-                threads, next_speakers, scene_closing_turns, state_extra
+                threads, next_speakers, scene_closing_turns,
+                active_turn_id, active_turn_number, active_turn_actor,
+                active_turn_role, active_turn_mode, active_turn_scene_id,
+                active_turn_character_id, active_turn_kind,
+                active_turn_turn_type_required,
+                active_turn_allow_player_scene_close,
+                active_turn_beat_checked_at,
+                active_turn_audit_ran_at,
+                closeout_summary, closeout_next_speaker,
+                closeout_scene_status, closeout_state_changes,
+                closeout_rolls, closeout_open_questions,
+                closeout_position, closeout_pressure,
+                closeout_turn_type, closeout_valid,
+                closeout_problems, closeout_updated_at,
+                state_extra
             ) VALUES (
-                %s, %s, COALESCE(%s::timestamptz, now()), COALESCE(%s::timestamptz, now()),
-                %s::timestamptz, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
-                %s::jsonb, %s::jsonb, %s::jsonb, %s, %s::jsonb
+                %s, %s,
+                COALESCE(%s::timestamptz, now()),
+                COALESCE(%s::timestamptz, now()),
+                %s::timestamptz,
+                %s,
+                %s,
+                %s::jsonb,
+                %s::jsonb,
+                %s::jsonb,
+                %s::jsonb,
+                %s::jsonb,
+                %s::jsonb,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s::timestamptz,
+                %s::timestamptz,
+                %s,
+                %s,
+                %s,
+                %s::jsonb,
+                %s,
+                %s::jsonb,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s::jsonb,
+                %s::timestamptz,
+                %s::jsonb
             )
             ON CONFLICT (campaign_id) DO UPDATE SET
                 status = EXCLUDED.status,
@@ -459,6 +600,30 @@ def runtime_state_upsert(
                 threads = EXCLUDED.threads,
                 next_speakers = EXCLUDED.next_speakers,
                 scene_closing_turns = EXCLUDED.scene_closing_turns,
+                active_turn_id = EXCLUDED.active_turn_id,
+                active_turn_number = EXCLUDED.active_turn_number,
+                active_turn_actor = EXCLUDED.active_turn_actor,
+                active_turn_role = EXCLUDED.active_turn_role,
+                active_turn_mode = EXCLUDED.active_turn_mode,
+                active_turn_scene_id = EXCLUDED.active_turn_scene_id,
+                active_turn_character_id = EXCLUDED.active_turn_character_id,
+                active_turn_kind = EXCLUDED.active_turn_kind,
+                active_turn_turn_type_required = EXCLUDED.active_turn_turn_type_required,
+                active_turn_allow_player_scene_close = EXCLUDED.active_turn_allow_player_scene_close,
+                active_turn_beat_checked_at = EXCLUDED.active_turn_beat_checked_at,
+                active_turn_audit_ran_at = EXCLUDED.active_turn_audit_ran_at,
+                closeout_summary = EXCLUDED.closeout_summary,
+                closeout_next_speaker = EXCLUDED.closeout_next_speaker,
+                closeout_scene_status = EXCLUDED.closeout_scene_status,
+                closeout_state_changes = EXCLUDED.closeout_state_changes,
+                closeout_rolls = EXCLUDED.closeout_rolls,
+                closeout_open_questions = EXCLUDED.closeout_open_questions,
+                closeout_position = EXCLUDED.closeout_position,
+                closeout_pressure = EXCLUDED.closeout_pressure,
+                closeout_turn_type = EXCLUDED.closeout_turn_type,
+                closeout_valid = EXCLUDED.closeout_valid,
+                closeout_problems = EXCLUDED.closeout_problems,
+                closeout_updated_at = EXCLUDED.closeout_updated_at,
                 state_extra = EXCLUDED.state_extra
             """,
             (
@@ -476,10 +641,121 @@ def runtime_state_upsert(
                 _jsonb(state.get("threads", {})),
                 _jsonb_list(state.get("next_speakers", [])),
                 state.get("scene_closing_turns"),
+                state.get("active_turn_id"),
+                state.get("active_turn_number"),
+                state.get("active_turn_actor"),
+                state.get("active_turn_role"),
+                state.get("active_turn_mode"),
+                state.get("active_turn_scene_id"),
+                state.get("active_turn_character_id"),
+                state.get("active_turn_kind"),
+                bool(state.get("active_turn_turn_type_required", False)),
+                bool(state.get("active_turn_allow_player_scene_close", False)),
+                state.get("active_turn_beat_checked_at"),
+                state.get("active_turn_audit_ran_at"),
+                state.get("closeout_summary"),
+                state.get("closeout_next_speaker"),
+                state.get("closeout_scene_status"),
+                _jsonb_list(state.get("closeout_state_changes", [])),
+                state.get("closeout_rolls"),
+                _jsonb_list(state.get("closeout_open_questions", [])),
+                state.get("closeout_position"),
+                state.get("closeout_pressure"),
+                state.get("closeout_turn_type"),
+                state.get("closeout_valid"),
+                _jsonb_list(state.get("closeout_problems", [])),
+                state.get("closeout_updated_at"),
                 _jsonb(extra),
             ),
         )
     conn.commit()
+
+
+def runtime_active_turn_get(
+    conn: "psycopg.Connection[Any]", campaign_id: str
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT active_turn_id, active_turn_number, active_turn_actor,
+                   active_turn_role, active_turn_mode, active_turn_scene_id,
+                   active_turn_character_id, active_turn_kind,
+                   active_turn_turn_type_required,
+                   active_turn_allow_player_scene_close,
+                   active_turn_beat_checked_at,
+                   active_turn_audit_ran_at,
+                   closeout_summary, closeout_next_speaker,
+                   closeout_scene_status, closeout_state_changes,
+                   closeout_rolls, closeout_open_questions,
+                   closeout_position, closeout_pressure,
+                   closeout_turn_type, closeout_valid,
+                   closeout_problems, closeout_updated_at
+            FROM campaign_runtime_states
+            WHERE campaign_id = %s
+            """,
+            (campaign_id,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    (
+        active_turn_id,
+        active_turn_number,
+        active_turn_actor,
+        active_turn_role,
+        active_turn_mode,
+        active_turn_scene_id,
+        active_turn_character_id,
+        active_turn_kind,
+        active_turn_turn_type_required,
+        active_turn_allow_player_scene_close,
+        active_turn_beat_checked_at,
+        active_turn_audit_ran_at,
+        closeout_summary,
+        closeout_next_speaker,
+        closeout_scene_status,
+        closeout_state_changes,
+        closeout_rolls,
+        closeout_open_questions,
+        closeout_position,
+        closeout_pressure,
+        closeout_turn_type,
+        closeout_valid,
+        closeout_problems,
+        closeout_updated_at,
+    ) = row
+    if not active_turn_id:
+        return None
+    return {
+        "turn_id": active_turn_id,
+        "turn_number": (
+            int(active_turn_number) if active_turn_number is not None else None
+        ),
+        "actor": active_turn_actor,
+        "role": active_turn_role,
+        "mode": active_turn_mode,
+        "scene_id": active_turn_scene_id,
+        "character_id": active_turn_character_id,
+        "kind": active_turn_kind,
+        "turn_type_required": bool(active_turn_turn_type_required),
+        "allow_player_scene_close": bool(active_turn_allow_player_scene_close),
+        "beat_checked_at": _iso(active_turn_beat_checked_at),
+        "audit_ran_at": _iso(active_turn_audit_ran_at),
+        "closeout": {
+            "summary": closeout_summary,
+            "next": closeout_next_speaker,
+            "scene_status": closeout_scene_status,
+            "state": list(closeout_state_changes or []),
+            "rolls": closeout_rolls,
+            "open_questions": list(closeout_open_questions or []),
+            "position": closeout_position,
+            "pressure": closeout_pressure,
+            "turn_type": closeout_turn_type,
+            "valid": bool(closeout_valid) if closeout_valid is not None else None,
+            "problems": list(closeout_problems or []),
+            "updated_at": _iso(closeout_updated_at),
+        },
+    }
 
 
 def runtime_next_speaker_peek(
@@ -526,6 +802,36 @@ def runtime_next_speaker_consume(
             "UPDATE campaign_runtime_states SET next_speakers = %s::jsonb, "
             "updated_at = now() WHERE campaign_id = %s",
             (json.dumps(queue[1:]), campaign_id),
+        )
+    conn.commit()
+    return True
+
+
+def runtime_next_speaker_prepend(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    entry: dict[str, Any],
+) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT next_speakers FROM campaign_runtime_states "
+            "WHERE campaign_id = %s FOR UPDATE",
+            (campaign_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return False
+        queue = list(row[0] or [])
+        if queue:
+            head = queue[0]
+            normalized = head if isinstance(head, dict) else {"agent": head}
+            if normalized == entry:
+                return True
+        cur.execute(
+            "UPDATE campaign_runtime_states SET next_speakers = %s::jsonb, "
+            "updated_at = now() WHERE campaign_id = %s",
+            (json.dumps([entry, *queue]), campaign_id),
         )
     conn.commit()
     return True
@@ -1484,6 +1790,7 @@ _TURN_COLUMNS = (
     "character_id, source_path, prose, event_summaries, events, markdown, "
     "created_at, arc_id, scene_type, turn_number_in_scene, visibility, "
     "turn_summary, next_speaker, scene_status, state_changes, rolls, "
+    "turn_type, "
     "open_questions, position, pressure, turn_end"
 )
 
@@ -1513,6 +1820,7 @@ def _row_to_turn(row: tuple[Any, ...]) -> dict[str, Any]:
         scene_status,
         state_changes,
         rolls,
+        turn_type,
         open_questions,
         position,
         pressure,
@@ -1545,6 +1853,7 @@ def _row_to_turn(row: tuple[Any, ...]) -> dict[str, Any]:
         "scene_status": scene_status or "active",
         "state_changes": list(state_changes or []),
         "rolls": rolls or "",
+        "turn_type": turn_type or None,
         "open_questions": list(open_questions or []),
         "position": position or "",
         "pressure": pressure or "",
@@ -1578,6 +1887,7 @@ def turn_insert(
     scene_status: str = "active",
     state_changes: list[str] | None = None,
     rolls: str = "",
+    turn_type: str | None = None,
     open_questions: list[str] | None = None,
     position: str = "",
     pressure: str = "",
@@ -1591,11 +1901,11 @@ def turn_insert(
                 character_id, source_path, prose, event_summaries, events,
                 markdown, created_at, arc_id, scene_type, turn_number_in_scene,
                 visibility, turn_summary, next_speaker, scene_status,
-                state_changes, rolls, open_questions, position, pressure, turn_end
+                state_changes, rolls, turn_type, open_questions, position, pressure, turn_end
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s::jsonb, %s::jsonb, %s, %s::timestamptz, %s, %s, %s, %s,
-                %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s, %s, %s::jsonb
+                %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb, %s, %s, %s::jsonb
             )
             RETURNING {_TURN_COLUMNS}
             """,
@@ -1623,6 +1933,7 @@ def turn_insert(
                 scene_status,
                 json.dumps(state_changes or []),
                 rolls,
+                turn_type,
                 json.dumps(open_questions or []),
                 position,
                 pressure,
@@ -1687,10 +1998,10 @@ def turn_list(
         where.append(
             "(prose ILIKE %s OR markdown ILIKE %s OR event_summaries::text ILIKE %s "
             "OR turn_summary ILIKE %s OR state_changes::text ILIKE %s "
-            "OR open_questions::text ILIKE %s)"
+            "OR turn_type ILIKE %s OR open_questions::text ILIKE %s)"
         )
         pattern = f"%{text}%"
-        params.extend([pattern, pattern, pattern, pattern, pattern, pattern])
+        params.extend([pattern, pattern, pattern, pattern, pattern, pattern, pattern])
     params.append(limit)
     order = "DESC" if latest else "ASC"
     with conn.cursor() as cur:
@@ -2835,6 +3146,552 @@ def clock_set_status(
     return _row_to_clock(row)
 
 
+# --- scene clocks and beats ---
+
+
+_SCENE_CLOCK_COLUMNS = (
+    "campaign_id, scene_id, clock_id, label, goal, value, max_value, "
+    "direction, visibility, status, created_by, created_turn_id, "
+    "resolved_turn_id, outcome, created_at, updated_at, resolved_at"
+)
+
+
+def _row_to_scene_clock(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        campaign_id,
+        scene_id,
+        clock_id,
+        label,
+        goal,
+        value,
+        max_value,
+        direction,
+        visibility,
+        status,
+        created_by,
+        created_turn_id,
+        resolved_turn_id,
+        outcome,
+        created_at,
+        updated_at,
+        resolved_at,
+    ) = row
+    return {
+        "campaign_id": campaign_id,
+        "scene_id": scene_id,
+        "clock_id": clock_id,
+        "label": label,
+        "goal": goal,
+        "value": int(value),
+        "max": int(max_value),
+        "direction": direction,
+        "visibility": visibility,
+        "status": status,
+        "created_by": created_by,
+        "created_turn_id": created_turn_id,
+        "resolved_turn_id": resolved_turn_id,
+        "outcome": outcome,
+        "created_at": _iso(created_at),
+        "updated_at": _iso(updated_at),
+        "resolved_at": _iso(resolved_at),
+    }
+
+
+def scene_clock_get(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    clock_id: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT {_SCENE_CLOCK_COLUMNS} FROM scene_clocks "
+            "WHERE campaign_id = %s AND scene_id = %s AND clock_id = %s",
+            (campaign_id, scene_id, clock_id),
+        )
+        row = cur.fetchone()
+    return _row_to_scene_clock(row) if row else None
+
+
+def scene_clock_list(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    visibility: str | None = None,
+    include_inactive: bool = False,
+) -> list[dict[str, Any]]:
+    where = ["campaign_id = %s", "scene_id = %s"]
+    params: list[Any] = [campaign_id, scene_id]
+    if visibility:
+        where.append("visibility = %s")
+        params.append(visibility)
+    if not include_inactive:
+        where.append("status = 'active'")
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_SCENE_CLOCK_COLUMNS}
+            FROM scene_clocks
+            WHERE {' AND '.join(where)}
+            ORDER BY clock_id
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    return [_row_to_scene_clock(row) for row in rows]
+
+
+def scene_clock_upsert(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    clock_id: str,
+    label: str,
+    goal: str,
+    value: int,
+    max_value: int,
+    direction: str,
+    visibility: str,
+    actor: str,
+    turn_id: str | None,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO scene_clocks (
+                campaign_id, scene_id, clock_id, label, goal, value, max_value,
+                direction, visibility, status, created_by, created_turn_id
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
+            ON CONFLICT (campaign_id, scene_id, clock_id) DO UPDATE SET
+                label = EXCLUDED.label,
+                goal = EXCLUDED.goal,
+                value = EXCLUDED.value,
+                max_value = EXCLUDED.max_value,
+                direction = EXCLUDED.direction,
+                visibility = EXCLUDED.visibility,
+                status = 'active',
+                resolved_turn_id = NULL,
+                outcome = NULL,
+                resolved_at = NULL,
+                updated_at = now()
+            RETURNING {_SCENE_CLOCK_COLUMNS}
+            """,
+            (
+                campaign_id,
+                scene_id,
+                clock_id,
+                label,
+                goal,
+                value,
+                max_value,
+                direction,
+                visibility,
+                actor,
+                turn_id,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_scene_clock(row)
+
+
+def scene_clock_apply_delta(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    clock_id: str,
+    delta: int,
+    actor: str,
+    turn_id: str | None,
+    outcome: str | None = None,
+) -> tuple[dict[str, Any], int, int, bool]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT value, max_value, direction
+            FROM scene_clocks
+            WHERE campaign_id = %s AND scene_id = %s AND clock_id = %s
+            FOR UPDATE
+            """,
+            (campaign_id, scene_id, clock_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(clock_id)
+        before = int(row[0])
+        max_value = int(row[1])
+        direction = str(row[2])
+        after = max(0, min(max_value, before + delta))
+        resolved = (
+            after >= max_value if direction == "progress" else after <= 0
+        )
+        cur.execute(
+            f"""
+            UPDATE scene_clocks
+            SET value = %s,
+                status = %s,
+                resolved_turn_id = %s,
+                outcome = %s,
+                resolved_at = CASE WHEN %s THEN now() ELSE NULL END,
+                updated_at = now()
+            WHERE campaign_id = %s AND scene_id = %s AND clock_id = %s
+            RETURNING {_SCENE_CLOCK_COLUMNS}
+            """,
+            (
+                after,
+                "resolved" if resolved else "active",
+                turn_id if resolved else None,
+                outcome if resolved else None,
+                resolved,
+                campaign_id,
+                scene_id,
+                clock_id,
+            ),
+        )
+        updated = cur.fetchone()
+    conn.commit()
+    return _row_to_scene_clock(updated), before, after, resolved
+
+
+def scene_clock_drop_scene(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    actor: str,
+    turn_id: str | None,
+    outcome: str,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE scene_clocks
+            SET status = 'dropped',
+                resolved_turn_id = COALESCE(resolved_turn_id, %s),
+                outcome = COALESCE(NULLIF(%s, ''), outcome),
+                resolved_at = COALESCE(resolved_at, now()),
+                updated_at = now()
+            WHERE campaign_id = %s AND scene_id = %s AND status = 'active'
+            """,
+            (turn_id, outcome, campaign_id, scene_id),
+        )
+        count = cur.rowcount
+    conn.commit()
+    return int(count)
+
+
+_SCENE_BEAT_COLUMNS = (
+    "campaign_id, scene_id, beat_id, clock_id, label, question, status, "
+    "non_pass_turns, created_by, created_turn_id, closed_by, closed_turn_id, "
+    "outcome, converted_to_clock_id, created_at, updated_at, closed_at"
+)
+
+
+def _row_to_scene_beat(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        campaign_id,
+        scene_id,
+        beat_id,
+        clock_id,
+        label,
+        question,
+        status,
+        non_pass_turns,
+        created_by,
+        created_turn_id,
+        closed_by,
+        closed_turn_id,
+        outcome,
+        converted_to_clock_id,
+        created_at,
+        updated_at,
+        closed_at,
+    ) = row
+    return {
+        "campaign_id": campaign_id,
+        "scene_id": scene_id,
+        "beat_id": beat_id,
+        "clock_id": clock_id,
+        "label": label,
+        "question": question,
+        "status": status,
+        "non_pass_turns": int(non_pass_turns),
+        "created_by": created_by,
+        "created_turn_id": created_turn_id,
+        "closed_by": closed_by,
+        "closed_turn_id": closed_turn_id,
+        "outcome": outcome,
+        "converted_to_clock_id": converted_to_clock_id,
+        "created_at": _iso(created_at),
+        "updated_at": _iso(updated_at),
+        "closed_at": _iso(closed_at),
+    }
+
+
+def scene_beat_get(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    beat_id: str,
+) -> dict[str, Any] | None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT {_SCENE_BEAT_COLUMNS} FROM scene_beats "
+            "WHERE campaign_id = %s AND scene_id = %s AND beat_id = %s",
+            (campaign_id, scene_id, beat_id),
+        )
+        row = cur.fetchone()
+    return _row_to_scene_beat(row) if row else None
+
+
+def scene_beat_list(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    include_inactive: bool = False,
+) -> list[dict[str, Any]]:
+    where = ["campaign_id = %s", "scene_id = %s"]
+    params: list[Any] = [campaign_id, scene_id]
+    if not include_inactive:
+        where.append("status = 'active'")
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_SCENE_BEAT_COLUMNS}
+            FROM scene_beats
+            WHERE {' AND '.join(where)}
+            ORDER BY created_at, beat_id
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+    return [_row_to_scene_beat(row) for row in rows]
+
+
+def scene_beat_start(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    beat_id: str,
+    clock_id: str,
+    label: str,
+    question: str,
+    actor: str,
+    turn_id: str | None,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM scene_beats
+            WHERE campaign_id = %s AND scene_id = %s AND status = 'active'
+            """,
+            (campaign_id, scene_id),
+        )
+        active_count = int(cur.fetchone()[0])
+        if active_count >= 3:
+            raise ValueError("too_many_active_beats")
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM scene_beats
+            WHERE campaign_id = %s AND scene_id = %s AND status = 'active'
+              AND non_pass_turns >= 10
+            """,
+            (campaign_id, scene_id),
+        )
+        expired_count = int(cur.fetchone()[0])
+        if expired_count > 0:
+            raise ValueError("expired_active_beats")
+        cur.execute(
+            """
+            SELECT 1 FROM scene_clocks
+            WHERE campaign_id = %s AND scene_id = %s AND clock_id = %s
+              AND status = 'active'
+            """,
+            (campaign_id, scene_id, clock_id),
+        )
+        if cur.fetchone() is None:
+            raise LookupError(clock_id)
+        cur.execute(
+            """
+            SELECT 1 FROM scene_beats
+            WHERE campaign_id = %s AND scene_id = %s AND beat_id = %s
+            """,
+            (campaign_id, scene_id, beat_id),
+        )
+        if cur.fetchone() is not None:
+            raise ValueError("beat_exists")
+        cur.execute(
+            f"""
+            INSERT INTO scene_beats (
+                campaign_id, scene_id, beat_id, clock_id, label, question,
+                status, non_pass_turns, created_by, created_turn_id
+            ) VALUES (%s, %s, %s, %s, %s, %s, 'active', 0, %s, %s)
+            RETURNING {_SCENE_BEAT_COLUMNS}
+            """,
+            (
+                campaign_id,
+                scene_id,
+                beat_id,
+                clock_id,
+                label,
+                question,
+                actor,
+                turn_id,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_scene_beat(row)
+
+
+def scene_beat_close(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    beat_id: str,
+    actor: str,
+    turn_id: str | None,
+    outcome: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE scene_beats
+            SET status = 'closed',
+                closed_by = %s,
+                closed_turn_id = %s,
+                outcome = %s,
+                converted_to_clock_id = NULL,
+                closed_at = now(),
+                updated_at = now()
+            WHERE campaign_id = %s AND scene_id = %s AND beat_id = %s
+              AND status = 'active'
+            RETURNING {_SCENE_BEAT_COLUMNS}
+            """.replace("{_SCENE_BEAT_COLUMNS}", _SCENE_BEAT_COLUMNS),
+            (actor, turn_id, outcome, campaign_id, scene_id, beat_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise LookupError(beat_id)
+    conn.commit()
+    return _row_to_scene_beat(row)
+
+
+def scene_beat_convert(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    beat_id: str,
+    to_clock_id: str,
+    actor: str,
+    turn_id: str | None,
+    reason: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT 1 FROM scene_clocks
+            WHERE campaign_id = %s AND scene_id = %s AND clock_id = %s
+              AND status = 'active'
+            """,
+            (campaign_id, scene_id, to_clock_id),
+        )
+        if cur.fetchone() is None:
+            raise LookupError(to_clock_id)
+        cur.execute(
+            """
+            UPDATE scene_beats
+            SET status = 'converted',
+                closed_by = %s,
+                closed_turn_id = %s,
+                outcome = %s,
+                converted_to_clock_id = %s,
+                closed_at = now(),
+                updated_at = now()
+            WHERE campaign_id = %s AND scene_id = %s AND beat_id = %s
+              AND status = 'active'
+            RETURNING {_SCENE_BEAT_COLUMNS}
+            """.replace("{_SCENE_BEAT_COLUMNS}", _SCENE_BEAT_COLUMNS),
+            (
+                actor,
+                turn_id,
+                reason,
+                to_clock_id,
+                campaign_id,
+                scene_id,
+                beat_id,
+            ),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise LookupError(beat_id)
+    conn.commit()
+    return _row_to_scene_beat(row)
+
+
+def scene_beat_increment_active(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    skip_created_turn_id: str | None,
+) -> list[dict[str, Any]]:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            UPDATE scene_beats
+            SET non_pass_turns = non_pass_turns + 1,
+                updated_at = now()
+            WHERE campaign_id = %s
+              AND scene_id = %s
+              AND status = 'active'
+              AND (created_turn_id IS DISTINCT FROM %s)
+            RETURNING {_SCENE_BEAT_COLUMNS}
+            """,
+            (campaign_id, scene_id, skip_created_turn_id),
+        )
+        rows = cur.fetchall()
+    conn.commit()
+    return [_row_to_scene_beat(row) for row in rows]
+
+
+def scene_beat_drop_scene(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    actor: str,
+    turn_id: str | None,
+    outcome: str,
+) -> int:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE scene_beats
+            SET status = 'dropped',
+                closed_by = COALESCE(closed_by, %s),
+                closed_turn_id = COALESCE(closed_turn_id, %s),
+                outcome = COALESCE(NULLIF(%s, ''), outcome),
+                closed_at = COALESCE(closed_at, now()),
+                updated_at = now()
+            WHERE campaign_id = %s AND scene_id = %s AND status = 'active'
+            """,
+            (actor, turn_id, outcome, campaign_id, scene_id),
+        )
+        count = cur.rowcount
+    conn.commit()
+    return int(count)
+
+
 # --- campaign-wide deletion ---
 
 
@@ -2852,6 +3709,8 @@ def delete_campaign_data(
     with conn.cursor() as cur:
         for table in (
             "events",
+            "scene_beats",
+            "scene_clocks",
             "scene_trackers",
             "action_orders",
             "search_chunks",

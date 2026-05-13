@@ -29,7 +29,7 @@ to resume.
 8. Queue one cleanup turn for each player with `glass turn housekeeping-round`.
 9. Write public transition prose to the `TURN.md` path from TURN_START: closure of
    the old scene first, then the visible board for the next scene.
-10. End with `glass turn end --scene-status ended --next default`.
+10. Run `glass turn audit`, then end with `glass turn end --scene-status ended --next default`.
 
 Required command sequence:
 
@@ -47,6 +47,7 @@ glass turn housekeeping-round \
   --previous-scene <closed-scene> \
   --next-scene <next-scene> \
   --next default
+glass turn audit
 glass turn end \
   --summary "<old scene closed; next scene staged>" \
   --state "<scene/table artifacts/notes/lore updates>" \

@@ -339,6 +339,22 @@ def scene_end_cmd(
             campaign_id=campaign_id,
             scene_id=scene_id,
         )
+        _db.scene_beat_drop_scene(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+            actor=role.actor,
+            turn_id=str(state.get("active_turn_id") or "").strip() or None,
+            outcome="scene ended",
+        )
+        _db.scene_clock_drop_scene(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+            actor=role.actor,
+            turn_id=str(state.get("active_turn_id") or "").strip() or None,
+            outcome="scene ended",
+        )
     queue_event(
         state, role.actor,
         f"scene end: {ended}"
@@ -431,6 +447,99 @@ def scene_closing_down(
     commit(
         paths, state, ctx, "scene.closing-down",
         command_params(rounds=round_budget, turns=turn_budget), result,
+    )
+
+
+@scene.group("clock")
+def scene_clock() -> None:
+    """Scene-local required clocks for active play."""
+
+
+@scene_clock.command("declare")
+@click.argument("clock_id")
+@click.option("--label", required=True)
+@click.option("--goal", required=True)
+@click.option("--value", type=int, default=0, show_default=True)
+@click.option("--max", "max_value", type=int, required=True)
+@click.option(
+    "--direction",
+    type=click.Choice(["progress", "countdown"]),
+    required=True,
+)
+@click.option(
+    "--visibility",
+    type=click.Choice(["public", "dm"]),
+    default="public",
+    show_default=True,
+)
+@click.pass_context
+def scene_clock_declare(
+    ctx: click.Context,
+    clock_id: str,
+    label: str,
+    goal: str,
+    value: int,
+    max_value: int,
+    direction: str,
+    visibility: str,
+) -> None:
+    """DM-only: declare or replace a scene-specific active-play clock."""
+    role = require_dm()
+    if max_value <= 0:
+        raise GlassError(
+            agent_instruction(
+                "`--max` must be greater than zero",
+                "Choose the size of the scene clock, for example `--max 4`, `--max 6`, or `--max 10`.",
+            )
+        )
+    if value < 0 or value > max_value:
+        raise GlassError(
+            agent_instruction(
+                "`--value` must be between 0 and `--max`",
+                "Set the current scene clock value within the clock bounds, or omit `--value` to start at 0.",
+            )
+        )
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    scene_id = _active_tracker_scene_id(state)
+    clock_key = slugify(clock_id)
+    turn_id = str(state.get("active_turn_id") or "").strip() or None
+    with pg_connection() as conn:
+        record = _db.scene_clock_upsert(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+            clock_id=clock_key,
+            label=label.strip(),
+            goal=goal.strip(),
+            value=value,
+            max_value=max_value,
+            direction=direction,
+            visibility=visibility,
+            actor=role.actor,
+            turn_id=turn_id,
+        )
+    queue_event(
+        state,
+        role.actor,
+        f"scene clock declare {record['label']}: {record['value']}/{record['max']} ({direction})",
+    )
+    commit(
+        paths,
+        state,
+        ctx,
+        "scene.clock.declare",
+        command_params(
+            clock_id=clock_key,
+            label=label,
+            goal=goal,
+            value=value,
+            max=max_value,
+            direction=direction,
+            visibility=visibility,
+        ),
+        {"clock": record},
     )
 
 

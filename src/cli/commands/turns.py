@@ -188,6 +188,7 @@ def turns_feed(ctx: click.Context, after_turn: int, limit: int) -> None:
                 "scene_status": turn.get("scene_status", "active"),
                 "state_changes": turn.get("state_changes", []),
                 "rolls": turn.get("rolls", ""),
+                "turn_type": turn.get("turn_type"),
                 "open_questions": turn.get("open_questions", []),
                 "position": turn.get("position", ""),
                 "pressure": turn.get("pressure", ""),
@@ -232,6 +233,7 @@ def _turn_search_text(record: dict[str, Any]) -> str:
         str(record.get("markdown") or ""),
         str(record.get("turn_summary") or ""),
         str(record.get("rolls") or ""),
+        str(record.get("turn_type") or ""),
         str(record.get("position") or ""),
         str(record.get("pressure") or ""),
     ]

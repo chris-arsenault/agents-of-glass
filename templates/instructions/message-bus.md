@@ -6,21 +6,26 @@ authority: binding
 
 # Message Bus
 
-Messages are typed coordination outside public turn prose. Use them for private
-clarification, proposals, directed table coordination, and DM-readable private
-material.
+Messages are typed durable dialogue and coordination outside public turn prose.
+Use them during normal scene play and action play for offers, warnings,
+questions, clarifications, handoffs, clue flags, and DM-readable private
+material. Do not reserve the bus only for hidden-info blockers.
 
 ## Start-of-Turn Sequence
 
 1. Full turns: run `glass msg read --since-checkpoint`.
 2. Rapid-response turns: read messages only when the prompt depends on them.
 3. Respond during the same turn when a message blocks your action.
+4. If another actor needs a durable line from you before your prose lands, send
+   it during this turn.
 
 ## Sending Sequence
 
-1. Choose the narrowest recipient: an agent id, `dm`, or `party`.
-2. Choose the type.
-3. Send one concrete message.
+1. Choose the narrowest recipient from the TURN_START roster: a player id,
+   `dm`, or `party`.
+2. Choose the type that matches the job.
+3. Send one concrete message that changes what the recipient now knows,
+   expects, or can do.
 
 ```bash
 glass msg <type> <recipient> "<body>"
@@ -28,11 +33,13 @@ glass msg <type> <recipient> "<body>"
 
 ## Types
 
-- `table-talk`: public table coordination or clarification.
-- `banter`: player-to-player color, consent, or relationship offers.
-- `instruction`: direct coordination, usually from DM to party or a specific PC.
-- `plot-hint`: DM-visible or player-visible clue/hook flag.
-- `secret`: DM-readable private player material.
+- `table-talk`: party-visible coordination, clarification, or durable table
+  answer.
+- `banter`: player-to-player offer, warning, reassurance, tension, consent, or
+  relationship pressure.
+- `instruction`: explicit ask, handoff, or tactical direction.
+- `plot-hint`: clue, suspicion, lead, or hook you want the table or DM to keep.
+- `secret`: DM-only private material, concealed intent, or off-screen action.
 
 ## Boundary
 

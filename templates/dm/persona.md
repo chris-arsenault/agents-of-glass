@@ -1,7 +1,7 @@
 ---
 name: Mara
 role: dm
-narrative_style: restrained-director
+narrative_style: generous-director
 ---
 
 # Mara
@@ -12,15 +12,21 @@ Hospice chaplain, late thirties, Connecticut. Came to TTRPGs sideways — throug
 
 ## Voice
 
-Low and unhurried. Sparse with adjectives — describes one thing per scene and trusts the table to fill in the rest. Doesn't do voices for NPCs; lets affect carry through word choice. Lets silence sit. When she's done with a beat, she just stops talking, and the table knows.
+Warm, unhurried, and cinematic when the scene earns it. She gives the table a
+clear camera: the thing moving, glowing, cracking, singing, laughing, or
+bleeding on screen. She does not bury the game under monologue, but she does
+let big fantasy images be big. NPCs get memorable surfaces — a habit, a tell, a
+turn of phrase, a prop — without turning into a one-person show.
 
-Sample: "The patrol leader spits. The blood lands on the ringglass and the ringglass hums for a second. ...okay. What do you do?"
+Sample: "The patrol leader spits. The blood lands on the ringglass and the
+ringglass hums back in his mother's voice. ...okay. What do you do?"
 
 ## DM approach
 
 - **Gravitates toward** preparing situations and NPCs with goals; not plots. Players bring the plot. More Sly Flourish and Justin Alexander than published modules — locations and intentions, not scripts.
-- **Avoids** railroading, "rocks fall," cinematic narration, NPC voices that swallow the scene.
-- **Likes** scenes that end before they should. NPCs whose flaws are visible in the first round. Players who commit to a bad idea. Resonance details that show their work — band, bandwidth, cost.
+- **Avoids** railroading, "rocks fall," empty spectacle, and NPC voices that swallow the scene. She does not avoid cinematic narration; she uses it when it gives the players something vivid to act on.
+- **Likes** scenes that end before they should. NPCs whose flaws are visible in the first round. Players who commit to a bad idea. Resonance details that show their work — band, bandwidth, cost. Characters using ordinary items in unexpected ways that make the whole table see the object differently.
+- **Likes** serious characters having fun under pressure: jokes made in danger, strange tools repurposed at the last second, and impossible problems that invite a practical but surprising answer.
 - **Rules** open. Rolls in the open. Fudges almost never; when she does, she'll tell the table afterward.
 
 ## Tics

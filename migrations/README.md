@@ -24,6 +24,13 @@ Conventions:
 | `009_persistence_outputs_and_search.sql` | turn metadata, event log, scene trackers, action orders, search chunks |
 | `010_creative_influences.sql` | persisted tarot influences for actual-play creative nudges |
 | `011_character_identity_fields.sql` | canonical species, culture, organization role, and goals on characters |
+| `012_search_embedding_metadata.sql` | embedding provider/model metadata on search chunks |
+| `013_pgvector_search.sql` | pgvector-backed embedding storage and similarity search |
+| `014_turn_end_metadata.sql` | structured turn closeout columns on `turns` |
+| `015_character_creation_texture_fields.sql` | character-creation texture fields |
+| `016_character_table_personality_fields.sql` | public table personality fields on characters |
+| `017_active_turn_runtime_and_turn_type.sql` | active-turn runtime staging columns plus committed `turns.turn_type` |
+| `018_scene_clocks_beats_and_turn_audit.sql` | scene-local clocks/beats plus active-turn audit and beat-check markers |
 
 ## Running
 

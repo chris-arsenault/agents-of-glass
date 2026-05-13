@@ -15,23 +15,29 @@ board, create visible pressure, roll action order, and exit.
 2. Read `table/`, the active scene summary, recent turn summaries in TURN_START,
    and any DM notes, lore, NPCs, opposition, or hazard files needed for the
    immediate board.
-3. Establish the visible board: positions, stakes, exit condition, opposition,
+3. Declare at least one scene-specific clock and start the first beat if they
+   are not already live for this scene. Use `glass scene clock declare ...` and
+   `glass beat start ...` before continuing active play.
+4. Run `glass beat check`. If the scene still has no active clock or beat, fix
+   that before writing the board.
+5. Establish the visible board: positions, stakes, exit condition, opposition,
    hazards/routes/leverage, public tracker shape, and any visible HP/effects
    players need for decisions.
-4. Persist the board before prose. Write visible position and stakes into
+6. Persist the board before prose. Write visible position and stakes into
    `table/scene.md`; create/update named table artifacts for visible reusable
    lore; create public trackers with `glass scene tracker`; update character,
    clock, lore, note, entity, hook, or quest-beat state that already changed.
    Commit authored markdown with `glass sync apply`.
-5. Roll and persist action order with `glass turn initiative`.
-6. Write concise public prose to the `TURN.md` path from TURN_START: the threat,
+7. Roll and persist action order with `glass turn initiative`.
+8. Write concise public prose to the `TURN.md` path from TURN_START: the threat,
    positions, visible objective, and what the action order means on screen.
-7. End with `glass turn end`. Include position and pressure changes when they
-   changed, or none/unchanged when they did not.
+9. Run `glass turn audit`, then end with `glass turn end`. Include position and
+   pressure changes when they changed, or none/unchanged when they did not.
 
 Required closeout shape:
 
 ```bash
+glass turn audit
 glass turn end \
   --summary "<action board established and live first pressure>" \
   --state "<table/tracker/clock/character/lore updates or no state change>" \

@@ -8,6 +8,8 @@ from typing import Any
 import os
 import tomllib
 
+from .state import PLAYER_IDS
+
 
 @dataclass(frozen=True)
 class ClaudeConfig:
@@ -49,6 +51,7 @@ class AogConfig:
     campaigns_dir: Path
     lore_path: Path
     agent_provider: str
+    codex_players: tuple[str, ...]
     skip_player_persona: bool
     claude: ClaudeConfig
     caps: CapsConfig
@@ -64,6 +67,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "agent": {
         "provider": "claude",
+        "codex_players": list(PLAYER_IDS[:2]),
         "skip_player_persona": False,
     },
     "claude": {
@@ -139,6 +143,7 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
         ),
         lore_path=_resolve_path(base_dir, lore.get("path", "../the-glass-frontier-lore")),
         agent_provider=_agent_provider(agent.get("provider", "claude")),
+        codex_players=_codex_players(agent.get("codex_players", list(PLAYER_IDS[:2]))),
         skip_player_persona=_bool(agent.get("skip_player_persona", False)),
         claude=ClaudeConfig(
             model=_optional_string(claude.get("model")),
@@ -205,8 +210,49 @@ def _bool(value: Any) -> bool:
 
 def _agent_provider(value: Any) -> str:
     provider = str(value or "claude").strip().lower()
-    if provider in {"claude", "codex"}:
-        return provider
+    if provider == "claude":
+        return "claude"
+    if provider in {"codex", "mixed-codex"}:
+        return "mixed-codex"
     raise ValueError(
-        f"Unsupported [agent].provider {provider!r}; use 'claude' or 'codex'."
+        f"Unsupported [agent].provider {provider!r}; use 'claude' or 'mixed-codex'."
     )
+
+
+def provider_for_actor(config: AogConfig, *, actor_id: str, role: str) -> str:
+    if config.agent_provider != "mixed-codex":
+        return "claude"
+    if role == "dm":
+        return "codex"
+    if actor_id in config.codex_players:
+        return "codex"
+    return "claude"
+
+
+def _codex_players(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return tuple(PLAYER_IDS[:2])
+    if isinstance(value, str):
+        raw_items = [value]
+    else:
+        try:
+            raw_items = list(value)
+        except TypeError as exc:
+            raise ValueError(
+                "[agent].codex_players must be an array of player ids."
+            ) from exc
+    players: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_items:
+        player_id = str(raw).strip().lower()
+        if not player_id:
+            continue
+        if player_id not in PLAYER_IDS:
+            raise ValueError(
+                f"Unknown [agent].codex_players entry {player_id!r}; expected one of {', '.join(PLAYER_IDS)}."
+            )
+        if player_id in seen:
+            continue
+        seen.add(player_id)
+        players.append(player_id)
+    return tuple(players)

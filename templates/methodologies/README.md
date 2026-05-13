@@ -17,11 +17,12 @@ methodology for the current role and turn type. Follow that document in order.
    messages, scenes, arcs, and turn closeout.
 4. Commit authored markdown with `glass sync apply`.
 5. Write public prose to `TURN.md`.
-6. End with `glass turn end`.
+6. Run `glass turn audit`, then end with `glass turn end`.
 
 Methodologies are not tool manuals, SRD text, craft essays, or branch routers.
-If a step cannot be completed, say what blocked it in `glass turn end --state`
-and hand off with `--next` only when another actor is required.
+If a step cannot be completed, run `glass turn audit`, say what blocked it in
+`glass turn end --state`, and hand off with `--next` only when another actor is
+required.
 
 ## Selected Turn Methodologies
 

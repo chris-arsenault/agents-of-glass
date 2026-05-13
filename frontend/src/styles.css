@@ -1331,6 +1331,10 @@ body::before {
   word-wrap: break-word;
 }
 
+.message-card.is-fresh {
+  animation: turn-arrive 360ms ease-out;
+}
+
 /* =========================================================================
    FAIL / WARN BANNER (malformed turns)
    ========================================================================= */
