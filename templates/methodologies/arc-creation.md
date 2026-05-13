@@ -11,6 +11,13 @@ Run this when the DM formalizes a multi-scene pressure unit. An arc is not a
 plot. It is a durable pressure surface with threats, clocks, possible outcomes,
 and a strong start.
 
+Arc baseline: every arc has an active antagonist or antagonistic force and a
+concrete physical danger to people. The antagonist can work off screen, but they
+must be doing something now. The arc cannot be mainly a legal, audit, claims, or
+workplace-procedure problem. The arc also cannot sit in one place: after two
+scenes in the same location or location family, the next scene must
+substantially move.
+
 ## Sequence
 
 1. **Create or select the arc.**
@@ -52,13 +59,24 @@ and a strong start.
      from `arcs/<arc-slug>/pulls.md`, then keep the borrowed detail visible in the
      sections it shaped.
    - Stakes question: one question the DM does not know the answer to.
+   - Active antagonist: who or what is pushing against the party, what they want,
+     and their next off-screen move if no one stops them.
+   - Concrete danger: the bodily harm, contamination, collapse, violence,
+     abduction, exposure, starvation, or other physical cost this arc can inflict
+     on named people or groups.
    - Threats: 2-4 active people, factions, places, or conditions, each with an
      impulse and an off-screen next move.
-   - Clocks: 1-3 escalation tracks, each with 3-5 concrete segments.
+   - Clocks: 1-3 escalation tracks, each with 3-5 concrete segments; at least
+     one clock segment must visibly worsen physical danger, coercion, pursuit, or
+     antagonist position.
    - Possible end states: 3-5 plausible conclusions; commit to none.
-   - Strong start: the first scene pressure, not the arc solution.
+   - Strong start: the first scene pressure, not the arc solution. It must put
+     danger, coercion, pursuit, fighting, or direct antagonist action into reach
+     by the end of the first scene.
    - Nodes: 3-5 places, people, records, routes, or institutions the party may
      engage; each names what can be learned and at least two outbound clues.
+     Include enough physically distinct nodes to support a substantial location
+     shift at least every third scene.
    - Curated ingredients: specific NPCs, factions, locations, creatures, named
      things, and public lore already in play.
    - Secrets: 3-7 atomic facts, unattached to fixed scenes.
@@ -91,6 +109,12 @@ and a strong start.
 - Do not put player-facing facts only in DM notes.
 - Do not create or update an arc without a non-adjacent pull utilization note
   naming the concrete detail and where it is used.
+- Do not build an arc whose main play loop is interpreting records, making
+  claims, preserving chain of custody, or winning an institutional argument.
+  Those may expose the threat; they cannot be the threat.
+- Do not plan an arc around repeated scenes in the same place or same kind of
+  room. A different desk, window, counter, lane, bench, or hearing inside the
+  same institutional complex is not a substantial location shift.
 
 ## CLI Encoding Opportunities
 

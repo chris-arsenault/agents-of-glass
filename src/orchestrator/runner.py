@@ -819,6 +819,12 @@ class Orchestrator:
             recipient=recipient,
             body=body,
         )
+        try:
+            synced = self.store.sync_from_glass(state)
+        except Exception:
+            synced = None
+        if synced is not None:
+            state.__dict__.update(synced.__dict__)
         state.mark_ready()
         self.store.save(state)
         payload: dict[str, Any] = {
@@ -871,6 +877,90 @@ class Orchestrator:
                 "active_mode": active_mode,
                 "active_scene": active_scene,
                 "problems": failures,
+                "message": body,
+            },
+        )
+
+    def _redirect_scene_boundary_repair_to_dm(
+        self,
+        state: SessionState,
+        result: TurnResult,
+        previous_active: Any,
+        *,
+        active_arc: str,
+    ) -> None:
+        body = self._scene_boundary_repair_message(
+            turn_id=result.turn_id,
+            speaker=result.agent.id,
+            previous_mode=previous_active.mode,
+            previous_scene=previous_active.scene_id,
+            active_arc=active_arc,
+        )
+        queued_entry = self._peek_next_speaker_entry(state.campaign)
+        if not (isinstance(queued_entry, dict) and queued_entry.get("agent") == "dm"):
+            self._prepend_next_speaker_entry(
+                state.campaign,
+                {"agent": "dm", "scene_boundary_repair": body},
+            )
+        self._send_system_instruction(
+            state.campaign,
+            recipient="dm",
+            body=body,
+        )
+        self.store.append_audit(
+            state.campaign,
+            {
+                "event": "turn.redirected",
+                "reason": "scene_boundary_no_next_scene",
+                "turn_id": result.turn_id,
+                "speaker": result.agent.id,
+                "recipient": "dm",
+                "previous_mode": previous_active.mode,
+                "previous_scene": previous_active.scene_id,
+                "active_arc": active_arc,
+                "message": body,
+            },
+        )
+
+    def _redirect_dm_handoff_repair(
+        self,
+        state: SessionState,
+        result: TurnResult,
+        *,
+        reason: str,
+        active_mode: str,
+        active_scene: str,
+        instruction: str,
+    ) -> None:
+        body = "\n".join(
+            [
+                f"System recovery notice: Mara's turn `{result.turn_id}` did not hand control to a playable mode.",
+                instruction,
+                "",
+                "On your next turn, make the missing handoff explicit, run `glass turn audit`, and close with `glass turn end`.",
+            ]
+        ).strip()
+        queued_entry = self._peek_next_speaker_entry(state.campaign)
+        if not (isinstance(queued_entry, dict) and queued_entry.get("agent") == "dm"):
+            self._prepend_next_speaker_entry(
+                state.campaign,
+                {"agent": "dm", "handoff_repair": body},
+            )
+        self._send_system_instruction(
+            state.campaign,
+            recipient="dm",
+            body=body,
+        )
+        self.store.append_audit(
+            state.campaign,
+            {
+                "event": "turn.redirected",
+                "reason": reason,
+                "turn_id": result.turn_id,
+                "speaker": result.agent.id,
+                "recipient": "dm",
+                "active_mode": active_mode,
+                "active_scene": active_scene,
                 "message": body,
             },
         )
@@ -1055,6 +1145,30 @@ class Orchestrator:
         )
         return "\n".join(lines).strip()
 
+    def _scene_boundary_repair_message(
+        self,
+        *,
+        turn_id: str,
+        speaker: str,
+        previous_mode: str,
+        previous_scene: str,
+        active_arc: str,
+    ) -> str:
+        speaker_name = self._actor_display_name(speaker)
+        return "\n".join(
+            [
+                f"System recovery notice: {speaker_name}'s turn `{turn_id}` closed `{previous_scene}` and left active arc `{active_arc}` with no active scene mode.",
+                "Do not hand this boundary to players yet.",
+                "",
+                "On your next turn, choose one course correction:",
+                "- If the campaign should continue in this arc, start `scene-prep` with `glass mode start scene-prep <scene-id>` and stage the next scene from there.",
+                "- If the next scene is already fully staged, start its actual play mode with `glass mode start <scene-type> <scene-id>`, create a scene clock and beat, run `glass beat check`, then close the turn.",
+                "- If the arc is actually complete, close the active arc instead of leaving it open.",
+                "",
+                f"Previous mode was `{previous_mode}`; previous scene was `{previous_scene}`.",
+            ]
+        ).strip()
+
     def _load_active_turn_runtime(self, campaign: str) -> dict[str, Any] | None:
         return self._load_active_turn_runtime_from_postgres(campaign)
 
@@ -1191,22 +1305,17 @@ class Orchestrator:
             return
         if self._peek_action_order_entry(state):
             return
-        raise TurnFailure(
-            "prelude DM turn did not start a scene mode or queue player turns.",
-            {
-                "reason": "prelude_dm_no_handoff",
-                "turn_id": result.turn_id,
-                "speaker": result.agent.id,
-                "turn_dir": str(result.turn_dir),
-                "active_mode": state.active_mode.mode,
-                "active_scene": state.active_mode.scene_id,
-                "hint": (
-                    "In prelude mode, the DM must execute `glass mode start "
-                    "scene-play <scene>` or `glass mode start action <scene>`, "
-                    "queue players with `glass turn rapid-round`/handoff, or "
-                    "end the prelude mode before finishing the turn."
-                ),
-            },
+        self._redirect_dm_handoff_repair(
+            state,
+            result,
+            reason="prelude_dm_no_handoff",
+            active_mode=state.active_mode.mode,
+            active_scene=state.active_mode.scene_id,
+            instruction=(
+                "Prelude is a coordinator mode. Start `scene-play` or `action`, "
+                "queue a player handoff/rapid round, or end `prelude` if the "
+                "prelude is actually complete."
+            ),
         )
 
     def _validate_scene_prep_dm_handoff(
@@ -1228,22 +1337,17 @@ class Orchestrator:
             return
         active_mode = state.active_mode.mode if state.has_active_mode else "none"
         active_scene = state.active_mode.scene_id if state.has_active_mode else "none"
-        raise TurnFailure(
-            "scene-prep DM turn did not start an actual play mode.",
-            {
-                "reason": "scene_prep_no_handoff",
-                "turn_id": result.turn_id,
-                "speaker": result.agent.id,
-                "turn_dir": str(result.turn_dir),
-                "active_mode": active_mode,
-                "active_scene": active_scene,
-                "hint": (
-                    "In scene-prep mode, the DM should create the next scene, "
-                    "commit scene/table files, end scene-prep, and start an "
-                    "actual play mode such as scene-play or action before "
-                    "finishing the turn."
-                ),
-            },
+        self._redirect_dm_handoff_repair(
+            state,
+            result,
+            reason="scene_prep_no_handoff",
+            active_mode=active_mode,
+            active_scene=active_scene,
+            instruction=(
+                "Scene-prep must hand into actual play. Create or repair the "
+                "scene/table files, end `scene-prep` if it is still active, "
+                "then start `scene-play`, `action`, or another actual play mode."
+            ),
         )
 
     def _validate_scene_boundary_dm_handoff(
@@ -1259,25 +1363,14 @@ class Orchestrator:
             return
         if state.has_active_mode:
             return
-        if not self._campaign_has_open_active_arc(state.campaign):
+        active_arc = self._campaign_open_active_arc(state.campaign)
+        if not active_arc:
             return
-        raise TurnFailure(
-            "DM scene close left an open act with no active scene mode.",
-            {
-                "reason": "scene_boundary_no_next_scene",
-                "turn_id": result.turn_id,
-                "speaker": result.agent.id,
-                "turn_dir": str(result.turn_dir),
-                "previous_mode": previous_active.mode,
-                "previous_scene": previous_active.scene_id,
-                "hint": (
-                    "When a scene ends inside an open act, the same DM turn "
-                    "must close the old scene, stage and start the next scene "
-                    "mode, queue `glass turn housekeeping-round`, and then run "
-                    "`glass turn end`. If the act is complete, close the arc "
-                    "instead so the next run opens intermission."
-                ),
-            },
+        self._redirect_scene_boundary_repair_to_dm(
+            state,
+            result,
+            previous_active,
+            active_arc=active_arc,
         )
 
     def _validate_active_play_scene_contract_handoff(
@@ -1372,14 +1465,16 @@ class Orchestrator:
             else:
                 os.environ["GLASS_CONFIG"] = previous
 
-    def _campaign_has_open_active_arc(self, campaign: str) -> bool:
+    def _campaign_open_active_arc(self, campaign: str) -> str | None:
         try:
             glass_state = self.store._load_glass_state(campaign)
         except Exception:
-            return False
+            return None
         active_arc = str(glass_state.get("active_arc") or "")
         closed = {str(arc_id) for arc_id in glass_state.get("closed_arcs", [])}
-        return bool(active_arc and active_arc != "prelude" and active_arc not in closed)
+        if active_arc and active_arc != "prelude" and active_arc not in closed:
+            return active_arc
+        return None
 
     def _tick_closing_countdown(self, campaign: str) -> None:
         """Decrement state["scene_closing_turns"] by 1 if set, after a turn.
@@ -2436,6 +2531,7 @@ def _problem_requires_dm_recovery(problem: str) -> bool:
             "0 active beats",
             "3-beat cap",
             "No active scene is staged for beat tracking",
+            "No active mode is staged while active arc",
         )
     )
 

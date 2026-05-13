@@ -26,9 +26,12 @@ that the table honors until resolved.
 
 ## Inventory
 
-Inventory is arbitrary and narrative, but it should be actionable. A sword, net,
-forged seal, climbing rig, drugged wine, resonance fork, or signed letter can
-all matter when the fiction supports it.
+Inventory is arbitrary and narrative, but it should be actionable. Starting
+inventory is exactly three items, and one of them must be a weapon or combat
+implement. A sword, net, ringglass baton, shield-cloth, climbing rig, drugged
+wine, resonance fork, or signed letter can all matter when the fiction supports
+it, but the starting kit must include one thing the character can reach for when
+violence, monsters, pursuit, or immediate physical danger enter the scene.
 
 Characters should carry practical assets: favored weapons, instruments,
 apparatus, trade tools, restraints, protective rigs, consumables, documents,
@@ -57,9 +60,10 @@ consequence.
 ## Signature Moves
 
 Each level-1 character starts with one simple signature move: an active,
-repeatable spell, maneuver, search style, social tactic, chase trick, ritual,
-or other technique they can reach for under pressure. They gain one additional
-slot at levels 3, 5, 7, and 9, for five total slots by level 9.
+repeatable spell, maneuver, social compulsion, piloting focus, protective act,
+chase trick, rescue move, ritual, or other technique they can reach for in an
+action setting. They gain one additional slot at levels 3, 5, 7, and 9, for
+five total slots by level 9.
 
 Signature moves are consistency anchors, not guaranteed powers. They give the
 table something recognizable and give the DM material the world can notice,
@@ -69,9 +73,11 @@ Spell-like resonance techniques are valid signature moves. A move can be a
 named resonance spell, but it does not create a fixed spell card or bypass
 rolls, clocks, pressure targets, or DM/player judgment.
 
-Do not use signature moves for ordinary tics, quirks, values, possessions, or
-backstory facts. Those belong in traits, inventory, bio, or goals unless they
-are reframed as a concrete move with a pressure use.
+Do not use signature moves for ordinary tics, quirks, values, possessions,
+passive room reads, evidence sorting, or backstory facts. Those belong in
+traits, inventory, bio, or goals unless they are reframed as a concrete move
+that changes immediate pressure, position, danger, route, target state, or
+someone's next choice.
 
 Players and the DM can add a move during play when repetition makes it
 identity-defining: "I think this is becoming a signature move." Later moves can

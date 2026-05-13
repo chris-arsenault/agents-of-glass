@@ -6,9 +6,17 @@ authority: optional-guidance
 
 # Archetypes And Tone
 
-Archetype is the broad class-like identity people would use after the
-character becomes a story. It can be practical, mystical, martial, musical, or
-strange. It should feel playable and legendary, not just like a job title.
+Archetype is the broad class-like identity people would use after the character
+becomes a story. Choose the name that would still describe them at level 20,
+when they are a mythic figure in the campaign world. It can be practical,
+mystical, martial, musical, or strange, but it must feel playable and legendary,
+not like a job title.
+
+Do not use a current workplace function as the archetype. Recorder, clerk,
+examiner, witness, handler, liaison, archivist, and coordinator are jobs or
+organization roles unless they are sharpened into an action-mythic identity.
+Ask: what would a tavern song, wanted poster, field manual, or frightened enemy
+call this person after the campaign has made them famous?
 
 The tone constraint is not "avoid funny class names." A strange or dryly funny
 archetype is fine if the character and world take it seriously. The target is
@@ -25,7 +33,7 @@ Useful archetype shapes:
 - Glasswright
 - Echo Duelist
 - Bloom Witch
-- Witness-Binder
+- Oath-Binder
 - Route Saint
 - Weather Thief
 - Signal Priest
@@ -46,7 +54,12 @@ Useful archetype shapes:
 - Silence Archer
 - Oath Mechanic
 - Wake Cartographer
-- Ghost-Voice Interpreter
+- Ghost-Voice Herald
+- Ghost Pilot
+- Bloom Warden
+- Relic Raider
+- Thunder Surgeon
+- Gatebreaker
 
 Flatter versions to sharpen:
 
@@ -56,8 +69,11 @@ Flatter versions to sharpen:
 - Courier -> Route Saint, Weather Thief, Signal Piper
 - Mechanic -> Glasswright, Oath Mechanic
 - Musician -> Legendary Trombonist, Jazz Wizard, Storm Organist
-- Archivist -> Witness-Binder, Memory Diver, Chain-Name Herald
+- Archivist -> Memory Diver, Archive Blade, Chain-Name Herald
 - Scout -> Waystation Scout, Wake Cartographer, Bell Diver
+- Recorder -> Chain-Name Herald, Archive Blade, Oath-Binder
+- Examiner -> Memory Diver, Fault-Singer, Stillwater Exorcist
+- Liaison -> Silver-Tongue Herald, Courier-Knight, Debt Oracle
 
 Organization role answers a different question: how does this person belong to
 the party's organization?
@@ -87,13 +103,13 @@ Orthogonal pairs:
 - Archetype: Resonance Knight; org role: cook and long-time member
 - Archetype: Legendary Trombonist; org role: probationary hire
 - Archetype: Glasswright; org role: founder's nephew and maintenance lead
-- Archetype: Witness-Binder; org role: outsider specialist on retainer
+- Archetype: Oath-Binder; org role: outsider specialist on retainer
 - Archetype: Chain-Name Herald; org role: public face of the crew
 - Archetype: Weather Thief; org role: debt-bound recruit
 - Archetype: Lattice Cantor; org role: quartermaster
 - Archetype: Archive Blade; org role: official porter, unofficial fixer
 - Archetype: Threshold Medic; org role: senior member everyone avoids disappointing
-- Archetype: Ghost-Voice Interpreter; org role: junior member everyone underestimates
+- Archetype: Ghost Pilot; org role: junior member everyone underestimates
 
 Tone examples:
 

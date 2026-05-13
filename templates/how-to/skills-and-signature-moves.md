@@ -9,12 +9,12 @@ authority: optional-guidance
 Skills and signature moves should be orthogonal.
 
 - **Archetype** is the broad class-like identity: Resonance Knight, Jazz
-  Wizard, Legendary Trombonist, Glasswright.
+  Wizard, Legendary Trombonist, Glasswright, Bloom Warden, Archive Blade.
 - **Organization role** is how the character belongs to the crew: founder,
   cook, probationary hire, quartermaster, outside specialist.
 - **Skills** are trained competencies the player can roll.
-- **Signature move** is one recognizable thing the character does under
-  pressure.
+- **Signature move** is one recognizable thing the character can use in an
+  action setting.
 
 ## Starting Skills
 
@@ -27,7 +27,10 @@ Everything else defaults to `fool`. Do not start with `virtuoso`; the point of
 early play is to see what the character reaches for enough to earn mastery.
 
 Good skill names are specific enough to create choices and broad enough to come
-up more than once. They should sound like something a person could practice.
+up more than once. They should sound like something a person could practice, and
+they should start with a present-tense action verb. Use `break`, `cut`, `pilot`,
+`bind`, `read`, `talk`, `sneak`, `patch`, `fight`, `rig`, `command`, or another
+verb that points to what the character does on screen.
 
 See [`srd/skill-advancement.md`](../srd/skill-advancement.md) for how skills
 grow during play (per-skill xp, auto-promotion thresholds) and how to pick up
@@ -35,32 +38,32 @@ new skills inside the `3 + level` slot cap.
 
 Useful apprentice skills:
 
-- dockyard talk
-- back-feed reading
-- refusal-log shorthand
-- crowd de-escalation
-- line-knife basics
-- baton forms
-- braced shield stance
-- kite passenger paperwork
-- brass maintenance
-- route weather guessing
-- old-hab etiquette
+- talk down dockhands
+- read back-feed surges
+- cut fouled lines
+- brace shield-cloth
+- fight with baton
+- patch brass under pressure
+- guess route weather
+- sneak through old habs
+- bind wounds fast
+- rig a quick anchor
+- command a frightened room
 
 Useful artisan skills:
 
-- low-angle document reading
-- jury-rigged meter-craft
-- close-quarters baton
-- dueling saber
-- net-and-line fighting
-- shield-cloth timing
-- line-breaking footwork
-- drop-and-tether piloting
-- harmonic triage
-- waystation acoustic mapping
-- Conclave intake protocol
-- ringglass fault sense
+- break sealed doors
+- jury-rig meters
+- duel with saber
+- net moving targets
+- time shield-cloth
+- break enemy lines
+- pilot drop-and-tether
+- triage harmonic wounds
+- map waystation echoes
+- read ringglass faults
+- compel a hostile pause
+- extract civilians under fire
 
 Too broad:
 
@@ -80,19 +83,27 @@ Too narrow:
 
 Sharper replacements:
 
-- magic -> lattice canting, fault-singing, oath resonance
-- combat -> line-breaking footwork, close-quarters baton, shield timing
-- talking -> dockyard talk, formal petitioning, crowd de-escalation
-- investigation -> low-angle document reading, witness-sequence recall
-- flying -> drop-and-tether piloting, bad-weather approach
-- tuning -> ringglass fault sense, waystation acoustic mapping
+- magic -> cant lattice, sing faults, bind oaths
+- combat -> break enemy lines, fight with baton, time shield-cloth
+- talking -> talk down dockhands, compel a hostile pause, command a frightened room
+- investigation -> read ringglass faults, find hidden seams, track a fleeing courier
+- flying -> pilot drop-and-tether, fly bad approaches, land through crosswind
+- tuning -> read fault bands, mute wild harmonics, map waystation echoes
 
 ## Signature Moves
 
-A signature move needs an action shape. It should have a name, a look, a usual
-use, and a tell/cost. It can be combat, social, investigative, magical, musical,
-technical, or logistical, but it should be usable when time is tight and
-something is at stake.
+A signature move needs an action-setting shape. It should have a name, a look, a
+usual use, and a tell/cost. It can be combat, social, magical, musical,
+technical, rescue, piloting, chase, or logistical, but it must be something the
+character can use while danger, pursuit, coercion, disaster, monsters, or direct
+opposition are live.
+
+It does not have to be an attack. Hyperfocused piloting, silver-tongue
+compulsion, impossible guarding, emergency surgery, a forceful escape, or a
+crowd-commanding note can be as valid as Fireball. The test is whether the move
+changes immediate pressure, position, target state, route, danger, or someone's
+next choice in an action scene. Passive reads, evidence sorting, room-reading,
+and preparatory-only tricks fail that test.
 
 This is also where spellbook-like references belong. If you are thinking "this
 character has Fireball, Cutting Words, or Sanctuary," make it a resonance-themed
@@ -111,20 +122,21 @@ slot system.
 
 Good examples:
 
-- **The Angle**: turn a page into raking light to catch erased marks, hidden
-  impressions, or records that do not line up.
-- **Streamer Toss**: throw a weighted ribbon or streamer before a drop, jump,
-  or chase to read wind, turbulence, and safe commitment.
 - **Hold The Door In The Chord**: sustain a brass note to steady a panicking
   room or stabilize a resonance interference for one exchange.
-- **Ground It Or It Isn't Grounded**: check three load points before forcing a
-  dangerous launch, machine start, or rig release.
-- **Count The Exits Backward**: map escape routes while moving, starting from
-  the worst exit and ending with the one the crew can actually use.
-- **Name The Witness**: pin a social-pressure exchange by naming who will have
-  to remember the choice afterward.
+- **Hyperfocus Burn**: lock all attention onto a vehicle, kite, or skiff for one
+  impossible approach, ignoring every distraction until the landing commits.
+- **Silver-Tongue Compulsion**: speak one irresistible sentence that makes a
+  hostile person hesitate, step aside, drop a weapon, or answer before they mean
+  to.
+- **Brace The Falling Door**: put body and shield-cloth into a collapsing gap and
+  hold it long enough for someone else to move.
+- **Ghost The Skiff**: cut lights, bleed sound, and thread a vehicle through a
+  hostile search pattern at speed.
+- **Command The Panic**: turn fear into one shouted order the crowd can follow
+  before the hazard reaches them.
 - **Harmonic Triage**: hum, listen, and touch in sequence to separate a living
-  resonance from an echo before treatment.
+  resonance from an echo while treatment is already happening.
 - **Hook The Line**: catch a limb, weapon, railing, or fouled tether with a
   hook-axe and pull the fight or chase into safer geometry.
 - **Close The Gate**: step into a doorway, gap, or cargo hatch with a baton,
@@ -160,29 +172,35 @@ Weak examples:
 - "Hums when nervous." That is a trait.
 - "Carries a special notebook." That is inventory.
 - "Is loyal to the crew." That is a value or goal.
+- "Reads the room." That is an observation.
+- "Throws streamers to check wind." That is prep unless it commits the action.
 
 Reframed into moves:
 
-- Walks around the ship -> **Ground It Or It Isn't Grounded**, a three-point
-  safety read used before forcing a risky launch.
+- Walks around the ship -> **Lock The Launch**, slamming three load points into
+  place while the engines are already spooling.
 - Hums when nervous -> **Hold The Door In The Chord**, a practiced note used to
   steady a room or disrupt interference.
-- Carries a special notebook -> **Index The Lie**, flipping to a marked page
-  that reveals a contradiction in testimony.
+- Carries a special notebook -> **Call The Bluff**, snapping open the marked page
+  and forcing a hostile negotiator to answer before their guards move.
 - Is loyal to the crew -> **Step Into The Harmonic**, physically taking the
   exposed position so someone else can finish the action.
+- Reads the room -> **Silver-Tongue Compulsion**, catching the loudest opponent
+  with one sentence that changes what they do next.
+- Throws streamers to check wind -> **Streamer Dive**, casting the streamer and
+  diving after it in the same breath through a lethal crosswind.
 
 ## Orthogonal Builds
 
 - Archetype: Legendary Trombonist. Org role: probationary hire. Skills:
-  waystation acoustic mapping (`artisan`), brass maintenance (`apprentice`),
-  dockyard talk (`apprentice`). Signature move: Hold The Door In The Chord.
+  map waystation echoes (`artisan`), patch brass under pressure (`apprentice`),
+  talk down dockhands (`apprentice`). Signature move: Hold The Door In The Chord.
 - Archetype: Resonance Knight. Org role: cook and long-time member. Skills:
-  line-breaking footwork (`artisan`), galley logistics (`apprentice`), oath
-  etiquette (`apprentice`). Signature move: Step Into The Harmonic.
-- Archetype: Witness-Binder. Org role: outside specialist on retainer. Skills:
-  low-angle document reading (`artisan`), Conclave intake protocol
-  (`apprentice`), old-hab etiquette (`apprentice`). Signature move: The Angle.
+  break enemy lines (`artisan`), keep supplies moving (`apprentice`), bind oaths
+  under pressure (`apprentice`). Signature move: Step Into The Harmonic.
+- Archetype: Ghost Pilot. Org role: outside specialist on retainer. Skills:
+  pilot bad approaches (`artisan`), read route weather (`apprentice`), talk past
+  checkpoint guns (`apprentice`). Signature move: Hyperfocus Burn.
 
 ## Earning New Skills
 
@@ -216,6 +234,6 @@ through `apprentice` (5 xp), `artisan` (15), and `virtuoso` (30). No separate
 "spend xp" step exists.
 
 When choosing a name for a new declared skill, the same naming rules apply as
-at character creation: specific enough to create choices, broad enough to come
-up more than once. Do not burn a slot on something so narrow it can only be
-rolled once.
+at character creation: start with a present-tense action verb, make it specific
+enough to create choices, and keep it broad enough to come up more than once.
+Do not burn a slot on something so narrow it can only be rolled once.

@@ -1139,9 +1139,13 @@ def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> No
                 f"{player_id}: expected 2-3 canonical goals, found {len(goals)}"
             )
         inventory = list(character.get("inventory") or [])
-        if not (3 <= len(inventory) <= 5):
+        if len(inventory) != 3:
             failures.append(
-                f"{player_id}: expected 3-5 inventory entries, found {len(inventory)}"
+                f"{player_id}: expected exactly 3 inventory entries, found {len(inventory)}"
+            )
+        if inventory and not _character_inventory_has_weapon(inventory):
+            failures.append(
+                f"{player_id}: expected one inventory item with a `weapon:` effect tag"
             )
         for rel_path in (
             Path("players") / player_id / "public" / "character.md",
@@ -1171,6 +1175,17 @@ def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> No
             "character creation hard-state validation failed; not advancing "
             f"bootstrap phase:\n{detail}"
         )
+
+
+def _character_inventory_has_weapon(inventory: list[dict]) -> bool:
+    for item in inventory:
+        effect_tags = item.get("effect_tags") if isinstance(item, dict) else None
+        if not isinstance(effect_tags, list):
+            continue
+        for tag in effect_tags:
+            if str(tag).strip().lower().startswith("weapon:"):
+                return True
+    return False
 
 
 def _ensure_operator_groups_active() -> None:

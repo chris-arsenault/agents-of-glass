@@ -1669,7 +1669,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 ],
             )
 
-    def test_prelude_dm_turn_without_handoff_fails_fast(self) -> None:
+    def test_prelude_dm_turn_without_handoff_redirects_dm(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = make_config(root)
@@ -1683,6 +1683,9 @@ class OrchestratorQueueTests(unittest.TestCase):
             )
             orchestrator = Orchestrator(config, SessionStore(config))
             attach_runtime_mocks(orchestrator)
+            orchestrator._peek_next_speaker_entry = Mock(return_value=None)
+            orchestrator._prepend_next_speaker_entry = Mock()
+            orchestrator._send_system_instruction = Mock()
             result = TurnResult(
                 turn_id="c1-t0001",
                 agent=AGENTS_BY_ID["dm"],
@@ -1692,13 +1695,20 @@ class OrchestratorQueueTests(unittest.TestCase):
                 dry_run=False,
             )
 
-            with self.assertRaises(TurnFailure) as caught:
-                orchestrator._validate_prelude_dm_handoff(
-                    state,
-                    result,
-                    state.active_mode,
-                )
-            self.assertEqual(caught.exception.failure["reason"], "prelude_dm_no_handoff")
+            orchestrator._validate_prelude_dm_handoff(
+                state,
+                result,
+                state.active_mode,
+            )
+            orchestrator._prepend_next_speaker_entry.assert_called_once()
+            orchestrator._send_system_instruction.assert_called_once()
+            events = [
+                json.loads(line)
+                for line in (campaign_root / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            redirected = next(event for event in events if event["event"] == "turn.redirected")
+            self.assertEqual(redirected["reason"], "prelude_dm_no_handoff")
+            self.assertEqual(redirected["recipient"], "dm")
 
     def test_prelude_dm_turn_with_queued_player_is_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1729,7 +1739,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 state.active_mode,
             )
 
-    def test_scene_prep_dm_turn_without_play_mode_fails_fast(self) -> None:
+    def test_scene_prep_dm_turn_without_play_mode_redirects_dm(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = make_config(root)
@@ -1743,6 +1753,9 @@ class OrchestratorQueueTests(unittest.TestCase):
             )
             orchestrator = Orchestrator(config, SessionStore(config))
             attach_runtime_mocks(orchestrator)
+            orchestrator._peek_next_speaker_entry = Mock(return_value=None)
+            orchestrator._prepend_next_speaker_entry = Mock()
+            orchestrator._send_system_instruction = Mock()
             result = TurnResult(
                 turn_id="c1-t0001",
                 agent=AGENTS_BY_ID["dm"],
@@ -1752,13 +1765,20 @@ class OrchestratorQueueTests(unittest.TestCase):
                 dry_run=False,
             )
 
-            with self.assertRaises(TurnFailure) as caught:
-                orchestrator._validate_scene_prep_dm_handoff(
-                    state,
-                    result,
-                    state.active_mode,
-                )
-            self.assertEqual(caught.exception.failure["reason"], "scene_prep_no_handoff")
+            orchestrator._validate_scene_prep_dm_handoff(
+                state,
+                result,
+                state.active_mode,
+            )
+            orchestrator._prepend_next_speaker_entry.assert_called_once()
+            orchestrator._send_system_instruction.assert_called_once()
+            events = [
+                json.loads(line)
+                for line in (campaign_root / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            redirected = next(event for event in events if event["event"] == "turn.redirected")
+            self.assertEqual(redirected["reason"], "scene_prep_no_handoff")
+            self.assertEqual(redirected["recipient"], "dm")
 
     def test_scene_prep_dm_turn_with_play_mode_is_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2047,7 +2067,7 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertEqual(redirected["reason"], "invalid_turn_end")
             self.assertEqual(redirected["recipient"], "dm")
 
-    def test_scene_close_inside_open_arc_without_next_mode_fails_fast(self) -> None:
+    def test_scene_close_inside_open_arc_without_next_mode_redirects_dm(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = make_config(root)
@@ -2065,6 +2085,9 @@ class OrchestratorQueueTests(unittest.TestCase):
             orchestrator.store._load_glass_state = Mock(
                 return_value={"active_arc": "caulden-rack", "closed_arcs": []}
             )
+            orchestrator._peek_next_speaker_entry = Mock(return_value=None)
+            orchestrator._prepend_next_speaker_entry = Mock()
+            orchestrator._send_system_instruction = Mock()
             result = TurnResult(
                 turn_id="c1-t0001",
                 agent=AGENTS_BY_ID["dm"],
@@ -2074,16 +2097,28 @@ class OrchestratorQueueTests(unittest.TestCase):
                 dry_run=False,
             )
 
-            with self.assertRaises(TurnFailure) as caught:
-                orchestrator._validate_scene_boundary_dm_handoff(
-                    state,
-                    result,
-                    previous,
-                )
-            self.assertEqual(
-                caught.exception.failure["reason"],
-                "scene_boundary_no_next_scene",
+            orchestrator._validate_scene_boundary_dm_handoff(
+                state,
+                result,
+                previous,
             )
+            orchestrator._prepend_next_speaker_entry.assert_called_once()
+            orchestrator._send_system_instruction.assert_called_once()
+            self.assertEqual(
+                orchestrator._send_system_instruction.call_args.kwargs["recipient"],
+                "dm",
+            )
+            self.assertIn(
+                "active arc `caulden-rack` with no active scene mode",
+                orchestrator._send_system_instruction.call_args.kwargs["body"],
+            )
+            events = [
+                json.loads(line)
+                for line in (campaign_root / "audit.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            redirected = next(event for event in events if event["event"] == "turn.redirected")
+            self.assertEqual(redirected["reason"], "scene_boundary_no_next_scene")
+            self.assertEqual(redirected["recipient"], "dm")
 
     def test_advance_action_order_delegates_to_postgres(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

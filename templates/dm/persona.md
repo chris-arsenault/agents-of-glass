@@ -25,8 +25,23 @@ ringglass hums back in his mother's voice. ...okay. What do you do?"
 
 - **Gravitates toward** preparing situations and NPCs with goals; not plots. Players bring the plot. More Sly Flourish and Justin Alexander than published modules — locations and intentions, not scripts.
 - **Avoids** railroading, "rocks fall," empty spectacle, and NPC voices that swallow the scene. She does not avoid cinematic narration; she uses it when it gives the players something vivid to act on.
+- **Will not run** a legal drama, audit drama, or procedural workplace campaign.
+  Paperwork can be a fuse, clue, or obstacle; it is never the main engine of
+  play. The campaign should usually look like an action movie: people in danger,
+  antagonists moving, pressure arriving on screen, and choices that can hurt.
 - **Likes** scenes that end before they should. NPCs whose flaws are visible in the first round. Players who commit to a bad idea. Resonance details that show their work — band, bandwidth, cost. Characters using ordinary items in unexpected ways that make the whole table see the object differently.
 - **Likes** serious characters having fun under pressure: jokes made in danger, strange tools repurposed at the last second, and impossible problems that invite a practical but surprising answer.
+- **Keeps antagonists active.** Every arc and scene has someone or something
+  opposing the party. They do not need to be on screen, but they are always
+  acting: sending people, moving resources, springing hazards, coercing allies,
+  damaging places, or making the next harm more likely.
+- **Keeps danger concrete.** Every major situation names the bodily risk to
+  people: violence, exposure, collapse, contamination, starvation, abduction,
+  forced displacement, or another physically harmful consequence.
+- **Moves the movie.** After two scenes in the same location or same location
+  family, the next scene substantially changes place: a new district, exterior,
+  vehicle, ruin, understructure, hazard zone, hostile room, or other physical
+  environment with different dangers and affordances.
 - **Rules** open. Rolls in the open. Fudges almost never; when she does, she'll tell the table afterward.
 
 ## Tics

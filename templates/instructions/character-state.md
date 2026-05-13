@@ -52,6 +52,9 @@ mirrors, not canonical numbers.
 
 3. Use `archetype` for class-like identity. Use `organization_role` for current
    membership, status, or responsibility inside the party organization.
+   Archetype should be the heroic identity that would still describe the
+   character at level 20 as a mythic figure in the campaign world, not a current
+   job title like recorder, clerk, examiner, witness, handler, or liaison.
 4. The character must read as a table-facing person, not only a reserved
    professional. Record a social bit, a non-work want, and an opening action
    toward another PC.
@@ -60,21 +63,28 @@ mirrors, not canonical numbers.
    visible habit, or social behavior.
 6. Add starting inventory, consequences, and signature moves with
    `glass character bulk-update --json '<payload>'` or the specific commands.
+   Starting inventory must be exactly 3 items, and one item must be a weapon or
+   combat implement. The starting signature move must be usable in an action
+   setting, even if it is social, protective, piloting, rescue, or magical rather
+   than an attack. Mark the weapon item with an effect tag beginning `weapon:`.
 7. Mirror the result with `glass character mirror <id>` unless the bulk update
    already used `"mirror": true`.
 8. Verify the row with `glass character get <id>`.
 
 ## Inventory Boundary
 
-Inventory is for carried assets that can affect future action: tools, weapons,
-protective gear, consumables, permits, keys, samples, maps, documents, leverage
-tokens, specialist instruments, or portable resources. Personal relics belong in
-bio, traits, notes, or journal unless they can plausibly affect a future roll,
-access, cost, risk, or choice.
+Starting inventory is exactly 3 carried assets that can affect future action:
+one weapon or combat implement, plus two tools, protective gear, consumables,
+keys, samples, maps, leverage tokens, specialist instruments, or portable
+resources. Personal relics, permits, and documents belong in bio, traits, notes,
+or journal unless they are one of the three items and can plausibly affect a
+future roll, access, cost, risk, or choice. The weapon item should have an
+effect tag beginning `weapon:`.
 
-Effect tags should name affordances. Prefer tags like `opens dock cabinets`,
-`counts as courier authority`, `one use: reduce diffuse return cost`, or
-`cuts fouled kite line under load` over tags that only describe mood or origin.
+Effect tags should name affordances. Prefer tags like `weapon: blocks or breaks
+a close rush`, `crosses gaps or snags loose cargo`, `detects unstable wall
+stress`, or `cuts fouled kite line under load` over tags that only describe mood
+or origin.
 
 ## Mutation Sequence
 
@@ -110,14 +120,16 @@ Effect tags should name affordances. Prefer tags like `opens dock cabinets`,
     {
       "character_id": "vel",
       "inventory_add": [
-        {"id": "route-seal", "qty": 1, "effect_tags": ["passes casual review"]}
+        {"id": "ringglass-baton", "qty": 1, "effect_tags": ["weapon: blocks or breaks a close rush"]},
+        {"id": "grapnel-spool", "qty": 1, "effect_tags": ["crosses gaps or snags loose cargo"]},
+        {"id": "route-seal", "qty": 1, "effect_tags": ["opens one cautious checkpoint"]}
       ],
       "signature_moves": [
         {
-          "name": "Quiet Door",
-          "look": "Vel touches the latch like checking a pulse.",
-          "use": "Entering a place where asking would fail.",
-          "tell": "Leaves wax dust on the thumb."
+          "name": "Hard Left Through Fire",
+          "look": "Vel drops one shoulder, points the baton at the exit, and moves before the room finishes deciding.",
+          "use": "Breaking a path through danger for one other person.",
+          "tell": "Leaves Vel exposed to the nearest counterattack."
         }
       ],
       "mirror": true
@@ -135,7 +147,10 @@ each add one slot. Do not use notes to bypass signature move slot limits.
 
 Declared skills are capped at `3 + character_level` (4 at level 1, 5 at
 level 2, etc.). Character creation fills the first 3 slots with the starting
-budget (2 `apprentice` + 1 `artisan`).
+budget (2 `apprentice` + 1 `artisan`). Skill names should be present-tense
+action verb phrases such as `break sealed doors`, `read fault bands`, `cut
+fouled lines`, `talk down crowds`, `pilot bad approaches`, or `bind wounds
+under fire`.
 
 To put a new skill on the sheet during play:
 

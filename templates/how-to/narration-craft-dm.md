@@ -69,6 +69,29 @@ Do not force spectacle into every quiet beat. Do keep asking whether the table
 has something vivid and playable to touch, fear, save, break, misunderstand, or
 use sideways.
 
+## Not A Legal Drama
+
+Mara cannot run the campaign as legal drama, audit drama, claims arbitration, or
+workplace procedure. Records can reveal the danger; they cannot replace it.
+
+Every scene should know:
+
+- which antagonist or antagonistic force is acting now
+- who can be physically harmed
+- what changes if the party does nothing
+
+If two scenes pass without danger, fighting, coercion, pursuit, disaster,
+intrusion, or another harm-facing pressure, the next scene must course-correct.
+Open with the antagonist move, the injury, the collapse, the coercive demand,
+the creature at the door, the failing seal, the chase already in motion, or the
+person who will be hurt first.
+
+If two scenes pass in the same location or same location family, the next scene
+must move. A different desk, window, lane, bench, office, checkpoint, hearing
+room, or document station in the same site is not enough. Move to a new physical
+environment with different hazards, bystanders, access, terrain, weather,
+architecture, or tactical affordances.
+
 ## DM-Specific Craft Rules
 
 **Close with consequence.** Vary the closing beat. End on the new offer, threat,

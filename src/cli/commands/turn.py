@@ -971,6 +971,37 @@ def _scene_contract_gap_is_continuation(snapshot: dict[str, Any]) -> bool:
     return completed > 0 or bool(recent)
 
 
+def _open_active_arc_id(state: dict[str, Any]) -> str | None:
+    active_arc = str(state.get("active_arc") or "").strip()
+    if not active_arc or active_arc == "prelude":
+        return None
+    closed = {str(arc_id) for arc_id in state.get("closed_arcs", [])}
+    if active_arc in closed:
+        return None
+    return active_arc
+
+
+def _scene_boundary_handoff_requirement(
+    state: dict[str, Any],
+    turn_context: dict[str, Any],
+) -> str | None:
+    if str(turn_context.get("role") or "") != "dm":
+        return None
+    if str(turn_context.get("mode") or "") not in _ACTIVE_PLAY_MODE_NAMES:
+        return None
+    if current_mode_record(state):
+        return None
+    active_arc = _open_active_arc_id(state)
+    if not active_arc:
+        return None
+    return (
+        f"No active mode is staged while active arc `{active_arc}` remains open. "
+        "Start `scene-prep` with `glass mode start scene-prep <scene-id>`, "
+        "stage/start the next scene mode, or close the active arc before "
+        "`glass turn end` can commit."
+    )
+
+
 def _scene_contract_gap_message(
     *,
     failure: str,
@@ -1128,6 +1159,10 @@ def _turn_audit_report(
             if pass_guidance:
                 soft_considerations.append(pass_guidance)
 
+    boundary_requirement = _scene_boundary_handoff_requirement(state, turn_context)
+    if boundary_requirement:
+        hard_requirements.append(boundary_requirement)
+
     if activity["messages_sent"] <= 0:
         soft_considerations.append(
             "You sent 0 messages this turn; consider sending something."
@@ -1248,6 +1283,8 @@ def _turn_end_fix_suggestions(problems: list[str]) -> list[str]:
             fix = "Start a beat with `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`, then rerun `glass beat check` and `glass turn end`."
         elif "3-beat cap" in problem:
             fix = "Close or convert an active beat, then rerun `glass beat check` and `glass turn end`."
+        elif "No active mode is staged while active arc" in problem:
+            fix = "Start `scene-prep` with `glass mode start scene-prep <scene-id>`, stage/start the next scene mode, or close the active arc, then rerun `glass turn audit` and `glass turn end`."
         elif "Resolve or convert it before another non-pass turn" in problem:
             fix = "Resolve the beat with `glass beat close`, convert it with `glass beat convert`, or pass instead of taking another non-pass turn."
         elif "requires exactly `--state \"no state change\"`" in problem:

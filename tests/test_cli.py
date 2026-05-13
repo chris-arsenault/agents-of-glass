@@ -1527,6 +1527,71 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("ready_for_turn_end: true", audit.output)
             self.assertIn("hard_requirements: []", audit.output)
 
+    def test_dm_turn_end_rejects_open_arc_with_no_active_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("borrowed-wall"), dm_env)
+            invoke_ok(runner, ["arc", "activate", "borrowed-wall"], dm_env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "dm",
+                    "--role",
+                    "dm",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play-dm",
+                    "--no-turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["mode", "end"], dm_env)
+
+            audit = invoke_ok(runner, ["turn", "audit"], dm_env)
+            self.assertIn("ready_for_turn_end: false", audit.output)
+            self.assertIn(
+                "No active mode is staged while active arc `borrowed-wall` remains open.",
+                audit.output,
+            )
+
+            ended = invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "end",
+                    "--summary",
+                    "Scene closed but no next mode is staged.",
+                    "--state",
+                    "Closed the scene.",
+                    "--rolls",
+                    "none",
+                    "--scene-status",
+                    "ended",
+                    "--next",
+                    "dm",
+                ],
+                dm_env,
+            )
+            self.assertIn("valid: false", ended.output)
+            self.assertIn(
+                "No active mode is staged while active arc `borrowed-wall` remains open.",
+                ended.output,
+            )
+
     def test_scene_beats_skip_pass_turns_and_age_on_non_pass_commits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

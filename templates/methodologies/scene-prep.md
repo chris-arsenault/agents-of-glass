@@ -35,11 +35,24 @@ and `glass turn end` succeeds.
 4. **Write `arcs/<arc>/scenes/<scene>/prep.md` in this order.**
    - Recap: why this scene exists now.
    - Strong start: what is immediately on screen.
+   - Active antagonist: who or what is opposing the party in this scene, including
+     what they are doing off screen if not physically present.
+   - Concrete danger: what physically harmful thing can happen to people in or
+     because of this scene. Name the people, crowd, crew, district, or body at
+     risk when possible.
    - Adventure draw: what makes this scene worth playing as fantasy adventure
      rather than only a plausible incident, errand, claim, or logistics problem.
      This does not have to be spectacle, but it should give the table something
      vivid, strange, funny, dangerous, beautiful, gross, mythic, or physically
      playable to engage with.
+   - Action-movie check: how this scene includes or points directly into danger,
+     fighting, coercion, pursuit, disaster, intrusion, monster pressure, or
+     another harm-facing situation. If the previous two scenes lacked that, this
+     scene must open with it.
+   - Location check: if the previous two scenes used the same location or same
+     location family, this scene must substantially move the table somewhere
+     physically different. A new counter, office, checkpoint, lane, bench, or
+     document station in the same site does not count.
    - Possible directions: 3-5 plausible player routes.
    - NPCs in play.
    - Threats, creatures, antagonists, or pressure sources.
@@ -95,6 +108,10 @@ and `glass turn end` succeeds.
   procedural artifacts as the whole scene. Those can be the fuse; make sure
   something alive, strange, volatile, personal, or adventure-facing is pushing
   through them.
+- Do not stage a scene that is only legal drama, audit drama, chain-of-custody
+  preservation, or institutional negotiation. If paperwork matters, attach it to
+  an antagonist move and a physical danger on screen or arriving now.
+- Do not stage a third consecutive scene in the same location or location family.
 - Do not end the turn still in bare `scene-prep`.
 - Do not start an action scene without action-order setup in the opening DM
   turn or a clear handoff to do it.

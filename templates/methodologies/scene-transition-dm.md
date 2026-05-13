@@ -21,7 +21,12 @@ to resume.
 5. Create and stage the next scene. Use `glass scene create <next-scene> --type
    <protocol-or-toolkit-label>`, write the next scene's context/prep, write the
    current visible situation into `table/scene.md`, and create named table
-   artifacts for reusable visible lore.
+   artifacts for reusable visible lore. The next scene prep must name the active
+   antagonist, what they are doing now, and the concrete physical danger to
+   people. If the last two scenes lacked danger, fighting, coercion, pursuit, or
+   another harm-facing pressure, the next scene must open with one. If the last
+   two scenes used the same location or same location family, the next scene must
+   substantially move somewhere physically different.
 6. Commit authored markdown with `glass sync apply`, covering the next scene
    directory, `table/`, and any changed DM notes, lore, or shared files.
 7. Start the next scene mode with `glass mode start <protocol-or-toolkit-label>
@@ -61,3 +66,12 @@ glass turn end \
 Your turn is done only when the old scene is closed, the next scene mode is
 active, `table/` shows the next visible situation and artifacts, player housekeeping turns are
 queued, public prose exists, and `glass turn end` succeeds.
+
+Do not complete a scene transition into a purely procedural/legal scene. Claims,
+records, receipts, audits, and chain-of-custody problems can be present only if
+they are attached to an antagonist move and a physical danger the players can
+act against.
+
+Do not complete a scene transition into a third consecutive scene in the same
+location or location family. A new desk, counter, office, corridor segment,
+checkpoint, bench, or document station in the same site is not enough.

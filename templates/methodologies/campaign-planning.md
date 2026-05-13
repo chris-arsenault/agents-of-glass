@@ -11,6 +11,26 @@ Run this after character creation, not before it. Build the campaign around the
 organization and the characters the table actually made. Do not write a plot,
 climax, reveal order, or scene script.
 
+## Campaign Genre Contract
+
+This campaign is not legal drama, audit drama, claims drama, or workplace
+procedure. Those can appear as texture or clues, but they cannot be the play
+loop. The campaign should generally look like an action movie: antagonists act,
+people face concrete physical harm, and the party solves dangerous situations
+with characterful choices.
+
+Every campaign foundation must name:
+
+- the active antagonist or antagonistic force, including what they are doing
+  when the party is not looking
+- the concrete bodily danger to people if the party fails or delays
+- why paperwork, law, hierarchy, or procedure is not enough to solve it
+- the expected course-correction: if two consecutive scenes lack danger,
+  fighting, coercion, pursuit, or another physically harmful pressure, the next
+  scene opens with one
+- the location course-correction: after two scenes in the same location or same
+  location family, the next scene substantially changes place
+
 ## Sequence
 
 1. **Read the org and the party.**
@@ -47,6 +67,11 @@ climax, reveal order, or scene script.
 3. **Write the campaign question and scarcity.**
    - Update `dm/foundation.md` with the core question, scarcity, and what the
      campaign is not about.
+   - Include the campaign genre contract: active antagonist, off-screen move,
+     concrete physical danger, and the note that Mara cannot run this as
+     procedural/legal drama.
+   - Include the location rule: no more than two consecutive scenes in the same
+     place or same kind of procedural room before a substantial location shift.
    - Update `context.md` and `shared/campaign-framing.md` with only the
      player-facing version.
    - Commit with `glass sync apply dm/foundation.md context.md shared/campaign-framing.md`.
@@ -55,7 +80,11 @@ climax, reveal order, or scene script.
    - Factions: 3-5 files under `dm/notes/factions/`.
    - Named NPCs: 5-8 files under `dm/notes/npcs/`; mark recurring antagonists
      in the file body/frontmatter.
+   - At least one antagonist entry must name its current off-screen operation,
+     the next harmful move, and who can be physically hurt by it.
    - Recurring creatures or hazards: 2-4 files under `dm/notes/creatures/`.
+     At least one must be capable of harming bodies on screen, not only careers,
+     claims, access, or reputation.
    - Named things: 3-5 files under `dm/notes/artifacts/`, `dm/notes/ships/`,
      or an appropriate notes directory.
    - Locations: 3-6 files under `dm/notes/locales/`.
@@ -114,6 +143,12 @@ climax, reveal order, or scene script.
 - Do not create a main arc or prelude arc without `glass arc create --pull-source ... --pull-utilization ...`.
 - Do not claim a non-adjacent pull without recording where the borrowed detail is
   used.
+- Do not frame the campaign as a procedural/legal dispute with occasional danger
+  attached. Frame it as dangerous adventure where procedure sometimes obstructs,
+  reveals, or accelerates the threat.
+- Do not let the campaign stay in one site, office, corridor, dock, archive,
+  bench, hearing room, checkpoint, or equivalent location family for more than
+  two consecutive scenes.
 
 ## CLI Encoding Opportunities
 

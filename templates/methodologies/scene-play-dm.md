@@ -13,7 +13,8 @@ and maintains durable state. This sequence is binding for every full DM turn.
 1. Drain unread messages with `glass msg read --since-checkpoint`.
 2. Read the immediate board: `table/`, the active scene summary, recent turn
    summaries in TURN_START, public clocks/trackers, and any DM notes or lore
-   directly implicated by the live scene question.
+   directly implicated by the live scene question. Know the active antagonist
+   and the concrete physical danger before writing.
 3. Run `glass beat check`. If the scene has no scene clock or no active beat,
    first decide whether this is a closure gap. If the current scene question has
    landed, several beats or clocks have resolved, or the remaining material is
@@ -29,7 +30,9 @@ and maintains durable state. This sequence is binding for every full DM turn.
    only paperwork, logistics, or procedure, put something adventure-facing on
    screen: a vivid object, impossible behavior, strange creature, funny human
    tell, environmental turn, or practical affordance the players can use. A DM
-   turn cannot be only recap or atmosphere.
+   turn cannot be only recap or atmosphere. It also cannot be only legal,
+   audit, claims, or chain-of-custody drama: make the antagonist act or show the
+   physical harm their action is causing.
 6. Persist changed state before prose. Use the hard-state command that owns the
    change: `glass table write/append scene.md` for the visible situation;
    `glass table write/append <meaningful-slug>.md` for any reusable visible
@@ -45,7 +48,11 @@ and maintains durable state. This sequence is binding for every full DM turn.
    add a new problem solely to keep the current frame alive. An empty clock/beat
    contract after resolved material is a scene-closure signal. Do not make every
    turn a spectacle beat; calibrate to the fiction, but do not let restraint
-   become the default answer.
+   become the default answer. If two scenes have passed without danger,
+   fighting, coercion, pursuit, or physical harm pressure, use the next DM
+   opening or transition to course-correct. If two scenes have stayed in the
+   same location or location family, the next transition must move somewhere
+   substantially different.
 8. Write public turn prose to the `TURN.md` path from TURN_START. Show what
    changed on screen and give the next actor a clear board.
 9. Run `glass turn audit`, then end the turn with `glass turn end`. Include summary, durable state changes,

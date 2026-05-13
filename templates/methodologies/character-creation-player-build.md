@@ -9,6 +9,9 @@ applies_to_modes: [character-creation]
 
 1. Read `shared/lore/organization.md`, `table/scene.md`, your `persona.md`,
    `srd/character-creation.md` or `srd/index.md`,
+   [`how-to/archetypes-and-tone.md`](../how-to/archetypes-and-tone.md),
+   [`how-to/skills-and-signature-moves.md`](../how-to/skills-and-signature-moves.md),
+   [`how-to/useful-inventory.md`](../how-to/useful-inventory.md),
    [`how-to/specificity.md`](../how-to/specificity.md), and
    [`how-to/narration-craft-player.md`](../how-to/narration-craft-player.md).
    If `context.md` or `shared/campaign-framing.md` exist, read them too. If
@@ -61,8 +64,22 @@ applies_to_modes: [character-creation]
    primary drive, positive trait, table presence, non-work want, opening social
    action, 2-3 life prompts, non-adjacent pull utilization note, HP, attributes,
    skills, and tags.
-14. Add 3-5 starting inventory items and one signature move with
+   - The archetype must be the character's heroic class-like identity: what
+     people would call them at level 20 when they are a mythic figure in the
+     campaign world. Do not use a job title like recorder, clerk, examiner,
+     witness, handler, or liaison as the archetype.
+   - Skill names must be present-tense action verb phrases: `break sealed
+     doors`, `read fault bands`, `cut fouled lines`, `talk down crowds`, `pilot
+     bad approaches`, `bind wounds under fire`.
+14. Add exactly 3 starting inventory items and one signature move with
    `glass character bulk-update --json '<payload>'`; set `"mirror": true`.
+   - One inventory item must be a weapon or combat implement the character can
+     use when an action scene turns dangerous. Mark it with an effect tag
+     beginning `weapon:`.
+   - The signature move must be usable in an action setting. It does not have to
+     be an attack: hyperfocused piloting, silver-tongue compulsion, impossible
+     guarding, emergency surgery, or forceful escape all count. Passive room
+     reads, evidence sorting, and preparatory-only tricks do not.
 15. Write `players/<id>/public/intro.md`. Include appearance, role, 3-5
    behavioral traits, backstory, goals, organization tie, primary drive, table
    presence, non-work want, opening social action, non-adjacent pull texture, and

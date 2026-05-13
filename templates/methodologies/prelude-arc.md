@@ -33,6 +33,10 @@ planning should already have created the `prelude` arc shell.
 3. **Stage Scene 1 as normal scene play.**
    - `glass scene create prelude-opening --type scene-play --arc prelude`
    - Write `prep.md`, `context.md`, `summary.md`, and the active table.
+   - Scene 1 still needs an active antagonist or antagonistic force and concrete
+     physical danger, coercion, pursuit, or harm-facing pressure. It can begin
+     as scene play, but it cannot be only orientation, paperwork, or an
+     institutional briefing.
    - Use `glass table write scene.md --body "<visible scene start>"`.
    - Use `glass table write <meaningful-slug>.md --body "<visible artifact>"`
      for each reusable public lore item the prelude puts on screen.
@@ -55,6 +59,9 @@ planning should already have created the `prelude` arc shell.
 5. **Stage Scene 2 as action.**
    - `glass scene create prelude-action --type action --arc prelude`
    - Write `prep.md`, `context.md`, `summary.md`, and the active table.
+   - Scene 2 must put bodies in danger on screen. The action can be combat,
+     chase, rescue, disaster response, coercive standoff, escape, or another
+     action-movie pressure, but not a procedural dispute.
    - Create public trackers or clocks before the first action turn.
    - `glass sync apply arcs/prelude/scenes/prelude-action`
    - `glass mode start action prelude-action`
@@ -84,10 +91,16 @@ planning should already have created the `prelude` arc shell.
 
 8. **Handoff to active campaign play.**
    - Activate the main opening arc with `glass arc activate <main-arc>`.
+   - Start the active-campaign bridge before closeout. If the first main scene
+     is not fully staged yet, run `glass mode start scene-prep <main-arc>-setup`
+     so Mara has a concrete next turn to stage it. If the first scene is
+     already staged, start its actual play mode instead.
+   - Do not close the turn with an active main arc and no active mode.
    - Name the time jump in `TURN.md`.
    - Run `glass turn audit`.
-   - Run `glass turn end --summary "prelude complete and main arc activated" --state "<summaries/arc/quest state updated>" --rolls "<rolls/checks or none>" --scene-status ended --next default`.
-   - Run `glass mode end` only when the prelude mode is still active.
+   - Run `glass turn end --summary "prelude complete and main arc bridge staged" --state "<summaries/arc/quest/mode state updated>" --rolls "<rolls/checks or none>" --scene-status ended --next default`.
+   - Run `glass mode end` for the old prelude/scene modes before starting
+     `scene-prep` or the next actual play mode.
 
 ## Hard Limits
 

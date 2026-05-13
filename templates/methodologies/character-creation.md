@@ -149,13 +149,20 @@ glass character new <character-id> --player <your-agent-id> \
 
 6. **Add inventory, one signature move, and the public mirror.**
    - Inventory is for assets that can change future action: working tools,
-     weapons, protective gear, consumables, permits, keys, samples, maps,
-     documents, leverage tokens, specialist instruments, or portable resources.
-   - Starting inventory should include 3-5 items. At least two should be
-     practical working assets. At most one should be purely sentimental, and
-     only if the player expects it to matter in play.
+     weapons, protective gear, consumables, keys, samples, maps, leverage
+     tokens, specialist instruments, or portable resources.
+   - Starting inventory must include exactly 3 items. One must be a weapon or
+     combat implement usable when violence, pursuit, monsters, or immediate
+     physical danger enter the scene. Mark it with an effect tag beginning
+     `weapon:`.
+   - At most one item should be a document, credential, leverage token, or
+     sentimental object, and only if the player expects it to matter in play.
    - Effect tags should name affordances, not only mood: what the item opens,
      proves, protects, detects, cuts, spends, hides, or changes.
+   - The signature move must be usable in an action setting. It can be a spell,
+     social compulsion, piloting focus, rescue move, guard, escape, chase trick,
+     or control move; it should not be only a room read, evidence sort, or
+     preparatory observation.
 
 ```bash
 glass character bulk-update --json '{
@@ -163,8 +170,9 @@ glass character bulk-update --json '{
     {
       "character_id": "<character-id>",
       "inventory_add": [
+        {"id": "<weapon-slug>", "qty": 1, "effect_tags": ["weapon: <specific action affordance>"]},
         {"id": "<tool-or-asset-slug>", "qty": 1, "effect_tags": ["<specific affordance>"]},
-        {"id": "<consumable-or-document-slug>", "qty": 1, "effect_tags": ["<specific affordance>"]}
+        {"id": "<consumable-or-leverage-slug>", "qty": 1, "effect_tags": ["<specific affordance>"]}
       ],
       "signature_moves": [
         {

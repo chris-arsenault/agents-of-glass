@@ -67,6 +67,15 @@ glass scene end \
 8. **Stage what follows before ending the DM turn.**
    - If the act remains open, create/stage the next scene, start its actual
      play mode, and queue `glass turn housekeeping-round`.
+   - Before staging the next scene, check the last two scene summaries. If they
+     did not include danger, fighting, coercion, pursuit, or another physically
+     harmful pressure, the next scene must course-correct with one at the
+     opening.
+   - Also check the last two scene locations. If they used the same location or
+     same location family, the next scene must substantially move the table to a
+     different physical environment.
+   - The next scene must name an active antagonist or antagonistic force and the
+     concrete physical danger to people.
    - If the act is complete, continue with the Act Close Sequence.
 
 ## Act Close Sequence
@@ -108,6 +117,9 @@ glass arc close <arc-id> \
      intermission.
    - If the next scene is already known and player planning is not needed,
      start `scene-prep`.
+   - Do not leave a newly active arc with no active mode. If an arc is active
+     after this turn, either start `scene-prep`, start the staged scene's
+     actual play mode, or close that arc too.
 
 7. **Close the turn.**
    - Write `TURN.md` with the public closure and handoff.
