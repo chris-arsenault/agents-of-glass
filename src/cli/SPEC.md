@@ -26,6 +26,8 @@ glass arc create <slug> --pull-source <text> --pull-utilization <text>
 glass arc activate <slug>                      # set active_arc for future scene creation
 glass arc current                              # which arc is active
 glass arc list
+glass arc close-check [<slug>]                 # reports open scene, active arc clocks,
+                                               # summary/done-criteria readiness
 glass arc close [<slug>] --outcome <text>      # closes arc/act with 1-2 outcome bullets
 
 glass scene create <slug> --type <label>       # creates arcs/<active-arc>/scenes/<slug>/
@@ -155,7 +157,8 @@ glass lore search <query>              # DM only — search the world bible with
 ```
 glass thread current
 glass thread beat <thread-id>       # show current beat
-glass thread advance <thread-id>    # DM only — advances the beat
+glass thread advance <thread-id> --note <text>
+                               # DM only — advances the beat or opens the thread
 ```
 
 ### Messaging

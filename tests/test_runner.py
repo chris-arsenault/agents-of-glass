@@ -18,6 +18,7 @@ from orchestrator.main import main as aog_main
 from orchestrator.main import _consume_review_stop
 from orchestrator.main import _next_mode_after_no_active_mode
 from orchestrator.main import _validate_campaign_planning_complete
+from orchestrator.main import _validate_character_creation_complete
 from orchestrator.main import _validate_organization_bootstrap_complete
 from orchestrator.projection import PLAYER_SURFACE_CHARACTER
 from orchestrator.runner import (
@@ -631,6 +632,60 @@ class OrchestratorQueueTests(unittest.TestCase):
                 turn_start,
             )
             self.assertNotIn("players/tev/persona.md", turn_start)
+
+    def test_prepare_turn_character_surface_prompts_pending_level_up(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root, skip_player_persona=True)
+            templates = root / "templates"
+            (templates / "instructions").mkdir(parents=True)
+            (templates / "methodologies").mkdir(parents=True)
+            for rel in (
+                "instructions/index-character.md",
+                "instructions/message-bus-character.md",
+                "instructions/workspace-authoring-character.md",
+                "methodologies/scene-play-character.md",
+                "methodologies/action-scene-character.md",
+                "methodologies/rapid-response-character.md",
+            ):
+                path = templates / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"{rel}\n", encoding="utf-8")
+            campaign_root = config.campaigns_dir / "c1"
+            public_root = campaign_root / "players" / "tev" / "public"
+            public_root.mkdir(parents=True)
+            (public_root / "character.md").write_text(
+                "\n".join(
+                    [
+                        "---",
+                        "character_id: rinavik",
+                        "---",
+                        "",
+                        "# Ri'navik",
+                        "",
+                        "- **Level:** 1 (14 XP)",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "tev"})
+
+            package = orchestrator.prepare_turn(state)
+
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("## Pending Level-Up", turn_start)
+            self.assertIn("`rinavik` is level 1 with 14 XP", turn_start)
+            self.assertIn("1 pending level-up", turn_start)
+            self.assertIn("glass character level-up rinavik", turn_start)
+            self.assertIn("glass character level-up (your character only)", turn_start)
 
     def test_skip_player_persona_keeps_housekeeping_on_player_surface(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1533,6 +1588,55 @@ class OrchestratorQueueTests(unittest.TestCase):
                 SimpleNamespace(config=config),
                 "c1",
             )
+
+    def test_character_creation_validation_does_not_hard_fail_inventory_guidance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            players = ("tev", "sumi", "renno", "kit")
+            for player_id in players:
+                public_root = campaign_root / "players" / player_id / "public"
+                public_root.mkdir(parents=True)
+                (public_root / "character.md").write_text("character\n", encoding="utf-8")
+                (public_root / "intro.md").write_text("intro\n", encoding="utf-8")
+                (public_root / "relationships.md").write_text(
+                    "relationships\n",
+                    encoding="utf-8",
+                )
+            characters = [
+                {
+                    "player_id": player_id,
+                    "name": f"{player_id.title()} Example",
+                    "species": "human",
+                    "culture": "Sithari",
+                    "archetype": "resonance knight",
+                    "organization_role": "field witness",
+                    "bio": "Keeps doors open for people who cannot be seen asking.",
+                    "goals": ["Find the missing door.", "Pay down the route debt."],
+                    "inventory": [
+                        {
+                            "id": "ledger-token",
+                            "qty": 1,
+                            "effect_tags": ["proves a local obligation"],
+                        }
+                    ],
+                }
+                for player_id in players
+            ]
+
+            with (
+                patch("cli.config.load_config", return_value={}),
+                patch("cli.db.load_pg_config", return_value=object()),
+                patch("cli.db.character_list", return_value=characters),
+                patch("cli.db.connect") as connect,
+            ):
+                connect.return_value.__enter__.return_value = object()
+                _validate_character_creation_complete(
+                    SimpleNamespace(config=config),
+                    "c1",
+                )
 
     def test_creative_influence_omitted_during_prelude_coordinator(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -41,6 +41,10 @@ either a durable update or an explicit "no change" in `glass turn end --state`.
      the scene changed the arc.
    - `glass summary append campaign --body "<campaign-relevant result>"` when
      the scene changed campaign-level continuity.
+   - If the scene advances a recurring symbol, antagonist method, faction move,
+     NPC consequence, repeated harm pattern, or unresolved campaign question,
+     update the long-game thread with
+     `glass thread advance <thread-id> --note "<concrete visible beat>"`.
    - Commit notes/lore with `glass sync apply <paths>`.
 
 5. **Update the public table and quest beats.**
@@ -52,7 +56,16 @@ either a durable update or an explicit "no change" in `glass turn end --state`.
 6. **Prepare the scene close command.**
    - Create one or two outcome bullets. They must be in-universe facts, not DM
      commentary.
-   - If XP or rewards apply, prepare the `--xp` and reward/state commands.
+   - XP applies after every scene. Award 3 XP to each participating character
+     for a completed scene, or 4 XP when the scene carried major danger,
+     sacrifice, discovery, or arc-changing consequence.
+   - Add focused bonus XP for characters who resolved a beat in an interesting
+     way that increased scene momentum and carried strong narrative weight.
+     Usually this is +1 XP to the character most responsible; use +2 only for a
+     scene-defining turn. Include these bonuses in the `--xp` totals.
+   - Do not use `0` XP for a participating character unless they were absent
+     from the scene or did only housekeeping.
+   - Prepare any reward/state commands.
 
 7. **End the scene.**
 
@@ -61,10 +74,15 @@ glass scene end \
   --summary "<compact scene summary>" \
   --outcome "<durable outcome>" \
   --beats "<party-visible beat>" \
-  --xp tev=0,sumi=0,renno=0,kit=0
+  --xp tev=3,sumi=3,renno=3,kit=3
 ```
 
 8. **Stage what follows before ending the DM turn.**
+   - Run `glass arc close-check <arc-id>` and choose an arc decision:
+     `continue`, `close`, or `reframe`. Record that decision and reason in
+     `glass turn end --state`.
+   - If the visible arc pressure is resolved or transformed, continue with the
+     Act Close Sequence instead of staging another scene by default.
    - If the act remains open, create/stage the next scene, start its actual
      play mode, and queue `glass turn housekeeping-round`.
    - Before staging the next scene, check the last two scene summaries. If they
@@ -81,6 +99,7 @@ glass scene end \
 ## Act Close Sequence
 
 1. **Read all act material.**
+   - `glass arc close-check <arc-id>`
    - `glass summary show arc <arc-id>`
    - `glass turns find --scene <scene-id>` for each major scene if needed.
    - `glass clock list --scope arc --anchor <arc-id> --all`
@@ -103,6 +122,11 @@ glass scene end \
    - `glass summary append campaign --body "<campaign-level fallout>"`
    - Update `shared/quest-log.md` or `shared/party-knowledge.md` if players
      should carry the result forward.
+   - Promote one or two long-game beats when the arc created a recurring symbol,
+     antagonist method, faction move, NPC consequence, repeated harm pattern, or
+     unresolved campaign question. Use
+     `glass thread advance <thread-id> --note "<concrete visible beat>"` and
+     keep the note table-visible or campaign-actionable, not abstract mystery.
 
 5. **Close the arc.**
 
@@ -138,5 +162,3 @@ These are not commands yet:
 
 - `glass scene close-check` for unresolved trackers, missing summary, missing
   outcomes, stale table, and open act handoff.
-- `glass arc close-check` for unresolved clocks, missing summaries, and missing
-  campaign fallout.

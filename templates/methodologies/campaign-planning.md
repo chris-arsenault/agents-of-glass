@@ -88,6 +88,11 @@ Every campaign foundation must name:
    - Named things: 3-5 files under `dm/notes/artifacts/`, `dm/notes/ships/`,
      or an appropriate notes directory.
    - Locations: 3-6 files under `dm/notes/locales/`.
+   - Long-game threads: 2-4 files under `dm/notes/threads/`, or initialize the
+     same ideas with `glass thread advance <thread-id> --note "Opened: ..."`.
+     Each thread should have one concrete visible handle the table can recognize
+     later: symbol, route, damage pattern, NPC method, faction resource, phrase,
+     or recurring consequence.
    - Secrets and hooks: one compact file each under `dm/notes/secrets.md` and
      `dm/notes/hooks.md`.
    - Philosophy or adjudication notes: one compact file under

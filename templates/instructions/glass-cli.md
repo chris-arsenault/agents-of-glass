@@ -25,6 +25,8 @@ use the command instead of prose or ad hoc markdown.
 ```bash
 glass character bulk-get <id>... [--all]
 glass clock list [--all]
+glass arc close-check [<arc-id>]
+glass thread current
 glass scene current
 glass table show [path]
 glass summary show campaign|arc|scene [id]
@@ -43,6 +45,7 @@ glass roll <skill> <attribute> --risk <level> --character <id>
 glass scene pressure <target> <skill> <attribute> --risk <level> --character <id> --impact <d6|d8|d10>
 glass character bulk-update --json '<payload>'
 glass character mirror <id>
+glass character level-up <id> [--attribute <name>]
 glass character set-hp <id> <delta>
 glass character set-momentum <id> <value>
 glass character inventory-add <id> <item-id>
@@ -60,6 +63,7 @@ glass table append <path> --body "<markdown>"
 glass table use <campaign-markdown-path> --as <table-artifact>.md
 glass summary write campaign|arc|scene [id] --body "<markdown>"
 glass summary append campaign|arc|scene [id] --body "<markdown>"
+glass thread advance <thread-id> --note "<concrete visible beat>"
 glass lore import <world-bible-path>
 glass lore promote table/<artifact>.md --to shared/lore/<path>.md
 glass lore upsert <path>

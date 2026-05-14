@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-import os
 import re
 import shutil
 
@@ -506,8 +505,9 @@ def _arc_plan_stub(arc_id: str) -> str:
         "## 5. Strong start\n\n_TBD._\n\n"
         "## 6. Nodes\n\n_TBD._\n\n"
         "## 7. What from the curated lists is in play\n\n_TBD._\n\n"
-        "## 8. Arc-specific secrets\n\n_TBD._\n\n"
-        "## 9. Done criteria\n\n_TBD._\n"
+        "## 8. Long-game links\n\n_TBD._\n\n"
+        "## 9. Arc-specific secrets\n\n_TBD._\n\n"
+        "## 10. Done criteria\n\n_TBD._\n"
     )
 
 
@@ -548,13 +548,15 @@ def _scene_prep_stub(scene_id: str, scene_type: str) -> str:
         "[`/templates/methodologies/scene-prep.md`](../../../../../../templates/methodologies/scene-prep.md) "
         "for the methodology.\n\n"
         "## 1. Recap\n\n_TBD._\n\n"
-        "## 2. Strong start\n\n_TBD._\n\n"
-        "## 3. Possible directions (3-5)\n\n_TBD._\n\n"
-        "## 4. NPCs in play\n\n_TBD._\n\n"
-        "## 5. Antagonists / creatures / threats\n\n_TBD._\n\n"
-        "## 6. Named things in play\n\n_TBD._\n\n"
-        "## 7. Secrets that might surface\n\n_TBD._\n\n"
-        "## 8. Open questions\n\n_TBD._\n"
+        "## 2. Problem family and variation note\n\n_TBD._\n\n"
+        "## 3. Strong start\n\n_TBD._\n\n"
+        "## 4. Possible directions (3-5)\n\n_TBD._\n\n"
+        "## 5. NPCs in play\n\n_TBD._\n\n"
+        "## 6. Antagonists / creatures / threats\n\n_TBD._\n\n"
+        "## 7. Named things in play\n\n_TBD._\n\n"
+        "## 8. Long-game callback or hint\n\n_None._\n\n"
+        "## 9. Secrets that might surface\n\n_TBD._\n\n"
+        "## 10. Open questions\n\n_TBD._\n"
     )
 
 

@@ -10,6 +10,7 @@ drafts; persistent mutations still go through `glass`.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -232,6 +233,7 @@ class ContextBuilder:
         )
 
         if agent.role == "dm":
+            pending_level_up_section = ""
             persona_pointer = "dm/persona.md"
             identity_section = (
                 f"You are **{agent.display_name}**, the DM for a Glass Frontier "
@@ -250,6 +252,10 @@ class ContextBuilder:
             tools_section = "\n".join(f"- {t}" for t in _dm_tools())
             world_lore_section = self._dm_world_lore_section()
         else:
+            pending_level_up_section = self._pending_level_up_section(
+                campaign_root,
+                player_id=agent.id,
+            )
             character_pointer = f"players/{agent.id}/public/character.md"
             if character_surface:
                 identity_section = (
@@ -505,6 +511,7 @@ class ContextBuilder:
             f"- Scene: **{active.scene_id}**\n\n"
             f"{turn_type_line}"
             "\n"
+            f"{pending_level_up_section}"
             f"{rapid_section}"
             f"{action_order_section}"
             f"{scene_contract_nudge_section}"
@@ -609,6 +616,54 @@ class ContextBuilder:
         frontmatter = parse_frontmatter(text)
         character_id = str(frontmatter.get("character_id") or "").strip()
         return character_id or None
+
+    def _pending_level_up_section(self, campaign_root: Path, *, player_id: str) -> str:
+        pending = self._pending_level_up_for_player(campaign_root, player_id)
+        if pending is None:
+            return ""
+        character_id, level, xp, pending_count, target_level = pending
+        plural = "s" if pending_count != 1 else ""
+        return (
+            "## Pending Level-Up\n\n"
+            f"`{character_id}` is level {level} with {xp} XP, which means "
+            f"{pending_count} pending level-up{plural}. Resolve this upkeep "
+            "before taking the normal turn action.\n\n"
+            "```bash\n"
+            f"glass character level-up {character_id}\n"
+            "```\n\n"
+            "Each call resolves one pending level. If more than one level is "
+            "pending, repeat it until the character reaches the XP threshold "
+            f"level {target_level}. If a call reaches level 4, 8, or another "
+            "multiple of 4, include `--attribute <name>` for the attribute "
+            "bump. Report the level-up result in `glass turn end --state`, "
+            "then continue the turn.\n\n"
+        )
+
+    def _pending_level_up_for_player(
+        self, campaign_root: Path, player_id: str
+    ) -> tuple[str, int, int, int, int] | None:
+        character_path = campaign_root / "players" / player_id / "public" / "character.md"
+        if not character_path.exists():
+            return None
+        text = character_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(text)
+        character_id = str(frontmatter.get("character_id") or "").strip()
+        if not character_id:
+            return None
+        match = re.search(
+            r"^- \*\*Level:\*\*\s*(\d+)\s*\((\d+)\s*XP\)",
+            text,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+        if not match:
+            return None
+        level = int(match.group(1))
+        xp = int(match.group(2))
+        target_level = (xp // 10) + 1
+        pending_count = max(0, target_level - level)
+        if pending_count <= 0:
+            return None
+        return character_id, level, xp, pending_count, target_level
 
     def _session_context_section(self, *, actor_provider: str) -> str:
         if actor_provider != "claude" or not self.config.claude.use_session_id:
@@ -1391,7 +1446,7 @@ def _dm_tools() -> list[str]:
         "into shared/lore/ AND graph-upserts it (curate, don't bulk-copy)",
         "glass lore list / search / promote",
         "glass note ratify / reject",
-        "glass arc create --pull-source --pull-utilization / activate / current / list / close",
+        "glass arc create --pull-source --pull-utilization / activate / current / list / close-check / close",
         "glass scene create / end --outcome",
         "glass scene clock declare",
         "glass scene tracker set / tick / list",
@@ -1415,6 +1470,7 @@ def _player_tools() -> list[str]:
         "glass character bulk-get / bulk-update (bulk-update your character only)",
         "glass character get / mirror / set-hp / set-momentum / inventory-add / inventory-rm "
         "(single-character convenience commands; your character only for mutations)",
+        "glass character level-up (your character only)",
         "glass character signature-status / signature-add (your character only)",
         "glass character consequence-list",
         "glass clock list / show",
@@ -1441,6 +1497,7 @@ def _character_tools() -> list[str]:
         "glass character bulk-get / bulk-update (bulk-update your character only)",
         "glass character get / mirror / set-hp / set-momentum / inventory-add / inventory-rm "
         "(single-character convenience commands; your character only for mutations)",
+        "glass character level-up (your character only)",
         "glass character signature-status / signature-add (your character only)",
         "glass character consequence-list",
         "glass clock list / show",

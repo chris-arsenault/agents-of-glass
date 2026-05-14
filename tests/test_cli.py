@@ -2102,6 +2102,43 @@ Recipients are `dm`, `party`, or a player id.
             state = runtime_state(env)
             self.assertEqual(state["active_arc"], "main-opening")
 
+    def test_arc_close_check_reports_scene_and_clock_blockers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "scene-play"],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "clock",
+                    "set",
+                    "harm-spreads",
+                    "--scope",
+                    "arc",
+                    "--anchor",
+                    "first-arc",
+                    "--max",
+                    "4",
+                ],
+                dm_env,
+            )
+
+            result = invoke_ok(runner, ["arc", "close-check", "first-arc"], dm_env)
+
+            self.assertIn("ready_to_close: false", result.output)
+            self.assertIn("active scene `opening` is still open", result.output)
+            self.assertIn("resolve or archive active arc clocks: harm-spreads", result.output)
+            self.assertIn("choose:", result.output)
+            self.assertIn("- close", result.output)
+
     def test_campaign_pull_note_records_required_utilization(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

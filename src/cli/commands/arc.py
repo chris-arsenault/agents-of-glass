@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import os
-import random
-import shutil
-import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,86 +10,32 @@ import click
 from .. import db as _db
 from .. import workspace as _workspace
 from ..campaign import (
-    active_campaign_id,
-    active_campaign_root,
-    lookup_player_character_id,
     pg_connection,
     resolve_active_campaign_workspace,
 )
-from ..config import REPO_ROOT, Paths, get_paths, load_config
-from ..constants import (
-    ATTRIBUTE_TIERS,
-    ATTRIBUTES,
-    RISK_THRESHOLDS,
-    SKILL_TIERS,
-    STARTER_MESSAGE_TYPES,
-)
+from ..config import get_paths
 from ..entities import (
-    markdown_title,
     parse_frontmatter,
     parse_sections,
-    upsert_entity_from_path,
 )
 from ..errors import GlassError, agent_instruction
-from ..ids import new_id, now_iso, slugify
-from ..messages import (
-    infer_player_from_path,
-    load_message_types,
-    message_visible_to,
-    player_dirs,
-    require_message_type,
-    require_recipient,
-    roster,
-)
+from ..ids import now_iso
 from ..outcomes import (
     append_outcome_section,
     normalize_outcomes,
     outcome_section,
 )
-from ..paths_resolve import (
-    clean_relative_path,
-    display_path,
-    ensure_under,
-    ensure_under_any,
-    resolve_content_path,
-    resolve_note_write_path,
-)
-from ..role import (
-    Role,
-    actor_for_turn,
-    assert_character_writable,
-    current_role,
-    require_dm,
-    require_player,
-    role_label_for_turn,
-)
+from ..paths_resolve import display_path
+from ..role import require_dm
 from ..state import (
     append_audit,
-    audit_path,
     commit,
-    current_mode_record,
-    default_state,
-    inline_event_lines,
     load_state,
-    normalize_state,
     queue_event,
-    save_state,
-    state_path,
-    state_summary,
-    transcript_path,)
-from ..validation import (
-    assert_attribute_name,
-    clamp,
-    outcome_for_margin,
-    validate_key_values,
 )
 from ..yaml_io import (
     command_params,
     emit,
-    make_jsonable,
-    read_body,
-    to_yaml,
-    yaml_scalar,
 )
 
 
@@ -104,7 +44,7 @@ _campaign_workspace = resolve_active_campaign_workspace
 
 @click.group()
 def arc() -> None:
-    """Arc lifecycle (DM-only): create, close, list, current."""
+    """Arc lifecycle (DM-only): create, check, close, list, current."""
 
 
 @arc.command("create")
@@ -261,6 +201,210 @@ def arc_current(ctx: click.Context) -> None:
     result = {"campaign_id": workspace.campaign_id, "active_arc": current}
     append_audit(paths, state, ctx, "arc.current", command_params(), result)
     emit(result)
+
+
+@arc.command("close-check")
+@click.argument("arc_id", required=False)
+@click.pass_context
+def arc_close_check(ctx: click.Context, arc_id: str | None) -> None:
+    """DM-only: report whether an arc is ready to close."""
+    require_dm()
+    workspace = _campaign_workspace()
+    paths = get_paths()
+    state = load_state(paths, workspace.campaign_id)
+
+    if arc_id is None:
+        current_arc = _workspace.current_arc(workspace)
+        if not current_arc:
+            raise GlassError(
+                agent_instruction(
+                    "there is no active arc to check",
+                    "Pass an arc id explicitly, or activate the intended arc with `glass arc activate <arc-id>`.",
+                )
+            )
+        normalized_arc_id = str(current_arc["arc_id"])
+    else:
+        normalized_arc_id = _workspace.slugify(arc_id)
+
+    arc_dir = workspace.arc_dir(normalized_arc_id)
+    if not arc_dir.exists():
+        raise GlassError(
+            agent_instruction(
+                f"arc {normalized_arc_id!r} does not exist",
+                "Use an arc id from `glass arc list`, or create the arc first "
+                "with `glass arc create <arc-id> --pull-source <source> "
+                "--pull-utilization <note>`.",
+            )
+        )
+
+    active_scene = _workspace.current_scene(workspace)
+    required_before_close: list[str] = []
+    recommended_before_close: list[str] = []
+    if active_scene:
+        required_before_close.append(
+            f"active scene `{active_scene['scene_id']}` is still open; end it before closing an arc"
+        )
+
+    with pg_connection() as conn:
+        arc_clocks = _db.clock_list(
+            conn,
+            campaign_id=workspace.campaign_id,
+            scope="arc",
+            anchor_id=normalized_arc_id,
+            include_archived=True,
+        )
+    active_clocks = [clock for clock in arc_clocks if clock.get("status") == "active"]
+    if active_clocks:
+        required_before_close.append(
+            "resolve or archive active arc clocks: "
+            + ", ".join(str(clock["clock_id"]) for clock in active_clocks)
+        )
+
+    plan_status = _markdown_close_status(
+        arc_dir / "plan.md",
+        stub_markers=("_TBD._",),
+    )
+    context_status = _markdown_close_status(
+        arc_dir / "context.md",
+        stub_markers=("_Player-facing summary.",),
+    )
+    summary_status = _markdown_close_status(
+        arc_dir / "summary.md",
+        stub_markers=("_Running arc summary.",),
+    )
+    done_criteria = _plan_done_criteria_status(arc_dir / "plan.md")
+
+    if not plan_status["meaningful"]:
+        recommended_before_close.append("arc plan is missing or still stubbed")
+    if not context_status["meaningful"]:
+        recommended_before_close.append("arc context is missing or still stubbed")
+    if not summary_status["meaningful"]:
+        recommended_before_close.append(
+            "arc summary is missing or still stubbed; write/update it during closeout"
+        )
+    if not done_criteria["meaningful"]:
+        recommended_before_close.append(
+            "done criteria are missing or still stubbed; name why the arc closes, continues, or reframes"
+        )
+
+    scenes = _arc_scene_summary_statuses(arc_dir)
+    missing_scene_summaries = [
+        scene["scene_id"]
+        for scene in scenes
+        if not scene["summary"]["meaningful"]
+    ]
+    if missing_scene_summaries:
+        recommended_before_close.append(
+            "scene summaries missing or still stubbed: "
+            + ", ".join(missing_scene_summaries)
+        )
+
+    closed_arcs = {str(item) for item in state.get("closed_arcs", [])}
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "arc_id": normalized_arc_id,
+        "closed": normalized_arc_id in closed_arcs,
+        "ready_to_close": not required_before_close,
+        "required_before_close": required_before_close,
+        "recommended_before_close": recommended_before_close,
+        "active_scene": active_scene,
+        "arc_files": {
+            "plan": plan_status,
+            "context": context_status,
+            "summary": summary_status,
+            "done_criteria": done_criteria,
+        },
+        "scene_count": len(scenes),
+        "scenes": scenes,
+        "arc_clocks": arc_clocks,
+        "active_arc_clocks": active_clocks,
+        "arc_decision": {
+            "choose": ["continue", "close", "reframe"],
+            "record": (
+                "Record the arc decision and reason in `glass turn end --state`. "
+                "If closing, follow `methodologies/closeout.md` Act Close Sequence."
+            ),
+        },
+    }
+    append_audit(
+        paths,
+        state,
+        ctx,
+        "arc.close-check",
+        command_params(arc_id=arc_id),
+        result,
+    )
+    emit(result)
+
+
+def _markdown_close_status(
+    path: Path,
+    *,
+    stub_markers: tuple[str, ...],
+) -> dict[str, Any]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {
+            "path": display_path(path),
+            "exists": False,
+            "meaningful": False,
+            "stub": True,
+        }
+    frontmatter = parse_frontmatter(text)
+    stripped = text.strip()
+    stub = frontmatter.get("status") == "stub" or any(
+        marker in text for marker in stub_markers
+    )
+    return {
+        "path": display_path(path),
+        "exists": True,
+        "meaningful": bool(stripped) and not stub,
+        "stub": stub,
+    }
+
+
+def _plan_done_criteria_status(path: Path) -> dict[str, Any]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {
+            "path": display_path(path),
+            "exists": False,
+            "meaningful": False,
+            "stub": True,
+        }
+    sections = parse_sections(text, "arc-plan")
+    body = ""
+    for section in sections:
+        if "done criteria" in str(section.get("title", "")).lower():
+            body = str(section.get("text") or "").strip()
+            break
+    stub = not body or "_TBD._" in body
+    return {
+        "path": display_path(path),
+        "exists": True,
+        "meaningful": bool(body) and not stub,
+        "stub": stub,
+    }
+
+
+def _arc_scene_summary_statuses(arc_dir: Path) -> list[dict[str, Any]]:
+    scenes_root = arc_dir / "scenes"
+    if not scenes_root.exists():
+        return []
+    statuses: list[dict[str, Any]] = []
+    for scene_dir in sorted(path for path in scenes_root.iterdir() if path.is_dir()):
+        statuses.append(
+            {
+                "scene_id": scene_dir.name,
+                "summary": _markdown_close_status(
+                    scene_dir / "summary.md",
+                    stub_markers=("_Scene summary is finalized",),
+                ),
+            }
+        )
+    return statuses
 
 
 @arc.command("activate")

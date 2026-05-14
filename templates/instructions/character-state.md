@@ -96,6 +96,7 @@ or origin.
    ```bash
    glass character set-hp <id> <delta>
    glass character set-momentum <id> <value>
+   glass character level-up <id> [--attribute <name>]
    glass character inventory-add <id> <item-id> [--effect-tag TEXT]
    glass character inventory-rm <id> <item-id>
    glass character signature-add <id> <name> [--look TEXT --use TEXT --tell TEXT]
@@ -109,6 +110,14 @@ or origin.
    received, broken, or kept for later leverage.
 6. Mirror public character displays after visible sheet changes.
 7. Name the changed character ids and fields in `glass turn end --state`.
+
+## Level-Up Sequence
+
+When `TURN_START.md` reports a pending level-up, run
+`glass character level-up <id>` once per pending level before the normal turn
+action. Each call resolves exactly one level. If the level being reached is 4,
+8, or another multiple of 4, include `--attribute <name>` for the attribute
+bump. Record the result in `glass turn end --state`, then continue the turn.
 
 ## Bulk Payload Shape
 

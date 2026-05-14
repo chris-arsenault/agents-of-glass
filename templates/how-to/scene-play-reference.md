@@ -56,6 +56,11 @@ Use `glass quest beat <text>` for public story-shifting moments: allegiance
 changes, clock consequences, faction moves, commitments, or meaningful assets
 gained/lost. Two or three beats per scene is healthy.
 
-At scene end, 1-3 XP per character is the baseline: 1 for quiet participation,
-2 for meaningful participation, 3 for major risk or a memorable character beat.
-Spot awards are rare and should have a clear reason.
+At scene end, 3-4 XP per participating character is the baseline. Use 3 XP for
+a completed scene and 4 XP when the scene carried major danger, sacrifice,
+discovery, or arc-changing consequence.
+
+Add focused bonus XP when a character resolves a beat in an interesting way that
+increases scene momentum and has strong narrative weight. Usually this is +1 XP
+to the character most responsible; use +2 only for a scene-defining turn. The
+DM includes those bonuses in the `glass scene end --xp` totals.

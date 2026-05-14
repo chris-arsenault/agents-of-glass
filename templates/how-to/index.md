@@ -23,6 +23,8 @@ instructions have mechanical tool behavior.
   craft, named slop attractors to refuse, commit/advance/resolve rules.
 - [`party-organization.md`](party-organization.md) — org-first bootstrap
   guidance, valid in-world crew examples, and ensemble shape checks.
+- [`problem-families.md`](problem-families.md) — broad DM scene-pressure
+  families for avoiding repeated problems in different costumes.
 - [`scene-hooks.md`](scene-hooks.md) — hooks, strong starts, and player-facing
   invitations.
 - [`scene-play-reference.md`](scene-play-reference.md) — optional speaker

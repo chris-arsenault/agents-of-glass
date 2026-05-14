@@ -19,9 +19,10 @@ and `glass turn end` succeeds.
    - `glass scene current`
    - `glass summary show campaign`
    - `glass summary show arc <arc-id>`
+   - `glass thread current`
    - `glass turns find --scene <previous-scene-id>` or `glass turns feed --after-turn <n>` when the previous scene matters.
    - Read `arcs/<arc>/plan.md`, `arcs/<arc>/context.md`, relevant `dm/notes/`,
-     and current `table/`.
+     current `table/`, and [`how-to/problem-families.md`](../how-to/problem-families.md).
 
 2. **Create the scene.**
    - Run `glass scene create <scene-slug> --type <scene-play|action|travel|combat|chase|social-pressure|custom> [--arc <arc>]`.
@@ -34,6 +35,12 @@ and `glass turn end` succeeds.
 
 4. **Write `arcs/<arc>/scenes/<scene>/prep.md` in this order.**
    - Recap: why this scene exists now.
+   - Problem family: one broad family from
+     [`how-to/problem-families.md`](../how-to/problem-families.md), or a similarly
+     broad label. This is the pressure shape, not the solution path. Include a
+     variation note explaining how this differs from the last two scenes and
+     what part of the party toolkit it pressures differently. Do not use
+     "knowledge" as a family; knowledge is an output.
    - Strong start: what is immediately on screen.
    - Active antagonist: who or what is opposing the party in this scene, including
      what they are doing off screen if not physically present.
@@ -57,6 +64,10 @@ and `glass turn end` succeeds.
    - NPCs in play.
    - Threats, creatures, antagonists, or pressure sources.
    - Named things in play.
+   - Long-game callback or hint: at most one visible callback to an existing
+     campaign thread, or `none`. A good callback is concrete and table-visible:
+     mark, object, NPC behavior, damage pattern, phrase, route, faction resource,
+     or repeated method. Do not write abstract mystery language.
    - Secrets that might surface.
    - Open questions the DM will play to answer.
 
@@ -112,6 +123,8 @@ and `glass turn end` succeeds.
   preservation, or institutional negotiation. If paperwork matters, attach it to
   an antagonist move and a physical danger on screen or arriving now.
 - Do not stage a third consecutive scene in the same location or location family.
+- Do not stage a scene that repeats the last two scenes' problem family without
+  naming what is different and why this repeat is worth playing.
 - Do not end the turn still in bare `scene-prep`.
 - Do not start an action scene without action-order setup in the opening DM
   turn or a clear handoff to do it.

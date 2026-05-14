@@ -22,11 +22,16 @@ to resume.
    <protocol-or-toolkit-label>`, write the next scene's context/prep, write the
    current visible situation into `table/scene.md`, and create named table
    artifacts for reusable visible lore. The next scene prep must name the active
-   antagonist, what they are doing now, and the concrete physical danger to
-   people. If the last two scenes lacked danger, fighting, coercion, pursuit, or
+   antagonist, what they are doing now, the concrete physical danger to people,
+   the primary problem family, and the variation note explaining how this scene
+   differs from the last two. Use
+   [`how-to/problem-families.md`](../how-to/problem-families.md) when choosing the
+   family. If the last two scenes lacked danger, fighting, coercion, pursuit, or
    another harm-facing pressure, the next scene must open with one. If the last
    two scenes used the same location or same location family, the next scene must
-   substantially move somewhere physically different.
+   substantially move somewhere physically different. If a long-game callback
+   fits, make it one concrete visible mark, object, NPC behavior, damage pattern,
+   phrase, route, faction resource, or repeated method.
 6. Commit authored markdown with `glass sync apply`, covering the next scene
    directory, `table/`, and any changed DM notes, lore, or shared files.
 7. Start the next scene mode with `glass mode start <protocol-or-toolkit-label>
@@ -43,7 +48,7 @@ glass scene end \
   --summary "..." \
   --outcome "..." \
   --beats "..." \
-  --xp tev=0,sumi=0,renno=0,kit=0
+  --xp tev=3,sumi=3,renno=3,kit=3
 glass mode end
 glass scene create <next-scene> --type <protocol-or-toolkit-label>
 glass sync apply arcs/<arc>/scenes/<next-scene> table

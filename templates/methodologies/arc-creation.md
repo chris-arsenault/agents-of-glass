@@ -79,6 +79,10 @@ substantially move.
      shift at least every third scene.
    - Curated ingredients: specific NPCs, factions, locations, creatures, named
      things, and public lore already in play.
+   - Long-game links: 1-3 concrete callbacks, symbols, antagonist methods,
+     faction moves, repeated harm patterns, or unresolved questions this arc can
+     connect to later. These are not a plotted reveal order. They are reusable
+     visible handles for future scene prep.
    - Secrets: 3-7 atomic facts, unattached to fixed scenes.
    - Done criteria: when the arc should close or be abandoned.
 
