@@ -22,7 +22,7 @@ intro, and non-empty public relationships file.
 5. Commit any authored markdown corrections with `glass sync apply`.
 6. Update `shared/party-knowledge.md` if needed.
 7. Write `TURN.md` with the public party lock-in.
-8. Run `glass turn audit`, then `glass turn end --summary "character creation complete" --state "<party state locked in and mirrors/relationships updated>" --rolls none --next default`.
+8. Run `glass done --summary "character creation complete" --state "<party state locked in and mirrors/relationships updated>" --rolls none --next default`.
 9. Run `glass mode end`.
 
 If `glass mode end` reports missing relationship files, stop. The relationship

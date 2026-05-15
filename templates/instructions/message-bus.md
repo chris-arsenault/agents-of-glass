@@ -13,7 +13,7 @@ material. Do not reserve the bus only for hidden-info blockers.
 
 ## Start-of-Turn Sequence
 
-1. Full turns: run `glass msg read --since-checkpoint`.
+1. Full turns: run `glass check`.
 2. Rapid-response turns: read messages only when the prompt depends on them.
 3. Respond during the same turn when a message blocks your action.
 4. If another actor needs a durable line from you before your prose lands, send

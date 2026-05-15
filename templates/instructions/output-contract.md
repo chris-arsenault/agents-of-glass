@@ -9,15 +9,14 @@ authority: binding
 Every turn has two outputs:
 
 1. Public prose in `TURN.md`.
-2. Compact closeout from `glass turn end`.
+2. Compact closeout from `glass done`.
 
 ## Sequence
 
-1. Finish required `glass` mutations and `glass sync apply` commits.
+1. Run `glass check` on full turns, then finish required `glass` mutations and `glass sync apply` commits.
 2. Write public prose to the `TURN.md` path named in TURN_START.
-3. Run `glass turn audit`.
-4. Run `glass turn end`.
-5. Exit.
+3. Run `glass done`.
+4. Exit.
 
 ## Public Prose
 
@@ -36,8 +35,7 @@ the command audit stores actual mutations.
 ## Closeout
 
 ```bash
-glass turn audit
-glass turn end \
+glass done \
   --summary "<1-3 sentence continuity for the next actor>" \
   --state "<durable updates or no state change>" \
   --rolls "<rolls/checks used or none>" \
@@ -63,5 +61,5 @@ Add fields when relevant:
 ```
 
 Use `--next <agent-id>` only when overriding normal rotation or action order.
-On active-play turns, run `glass beat check` before the prose pass; the audit
+On active-play turns, run `glass check` before the prose pass; `glass done`
 will tell you if that requirement is still missing.

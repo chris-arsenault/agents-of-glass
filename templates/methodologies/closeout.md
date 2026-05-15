@@ -8,14 +8,14 @@ applies_to_modes: [scene-play, action, prelude, arc-creation, scene-prep, interm
 # Scene and Act Closeout
 
 Run this before `glass scene end` or `glass arc close`. Every step must produce
-either a durable update or an explicit "no change" in `glass turn end --state`.
+either a durable update or an explicit "no change" in `glass done --state`.
 
 ## Scene Close Sequence
 
 1. **Read the closing state.**
    - `glass scene current`
    - `glass summary show scene <scene-id> --arc <arc-id>`
-   - `glass turns find --scene <scene-id>`
+   - `glass find --mode turns --scene <scene-id>`
    - `glass clock list --scope scene --anchor <scene-id> --all`
    - `glass scene tracker list --all`
    - `glass character bulk-get --all`
@@ -80,11 +80,11 @@ glass scene end \
 8. **Stage what follows before ending the DM turn.**
    - Run `glass arc close-check <arc-id>` and choose an arc decision:
      `continue`, `close`, or `reframe`. Record that decision and reason in
-     `glass turn end --state`.
+     `glass done --state`.
    - If the visible arc pressure is resolved or transformed, continue with the
      Act Close Sequence instead of staging another scene by default.
    - If the act remains open, create/stage the next scene, start its actual
-     play mode, and queue `glass turn housekeeping-round`.
+     play mode, and queue `glass next housekeeping-round`.
    - Before staging the next scene, check the last two scene summaries. If they
      did not include danger, fighting, coercion, pursuit, or another physically
      harmful pressure, the next scene must course-correct with one at the
@@ -94,6 +94,14 @@ glass scene end \
      different physical environment.
    - The next scene must name an active antagonist or antagonistic force and the
      concrete physical danger to people.
+   - The next scene must also name its scene verb, primary problem family,
+     variation note versus the last two scenes, three interactable scene toys,
+     why the party's default extraction/load-path/proof answer is insufficient
+     or costly, objective clock, and threat/timer clock if any.
+   - Run `glass thread current`. If the scene or closeout advances a recurring
+     symbol, antagonist method, faction move, NPC consequence, repeated harm
+     pattern, or unresolved campaign question, use
+     `glass thread advance <thread-id> --note "<concrete visible beat>"`.
    - If the act is complete, continue with the Act Close Sequence.
 
 ## Act Close Sequence
@@ -101,7 +109,7 @@ glass scene end \
 1. **Read all act material.**
    - `glass arc close-check <arc-id>`
    - `glass summary show arc <arc-id>`
-   - `glass turns find --scene <scene-id>` for each major scene if needed.
+   - `glass find --mode turns --scene <scene-id>` for each major scene if needed.
    - `glass clock list --scope arc --anchor <arc-id> --all`
    - Read `arcs/<arc>/plan.md`, `context.md`, and scene summaries.
 
@@ -147,7 +155,7 @@ glass arc close <arc-id> \
 
 7. **Close the turn.**
    - Write `TURN.md` with the public closure and handoff.
-   - Run `glass turn end --summary "<scene/act closed and next mode staged>" --state "<closeout commands/files updated>" --rolls "<rolls/checks or none>" --scene-status ended --next default`.
+   - Run `glass done --summary "<scene/act closed and next mode staged>" --state "<closeout commands/files updated>" --rolls "<rolls/checks or none>" --scene-status ended --next default`.
 
 ## Prohibitions
 

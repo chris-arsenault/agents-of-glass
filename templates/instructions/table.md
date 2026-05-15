@@ -47,7 +47,7 @@ glass table snapshot --label "<reason>"
 ```
 
 6. Use `glass sync apply table` only for table files already edited directly.
-7. Mention table updates and lore promotions in `glass turn end --state`.
+7. Mention table updates and lore promotions in `glass done --state`.
 
 ## Boundary
 

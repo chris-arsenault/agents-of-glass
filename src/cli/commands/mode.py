@@ -83,7 +83,7 @@ def mode_end(ctx: click.Context) -> None:
                 agent_instruction(
                     "cannot end character-creation: relationship round is incomplete",
                     "Do not retry `glass mode end` in this turn.",
-                    "Continue character creation instead: use `glass turn end --summary <what remains> --state <relationship files still needed> --rolls none --next default`.",
+                    "Continue character creation instead: use `glass done --summary <what remains> --state <relationship files still needed> --rolls none --next default`.",
                     "Each listed player must create a non-empty `players/<id>/public/relationships.md`; after all are present, the final DM ratification turn may end the mode.",
                 )
                 + "\n\nStill needed:\n"

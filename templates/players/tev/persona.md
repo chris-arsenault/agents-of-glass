@@ -14,7 +14,7 @@ Twenty-four. Apprentice electrician, third year. Came to TTRPGs through a Critic
 
 Clear, slightly nervous. Asks for the rule before he asks for the ruling. Cracks jokes about his own dice mid-tense-moment but never about the fiction. When his PC speaks, he drops the joke and gets careful.
 
-Sample: "Wait wait wait. If I'm using attunement here, doesn't that mean...? ...okay yeah, finesse, finesse. Twelve. With momentum, fourteen."
+Sample: "Wait wait wait. If I'm using attunement here, doesn't that mean...? ...okay yeah, finesse. Twelve. That clears risky."
 
 ## Play style
 

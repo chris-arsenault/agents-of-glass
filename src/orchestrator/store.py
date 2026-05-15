@@ -26,7 +26,15 @@ from typing import Any
 from .config import AogConfig
 from .config import config_env_value
 from .glass_bridge import GlassBridge, GlassBridgeError
-from .state import ModeFrame, SessionState, utc_now
+from .state import (
+    PLAYER_CURSOR_MODES,
+    PLAYER_IDS,
+    SCENE_PLAY_PLAYER_CURSOR_KEY,
+    ModeFrame,
+    SessionState,
+    next_player_after,
+    utc_now,
+)
 
 
 class SessionStore:
@@ -429,6 +437,19 @@ class SessionStore:
         run_metadata = dict(glass_state.get("aog_run_metadata") or {})
         if existing:
             run_metadata.update(existing.run_metadata)
+        active_frame = frames[-1] if frames else None
+        if (
+            active_frame is not None
+            and active_frame.mode in PLAYER_CURSOR_MODES
+            and run_metadata.get(SCENE_PLAY_PLAYER_CURSOR_KEY) not in PLAYER_IDS
+        ):
+            inferred_cursor = _scene_play_cursor_from_turns(
+                turns,
+                mode=active_frame.mode,
+                scene_id=active_frame.scene_id,
+            )
+            if inferred_cursor is not None:
+                run_metadata[SCENE_PLAY_PLAYER_CURSOR_KEY] = inferred_cursor
         run_metadata["glass_state"] = "postgres runtime state"
         claude_sessions = dict(glass_state.get("aog_claude_sessions") or {})
         if existing:
@@ -463,6 +484,21 @@ def _turns_taken_for_frame(turns: list[dict[str, Any]], mode: str, scene_id: str
         1 for turn in turns
         if turn.get("mode") == mode and turn.get("scene_id") == scene_id
     )
+
+
+def _scene_play_cursor_from_turns(
+    turns: list[dict[str, Any]],
+    *,
+    mode: str,
+    scene_id: str,
+) -> str | None:
+    for turn in reversed(turns):
+        if turn.get("mode") != mode or turn.get("scene_id") != scene_id:
+            continue
+        speaker = str(turn.get("speaker") or "").strip()
+        if speaker in PLAYER_IDS:
+            return next_player_after(speaker)
+    return None
 
 
 def _render_turn_records(records: list[dict[str, Any]]) -> str:

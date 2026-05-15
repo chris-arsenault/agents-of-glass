@@ -36,7 +36,7 @@ surface. Use workspace-relative paths exactly as they appear in `TURN_START`.
 6. Read back command-created files or command output when verification is
    needed.
 7. Write final public prose to the `TURN.md` path from `TURN_START`.
-8. Run `glass turn end --summary ... --state ... --rolls ...`.
+8. Run `glass done --summary ... --state ... --rolls ...`.
 
 ## Boundary
 

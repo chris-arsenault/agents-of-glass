@@ -21,7 +21,7 @@ turn workspace.
 
 ## Core Files
 
-- [`output-contract.md`](output-contract.md): turn prose and `glass turn end`.
+- [`output-contract.md`](output-contract.md): turn prose and `glass done`.
 - [`workspace-authoring.md`](workspace-authoring.md): projected files and
   `glass sync apply`.
 - [`message-bus.md`](message-bus.md): message reads, sends, and message types.

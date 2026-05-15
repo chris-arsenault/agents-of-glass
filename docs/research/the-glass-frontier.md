@@ -12,15 +12,20 @@ Production-ish code with serious shape. Most of it is plumbing (Lambda glue, Web
 
 ### Game math (`packages/skill-check-resolver/`, `packages/dto/src/mechanics.ts`)
 
-- **2d6 + skill mod + attribute mod + momentum vs risk threshold.**
-- **Risk levels:** controlled=7, standard=8, risky=9, desperate=10.
+- **Original source math:** 2d6 + skill mod + attribute mod + momentum vs risk threshold.
+- **Current Agents of Glass math:** 1d10 + skill mod + attribute mod.
+- **Current risk levels:** controlled=5, standard=6, risky=7, desperate=8.
 - **Outcome tiers:** breakthrough / advance / stall / regress / collapse with momentum deltas of +2/+1/0/-1/-2.
 - **Tier thresholds (by margin):** ≥+2 breakthrough, 0..+1 advance, -1 stall, -2..-3 regress, ≤-4 collapse.
 - **Attribute tiers:** rudimentary (-2), standard (0), advanced (+1), superior (+2), transcendent (+4).
 - **Skill tiers:** fool (-2), apprentice (0), artisan (+1), virtuoso (+2), legend (+4).
-- **Momentum** clamped to `[-2, +3]`.
+- **Momentum** clamped to `[-2, +3]`, narrative-only.
 
-We use these constants verbatim. They're well-tuned for narrative momentum.
+We keep the tier labels, modifiers, and momentum clamp, but tuned the check die
+and risk thresholds for multiplayer agent play. Momentum no longer modifies
+check totals; after a check updates momentum, `> 2` means add one extra good
+visible consequence, `<= 0` means add one extra visible complication, and `1`
+or `2` has no extra rider.
 
 ### Intent taxonomy (`packages/dto/src/narrative/IntentType.ts`)
 

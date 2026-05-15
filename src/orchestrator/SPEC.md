@@ -85,14 +85,14 @@ Operator concerns only — no agent ever calls `aog`.
 3. **Refresh the actor projection** under `.glass-cwd/<campaign>/<agent>/`. It mirrors actor-visible campaign paths, and exposes the current turn at stable unnumbered `turns/` paths. The projection is chowned to the spawned actor; role-authorized document surfaces and the current turn dir are writable.
 4. **Probe workspace permissions.** Before Claude starts, run as the spawned actor and prove the current turn dir supports arbitrary create, edit, and delete operations. Fail fast if ownership, ACLs, or modes are wrong.
 5. **Mint a role-scoped `glass` grant**. The local API writes to the canonical campaign root while using the projection as cwd, so `glass sync apply` can commit projected document edits by their real relative paths.
-6. **Spawn `claude -p --dangerously-skip-permissions`** with `cwd` set to the actor projection. Set env vars: `GLASS_ROLE`, `GLASS_CAMPAIGN_ID`, `GLASS_CONFIG`, `GLASS_TURN_ID`, `AOG_TURN_START`, `AOG_TURN_PROSE`, `AOG_TURN_CLOSEOUT`, `GLASS_API_URL`, and `GLASS_API_GRANT`/grant file as available. If `[claude].use_session_id` is true, use `--session-id <actor-session-id>` for the first attached invocation and `--resume <actor-session-id>` for later attached invocations. The prompt is short — it says to read `turns/TURN_START.md`, write public prose, run `glass turn end`, and exit.
+6. **Spawn `claude -p --dangerously-skip-permissions`** with `cwd` set to the actor projection. Set env vars: `GLASS_ROLE`, `GLASS_CAMPAIGN_ID`, `GLASS_CONFIG`, `GLASS_TURN_ID`, `AOG_TURN_START`, `AOG_TURN_PROSE`, `AOG_TURN_CLOSEOUT`, `GLASS_API_URL`, and `GLASS_API_GRANT`/grant file as available. If `[claude].use_session_id` is true, use `--session-id <actor-session-id>` for the first attached invocation and `--resume <actor-session-id>` for later attached invocations. The prompt is short — it says to read `turns/TURN_START.md`, write public prose, run `glass done`, and exit.
 7. **Stream stdout/stderr** to the operator's terminal line-by-line, prefixed with `[<agent-id>]`. Full captures saved beside the agent's canonical turn files.
 8. **Wait** for the subprocess to exit (with timeout from `claude.turn_timeout_seconds`, default 3600s).
 9. **Copy turn artifacts back to canonical storage.** `TURN.md`, `turn-closeout.json`, and debug logs generated in the actor-owned projection are copied to the canonical turn dir.
 10. **Process the agent's prose.** The agent must write public turn prose to
    `TURN.md` at `AOG_TURN_PROSE`. If that file is missing or empty,
    the turn fails; stdout/stderr are operational debug captures, not public
-   corpus. The agent must also complete `glass turn end`, which writes compact
+   corpus. The agent must also complete `glass done`, which writes compact
    closeout metadata. The orchestrator then calls `glass turn append`, which commits
    `turns.prose` plus closeout metadata in Postgres, links/inlines pending
    events, and refreshes campaign and scene markdown transcript exports.

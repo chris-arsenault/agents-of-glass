@@ -20,22 +20,20 @@ is already recorded.
    glass summary show scene <scene-id>
    ```
 
-3. Read recent or scene-bound prose with turns commands:
+3. Use the unified search facade for most lookup:
 
    ```bash
-   glass turns find --text "<query>"
-   glass turns find --scene <scene-id>
-   glass turns feed --after-turn <n>
+   glass find "<query>"
+   glass find "<query>" --mode semantic
+   glass find "<query>" --mode turns --scene <scene-id>
    ```
 
-4. Search older prose only after the bounded surfaces above:
+4. Use lower-level search commands only when TURN_START or a command response
+   names the exact command. Do not browse the full CLI looking for alternate
+   search tools.
 
-   ```bash
-   glass search text "<query>"
-   glass search semantic "<query>"
-   ```
-
-5. Use graph commands for relationships between named things:
+5. Use graph commands for relationships between named things when TURN_START
+   exposes them or the methodology requires them:
 
    ```bash
    glass entity relations <entity-id>
@@ -44,4 +42,4 @@ is already recorded.
    ```
 
 6. Act on the retrieved context in the same turn or state the remaining blocker
-   in `glass turn end --state`.
+   in `glass done --state`.

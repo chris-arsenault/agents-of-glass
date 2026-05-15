@@ -20,7 +20,7 @@ round, not to ratify or end character creation.
    `glass msg table-talk <player> "<specific relationship prompt>"` or
    `glass msg banter <player> "<specific relationship question>"`.
 7. Write `TURN.md` as a short public bridge into relationship writing.
-8. Run `glass turn audit`, then `glass turn end --summary "relationship round opened" --state "<visible table or prompt updates, or no state change>" --rolls none --next default`.
+8. Run `glass done --summary "relationship round opened" --state "<visible table or prompt updates, or no state change>" --rolls none --next default`.
 
 Do not run `glass mode end`. `glass mode end` is only valid after every player
 has a non-empty `players/<id>/public/relationships.md`.

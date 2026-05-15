@@ -21,6 +21,17 @@ Use the tracker shape that matches the fiction:
 
 Do not force a scene into one of those labels. Name the pressure honestly.
 
+## Scene Clocks
+
+The required scene clock is usually the party objective: what the characters
+are trying to accomplish. Use `--polarity objective` for that clock. Add a
+separate `--polarity threat` or `--polarity timer` clock when an antagonist,
+hazard, or deadline needs its own visible movement.
+
+Use `glass scene clock tick <clock-id> <delta> --outcome "<why>"` when a
+meaningful success, failure, DM move, or beat resolution changes one of those
+clocks.
+
 ## Trackers
 
 Every action scene needs at least one concrete endpoint. Some trackers count up:

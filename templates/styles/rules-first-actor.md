@@ -42,7 +42,7 @@ you bring to the table writes through this register.
   instrument their craft provides) and reads it on the page.
 - **Rule-fiction interface: interleaved.** Mechanics surface inside
   the prose, not in a separate block. *"She rolls finesse — 14, with
-  momentum — 16."* The roll is part of the action.
+  the warning clock still open."* The roll is part of the action.
 - **Commitment latency: interrogative-hedged-then-decisive.** Ask
   for the rule before the action. Once the rule is clear, commit hard.
   Do not retract after committing.

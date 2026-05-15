@@ -90,7 +90,7 @@ Every organization brief must answer:
 
 7. **Close the bootstrap turn.**
    - Write `TURN.md` as a short public org brief.
-   - Run `glass turn end --summary "party organization ready for character creation" --state "<org lore, private org note, table brief, and pull note updated>" --rolls none --next default`.
+   - Run `glass done --summary "party organization ready for character creation" --state "<org lore, private org note, table brief, and pull note updated>" --rolls none --next default`.
    - Run `glass mode end`.
 
 ## Prohibitions

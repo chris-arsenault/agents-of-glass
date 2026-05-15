@@ -36,6 +36,61 @@ def clock_progress_text(clock: dict[str, Any]) -> str:
     return f"{value}/{max_value} {direction}"
 
 
+def clock_semantics_text(clock: dict[str, Any]) -> str:
+    polarity = str(clock.get("polarity") or "objective")
+    direction = str(clock.get("direction") or "progress")
+    return f"{polarity} {direction}"
+
+
+def _clock_summary(clock: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **clock,
+        "progress_text": clock_progress_text(clock),
+        "semantics_text": clock_semantics_text(clock),
+    }
+
+
+def _clock_groups(clocks: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    groups = {"objective": [], "threat": [], "timer": []}
+    for clock in clocks:
+        polarity = str(clock.get("polarity") or "objective")
+        if polarity not in groups:
+            polarity = "objective"
+        groups[polarity].append(_clock_summary(clock))
+    return groups
+
+
+def _clock_warnings(
+    *,
+    active_clocks: list[dict[str, Any]],
+    visible_clocks: list[dict[str, Any]],
+    role_kind: str,
+) -> list[str]:
+    if not active_clocks:
+        return []
+    active_objective = any(
+        str(clock.get("polarity") or "objective") == "objective"
+        for clock in active_clocks
+    )
+    visible_objective = any(
+        str(clock.get("polarity") or "objective") == "objective"
+        for clock in visible_clocks
+    )
+    if not active_objective:
+        if role_kind == "player":
+            return [
+                "No objective clock is active; end with `--next dm` if the scene needs a party objective before continuing."
+            ]
+        return [
+            "This scene has no active objective clock; players may read the scene as threat-only. Add or reveal a party-objective clock when the party has a goal to push."
+        ]
+    if role_kind == "player" and not visible_objective:
+        return [
+            "No player-visible objective clock is active; ask the DM to reveal or declare the party objective if the scene should keep moving."
+        ]
+    return []
+
+
 def beat_status_note(age: int) -> str | None:
     if age >= BEAT_MAX_AGE:
         return (
@@ -49,18 +104,44 @@ def beat_status_note(age: int) -> str | None:
 
 
 def scene_close_note(completed_beats: int) -> str | None:
-    if completed_beats >= 5:
+    if completed_beats >= 8:
         return (
-            "this scene has ample resolved material; when the current scene clock "
-            "lands, close or transition unless a genuinely new scene question "
-            "needs its own clock."
+            "this scene has substantial resolved material; close or transition "
+            "when the core tension lands unless a genuinely new scene question "
+            "still belongs here."
         )
-    if completed_beats >= 4:
+    if completed_beats >= 6:
         return (
-            "this scene has enough resolved material to close when the current "
-            "scene clock lands; keep any next clock choice deliberate."
+            "this scene is entering landing range, not automatic closure; keep "
+            "multiple active problem lanes live if the core tension has not "
+            "landed."
         )
     return None
+
+
+def _beat_warnings(
+    *,
+    active_beat_count: int,
+    completed_beats: int,
+    role_kind: str,
+) -> list[str]:
+    if active_beat_count <= 0:
+        if completed_beats >= 8:
+            return [
+                "No active beat is live after substantial resolved material; the DM should close, transition, or deliberately open a new scene question."
+            ]
+        if role_kind == "player":
+            return [
+                "No active beat is live; end with `--next dm` so the DM can restore the scene board instead of forcing another player into empty procedure."
+            ]
+        return [
+            "No active beat is live; if the scene continues, restore 2-3 active beats across distinct problem lanes before handing back to players."
+        ]
+    if role_kind == "dm" and active_beat_count == 1 and completed_beats < 8:
+        return [
+            "Only one active beat is live; the DM should usually keep 2-3 active beats in play so resolving one beat does not force a DM turn."
+        ]
+    return []
 
 
 def scene_contract_snapshot(
@@ -140,15 +221,20 @@ def scene_contract_snapshot(
         "active_clock_count": len(active_clocks),
         "visible_clock_count": len(visible_clocks),
         "hidden_clock_count": hidden_clock_count,
-        "clocks": [
-            {
-                **clock,
-                "progress_text": clock_progress_text(clock),
-            }
-            for clock in visible_clocks
-        ],
+        "clocks": [_clock_summary(clock) for clock in visible_clocks],
+        "clock_groups": _clock_groups(visible_clocks),
+        "clock_warnings": _clock_warnings(
+            active_clocks=active_clocks,
+            visible_clocks=visible_clocks,
+            role_kind=role_kind,
+        ),
         "active_beat_count": len(active_beats),
         "active_beats": active_beats,
+        "beat_warnings": _beat_warnings(
+            active_beat_count=len(active_beats),
+            completed_beats=completed_beats,
+            role_kind=role_kind,
+        ),
         "recent_beats": recent_beats,
         "completed_beats": completed_beats,
         "warning_beats": [

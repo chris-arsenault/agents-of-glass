@@ -61,6 +61,9 @@ glass scene tracker set <id> --max N  # DM only — scene-local clock/progress t
   [--value N] [--resistance N] [--impact-resistance N]
 glass scene tracker tick <id> [delta] # DM only — advance/reduce a tracker
 glass scene tracker list              # visible tracker state
+glass scene clock declare <id> --label <text> --goal <text> --max N \
+  --direction progress|countdown --polarity objective|threat|timer
+glass scene clock tick <id> [delta] --outcome <text>
 glass scene pressure <target> <skill> <attribute> \
   --risk <level> --character <id> --impact <d6|d8|d10> \
   [--bonus N] [--because <text>] [--note <text>]
@@ -78,7 +81,10 @@ glass clock resolve <id> [--note <text>]
 glass roll <skill> <attribute> --risk <level> --character <id> [--target <id>]
 ```
 
-Returns a structured roll record (dice, modifiers, total, target, margin, outcome tier, momentum delta). Logged to Postgres `dice_event` and the audit log. The orchestrator inlines a one-line summary into the transcript at the right point.
+Returns a structured roll record (dice, modifiers, total, target, margin,
+outcome tier, momentum delta, and narrative momentum effect). Momentum is not
+added to the total. Logged to Postgres `dice_event` and the audit log. The
+orchestrator inlines a one-line summary into the transcript at the right point.
 
 `glass scene pressure` uses the same hit-check math, then rolls an impact die
 to reduce a scene tracker. It is generic: HP, resistance, distance, morale,
@@ -170,12 +176,21 @@ glass msg <type> <recipient> <body>
 glass msg read [--since-checkpoint] [--from <sender>] [--type <type>]
 ```
 
+### Agent facade
+
+```
+glass check                                  # combined messages/table/clocks/beat contract
+glass done --summary S --state S --rolls S [--turn-type act|answer|support|pass] [--next default|agent]
+glass find <query> [--mode text|semantic|turns]
+glass next <handoff|rapid-round|housekeeping-round|restart-order|clear> [...]
+```
+
 ### Turns (corpus access)
 
 ```
 glass turn append <markdown-file>           # called at end of agent turn (orchestrator handles header)
 glass turn end --summary S --state S --rolls S [--scene-status active|ended] [--next default|agent]
-                                                   # required agent closeout block; feeds future TURN_START summaries
+                                                   # lower-level closeout; prefer glass done
 glass turn initiative [--participants ...]  # DM only; roll/persist action-scene order
 glass turn handoff <agent-id>               # one-off next-speaker override
 glass turn rapid-round <prompt>             # DM only; short response from each player

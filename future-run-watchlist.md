@@ -23,82 +23,71 @@ the DM reasonably conclude that the prelude question had already resolved.
   scene, or was this caused by `team-alpha-2`'s overloaded first scene?
 2. When scene prep says "this sets up scene two," does the DM preserve that
   pressure for a later scene, or immediately spend it in the active scene?
-3. After `glass scene end`, does the next DM turn stage the next scene, close the
-  arc, or leave a boundary gap?
-4. Does `glass turn audit` give enough useful guidance before closeout, or do
-  agents still discover recoverable problems only after `glass turn end`?
-5. Do beat/clock checks help agents maintain active play, or do they encourage
+3. Do beat/clock checks help agents maintain active play, or do they encourage
   premature closure when the scene has no active beat?
-6. Do validation failures become visible to the right actor through actionable DM
-  instructions, without pausing the campaign or crashing the run?
-7. Do recovery DM turns actually repair missing scene/mode state, or do they
+4. Do recovery DM turns actually repair missing scene/mode state, or do they
   summarize the problem without issuing the needed CLI commands?
-8. Are scene clocks and beats being created because the scene needs them, or only
+5. Are scene clocks and beats being created because the scene needs them, or only
   because the audit requires them?
-9. Does the message bus carry correction instructions clearly enough for Mara to
+6. Does the message bus carry correction instructions clearly enough for Mara to
   course-correct without hidden orchestrator warnings?
-10. Does `scene-prep` get used as the bridge after an arc closes with a known next
-  arc but no staged active scene?
 
 ## Potential Follow-Ups
 
-1. Roll outcome consequences: watch whether `stall`, `regress`, and `collapse`
-  results reliably move the board forward. A failed roll should produce a
-  concrete consequence, narrower choice, worse position, visible cost, clock
-  tick, beat movement, or durable state change. If future runs keep absorbing
-  failed rolls as caution/procedure, consider strengthening the roll/scene-play
-  guidance and adding an audit warning when a failed roll reports no clock,
-  pressure, position, consequence, beat, or state delta. Avoid auto-ticking every
-  roll for now; prefer "tick the active scene clock on failure when the failure
-  directly engages that clock's danger, unless a more concrete consequence is
-  recorded."
-2. Scene clock semantics: current CLI capability is broader than current usage.
-  Durable clocks support `fills`/`drains`; scene clocks support
-  `progress`/`countdown`, but live scenes have mostly phrased progress clocks as
-  bad things filling up. That makes successful play look like clocks staying at
-  `0/4` instead of visible progress. Consider shifting guidance so the primary
-  scene clock is usually the party objective, e.g. "Make Hold Seven boundary
-  honest 0/4 progress", with a separate threat/timer clock when the antagonist
-  or hazard is advancing. Potential CLI work: add `objective|threat|timer`
-  polarity, render `glass beat check` grouped by polarity, add direct
-  `glass scene clock tick`, warn when a scene has only threat clocks, and warn
-  when several beats close without any scene clock movement. Do not auto-tick
-  every roll until we have stronger evidence; clock movement should attach to
-  beat resolution, meaningful failure, DM moves, or explicit consequences.
-3. Situation prep and variety: the strongest current campaign risk is not lack of
-  action, but repeated use of the same party solution language at increasing
-  scale: extraction, load path, line, evidence, comparator. Live-table lesson:
-  preserve the toolkit, change the situation. Consider adding a DM scene-brief
-  requirement that names the scene verb, active antagonist move, concrete
-  physical danger, 3 concrete interactable scene toys, why the party's default
-  extraction/load-path answer is insufficient or costly here, the objective
-  clock, the threat/timer clock if any, and a novelty note explaining how this
-  scene differs from the last two. Avoid enums and constrained taxonomies; use
-  this to make Mara throw substantively different problems while leaving player
-  solutions open.
-4. Problem family variety: test a scene-prep requirement that every scene names
-   a primary problem family such as environment/traversal, social
-   pressure/coercive bargain, investigation/clue trail, fight/monster pressure,
-   chase/escape, extraction/rescue, breach/infiltration,
-   disaster/containment, puzzle/weird mechanism, or triage/impossible choice.
-   This should be a broad prompt nudge, not a hard taxonomy. Mara should state
-   how the selected family differs from the last two scenes and what part of the
-   party toolkit it pressures differently. Do not use "knowledge" as a family;
-   knowledge is an output, not the scene problem.
-5. Arc closure close-check: the system has `glass arc close` and an Act Close
-   Sequence, but Mara is likely to keep staging the next scene unless the
-   decision is surfaced at the scene boundary. Consider requiring a scene-close
-   arc decision of `continue`, `close`, or `reframe`, with a short reason tied
-   to done criteria, arc clocks, antagonist position, and why another scene is
-   still needed. Longer-term CLI idea: implement `glass arc close-check`.
-6. Long-game threads and callbacks: Mara needs a simple habit for turning
-   organic play into an overarching campaign spine. After each arc, promote one
-   or two concrete consequences, symbols, NPC moves, faction moves, repeated
-   harm patterns, or unresolved questions into a long-term thread. During scene
-   prep, seed at most one visible callback or hint when it fits: a mark, object,
-   NPC behavior, damage pattern, phrase, route, faction resource, or repeated
-   method. Prefer concrete table-visible callbacks like "another crate carries
-   the scorpion symbol" over abstract mystery language.
+None currently.
+
+## Completed Follow-Ups
+
+Closed on 2026-05-14:
+
+1. Roll outcome consequences: `glass turn audit` now surfaces
+   `stall`/`regress`/`collapse` rolls that have no follow-up consequence
+   command, and `glass done` rejects closing those turns unless the closeout
+   records a concrete state, position, pressure, or open-question consequence.
+   Methodologies and SRD roll guidance now state that failed rolls must keep
+   the scene moving rather than produce no change.
+2. Scene clock semantics: scene clocks now carry `objective|threat|timer`
+   polarity, `glass check`/`glass beat check` render grouped clock semantics and
+   warnings, `glass scene clock tick` records direct clock movement, and audits
+   warn when several beat closes happen with no scene clock movement. Guidance
+   now frames the primary scene clock as the party objective, with separate
+   threat/timer clocks when pressure moves independently.
+3. Situation prep and variety: scene prep, scene transition, closeout, and
+   TURN_START now require the DM scene brief to name the scene verb, active
+   antagonist move, concrete physical danger, three interactable scene toys, why
+   the party's default extraction/load-path/proof answer is insufficient or
+   costly, the objective clock, any threat/timer clock, and the novelty note
+   versus the last two scenes.
+4. Problem family variety: scene creation now uses `--type <problem-family>` in
+   the agent-facing surface, `how-to/problem-families.md` defines broad families,
+   and scene prep/transition prohibit "knowledge" as a family while requiring a
+   variation note against the last two scenes.
+5. Arc closure close-check: `glass arc close-check` exists, reports required and
+   recommended closeout blockers, asks for `continue|close|reframe`, and is
+   injected into DM scene-transition, scene-prep, and intermission TURN_START
+   surfaces.
+6. Long-game threads and callbacks: scene prep, scene transition, closeout, and
+   TURN_START now surface `glass thread current` and `glass thread advance` for
+   concrete table-visible callbacks and recurring campaign handles.
+
+Closed on 2026-05-15:
+
+1. Scene-boundary gaps after `glass scene end`: retired as a standing watchpoint
+   because scene transition, arc close-check, intermission, and scene-prep
+   command surfaces now force the DM to choose close/continue/reframe, stage the
+   next scene when needed, and avoid leaving an open active arc with no mode.
+2. Turn-audit usefulness before closeout: retired as a standing watchpoint
+   because `glass done` now runs the audit directly, active-play turns require
+   `glass check`, and the audit reports scene contract, pass/closure pressure,
+   roll-consequence gaps, and clock/beat movement warnings before closeout.
+3. Validation failures surfacing to the right actor: retired as a standing
+   watchpoint because invalid closeouts now return actionable fixes, recoverable
+   scene-contract failures route to DM repair turns, and tests cover those
+   recovery paths.
+4. `scene-prep` as the bridge after arc closure: retired as a standing
+   watchpoint because TURN_START now injects `glass arc close-check`,
+   scene-prep/scene-transition tooling, problem-family scene creation, thread
+   surfaces, scene clock/beat setup, and mode-start commands at the boundary.
 
 ## Guardrails For Later Decisions
 

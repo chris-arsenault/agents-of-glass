@@ -62,7 +62,7 @@ Every campaign foundation must name:
      ```
 
    - Mention the lore pull, imported lore ids, and the campaign pull-note path
-     in `glass turn end --state`.
+     in `glass done --state`.
 
 3. **Write the campaign question and scarcity.**
    - Update `dm/foundation.md` with the core question, scarcity, and what the
@@ -135,8 +135,8 @@ Every campaign foundation must name:
 
 10. **Close the planning turn.**
     - Write `TURN.md` as a short public planning summary.
-    - Run `glass turn end --summary "<what is now ready>" --state "<files and CLI state updated>" --rolls none --next default`.
-    - When the phase is complete, run `glass mode end`.
+    - When the phase is complete, run `glass mode end` before closeout.
+    - Run `glass done --summary "<what is now ready>" --state "<files and CLI state updated; campaign-planning mode ended>" --rolls none --scene-status ended --next default`.
 
 ## Prohibitions
 

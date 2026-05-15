@@ -14,9 +14,11 @@ from orchestrator.config import (
     ClaudeConfig,
     provider_for_actor,
 )
+from orchestrator.context import ContextBuilder
 from orchestrator.main import main as aog_main
 from orchestrator.main import _consume_review_stop
 from orchestrator.main import _next_mode_after_no_active_mode
+from orchestrator.main import _recover_bootstrap_phase_after_budget_exhaustion
 from orchestrator.main import _validate_campaign_planning_complete
 from orchestrator.main import _validate_character_creation_complete
 from orchestrator.main import _validate_organization_bootstrap_complete
@@ -31,7 +33,7 @@ from orchestrator.runner import (
     _tool_transcript_lines,
 )
 from orchestrator.projection import refresh_projection_from_canonical, unsynced_workspace_changes
-from orchestrator.state import AGENTS_BY_ID, SessionState, speaker_order_for
+from orchestrator.state import AGENTS_BY_ID, SessionState, next_agent_for, speaker_order_for
 from orchestrator.store import SessionStore
 
 
@@ -89,6 +91,33 @@ class OrchestratorQueueTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self._provisioned_patch.stop()
+
+    def _render_turn_start_text(
+        self,
+        root: Path,
+        *,
+        state: SessionState,
+        agent_id: str,
+        turn_meta: dict | None = None,
+        glass_state: dict | None = None,
+    ) -> str:
+        config = make_config(root)
+        campaign_root = config.campaigns_dir / state.campaign
+        campaign_root.mkdir(parents=True, exist_ok=True)
+        spawn_cwd = root / ".glass-cwd" / state.campaign / agent_id
+        spawn_cwd.mkdir(parents=True, exist_ok=True)
+        builder = ContextBuilder(config, SessionStore(config))
+        builder._public_trackers_from_postgres = Mock(return_value=[])
+        builder.store._recent_turn_records = Mock(return_value=[])
+        builder._glass_runtime_state = Mock(return_value=glass_state or {})
+        return builder._render_turn_start(
+            state,
+            AGENTS_BY_ID[agent_id],
+            "c1-t0001",
+            spawn_cwd,
+            spawn_cwd / "turns" / "TURN.md",
+            turn_meta=turn_meta or {},
+        )
 
     def test_dm_agent_uses_mara_unix_user_when_provisioned(self) -> None:
         with patch.object(permissions, "has_provisioned_users", return_value=True):
@@ -286,9 +315,7 @@ class OrchestratorQueueTests(unittest.TestCase):
             seen: list[tuple[str, bool]] = []
 
             def fake_lifecycle(cli, *_args, **_kwargs):
-                seen.append(
-                    (cli.config.agent_provider, cli.config.skip_player_persona)
-                )
+                seen.append((cli.config.agent_provider, cli.config.skip_player_persona))
 
             with patch(
                 "orchestrator.main._run_campaign_lifecycle",
@@ -327,6 +354,68 @@ class OrchestratorQueueTests(unittest.TestCase):
 
     def test_scene_prep_coordinator_mode_is_dm_only(self) -> None:
         self.assertEqual(speaker_order_for("scene-prep"), ("dm",))
+
+    def test_scene_play_uses_player_cursor_after_dm_turn(self) -> None:
+        state = SessionState.new(
+            campaign="c1",
+            initial_mode="scene-play",
+            initial_scene="opening",
+            initial_budget=None,
+        )
+        state.last_speaker = "dm"
+        state.run_metadata["scene_play_next_player"] = "sumi"
+
+        self.assertEqual(next_agent_for(state).id, "sumi")
+
+    def test_scene_play_player_turn_advances_cursor(self) -> None:
+        state = SessionState.new(
+            campaign="c1",
+            initial_mode="scene-play",
+            initial_scene="opening",
+            initial_budget=None,
+        )
+
+        state.record_committed_turn(AGENTS_BY_ID["tev"])
+
+        self.assertEqual(state.run_metadata["scene_play_next_player"], "sumi")
+
+    def test_state_sync_infers_scene_play_cursor_for_existing_campaign(self) -> None:
+        store = SessionStore(make_config(Path("/tmp/aog-test")))
+        state = store._state_from_glass_state(
+            {
+                "campaign": "c1",
+                "status": "active",
+                "turn_counter": 3,
+                "mode_stack": [
+                    {
+                        "mode": "scene-play",
+                        "scene_id": "opening",
+                        "started_at": "2026-05-15T00:00:00+00:00",
+                    }
+                ],
+                "turns": [
+                    {
+                        "speaker": "tev",
+                        "mode": "scene-play",
+                        "scene_id": "opening",
+                    },
+                    {
+                        "speaker": "sumi",
+                        "mode": "scene-play",
+                        "scene_id": "opening",
+                    },
+                    {
+                        "speaker": "dm",
+                        "mode": "scene-play",
+                        "scene_id": "opening",
+                    },
+                ],
+            },
+            existing=None,
+        )
+
+        self.assertEqual(state.run_metadata["scene_play_next_player"], "renno")
+        self.assertEqual(next_agent_for(state).id, "renno")
 
     def test_intermission_mode_starts_with_full_table_order(self) -> None:
         self.assertEqual(
@@ -411,21 +500,13 @@ class OrchestratorQueueTests(unittest.TestCase):
             (campaign_root / "table").mkdir()
             (campaign_root / "table" / "scene.md").write_text("visible scene\n")
             (campaign_root / "players" / "tev" / "public").mkdir(parents=True)
-            (campaign_root / "players" / "tev" / "public" / "intro.md").write_text(
-                "tev intro\n"
-            )
+            (campaign_root / "players" / "tev" / "public" / "intro.md").write_text("tev intro\n")
             (campaign_root / "players" / "tev" / "secrets").mkdir(parents=True)
-            (campaign_root / "players" / "tev" / "secrets" / "debt.md").write_text(
-                "tev secret\n"
-            )
+            (campaign_root / "players" / "tev" / "secrets" / "debt.md").write_text("tev secret\n")
             (campaign_root / "players" / "sumi" / "public").mkdir(parents=True)
-            (campaign_root / "players" / "sumi" / "public" / "intro.md").write_text(
-                "sumi intro\n"
-            )
+            (campaign_root / "players" / "sumi" / "public" / "intro.md").write_text("sumi intro\n")
             (campaign_root / "players" / "sumi" / "secrets").mkdir(parents=True)
-            (campaign_root / "players" / "sumi" / "secrets" / "debt.md").write_text(
-                "sumi secret\n"
-            )
+            (campaign_root / "players" / "sumi" / "secrets" / "debt.md").write_text("sumi secret\n")
             (campaign_root / "dm" / "secret").mkdir(parents=True)
             (campaign_root / "dm" / "secret" / "truth.md").write_text("dm secret\n")
             state = SessionState.new(
@@ -464,28 +545,16 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertFalse((package.spawn_cwd / "scratch").exists())
             self.assertEqual((package.spawn_cwd.stat().st_mode & 0o777), 0o550)
             self.assertEqual(
-                (
-                    (package.spawn_cwd / "players" / "tev")
-                    .stat()
-                    .st_mode
-                    & 0o777
-                ),
+                ((package.spawn_cwd / "players" / "tev").stat().st_mode & 0o777),
                 0o770,
             )
             self.assertEqual(
-                (
-                    (package.spawn_cwd / "players" / "tev" / "secrets")
-                    .stat()
-                    .st_mode
-                    & 0o7777
-                ),
+                ((package.spawn_cwd / "players" / "tev" / "secrets").stat().st_mode & 0o7777),
                 0o2770,
             )
             self.assertEqual(
                 (
-                    (package.spawn_cwd / "players" / "tev" / "secrets" / "debt.md")
-                    .stat()
-                    .st_mode
+                    (package.spawn_cwd / "players" / "tev" / "secrets" / "debt.md").stat().st_mode
                     & 0o777
                 ),
                 0o660,
@@ -497,7 +566,7 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertEqual(((package.spawn_cwd / ".mcp.json").stat().st_mode & 0o777), 0o660)
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
             self.assertIn("## Authoring Surface", turn_start)
-            self.assertIn("glass turn end", turn_start)
+            self.assertIn("glass done", turn_start)
             self.assertIn("methodologies/scene-play-player.md", turn_start)
             self.assertIn("Valid recipients this turn:", turn_start)
             self.assertIn("- `party`", turn_start)
@@ -580,9 +649,7 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertTrue(
                 (package.spawn_cwd / "players" / "tev" / "secrets" / "debt.md").exists()
             )
-            self.assertTrue(
-                (package.spawn_cwd / "players" / "tev" / "signature-moves.md").exists()
-            )
+            self.assertTrue((package.spawn_cwd / "players" / "tev" / "signature-moves.md").exists())
             self.assertFalse((package.spawn_cwd / "players" / "tev" / "persona.md").exists())
             self.assertFalse(
                 (package.spawn_cwd / "players" / "tev" / "public" / "intro.md").exists()
@@ -594,26 +661,14 @@ class OrchestratorQueueTests(unittest.TestCase):
                 (package.spawn_cwd / "players" / "sumi" / "public" / "character.md").exists()
             )
             self.assertEqual(
-                (
-                    (package.spawn_cwd / "players" / "tev" / "secrets")
-                    .stat()
-                    .st_mode
-                    & 0o7777
-                ),
+                ((package.spawn_cwd / "players" / "tev" / "secrets").stat().st_mode & 0o7777),
                 0o2770,
             )
             self.assertEqual(
-                (
-                    (package.spawn_cwd / "players" / "tev" / "public")
-                    .stat()
-                    .st_mode
-                    & 0o777
-                ),
+                ((package.spawn_cwd / "players" / "tev" / "public").stat().st_mode & 0o777),
                 0o550,
             )
-            self.assertTrue(
-                (package.spawn_cwd / "instructions" / "index-character.md").exists()
-            )
+            self.assertTrue((package.spawn_cwd / "instructions" / "index-character.md").exists())
             self.assertTrue(
                 (package.spawn_cwd / "methodologies" / "scene-play-character.md").exists()
             )
@@ -835,7 +890,9 @@ class OrchestratorQueueTests(unittest.TestCase):
                     return "", "", 0, False
 
                 with (
-                    patch("orchestrator.runner.ensure_background_server", return_value="http://api"),
+                    patch(
+                        "orchestrator.runner.ensure_background_server", return_value="http://api"
+                    ),
                     patch("orchestrator.runner.mint_grant", return_value="grant"),
                     patch.object(orchestrator, "_begin_turn_via_glass"),
                     patch.object(
@@ -881,7 +938,10 @@ class OrchestratorQueueTests(unittest.TestCase):
                     state.turn_number = 1
                     current_package = orchestrator.prepare_turn(state)
                     with (
-                        patch("orchestrator.runner.ensure_background_server", return_value="http://api"),
+                        patch(
+                            "orchestrator.runner.ensure_background_server",
+                            return_value="http://api",
+                        ),
                         patch("orchestrator.runner.mint_grant", return_value="grant"),
                         patch.object(orchestrator, "_begin_turn_via_glass"),
                         patch.object(
@@ -962,7 +1022,9 @@ class OrchestratorQueueTests(unittest.TestCase):
             with (
                 patch("orchestrator.runner.ensure_background_server", return_value="http://api"),
                 patch("orchestrator.runner.mint_grant", return_value="grant"),
-                patch("orchestrator.runner._resolve_provider_executable", return_value="/tmp/codex"),
+                patch(
+                    "orchestrator.runner._resolve_provider_executable", return_value="/tmp/codex"
+                ),
                 patch.object(orchestrator, "_begin_turn_via_glass"),
                 patch.object(
                     orchestrator,
@@ -1045,7 +1107,10 @@ class OrchestratorQueueTests(unittest.TestCase):
             with (
                 patch("orchestrator.runner.ensure_background_server", return_value="http://api"),
                 patch("orchestrator.runner.mint_grant", return_value="grant"),
-                patch("orchestrator.runner._resolve_provider_executable", side_effect=lambda provider: f"/tmp/{provider}"),
+                patch(
+                    "orchestrator.runner._resolve_provider_executable",
+                    side_effect=lambda provider: f"/tmp/{provider}",
+                ),
                 patch.object(orchestrator, "_begin_turn_via_glass"),
                 patch.object(
                     orchestrator,
@@ -1184,22 +1249,12 @@ class OrchestratorQueueTests(unittest.TestCase):
                 0o770,
             )
             self.assertEqual(
-                (
-                    (package.spawn_cwd / "arcs" / "opening" / "plan.md")
-                    .stat()
-                    .st_mode
-                    & 0o777
-                ),
+                ((package.spawn_cwd / "arcs" / "opening" / "plan.md").stat().st_mode & 0o777),
                 0o660,
             )
             self.assertTrue(
                 (
-                    package.spawn_cwd
-                    / "arcs"
-                    / "opening"
-                    / "scenes"
-                    / "first-room"
-                    / "prep.md"
+                    package.spawn_cwd / "arcs" / "opening" / "scenes" / "first-room" / "prep.md"
                 ).exists()
             )
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
@@ -1216,9 +1271,7 @@ class OrchestratorQueueTests(unittest.TestCase):
             campaign_root.mkdir(parents=True)
             (campaign_root / "table").mkdir()
             (campaign_root / "table" / "index.md").write_text("legacy index\n")
-            (campaign_root / "table" / "visible-artifact.md").write_text(
-                "canonical old\n"
-            )
+            (campaign_root / "table" / "visible-artifact.md").write_text("canonical old\n")
             state = SessionState.new(
                 campaign="c1",
                 initial_mode="scene-play",
@@ -1231,9 +1284,7 @@ class OrchestratorQueueTests(unittest.TestCase):
 
             projected_table = package.spawn_cwd / "table" / "visible-artifact.md"
             projected_table.write_text("local projected edit\n")
-            (campaign_root / "table" / "visible-artifact.md").write_text(
-                "canonical new\n"
-            )
+            (campaign_root / "table" / "visible-artifact.md").write_text("canonical new\n")
 
             refresh_projection_from_canonical(
                 config=config,
@@ -1315,9 +1366,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 turn_start,
             )
 
-            orchestrator._peek_next_speaker_entry_from_postgres.return_value = {
-                "agent": "tev"
-            }
+            orchestrator._peek_next_speaker_entry_from_postgres.return_value = {"agent": "tev"}
             package = orchestrator.prepare_turn(state)
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
 
@@ -1331,16 +1380,10 @@ class OrchestratorQueueTests(unittest.TestCase):
             )
 
             for player_id in ("kit", "renno", "sumi", "tev"):
-                (
-                    campaign_root
-                    / "players"
-                    / player_id
-                    / "public"
-                    / "relationships.md"
-                ).write_text("relationship\n", encoding="utf-8")
-            orchestrator._peek_next_speaker_entry_from_postgres.return_value = {
-                "agent": "dm"
-            }
+                (campaign_root / "players" / player_id / "public" / "relationships.md").write_text(
+                    "relationship\n", encoding="utf-8"
+                )
+            orchestrator._peek_next_speaker_entry_from_postgres.return_value = {"agent": "dm"}
             package = orchestrator.prepare_turn(state)
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
 
@@ -1384,8 +1427,123 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertIn("Drova logged the packet as year-mark form", turn_start)
             self.assertIn("## Recent Turn Summaries", turn_start)
             self.assertIn("Recent full turn narration is intentionally not embedded", turn_start)
-            self.assertIn("glass turns find --scene opening", turn_start)
+            self.assertIn('glass find "<query>" --mode turns --scene opening', turn_start)
             self.assertNotIn("Full recent narration should not be pasted", turn_start)
+
+    def test_player_scene_play_command_surface_is_turn_specific(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+
+            turn_start = self._render_turn_start_text(
+                Path(tmp),
+                state=state,
+                agent_id="tev",
+                glass_state={
+                    "active_arc": "caulden-rack",
+                    "active_scene": "opening",
+                    "active_scene_type": "scene-play",
+                },
+            )
+
+            self.assertIn("Use this injected command set for this turn", turn_start)
+            self.assertIn("--turn-type", turn_start)
+            self.assertIn("glass beat close <beat-id>", turn_start)
+            self.assertNotIn("glass arc close-check", turn_start)
+            self.assertNotIn("glass scene create <next-scene>", turn_start)
+            self.assertNotIn("glass campaign pull-note", turn_start)
+
+    def test_campaign_planning_surface_includes_phase_close_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="campaign-planning",
+                initial_scene="planning",
+                initial_budget=None,
+            )
+
+            turn_start = self._render_turn_start_text(
+                Path(tmp),
+                state=state,
+                agent_id="dm",
+            )
+
+            self.assertIn("glass campaign pull-note", turn_start)
+            self.assertIn("glass arc create <arc-id>", turn_start)
+            self.assertIn("glass lore list", turn_start)
+            self.assertIn("glass mode end", turn_start)
+
+    def test_dm_scene_transition_injects_scene_and_arc_close_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="dock-raid",
+                initial_budget=None,
+            )
+
+            turn_start = self._render_turn_start_text(
+                Path(tmp),
+                state=state,
+                agent_id="dm",
+                turn_meta={"scene_transition": True},
+                glass_state={
+                    "active_arc": "caulden-rack",
+                    "active_scene": "dock-raid",
+                    "active_scene_type": "extraction",
+                },
+            )
+
+            self.assertIn("Turn type: **scene-transition-dm**", turn_start)
+            self.assertIn("glass scene end --summary", turn_start)
+            self.assertIn("glass arc close-check caulden-rack", turn_start)
+            self.assertIn(
+                "glass scene create <next-scene> --type <problem-family> --arc caulden-rack",
+                turn_start,
+            )
+            self.assertIn("scene verb, active antagonist move", turn_start)
+            self.assertIn("3 interactable scene toys", turn_start)
+            self.assertIn("glass scene clock declare <objective-clock-id>", turn_start)
+            self.assertIn("glass beat start <beat-id>", turn_start)
+            self.assertIn("glass thread current", turn_start)
+            self.assertIn("glass thread advance <thread-id>", turn_start)
+
+    def test_dm_scene_prep_injects_arc_check_and_scene_problem_family(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-prep",
+                initial_scene="next-scene",
+                initial_budget=None,
+            )
+
+            turn_start = self._render_turn_start_text(
+                Path(tmp),
+                state=state,
+                agent_id="dm",
+                glass_state={
+                    "active_arc": "caulden-rack",
+                    "active_scene": "",
+                    "active_scene_type": "",
+                },
+            )
+
+            self.assertIn("glass arc current", turn_start)
+            self.assertIn("glass arc close-check caulden-rack", turn_start)
+            self.assertIn(
+                "glass scene create <scene-slug> --type <problem-family> --arc caulden-rack",
+                turn_start,
+            )
+            self.assertIn("scene verb, active antagonist move", turn_start)
+            self.assertIn("3 interactable scene toys", turn_start)
+            self.assertIn("glass scene clock declare <objective-clock-id>", turn_start)
+            self.assertIn("glass thread current", turn_start)
+            self.assertIn("glass thread advance <thread-id>", turn_start)
+            self.assertNotIn("glass scene end --summary", turn_start)
 
     def test_housekeeping_turn_uses_non_plot_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1589,6 +1747,45 @@ class OrchestratorQueueTests(unittest.TestCase):
                 "c1",
             )
 
+    def test_budget_exhaustion_finalizes_bootstrap_when_validation_passes(self) -> None:
+        validate = Mock()
+        cli = SimpleNamespace(
+            campaign_manager=SimpleNamespace(
+                load_state=Mock(return_value={"phase": "prelude"})
+            )
+        )
+        failure = {
+            "reason": "mode_budget_exhausted",
+            "mode": "campaign-planning",
+            "scene_id": "planning",
+        }
+
+        with patch("orchestrator.main._end_current_mode") as end_mode, patch(
+            "orchestrator.main._checkpoint_and_advance_bootstrap_phase",
+            return_value={"phase": "prelude"},
+        ) as checkpoint:
+            recovered = _recover_bootstrap_phase_after_budget_exhaustion(
+                cli,
+                campaign_id="c1",
+                mode_name="campaign-planning",
+                phase_label="campaign planning",
+                checkpoint_label="after-campaign-planning",
+                next_phase="prelude",
+                dry_run=False,
+                validate=validate,
+                failure=failure,
+            )
+
+        self.assertTrue(recovered)
+        validate.assert_called_once_with(cli, "c1")
+        end_mode.assert_called_once_with(
+            cli,
+            campaign_id="c1",
+            expected_mode="campaign-planning",
+            reason="phase validation already passes",
+        )
+        checkpoint.assert_called_once()
+
     def test_character_creation_validation_does_not_hard_fail_inventory_guidance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1670,7 +1867,7 @@ class OrchestratorQueueTests(unittest.TestCase):
             "The door opens.\n\n"
             "> glass scene create ambush --type action\n"
             "glass shards scatter across the floor.\n"
-            "glass turn rapid-round \"react\"\n"
+            'glass turn rapid-round "react"\n'
         )
 
         self.assertEqual(
@@ -1965,9 +2162,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 result,
                 previous,
             )
-            orchestrator._prepend_next_speaker_entry.assert_called_once_with(
-                "c1", {"agent": "dm"}
-            )
+            orchestrator._prepend_next_speaker_entry.assert_called_once_with("c1", {"agent": "dm"})
             orchestrator._send_system_instruction.assert_called_once()
             self.assertEqual(
                 orchestrator._send_system_instruction.call_args.kwargs["recipient"],
@@ -2150,9 +2345,7 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertEqual(turns_run, 1)
             self.assertEqual(state.status, "ready")
             self.assertIsNone(state.failure)
-            orchestrator._prepend_next_speaker_entry.assert_called_once_with(
-                "c1", {"agent": "dm"}
-            )
+            orchestrator._prepend_next_speaker_entry.assert_called_once_with("c1", {"agent": "dm"})
             orchestrator._send_system_instruction.assert_called_once()
             orchestrator.commit_turn.assert_called_once_with(state, repaired)
             self.assertEqual(
@@ -2242,9 +2435,7 @@ class OrchestratorQueueTests(unittest.TestCase):
 
             orchestrator._advance_action_order("c1", expected)
 
-            orchestrator._advance_action_order_in_postgres.assert_called_once_with(
-                "c1", expected
-            )
+            orchestrator._advance_action_order_in_postgres.assert_called_once_with("c1", expected)
 
 
 if __name__ == "__main__":

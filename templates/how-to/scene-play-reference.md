@@ -12,16 +12,16 @@ scene-play turn sequence.
 ## Speaker Controls
 
 Default scene-play order is round-the-table players, then the DM:
-`tev -> sumi -> renno -> kit -> dm`. `glass turn end --next default` keeps that
+`tev -> sumi -> renno -> kit -> dm`. `glass done --next default` keeps that
 flow. Use `--next <agent-id>` only for a real interrupt, clarification, or
 direct handoff.
 
 The DM can still use:
 
 ```bash
-glass turn rapid-round "your character's immediate reaction"
-glass turn restart-order tev
-glass turn clear-handoff
+glass next rapid-round "your character's immediate reaction"
+glass next restart-order tev
+glass next clear
 ```
 
 Rapid rounds are for moments, not replacing normal scene play.
@@ -35,6 +35,17 @@ can, or recent turns keep revisiting the same choices without changing them.
 For longer scenes, use `glass scene closing-down --rounds N`, then a final
 rapid round, then follow `methodologies/closeout.md` and call `glass scene end`.
 Partial outcomes are fine; the core tension should not end as unknown.
+
+## Scene Clocks
+
+The primary scene clock is usually the party objective, not only a bad thing
+filling up. Use `--polarity objective` for that clock. Add a separate
+`--polarity threat` or `--polarity timer` clock when an antagonist, hazard, or
+deadline moves independently.
+
+Use `glass scene clock tick <clock-id> <delta> --outcome "<why>"` when a
+meaningful success, failure, DM move, or beat resolution changes one of those
+clocks.
 
 ## Nested Scenes
 

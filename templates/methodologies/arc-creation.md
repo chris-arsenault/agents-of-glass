@@ -102,7 +102,7 @@ substantially move.
 
 8. **Close the turn.**
    - Write `TURN.md` with the arc state that is now ready.
-   - Run `glass turn end --summary "<arc created or updated>" --state "<arc files/clocks/summaries updated>" --rolls none --next default`.
+   - Run `glass done --summary "<arc created or updated>" --state "<arc files/clocks/summaries updated>" --rolls none --next default`.
 
 ## Prohibitions
 

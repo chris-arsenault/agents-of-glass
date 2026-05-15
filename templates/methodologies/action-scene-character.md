@@ -14,7 +14,7 @@ the character branch.
 1. Read the action-order block in TURN_START, `table/`, public scene trackers,
    recent turn summaries, your character state, and any directly relevant rules
    named by TURN_START.
-2. Run `glass beat check`. Treat the listed scene clock and active beats as the
+2. Run `glass check`. Treat the listed scene clock and active beats as the
    live dramatic contract for this turn. If a beat is near or at 10/10, land
    it, close it, convert it, or pass; do not open a fourth beat.
 3. Choose movement or position first: where you are, what you close with, what
@@ -32,13 +32,15 @@ the character branch.
 6. Resolve uncertainty before prose. Use `glass roll` for checks and `glass
    scene pressure` when reducing a tracker or target. If a hidden fact is
    required before you can act, message the DM and end with `--next dm` plus
-   `--open-question`.
+   `--open-question`. On `stall`, `regress`, or `collapse`, make the result
+   move play: record a visible cost, worse position, narrowed choice, beat
+   movement, or scene clock tick, or name that consequence in `glass done`.
 7. Persist allowed hard state before prose: character state, inventory,
    messages, or `players/<id>/secrets/` edits. Commit authored markdown with
    `glass sync apply`.
 8. Write concise public prose to the `TURN.md` path from TURN_START: movement,
    action, roll result or visible consequence, and the new immediate position.
-9. Run `glass turn audit`, then end with `glass turn end`. In action scenes, include `--position`,
+9. Run `glass done`. In action scenes, include `--position`,
    `--pressure`, and the formal `--turn-type`. `pass` is valid only for a
    short visible yield and also requires `--state "no state change"` plus
    `--rolls none`.
@@ -46,8 +48,7 @@ the character branch.
 Required closeout shape:
 
 ```bash
-glass turn audit
-glass turn end \
+glass done \
   --summary "<action taken and immediate result>" \
   --state "<durable updates or no state change>" \
   --rolls "<rolls/pressure used or none>" \
@@ -60,7 +61,7 @@ glass turn end \
 ## Done
 
 Your turn is done only when the action is resolved as far as your authority
-allows, public prose exists, and `glass turn end` reports `valid: true`.
+allows, public prose exists, and `glass done` reports `valid: true`.
 
 Optional reference: [`how-to/action-scene-reference.md`](../how-to/action-scene-reference.md).
 

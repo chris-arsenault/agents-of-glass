@@ -1,0 +1,74 @@
+campaign_dir = "../../campaigns/team-alpha-1"
+campaign_id = "team-alpha-1"
+default_style = "mystery-suspense"
+model = "claude-sonnet-4-5"
+
+[world]
+name = "Team Alpha 1"
+description = "The Wake Thread Cooperative works the bad middle of the Keel and the Shear's managed edges: dead docks, fouled courier lanes, passenger extractions, disputed packets, damaged witnesses, and claims larger outfits would rather call settled than examine twice."
+tone = "Tense, practical, procedural, intimate, and source-faithful. Dramatize recovery work through custody, route pressure, witness statements, damaged cargo, stop calls, and the cost of making a true record stick."
+facts = [
+  "The Wake Thread is a small independent recovery cooperative operating on the Keel and the Shear's managed margins.",
+  "The party begins as a newly aligned field team inside the cooperative before their first full contract together lands in full.",
+  "Duva counts, Pel'vir listens, Tern calibrates, and Mox commits forward.",
+  "The crew's first work sits where rescue, salvage, claims, reputation, sealed packets, route logs, and witness custody overlap.",
+  "The prelude shakedown tests the crew on an honest Saltrun lane with live nursery cargo, a rattled clerk, and intake labels that do not match the actual hold.",
+  "The larger Meridian Sleeve compensation file still does not name the dead correctly."
+]
+generation_constraints = [
+  "Preserve actual-play choices, table consequences, named objects, and crew procedures rather than replacing them with generic adventure beats.",
+  "Do not invent modern technology, real-world locations, or real-world institutions.",
+  "Treat claims paperwork, route ledgers, witness wax, cargo custody, stop-call authority, and recovery windows as dramatic material, not background exposition.",
+  "Use character-specific habits: Duva stages rooms and counts witnesses, Pel'vir names Beep/Bloop/Ratty and reads route signatures, Tern calibrates with questions and meters, and Mox names entry/feature/exit before committing."
+]
+dynamics = [
+  "A clean story is cheap; a correct story is expensive and must be made durable under pressure.",
+  "The crew wants authority before scarcity names what they can be made to accept.",
+  "Route work becomes personal when old losses, family debt, probationary authority, salvage liens, and compensation files surface inside practical jobs.",
+  "Institutions can turn damage into paperwork unless witnesses and workers make the injury legible."
+]
+
+[[campaign_chronicle]]
+id = "team-alpha-1"
+title = "Team Alpha 1"
+style = "mystery-suspense"
+chapter_count = 1
+narrative_direction = "Dramatize the Wake Thread crew's opening campaign as a continuous literary narrative about a new recovery team learning to make true records stick under practical pressure. Keep the story grounded in campaign source material, table choices, custody procedures, route reads, stop calls, and consequences."
+
+[[chronicle]]
+id = "prelude-prelude-opening"
+title = "Prelude Opening"
+arc = "prelude"
+scene = "prelude-opening"
+style = "mystery-suspense"
+narrative_direction = "Dramatize the prelude opening as the crew recovers one witnessed amber case from Mossline Six while deciding what truth, cargo, and responsibility can be saved before the window closes."
+entity_ids = ["kit", "renno", "sumi", "tev"]
+primary_entity_ids = ["kit", "renno", "sumi", "tev"]
+
+[[chronicle.role]]
+role = "drop-pilot"
+entity_id = "kit"
+entity_name = "Mox Henrik"
+entity_kind = "character"
+primary = true
+
+[[chronicle.role]]
+role = "route-reader"
+entity_id = "renno"
+entity_name = "Pel'vir Korvanis"
+entity_kind = "character"
+primary = true
+
+[[chronicle.role]]
+role = "claims-negotiator"
+entity_id = "sumi"
+entity_name = "Duva Doraleth"
+entity_kind = "character"
+primary = true
+
+[[chronicle.role]]
+role = "watch-tender"
+entity_id = "tev"
+entity_name = "Tern Korr"
+entity_kind = "character"
+primary = true

@@ -321,7 +321,7 @@ def arc_close_check(ctx: click.Context, arc_id: str | None) -> None:
         "arc_decision": {
             "choose": ["continue", "close", "reframe"],
             "record": (
-                "Record the arc decision and reason in `glass turn end --state`. "
+                "Record the arc decision and reason in `glass done --state`. "
                 "If closing, follow `methodologies/closeout.md` Act Close Sequence."
             ),
         },

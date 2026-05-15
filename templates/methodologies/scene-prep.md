@@ -9,8 +9,8 @@ applies_to_modes: [scene-prep]
 
 Run this as a DM-only bridge into actual play. A scene-prep turn is complete
 only after the next scene exists, the active table is written, the actual play
-mode is started, any required active-play scene clock and first beat are live,
-and `glass turn end` succeeds.
+mode is started, any required active-play scene clock and 2-3 starting beats are
+live, and `glass done` succeeds.
 
 ## Sequence
 
@@ -20,12 +20,15 @@ and `glass turn end` succeeds.
    - `glass summary show campaign`
    - `glass summary show arc <arc-id>`
    - `glass thread current`
-   - `glass turns find --scene <previous-scene-id>` or `glass turns feed --after-turn <n>` when the previous scene matters.
+   - `glass find --mode turns --scene <previous-scene-id>` or `glass turns feed --after-turn <n>` when the previous scene matters.
    - Read `arcs/<arc>/plan.md`, `arcs/<arc>/context.md`, relevant `dm/notes/`,
      current `table/`, and [`how-to/problem-families.md`](../how-to/problem-families.md).
 
 2. **Create the scene.**
-   - Run `glass scene create <scene-slug> --type <scene-play|action|travel|combat|chase|social-pressure|custom> [--arc <arc>]`.
+   - Run `glass scene create <scene-slug> --type <problem-family> [--arc <arc>]`.
+     Use a broad problem family from
+     [`how-to/problem-families.md`](../how-to/problem-families.md), not the mode
+     name and not the expected solution.
    - Run `glass scene current` and verify it points at the new scene.
 
 3. **Import or register load-bearing lore.**
@@ -35,6 +38,9 @@ and `glass turn end` succeeds.
 
 4. **Write `arcs/<arc>/scenes/<scene>/prep.md` in this order.**
    - Recap: why this scene exists now.
+   - Scene verb: the table-facing action this scene asks for, such as cross,
+     hold, bargain, escape, rescue, breach, contain, lure, expose, survive, or
+     choose.
    - Problem family: one broad family from
      [`how-to/problem-families.md`](../how-to/problem-families.md), or a similarly
      broad label. This is the pressure shape, not the solution path. Include a
@@ -42,11 +48,19 @@ and `glass turn end` succeeds.
      what part of the party toolkit it pressures differently. Do not use
      "knowledge" as a family; knowledge is an output.
    - Strong start: what is immediately on screen.
-   - Active antagonist: who or what is opposing the party in this scene, including
-     what they are doing off screen if not physically present.
+   - Active antagonist move: who or what is opposing the party in this scene and
+     what they are doing now. If not physically present, name the off-screen
+     action already changing the scene.
    - Concrete danger: what physically harmful thing can happen to people in or
      because of this scene. Name the people, crowd, crew, district, or body at
      risk when possible.
+   - Three interactable scene toys: objects, terrain, machines, creatures, routes,
+     hazards, crowd features, vehicles, tools, unstable magic, or visible lore
+     artifacts that players can touch, break, move, weaponize, bargain over, hide
+     in, ride, reroute, or otherwise use.
+   - Default-answer pressure: why the party's usual extraction/load-path/proof
+     answer is insufficient, expensive, risky, or only partly useful here.
+     Preserve their toolkit; change what it has to solve.
    - Adventure draw: what makes this scene worth playing as fantasy adventure
      rather than only a plausible incident, errand, claim, or logistics problem.
      This does not have to be spectacle, but it should give the table something
@@ -64,10 +78,18 @@ and `glass turn end` succeeds.
    - NPCs in play.
    - Threats, creatures, antagonists, or pressure sources.
    - Named things in play.
-   - Long-game callback or hint: at most one visible callback to an existing
-     campaign thread, or `none`. A good callback is concrete and table-visible:
-     mark, object, NPC behavior, damage pattern, phrase, route, faction resource,
-     or repeated method. Do not write abstract mystery language.
+   - Objective clock: the progress clock the players are trying to move. Normal
+     scenes usually use max 6-8. Use max 4 only for a brief, tightly bounded
+     scene.
+   - Threat/timer clock, if any: what worsens independently when the antagonist,
+     hazard, pursuit, or countdown advances. Use `none` if the objective clock is
+     enough.
+   - Long-game callback or hint: run `glass thread current`, then use at most one
+     visible callback to an existing campaign thread, or `none`. A good callback
+     is concrete and table-visible: mark, object, NPC behavior, damage pattern,
+     phrase, route, faction resource, or repeated method. If the callback advances
+     the thread, run `glass thread advance <thread-id> --note "<concrete visible beat>"`.
+     Do not write abstract mystery language.
    - Secrets that might surface.
    - Open questions the DM will play to answer.
 
@@ -77,6 +99,8 @@ and `glass turn end` succeeds.
 
 6. **Write the active table with table commands.**
    - `glass table write scene.md --body "<visible kickoff description>"`
+   - Make the three interactable scene toys visible in `table/scene.md` or named
+     table artifacts.
    - Add a named artifact for each reusable visible lore item players should
      reason from: `glass table write <meaningful-slug>.md --body "<markdown>"`.
    - Bring existing durable lore onto the table with
@@ -87,6 +111,12 @@ and `glass turn end` succeeds.
      counters.
    - Use `glass clock set <id> --scope scene --anchor <scene-id> --max <n> [--public]`
      for clocks that must survive beyond the scene.
+   - For active play modes, always declare the objective clock:
+     `glass scene clock declare <objective-clock-id> --label ... --goal ... --value 0 --max <n> --direction progress --polarity objective --visibility public`.
+   - Declare a separate threat/timer scene clock only when pressure should worsen
+     independently:
+     `glass scene clock declare <threat-clock-id> --label ... --goal ... --value 0 --max <n> --direction progress --polarity threat --visibility public`
+     or `glass scene clock declare <timer-clock-id> --label ... --goal ... --value <n> --max <n> --direction countdown --polarity timer --visibility public`.
 
 8. **Commit authored prep.**
    - Run `glass sync apply arcs/<arc>/scenes/<scene>`.
@@ -97,19 +127,22 @@ and `glass turn end` succeeds.
    - If `scene-prep` is the active mode, run `glass mode end`.
    - Run `glass mode start <scene-type> <scene-slug>`.
    - If the started mode is `scene-play`, `action`, `combat`, `chase`, or
-     `social-pressure`, declare at least one scene-specific clock with
-     `glass scene clock declare <clock-id> --label ... --goal ... --value 0 --max <n> --direction progress|countdown --visibility public|dm`.
+     `social-pressure`, confirm the objective scene clock is live.
    - If the started mode is `scene-play`, `action`, `combat`, `chase`, or
-     `social-pressure`, start the first beat with
-     `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`.
+     `social-pressure`, start 2-3 active beats before handing to players:
+     `glass beat start <beat-id> --clock <objective-clock-id> --label ... --question ...`.
+     The beats should be distinct problem lanes, not three versions of the same
+     task. They can share the objective clock or attach one lane to a
+     threat/timer clock. Closing a normal beat should usually move a clock by 1;
+     use 2 only for a major scene-shifting breakthrough after setup or
+     coordination.
    - If the started mode is `scene-play`, `action`, `combat`, `chase`, or
-     `social-pressure`, run `glass beat check` before handing off.
-   - If the first actor is not the normal default, run `glass turn handoff <agent-id>`.
+     `social-pressure`, run `glass check` before handing off.
+   - If the first actor is not the normal default, run `glass next handoff <agent-id>`.
 
 10. **Close the prep turn.**
     - Write `TURN.md` with the visible scene opening.
-    - Run `glass turn audit`.
-    - Run `glass turn end --summary "<scene staged and mode started>" --state "<scene/context/table artifacts/tracker updates>" --rolls none --next default`.
+    - Run `glass done --summary "<scene staged and mode started>" --state "<scene/context/table artifacts/tracker updates>" --rolls none --next default`.
 
 ## Prohibitions
 
@@ -125,6 +158,9 @@ and `glass turn end` succeeds.
 - Do not stage a third consecutive scene in the same location or location family.
 - Do not stage a scene that repeats the last two scenes' problem family without
   naming what is different and why this repeat is worth playing.
+- Do not make "get more information" the problem family. Knowledge is an output;
+  give the scene a pressure shape.
+- Do not leave the objective clock implicit.
 - Do not end the turn still in bare `scene-prep`.
 - Do not start an action scene without action-order setup in the opening DM
   turn or a clear handoff to do it.

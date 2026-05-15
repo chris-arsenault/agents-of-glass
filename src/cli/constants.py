@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 
+CHECK_DICE_COUNT = 1
+CHECK_DIE_SIDES = 10
+
 RISK_THRESHOLDS = {
-    "controlled": 7,
-    "standard": 8,
-    "risky": 9,
-    "desperate": 10,
+    "controlled": 5,
+    "standard": 6,
+    "risky": 7,
+    "desperate": 8,
 }
 
 ATTRIBUTE_TIERS = {

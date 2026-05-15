@@ -119,8 +119,10 @@ _TURN_END_SCENE_STATUS_SET = set(_TURN_END_SCENE_STATUS_CHOICES)
 _TURN_END_TURN_TYPE_SET = set(_TURN_END_TURN_TYPE_CHOICES)
 _TURN_AUDIT_RECALL_EVENTS = {
     "beat.check",
+    "check",
     "clock.list",
     "clock.show",
+    "find",
     "msg.read",
     "scene.tracker.list",
     "search.semantic",
@@ -150,6 +152,7 @@ _TURN_AUDIT_STATE_UPDATE_EVENTS = {
     "note.write",
     "quest.beat",
     "scene.clock.declare",
+    "scene.clock.tick",
     "scene.pressure",
     "scene.tracker.set",
     "scene.tracker.tick",
@@ -160,6 +163,23 @@ _TURN_AUDIT_STATE_UPDATE_EVENTS = {
     "table.write",
 }
 _TURN_AUDIT_STATE_UPDATE_PREFIXES = ("character.",)
+_ROLL_OUTCOMES_REQUIRING_CONSEQUENCE = {"stall", "regress", "collapse"}
+_ROLL_CONSEQUENCE_EVENTS = {
+    "beat.close",
+    "beat.convert",
+    "clock.tick",
+    "clock.resolve",
+    "msg.send",
+    "note.propose",
+    "note.write",
+    "quest.beat",
+    "scene.clock.tick",
+    "scene.tracker.tick",
+    "summary.append",
+    "summary.write",
+    "table.append",
+    "table.write",
+}
 
 
 @click.group()
@@ -523,6 +543,8 @@ def turn_audit(ctx: click.Context) -> None:
     }
     if report.get("scene_contract"):
         result["scene_contract"] = report["scene_contract"]
+    if (report.get("roll_consequence") or {}).get("requires_consequence"):
+        result["roll_consequence"] = report["roll_consequence"]
     commit(paths, state, ctx, "turn.audit", command_params(), result)
 
 
@@ -926,7 +948,7 @@ def _turn_audit_activity(records: list[dict[str, Any]]) -> dict[str, int]:
         if not event:
             continue
         counts["commands_run"] += 1
-        if event == "beat.check":
+        if event in {"beat.check", "check"}:
             counts["beat_checks"] += 1
         if event == "msg.send":
             counts["messages_sent"] += 1
@@ -935,6 +957,178 @@ def _turn_audit_activity(records: list[dict[str, Any]]) -> dict[str, int]:
         if event in _TURN_AUDIT_STATE_UPDATE_EVENTS or event.startswith(_TURN_AUDIT_STATE_UPDATE_PREFIXES):
             counts["state_updates"] += 1
     return counts
+
+
+def _record_result(record: dict[str, Any]) -> dict[str, Any]:
+    result = record.get("result")
+    return result if isinstance(result, dict) else {}
+
+
+def _roll_outcome_for_record(record: dict[str, Any]) -> str | None:
+    event = str(record.get("event") or "").strip()
+    result = _record_result(record)
+    if event == "roll":
+        return str(result.get("outcome") or "").strip() or None
+    if event == "scene.pressure":
+        hit = result.get("hit")
+        if not isinstance(hit, dict):
+            return None
+        roll = hit.get("roll")
+        if not isinstance(roll, dict):
+            return None
+        return str(roll.get("outcome") or "").strip() or None
+    return None
+
+
+def _scene_pressure_has_numeric_consequence(record: dict[str, Any]) -> bool:
+    if str(record.get("event") or "").strip() != "scene.pressure":
+        return False
+    result = _record_result(record)
+    return int(result.get("reduction", 0) or 0) > 0
+
+
+def _roll_record_summary(record: dict[str, Any], outcome: str) -> str:
+    event = str(record.get("event") or "").strip()
+    result = _record_result(record)
+    if event == "scene.pressure":
+        hit = result.get("hit") if isinstance(result.get("hit"), dict) else {}
+        roll = hit.get("roll") if isinstance(hit, dict) else {}
+        target = result.get("target") if isinstance(result.get("target"), dict) else {}
+        target_label = str(target.get("label") or target.get("tracker_id") or "").strip()
+        skill = str(roll.get("skill") or "").strip()
+        return f"scene.pressure {target_label} {skill}: {outcome}".strip()
+    skill = str(result.get("skill") or "").strip()
+    attribute = str(result.get("attribute") or "").strip()
+    return f"roll {skill} ({attribute}): {outcome}".strip()
+
+
+def _record_is_roll_consequence(record: dict[str, Any]) -> bool:
+    event = str(record.get("event") or "").strip()
+    if event == "scene.pressure":
+        return _scene_pressure_has_numeric_consequence(record)
+    if event in _ROLL_CONSEQUENCE_EVENTS:
+        return True
+    return event.startswith("character.")
+
+
+def _roll_consequence_report(records: list[dict[str, Any]]) -> dict[str, Any]:
+    required: list[dict[str, Any]] = []
+    for index, record in enumerate(records):
+        outcome = _roll_outcome_for_record(record)
+        if outcome not in _ROLL_OUTCOMES_REQUIRING_CONSEQUENCE:
+            continue
+        if _scene_pressure_has_numeric_consequence(record):
+            continue
+        required.append(
+            {
+                "index": index,
+                "event": str(record.get("event") or "").strip(),
+                "outcome": outcome,
+                "summary": _roll_record_summary(record, outcome),
+            }
+        )
+    if not required:
+        return {
+            "requires_consequence": False,
+            "rolls": [],
+            "has_consequence_record": False,
+        }
+    latest_required_index = max(int(item["index"]) for item in required)
+    has_consequence_record = any(
+        index > latest_required_index and _record_is_roll_consequence(record)
+        for index, record in enumerate(records)
+    )
+    return {
+        "requires_consequence": True,
+        "rolls": required,
+        "has_consequence_record": has_consequence_record,
+    }
+
+
+def _text_reports_change(value: str | None, *, empty_words: set[str]) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    normalized = " ".join(text.split())
+    return normalized not in empty_words
+
+
+def _payload_reports_roll_consequence(payload: dict[str, Any]) -> bool:
+    state_empty = {"no state change", "none", "unchanged", "no change"}
+    state_items = [
+        str(item).strip()
+        for item in payload.get("state", [])
+        if str(item).strip()
+    ]
+    if any(item.lower() not in state_empty for item in state_items):
+        return True
+    if _text_reports_change(
+        str(payload.get("position") or ""),
+        empty_words={"none", "unchanged", "no change"},
+    ):
+        return True
+    if _text_reports_change(
+        str(payload.get("pressure") or ""),
+        empty_words={"none", "unchanged", "no change"},
+    ):
+        return True
+    return any(str(item).strip() for item in payload.get("open_questions", []))
+
+
+def _campaign_audit_records(paths: Paths, campaign_id: str) -> list[dict[str, Any]]:
+    path = audit_path(paths, campaign_id)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return []
+    records: list[dict[str, Any]] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            raw = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(raw, dict):
+            records.append(raw)
+    return records
+
+
+def _scene_clock_movement_warning(
+    paths: Paths,
+    *,
+    campaign_id: str,
+    scene_id: str,
+) -> str | None:
+    closed_beats = 0
+    clock_movements = 0
+    for record in _campaign_audit_records(paths, campaign_id):
+        event = str(record.get("event") or "").strip()
+        result = _record_result(record)
+        if event == "beat.close":
+            beat = result.get("beat")
+            if not isinstance(beat, dict) or str(beat.get("scene_id") or "") != scene_id:
+                continue
+            closed_beats += 1
+            clock_result = result.get("clock")
+            if (
+                isinstance(clock_result, dict)
+                and int(clock_result.get("delta", 0) or 0) != 0
+            ):
+                clock_movements += 1
+        elif event == "scene.clock.tick":
+            clock = result.get("clock")
+            if not isinstance(clock, dict) or str(clock.get("scene_id") or "") != scene_id:
+                continue
+            if int(result.get("delta", 0) or 0) != 0:
+                clock_movements += 1
+    if closed_beats >= 3 and clock_movements <= 0:
+        return (
+            f"This scene has {closed_beats} closed beats and 0 scene clock "
+            "movements; future beat closes should move an objective/threat/timer "
+            "clock unless there is a concrete reason."
+        )
+    return None
 
 
 def _scene_contract_target_for_audit(
@@ -1018,7 +1212,8 @@ def _scene_contract_gap_message(
             )
         return (
             "This scene has 0 active scene clocks. If the scene continues, "
-            "the DM should declare the next one with `glass scene clock declare ...`."
+            "the DM should restore the board with a scene clock and 2-3 active "
+            "beats across distinct problem lanes."
         )
     if role_kind == "player":
         if completed_beats > PASS_GUIDANCE_COMPLETED_BEATS:
@@ -1031,9 +1226,9 @@ def _scene_contract_gap_message(
             )
         return (
             "This scene has 0 active beats. If the scene continues, end with "
-            "`--next dm` so the DM can start the next beat or close the scene; "
-            "do not open a replacement beat from a player turn unless the DM "
-            "explicitly instructed it."
+            "`--next dm` so the DM can restore 2-3 active beats; do not open a "
+            "replacement beat from a player turn unless the DM explicitly "
+            "instructed it."
         )
     if completed_beats > PASS_GUIDANCE_COMPLETED_BEATS:
         return (
@@ -1042,9 +1237,9 @@ def _scene_contract_gap_message(
             "for a genuinely new scene question."
         )
     return (
-        "This scene has 0 active beats. If the scene continues, start the next "
-        "beat with `glass beat start <beat-id> --clock <clock-id> --label ... "
-        "--question ...`."
+        "This scene has 0 active beats. If the scene continues, restore 2-3 "
+        "active beats across distinct problem lanes before handing back to "
+        "players."
     )
 
 
@@ -1080,6 +1275,7 @@ def _turn_audit_report(
         actor=actor,
     )
     activity = _turn_audit_activity(records)
+    roll_consequence = _roll_consequence_report(records)
     hard_requirements: list[str] = []
     soft_considerations: list[str] = []
     scene_contract: dict[str, Any] | None = None
@@ -1104,11 +1300,16 @@ def _turn_audit_report(
                 "scene_id": scene_id,
                 "mode": str(contract_target.get("mode") or "").strip() or None,
                 "scene_clocks": snapshot["clocks"],
+                "clock_groups": snapshot["clock_groups"],
+                "clock_warnings": snapshot["clock_warnings"],
                 "active_beats": snapshot["active_beats"],
+                "beat_warnings": snapshot["beat_warnings"],
                 "recent_beats": snapshot["recent_beats"],
                 "completed_beats": snapshot["completed_beats"],
                 "scene_note": snapshot["scene_note"],
             }
+            soft_considerations.extend(snapshot.get("clock_warnings", []))
+            soft_considerations.extend(snapshot.get("beat_warnings", []))
             if not state.get("active_turn_beat_checked_at"):
                 hard_requirements.append("You MUST still run glass beat check.")
             continuation_gap = _scene_contract_gap_is_continuation(snapshot)
@@ -1138,7 +1339,7 @@ def _turn_audit_report(
                         )
                     else:
                         hard_requirements.append(
-                            "This active scene has 0 active beats. Start one with `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`."
+                            "This active scene has 0 active beats. Start 2-3 active beats across distinct problem lanes with `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`."
                         )
                 elif "more than" in failure:
                     hard_requirements.append(
@@ -1158,10 +1359,28 @@ def _turn_audit_report(
             )
             if pass_guidance:
                 soft_considerations.append(pass_guidance)
+            movement_warning = _scene_clock_movement_warning(
+                paths,
+                campaign_id=str(state.get("campaign") or ""),
+                scene_id=scene_id,
+            )
+            if movement_warning:
+                soft_considerations.append(movement_warning)
 
     boundary_requirement = _scene_boundary_handoff_requirement(state, turn_context)
     if boundary_requirement:
         hard_requirements.append(boundary_requirement)
+
+    if (
+        roll_consequence.get("requires_consequence")
+        and not roll_consequence.get("has_consequence_record")
+    ):
+        soft_considerations.append(
+            "A stall/regress/collapse roll has no follow-up consequence command; "
+            "record a clock/beat/pressure/state change or report the visible "
+            "consequence in `glass done --state`, `--position`, `--pressure`, "
+            "or `--open-question`."
+        )
 
     if activity["messages_sent"] <= 0:
         soft_considerations.append(
@@ -1181,6 +1400,7 @@ def _turn_audit_report(
         "hard_requirements": hard_requirements,
         "soft_considerations": soft_considerations,
         "scene_contract": scene_contract,
+        "roll_consequence": roll_consequence,
     }
 
 
@@ -1257,6 +1477,17 @@ def _turn_end_validation_problems(
                 problems.append(
                     f"Beat `{beat.get('beat_id')}` is already at {age}/{BEAT_MAX_AGE}. Resolve or convert it before another non-pass turn."
                 )
+    roll_consequence = audit_report.get("roll_consequence") or {}
+    if (
+        roll_consequence.get("requires_consequence")
+        and not roll_consequence.get("has_consequence_record")
+        and not _payload_reports_roll_consequence(payload)
+    ):
+        problems.append(
+            "stall/regress/collapse roll needs a consequence: add `--state`, "
+            "`--position`, `--pressure`, or `--open-question`, or record a "
+            "clock/beat/pressure/state change before closing."
+        )
     deduped: list[str] = []
     seen: set[str] = set()
     for problem in problems:
@@ -1274,19 +1505,21 @@ def _turn_end_fix_suggestions(problems: list[str]) -> list[str]:
         if "--turn-type" in problem:
             fix = "Rerun `glass turn end` with `--turn-type act|answer|support|pass`."
         elif "run `glass turn audit` before `glass turn end`" in problem:
-            fix = "Run `glass turn audit`, address any hard requirements it prints, then rerun `glass turn end`."
+            fix = "Run `glass done` instead, or run `glass turn audit`, address any hard requirements it prints, then rerun `glass turn end`."
         elif "You MUST still run glass beat check" in problem:
-            fix = "Run `glass beat check`, then rerun `glass turn end`."
+            fix = "Run `glass check` (or `glass beat check`), then rerun `glass done` or `glass turn end`."
         elif "0 scene clocks" in problem:
-            fix = "Have the DM declare a scene clock with `glass scene clock declare ...`, then rerun `glass beat check` and `glass turn end`."
+            fix = "Have the DM declare a scene clock with `glass scene clock declare ...`, then rerun `glass check` and `glass done`."
         elif "0 active beats" in problem:
-            fix = "Start a beat with `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`, then rerun `glass beat check` and `glass turn end`."
+            fix = "Start a beat with `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`, then rerun `glass check` and `glass done`."
         elif "3-beat cap" in problem:
-            fix = "Close or convert an active beat, then rerun `glass beat check` and `glass turn end`."
+            fix = "Close or convert an active beat, then rerun `glass check` and `glass done`."
         elif "No active mode is staged while active arc" in problem:
             fix = "Start `scene-prep` with `glass mode start scene-prep <scene-id>`, stage/start the next scene mode, or close the active arc, then rerun `glass turn audit` and `glass turn end`."
         elif "Resolve or convert it before another non-pass turn" in problem:
             fix = "Resolve the beat with `glass beat close`, convert it with `glass beat convert`, or pass instead of taking another non-pass turn."
+        elif "roll needs a consequence" in problem:
+            fix = "Rerun with a concrete consequence in `--state`, `--position`, `--pressure`, or `--open-question`, or first record it with a clock/beat/pressure/state command."
         elif "requires exactly `--state \"no state change\"`" in problem:
             fix = "Rerun with `--state \"no state change\"` and no other `--state` values."
         elif "`pass` requires `--rolls none`" in problem:

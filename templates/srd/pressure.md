@@ -38,7 +38,8 @@ weak/improvised pressure, solid pressure, or heavy/ideal pressure.
 
 `breakthrough` and `advance` apply impact. `stall` is glancing pressure for 1
 reduction before impact resistance, with no impact die. `regress` and
-`collapse` normally apply no numeric reduction.
+`collapse` normally apply no numeric reduction, but they still require a
+fictional consequence, worse position, narrowed choice, or clock/beat movement.
 
 Nonnumeric effects remain prose. If a net constrains a monster or a drug makes
 a social target sluggish, the DM reflects that in future framing, risk,

@@ -40,6 +40,14 @@ mirrors, not canonical numbers.
 
    ```bash
    glass character new <id> --player <player-id> \
+     --name "<full name>" \
+     --species "<species>" \
+     --culture "<culture>" \
+     --archetype "<level-20 mythic archetype>" \
+     --org-role "<organization role>" \
+     --bio "<public bio>" \
+     --goal "<goal one>" \
+     --goal "<goal two>" \
      --primary-drive "<required drive>" \
      --positive-trait "<visible positive/quirky/playful/warm/funny trait>" \
      --table-presence "<recurring social bit another player can use>" \
@@ -47,7 +55,11 @@ mirrors, not canonical numbers.
      --opening-social-action "<direct action toward another PC for the intro>" \
      --life-prompt "<prompt>=<concrete behavior answer>" \
      --life-prompt "<prompt>=<concrete behavior answer>" \
-     --pull-utilization "Source: <real-world domain/source>; used in <character detail>."
+     --pull-utilization "Source: <real-world domain/source>; used in <character detail>." \
+     --attribute <name>=<tier> \
+     --skill "<skill>=artisan" \
+     --skill "<skill>=apprentice" \
+     --skill "<skill>=apprentice"
    ```
 
 3. Use `archetype` for class-like identity. Use `organization_role` for current
@@ -109,7 +121,7 @@ or origin.
 5. Use inventory commands when a meaningful portable asset is taken, spent,
    received, broken, or kept for later leverage.
 6. Mirror public character displays after visible sheet changes.
-7. Name the changed character ids and fields in `glass turn end --state`.
+7. Name the changed character ids and fields in `glass done --state`.
 
 ## Level-Up Sequence
 
@@ -117,7 +129,7 @@ When `TURN_START.md` reports a pending level-up, run
 `glass character level-up <id>` once per pending level before the normal turn
 action. Each call resolves exactly one level. If the level being reached is 4,
 8, or another multiple of 4, include `--attribute <name>` for the attribute
-bump. Record the result in `glass turn end --state`, then continue the turn.
+bump. Record the result in `glass done --state`, then continue the turn.
 
 ## Bulk Payload Shape
 

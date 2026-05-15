@@ -1,0 +1,77 @@
+campaign_dir = "../../campaigns/the-revengers"
+campaign_id = "the-revengers"
+default_style = "action-adventure"
+model = "claude-sonnet-4-5"
+
+[world]
+name = "The Revengers"
+description = "The Revengers are a small field-response compact for jobs that become dangerous before official process can catch up: rescue, breach, extraction, stabilization, and after-action truth."
+tone = "Urgent, physical, mobile, and practical. Dramatize the campaign through time pressure, closing routes, dangerous rescues, improvised anchors, warning failures, moving hazards, and the cost of preserving proof while people are still in danger."
+facts = [
+  "The starting Revenger cell is Rin Tavik, Duva Korvanis, Sela Tarn, and Yoss Pell.",
+  "The campaign's live question is whether the Revengers can get people out alive when disaster is also somebody's cover story.",
+  "Reports, manifests, lockouts, and claims matter because they point to live hazards: buckled routes, jammed warnings, bad resonance, people marked dead while still breathing, witnesses being moved, tow lines cut, and hidden Coremark routes.",
+  "The immediate scarcities are time, trustworthy routes, damping gear, clean forecasts, witnesses, and safe anchor points.",
+  "Prelude proved the rescue loop at Ladder Throat Three and preserved the public C-12 warning proof.",
+  "Cinderwake centers on paired or late warning failures, Ratter distress obligations, Bloom containment, Coremark suspicion, and routes that close before official certainty arrives."
+]
+generation_constraints = [
+  "Use the action-adventure countdown structure: time remaining must haunt decisions, and every scene should cost time or force a bypass.",
+  "Preserve actual-play choices, public proof chains, named tools, relationship handles, and table consequences.",
+  "Procedure is a tool, obstacle, or clue; do not turn the story into a legal hearing or audit summary.",
+  "Treat environments as active obstacles: pressure curtains, closing lanes, damping seams, dirty resonance, cinder dust, jammed warning systems, tow lines, and unsafe anchor points.",
+  "Do not introduce modern technology, real-world locations, or real-world institutions."
+]
+dynamics = [
+  "Rescue comes first, truth also: the crew must move bodies out of danger while leaving enough honest evidence that the next accident is harder to buy.",
+  "Official clean forecasts and sealed reports become dangerous when they arrive later than the hazard.",
+  "Coremark's power works through false-safe signatures, hidden convoy routes, late warnings, and replacement hardware that can erase the public map.",
+  "The Revengers' competence is practical and embodied: Rin marks exits and anchors loads, Duva makes armed rooms hesitate and carries witnesses out, Sela reads fault bands through instruments, and Yoss flies bad approaches on purpose."
+]
+
+[[campaign_chronicle]]
+id = "the-revengers"
+title = "The Revengers"
+style = "action-adventure"
+chapter_count = 4
+narrative_direction = "Dramatize the Revengers' opening campaign as a continuous rescue-action narrative under time pressure. Each chapter should move through a live hazard where the crew must choose between speed, proof, witnesses, and survival before the official story closes over the truth."
+
+[[chronicle]]
+id = "prelude-prelude-opening"
+title = "Prelude Opening"
+arc = "prelude"
+scene = "prelude-opening"
+style = "action-adventure"
+narrative_direction = "Dramatize Ladder Throat Three as a bounded rescue countdown: a false clean panel, a live harmonic nail, Emlin Vos pinned under the reset sled, and the Revengers preserving C-12 proof before the route lie can lock."
+entity_ids = ["tev", "sumi", "renno", "kit"]
+primary_entity_ids = ["tev", "sumi", "renno", "kit"]
+
+[[chronicle]]
+id = "cinderwake-skiffmoor-lower-docks"
+title = "Skiffmoor Lower Docks"
+arc = "cinderwake"
+scene = "skiffmoor-lower-docks"
+style = "action-adventure"
+narrative_direction = "Dramatize Skiffmoor lower docks as a race to extract the stranded Ratter crew alive before contamination tags and a failing pressure curtain turn abandonment into official truth."
+entity_ids = ["tev", "sumi", "renno", "kit"]
+primary_entity_ids = ["tev", "sumi", "renno", "kit"]
+
+[[chronicle]]
+id = "cinderwake-red-thread-blind-lane"
+title = "Red Thread Blind Lane"
+arc = "cinderwake"
+scene = "red-thread-blind-lane"
+style = "action-adventure"
+narrative_direction = "Dramatize Red Thread blind lane as a moving countdown through cinder glare: the Revengers must mark Coremark's real escort line and trap the shed cargo cradle before the lane closes and the false-clean story escapes."
+entity_ids = ["tev", "sumi", "renno", "kit"]
+primary_entity_ids = ["tev", "sumi", "renno", "kit"]
+
+[[chronicle]]
+id = "cinderwake-cordon-twelve-damping-seam"
+title = "Cordon Twelve Damping Seam"
+arc = "cinderwake"
+scene = "cordon-twelve-damping-seam"
+style = "action-adventure"
+narrative_direction = "Dramatize Cordon Twelve as a pressure-seam countdown: Coremark moves to replace the late damping buoy while the Revengers must fix old/new buoy tone, exposure tags, and abort authority into one public board before the evidence is cut away."
+entity_ids = ["tev", "sumi", "renno", "kit"]
+primary_entity_ids = ["tev", "sumi", "renno", "kit"]

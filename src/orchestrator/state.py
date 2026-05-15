@@ -42,6 +42,30 @@ AGENTS: tuple[Agent, ...] = (
 
 PLAYER_IDS: tuple[str, ...] = tuple(agent.id for agent in AGENTS if agent.role == "player")
 AGENTS_BY_ID: dict[str, Agent] = {agent.id: agent for agent in AGENTS}
+SCENE_PLAY_PLAYER_CURSOR_KEY = "scene_play_next_player"
+PLAYER_CURSOR_MODES = {"scene-play", "action", "combat", "chase", "social-pressure"}
+
+
+def next_player_after(player_id: str | None) -> str:
+    if player_id not in PLAYER_IDS:
+        return PLAYER_IDS[0]
+    current_index = PLAYER_IDS.index(player_id)
+    return PLAYER_IDS[(current_index + 1) % len(PLAYER_IDS)]
+
+
+def scene_play_next_player(state: "SessionState") -> str:
+    raw_cursor = str(state.run_metadata.get(SCENE_PLAY_PLAYER_CURSOR_KEY) or "").strip()
+    if raw_cursor in PLAYER_IDS:
+        return raw_cursor
+    if state.last_speaker in PLAYER_IDS:
+        return next_player_after(state.last_speaker)
+    return PLAYER_IDS[0]
+
+
+def advance_scene_play_player_cursor(state: "SessionState", speaker_id: str) -> None:
+    if speaker_id not in PLAYER_IDS:
+        return
+    state.run_metadata[SCENE_PLAY_PLAYER_CURSOR_KEY] = next_player_after(speaker_id)
 
 
 @dataclass
@@ -205,6 +229,8 @@ class SessionState:
         active.turns_taken += 1
         if active.turn_budget_remaining is not None:
             active.turn_budget_remaining -= 1
+        if active.mode in PLAYER_CURSOR_MODES:
+            advance_scene_play_player_cursor(self, speaker.id)
         self.updated_at = utc_now()
 
 
@@ -224,7 +250,7 @@ def speaker_order_for(mode: str) -> tuple[str, ...]:
         return PLAYER_IDS
     if normalized == "character-creation":
         return PLAYER_IDS + ("dm",)
-    if normalized == "scene-play":
+    if normalized in PLAYER_CURSOR_MODES:
         return PLAYER_IDS + ("dm",)
     return tuple(agent.id for agent in AGENTS)
 
@@ -233,6 +259,8 @@ def next_agent_for(state: SessionState) -> Agent:
     order = speaker_order_for(state.active_mode.mode)
     if not order:
         raise ValueError(f"No speakers configured for mode {state.active_mode.mode!r}")
+    if state.active_mode.mode in PLAYER_CURSOR_MODES and state.last_speaker == "dm":
+        return AGENTS_BY_ID[scene_play_next_player(state)]
     if state.last_speaker not in order:
         return AGENTS_BY_ID[order[0]]
     current_index = order.index(state.last_speaker)

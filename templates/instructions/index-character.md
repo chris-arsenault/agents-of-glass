@@ -21,7 +21,7 @@ without player-persona surfaces.
 
 ## Core Files
 
-- [`output-contract.md`](output-contract.md): turn prose and `glass turn end`.
+- [`output-contract.md`](output-contract.md): turn prose and `glass done`.
 - [`workspace-authoring-character.md`](workspace-authoring-character.md):
   character-branch writable surfaces and `glass sync apply`.
 - [`message-bus-character.md`](message-bus-character.md): message reads, sends,

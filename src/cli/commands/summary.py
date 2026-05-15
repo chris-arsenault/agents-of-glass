@@ -218,7 +218,7 @@ def _assert_summary_body_allowed(role, level: str, *, append: bool, text: str) -
                 agent_instruction(
                     f"scene summary append is too long for a player turn ({len(text.strip())}/{max_chars} chars)",
                     "Keep the append to 2-4 sentences or bullets.",
-                    "Use `glass turn end --summary` for compact turn continuity; do not duplicate a full transcript here.",
+                    "Use `glass done --summary` for compact turn continuity; do not duplicate a full transcript here.",
                 )
             )
 

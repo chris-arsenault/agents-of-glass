@@ -815,6 +815,18 @@ def _run_bootstrap_phase(
             resume_failed=True,
         )
     except TurnFailure as exc:
+        if _recover_bootstrap_phase_after_budget_exhaustion(
+            cli,
+            campaign_id=campaign_id,
+            mode_name=mode_name,
+            phase_label=phase_label,
+            checkpoint_label=checkpoint_label,
+            next_phase=next_phase,
+            dry_run=dry_run,
+            validate=validate,
+            failure=exc.failure,
+        ):
+            return cli.campaign_manager.load_state(campaign_id)
         detail = json.dumps(exc.failure, indent=2, sort_keys=True)
         raise click.ClickException(f"{phase_label} failed: {exc}\n{detail}") from exc
     runtime_state = cli.store.load(campaign_id)
@@ -836,6 +848,45 @@ def _run_bootstrap_phase(
         checkpoint_label=checkpoint_label,
         next_phase=next_phase,
     )
+
+
+def _recover_bootstrap_phase_after_budget_exhaustion(
+    cli: CliState,
+    *,
+    campaign_id: str,
+    mode_name: str,
+    phase_label: str,
+    checkpoint_label: str,
+    next_phase: str,
+    dry_run: bool,
+    validate,
+    failure: dict,
+) -> bool:
+    if str(failure.get("reason") or "") != "mode_budget_exhausted":
+        return False
+    if dry_run or validate is None:
+        return False
+    try:
+        validate(cli, campaign_id)
+    except click.ClickException:
+        return False
+    click.secho(
+        f"{phase_label} validated after mode budget exhaustion; ending mode and finalizing phase.",
+        fg="yellow",
+    )
+    _end_current_mode(
+        cli,
+        campaign_id=campaign_id,
+        expected_mode=mode_name,
+        reason="phase validation already passes",
+    )
+    _checkpoint_and_advance_bootstrap_phase(
+        cli,
+        campaign_id=campaign_id,
+        checkpoint_label=checkpoint_label,
+        next_phase=next_phase,
+    )
+    return True
 
 
 def _finalize_ended_bootstrap_phase(

@@ -41,7 +41,7 @@ created with `glass character`; authored prose is committed with
 
 3. **Close the setup turn.**
    - Write `TURN.md` with the player-facing creation brief.
-   - Run `glass turn end --summary "character creation brief is ready" --state "table and public campaign context prepared" --rolls none --next default`.
+   - Run `glass done --summary "character creation brief is ready" --state "table and public campaign context prepared" --rolls none --next default`.
 
 ## Player Build Turn
 
@@ -206,7 +206,7 @@ glass character bulk-update --json '{
    - Write `TURN.md` as the public character introduction. Use the narration
      craft guidance: put what the character says, does, wants, offers, jokes
      about, asks for, carries, and changes on the page.
-   - Run `glass turn end --summary "<character created and public intro committed>" --state "<character id, files, inventory/signature/mirror updated>" --rolls none --next default`.
+   - Run `glass done --summary "<character created and public intro committed>" --state "<character id, files, inventory/signature/mirror updated>" --rolls none --next default`.
 
 ## Relationship Round
 
@@ -217,7 +217,7 @@ still in progress.
 1. **Read the party.**
    - Read every `players/*/public/intro.md`.
    - Run `glass character bulk-get --all`.
-   - Read any unread messages with `glass msg read --since-checkpoint`.
+   - Run `glass check` to read any unread messages.
 
 2. **Author relationship material.**
    - Add or update `players/<id>/public/relationships.md`.
@@ -227,7 +227,7 @@ still in progress.
 
 3. **Close the relationship turn.**
    - Write `TURN.md` with only the public relationship commitments.
-   - Run `glass turn end --summary "<relationship commitments updated>" --state "players/<id>/public/relationships.md updated or no state change" --rolls none --next default`.
+   - Run `glass done --summary "<relationship commitments updated>" --state "players/<id>/public/relationships.md updated or no state change" --rolls none --next default`.
 
 ## DM Ratification Turn
 
@@ -255,7 +255,7 @@ setup/relationship turns instead.
 
 4. **End character creation.**
    - Write `TURN.md` with the public party lock-in.
-   - Run `glass turn end --summary "character creation complete" --state "<party state and summaries updated>" --rolls none --next default`.
+   - Run `glass done --summary "character creation complete" --state "<party state and summaries updated>" --rolls none --next default`.
    - Run `glass mode end`. This command refuses to end character creation while
      relationship files are missing or empty.
 

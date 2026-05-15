@@ -17,5 +17,5 @@ character state, table state, SRD rules, dice, or the active methodology.
    interpretation.
 3. Apply that effect inside the prose or decision.
 4. Keep the influence unnamed unless the fiction itself makes naming it natural.
-5. End the turn through the active methodology's normal `glass turn end`
+5. End the turn through the active methodology's normal `glass done`
    contract.

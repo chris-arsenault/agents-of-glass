@@ -66,3 +66,17 @@ def outcome_for_margin(margin: int) -> tuple[str, int]:
     if margin >= -3:
         return "regress", -1
     return "collapse", -2
+
+
+def momentum_narrative_effect(momentum: int) -> tuple[str, str]:
+    if momentum > 2:
+        return (
+            "additional_good",
+            "momentum > 2: add one extra good visible consequence",
+        )
+    if momentum <= 0:
+        return (
+            "additional_complication",
+            "momentum <= 0: add one extra visible complication",
+        )
+    return "none", "momentum 1-2: no extra momentum rider"

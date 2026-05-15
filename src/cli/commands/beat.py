@@ -80,7 +80,7 @@ def beat_check(ctx: click.Context) -> None:
                 agent_instruction(
                     "active play cannot proceed until the scene clock/beat contract is live",
                     "The DM must declare at least one scene clock and start at least one beat for this scene before continuing active play.",
-                    "Use `glass scene clock declare <clock-id> --label ... --goal ... --value <n> --max <n> --direction progress|countdown --visibility public|dm` and `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`.",
+                    "Use `glass scene clock declare <clock-id> --label ... --goal ... --value <n> --max <n> --direction progress|countdown --polarity objective|threat|timer --visibility public|dm` and `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`.",
                 )
                 + "\n\nCurrent problems:\n"
                 + detail
@@ -94,6 +94,8 @@ def beat_check(ctx: click.Context) -> None:
         "clock_count": snapshot["active_clock_count"],
         "hidden_clock_count": snapshot["hidden_clock_count"],
         "scene_clocks": snapshot["clocks"],
+        "clock_groups": snapshot["clock_groups"],
+        "clock_warnings": snapshot["clock_warnings"],
         "active_beats": snapshot["active_beats"],
         "recent_beats": snapshot["recent_beats"],
         "completed_beats": snapshot["completed_beats"],
@@ -143,7 +145,7 @@ def beat_start(
             raise GlassError(
                 agent_instruction(
                     f"unknown active scene clock {clock_key!r}",
-                    "Use `glass beat check` to inspect the active scene contract, or have the DM declare the scene clock first.",
+                    "Use `glass check` to inspect the active scene contract, or have the DM declare the scene clock first.",
                 )
             ) from None
         except ValueError as exc:
@@ -159,7 +161,7 @@ def beat_start(
                     agent_instruction(
                         "cannot start a new beat while an active beat is already at 10/10",
                         "Close or convert the expired beat before opening another beat.",
-                        "Use `glass beat check` to see which beat must be resolved.",
+                        "Use `glass check` to see which beat must be resolved.",
                     )
                 ) from None
             if str(exc) == "beat_exists":
@@ -211,7 +213,7 @@ def beat_close(
             raise GlassError(
                 agent_instruction(
                     f"unknown active beat {beat_key!r}",
-                    "Use `glass beat check` to inspect active beats for this scene.",
+                    "Use `glass check` to inspect active beats for this scene.",
                 )
             )
         closed = _db.scene_beat_close(
@@ -295,7 +297,7 @@ def beat_convert(
             raise GlassError(
                 agent_instruction(
                     f"cannot convert beat {beat_key!r} to clock {clock_key!r}",
-                    "Use `glass beat check` to inspect the active beats and scene clocks for this scene.",
+                    "Use `glass check` to inspect the active beats and scene clocks for this scene.",
                 )
             ) from None
     queue_event(state, role.actor, f"beat convert {record['label']}")

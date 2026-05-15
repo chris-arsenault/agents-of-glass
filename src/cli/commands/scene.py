@@ -26,6 +26,8 @@ from ..campaign import (
 from ..character_projection import write_public_character_mirror
 from ..config import REPO_ROOT, Paths, get_paths
 from ..constants import (
+    CHECK_DICE_COUNT,
+    CHECK_DIE_SIDES,
     ATTRIBUTE_TIERS,
     ATTRIBUTES,
     RISK_THRESHOLDS,
@@ -88,6 +90,7 @@ from ..state import (
 from ..validation import (
     assert_attribute_name,
     clamp,
+    momentum_narrative_effect,
     outcome_for_margin,
     validate_key_values,
 )
@@ -467,6 +470,15 @@ def scene_clock() -> None:
     required=True,
 )
 @click.option(
+    "--polarity",
+    type=click.Choice(["objective", "threat", "timer"]),
+    default=None,
+    help=(
+        "Scene-clock meaning. Defaults to objective for progress clocks and "
+        "timer for countdown clocks."
+    ),
+)
+@click.option(
     "--visibility",
     type=click.Choice(["public", "dm"]),
     default="public",
@@ -481,10 +493,12 @@ def scene_clock_declare(
     value: int,
     max_value: int,
     direction: str,
+    polarity: str | None,
     visibility: str,
 ) -> None:
     """DM-only: declare or replace a scene-specific active-play clock."""
     role = require_dm()
+    polarity_value = polarity or ("timer" if direction == "countdown" else "objective")
     if max_value <= 0:
         raise GlassError(
             agent_instruction(
@@ -516,6 +530,7 @@ def scene_clock_declare(
             value=value,
             max_value=max_value,
             direction=direction,
+            polarity=polarity_value,
             visibility=visibility,
             actor=role.actor,
             turn_id=turn_id,
@@ -523,7 +538,10 @@ def scene_clock_declare(
     queue_event(
         state,
         role.actor,
-        f"scene clock declare {record['label']}: {record['value']}/{record['max']} ({direction})",
+        (
+            f"scene clock declare {record['label']}: "
+            f"{record['value']}/{record['max']} ({polarity_value} {direction})"
+        ),
     )
     commit(
         paths,
@@ -537,9 +555,101 @@ def scene_clock_declare(
             value=value,
             max=max_value,
             direction=direction,
+            polarity=polarity_value,
             visibility=visibility,
         ),
         {"clock": record},
+    )
+
+
+@scene_clock.command("tick")
+@click.argument("clock_id")
+@click.argument("delta", type=int, default=1, required=False)
+@click.option("--outcome", required=True)
+@click.pass_context
+def scene_clock_tick(
+    ctx: click.Context,
+    clock_id: str,
+    delta: int,
+    outcome: str,
+) -> None:
+    """Move a scene clock directly when a turn creates a concrete consequence."""
+    if delta == 0:
+        raise GlassError(
+            agent_instruction(
+                "`delta` must not be 0",
+                "Use a positive or negative integer that actually moves the scene clock.",
+            )
+        )
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    role = current_role()
+    scene_id = _active_tracker_scene_id(state)
+    clock_key = slugify(clock_id)
+    turn_id = str(state.get("active_turn_id") or "").strip() or None
+    outcome_text = outcome.strip()
+    if not outcome_text:
+        raise GlassError(
+            agent_instruction(
+                "`--outcome` cannot be empty",
+                "Name the visible consequence or progress that moved this scene clock.",
+            )
+        )
+    with pg_connection() as conn:
+        existing = _db.scene_clock_get(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+            clock_id=clock_key,
+        )
+        if existing is None or existing.get("status") != "active":
+            raise GlassError(
+                agent_instruction(
+                    f"unknown active scene clock {clock_key!r}",
+                    "Use `glass check` to inspect the active scene contract, or have the DM declare the scene clock first.",
+                )
+            )
+        if role.kind == "player" and existing.get("visibility") != "public":
+            raise GlassError(
+                agent_instruction(
+                    f"scene clock {clock_key!r} is not player-visible",
+                    "Players may tick only public scene clocks. End with `--next dm` if a hidden clock needs to move.",
+                )
+            )
+        clock, before, after, resolved = _db.scene_clock_apply_delta(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+            clock_id=clock_key,
+            delta=delta,
+            actor=role.actor,
+            turn_id=turn_id,
+            outcome=outcome_text,
+        )
+    queue_event(
+        state,
+        role.actor,
+        (
+            f"scene clock tick {clock['label']}: {delta:+d} "
+            f"({before}/{clock['max']} -> {after}/{clock['max']})"
+        ),
+    )
+    if resolved:
+        queue_event(state, role.actor, f"scene clock resolved {clock['label']}")
+    commit(
+        paths,
+        state,
+        ctx,
+        "scene.clock.tick",
+        command_params(clock_id=clock_key, delta=delta, outcome=outcome_text),
+        {
+            "clock": clock,
+            "before": before,
+            "after": after,
+            "delta": delta,
+            "resolved": resolved,
+        },
     )
 
 
@@ -841,11 +951,12 @@ def scene_pressure(
         momentum_in = int(character["momentum"]["current"])
         floor = int(character["momentum"]["floor"])
         ceiling = int(character["momentum"]["ceiling"])
-        dice = [rng.randint(1, 6), rng.randint(1, 6)]
-        total = sum(dice) + skill_modifier + attribute_modifier + momentum_in + bonus
+        dice = [rng.randint(1, CHECK_DIE_SIDES) for _ in range(CHECK_DICE_COUNT)]
+        total = sum(dice) + skill_modifier + attribute_modifier + bonus
         margin = total - adjusted_target
         outcome, momentum_delta = outcome_for_margin(margin)
         momentum_out = clamp(momentum_in + momentum_delta, floor, ceiling)
+        momentum_effect, momentum_guidance = momentum_narrative_effect(momentum_out)
 
         impact_roll: int | None = None
         base_reduction = 0
@@ -874,6 +985,9 @@ def scene_pressure(
             "pressure_before": before,
             "pressure_after": after,
             "note": note,
+            "momentum_applied_to_total": False,
+            "momentum_effect": momentum_effect,
+            "momentum_guidance": momentum_guidance,
         }
         roll_row = _db.roll_record(
             conn,
@@ -965,6 +1079,10 @@ def scene_pressure(
         (
             f"pressure {label}: {outcome}, impact {impact_text}"
             f"{resistance_text}, -{reduction} ({before}/{max_value} -> {after}/{max_value})"
+            + {
+                "additional_good": "; momentum rider: extra good",
+                "additional_complication": "; momentum rider: complication",
+            }.get(momentum_effect, "")
         ),
     )
     if auto_declared:
@@ -985,6 +1103,8 @@ def scene_pressure(
     roll_row["skill_xp_before"] = skill_xp_before
     roll_row["skill_xp_after"] = skill_xp_after
     roll_row["skill_bumped_to"] = skill_bumped_to
+    roll_row["momentum_effect"] = momentum_effect
+    roll_row["momentum_guidance"] = momentum_guidance
     roll_row["character_mirror"] = write_public_character_mirror(
         paths,
         campaign_id,

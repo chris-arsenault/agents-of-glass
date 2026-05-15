@@ -26,6 +26,8 @@ from ..campaign import (
 from ..character_projection import write_public_character_mirror
 from ..config import REPO_ROOT, Paths, get_paths, load_config
 from ..constants import (
+    CHECK_DICE_COUNT,
+    CHECK_DIE_SIDES,
     ATTRIBUTE_TIERS,
     ATTRIBUTES,
     RISK_THRESHOLDS,
@@ -83,6 +85,7 @@ from ..state import (
 from ..validation import (
     assert_attribute_name,
     clamp,
+    momentum_narrative_effect,
     outcome_for_margin,
     validate_key_values,
 )
@@ -151,12 +154,14 @@ def roll(
         floor = int(character["momentum"]["floor"])
         ceiling = int(character["momentum"]["ceiling"])
 
-        dice = [random.SystemRandom().randint(1, 6), random.SystemRandom().randint(1, 6)]
+        rng = random.SystemRandom()
+        dice = [rng.randint(1, CHECK_DIE_SIDES) for _ in range(CHECK_DICE_COUNT)]
         target = RISK_THRESHOLDS[risk]
-        total = sum(dice) + skill_modifier + attribute_modifier + momentum_in
+        total = sum(dice) + skill_modifier + attribute_modifier
         margin = total - target
         outcome, momentum_delta = outcome_for_margin(margin)
         momentum_out = clamp(momentum_in + momentum_delta, floor, ceiling)
+        momentum_effect, momentum_guidance = momentum_narrative_effect(momentum_out)
 
         scene_id: str | None = None
         current = current_mode_record(state)
@@ -186,6 +191,11 @@ def roll(
             momentum_delta=momentum_delta,
             momentum_out=momentum_out,
             target_id=target_id,
+            metadata={
+                "momentum_applied_to_total": False,
+                "momentum_effect": momentum_effect,
+                "momentum_guidance": momentum_guidance,
+            },
         )
         # Persist new momentum back to the character row.
         _db.character_set_momentum_internal(
@@ -228,9 +238,14 @@ def roll(
             ) from None
 
     target_suffix = f" -> {target_id}" if target_id else ""
+    rider_suffix = {
+        "additional_good": "; momentum rider: extra good",
+        "additional_complication": "; momentum rider: complication",
+    }.get(momentum_effect, "")
     summary = (
         f"roll {skill} ({attribute}) @ {risk}: {total} vs {target} -> "
-        f"{outcome} ({momentum_in:+d} to {momentum_out:+d} momentum){target_suffix}"
+        f"{outcome} ({momentum_in:+d} to {momentum_out:+d} momentum"
+        f"{rider_suffix}){target_suffix}"
     )
     queue_event(state, role.actor, summary)
     if auto_declared:
@@ -251,6 +266,8 @@ def roll(
     roll_row["skill_xp_after"] = skill_xp_after
     roll_row["skill_bumped_to"] = skill_bumped_to
     roll_row["skill_auto_declared"] = auto_declared
+    roll_row["momentum_effect"] = momentum_effect
+    roll_row["momentum_guidance"] = momentum_guidance
     roll_row["character_mirror"] = write_public_character_mirror(
         paths,
         campaign_id,

@@ -3151,7 +3151,7 @@ def clock_set_status(
 
 _SCENE_CLOCK_COLUMNS = (
     "campaign_id, scene_id, clock_id, label, goal, value, max_value, "
-    "direction, visibility, status, created_by, created_turn_id, "
+    "direction, polarity, visibility, status, created_by, created_turn_id, "
     "resolved_turn_id, outcome, created_at, updated_at, resolved_at"
 )
 
@@ -3166,6 +3166,7 @@ def _row_to_scene_clock(row: tuple[Any, ...]) -> dict[str, Any]:
         value,
         max_value,
         direction,
+        polarity,
         visibility,
         status,
         created_by,
@@ -3185,6 +3186,7 @@ def _row_to_scene_clock(row: tuple[Any, ...]) -> dict[str, Any]:
         "value": int(value),
         "max": int(max_value),
         "direction": direction,
+        "polarity": polarity,
         "visibility": visibility,
         "status": status,
         "created_by": created_by,
@@ -3254,6 +3256,7 @@ def scene_clock_upsert(
     value: int,
     max_value: int,
     direction: str,
+    polarity: str,
     visibility: str,
     actor: str,
     turn_id: str | None,
@@ -3263,14 +3266,15 @@ def scene_clock_upsert(
             f"""
             INSERT INTO scene_clocks (
                 campaign_id, scene_id, clock_id, label, goal, value, max_value,
-                direction, visibility, status, created_by, created_turn_id
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
+                direction, polarity, visibility, status, created_by, created_turn_id
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
             ON CONFLICT (campaign_id, scene_id, clock_id) DO UPDATE SET
                 label = EXCLUDED.label,
                 goal = EXCLUDED.goal,
                 value = EXCLUDED.value,
                 max_value = EXCLUDED.max_value,
                 direction = EXCLUDED.direction,
+                polarity = EXCLUDED.polarity,
                 visibility = EXCLUDED.visibility,
                 status = 'active',
                 resolved_turn_id = NULL,
@@ -3288,6 +3292,7 @@ def scene_clock_upsert(
                 value,
                 max_value,
                 direction,
+                polarity,
                 visibility,
                 actor,
                 turn_id,

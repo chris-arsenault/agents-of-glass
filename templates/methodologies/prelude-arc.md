@@ -42,11 +42,11 @@ planning should already have created the `prelude` arc shell.
      for each reusable public lore item the prelude puts on screen.
    - `glass sync apply arcs/prelude/scenes/prelude-opening`
    - `glass mode start scene-play prelude-opening`
-   - Declare at least one scene-specific clock with
-     `glass scene clock declare <clock-id> --label ... --goal ... --value 0 --max <n> --direction progress|countdown --visibility public|dm`.
-   - Start the first beat with
+   - Declare the scene objective clock with
+     `glass scene clock declare <clock-id> --label ... --goal ... --value 0 --max <n> --direction progress|countdown --polarity objective|threat|timer --visibility public|dm`.
+   - Start 2-3 active beats across distinct problem lanes with
      `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`.
-   - Run `glass beat check` and do not finish the prelude turn until the new
+   - Run `glass check` and do not finish the prelude turn until the new
      scene shows a live clock and beat.
 
 4. **Run Scene 1 to a real consequence.**
@@ -65,11 +65,11 @@ planning should already have created the `prelude` arc shell.
    - Create public trackers or clocks before the first action turn.
    - `glass sync apply arcs/prelude/scenes/prelude-action`
    - `glass mode start action prelude-action`
-   - Declare at least one scene-specific clock with
-     `glass scene clock declare <clock-id> --label ... --goal ... --value 0 --max <n> --direction progress|countdown --visibility public|dm`.
-   - Start the first beat with
+   - Declare the scene objective clock with
+     `glass scene clock declare <clock-id> --label ... --goal ... --value 0 --max <n> --direction progress|countdown --polarity objective|threat|timer --visibility public|dm`.
+   - Start 2-3 active beats across distinct problem lanes with
      `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`.
-   - Run `glass beat check` and do not finish the prelude turn until the new
+   - Run `glass check` and do not finish the prelude turn until the new
      action scene shows a live clock and beat.
    - Establish order with `glass turn initiative`.
      The DM is always included in the roll, even when a custom participant
@@ -97,8 +97,7 @@ planning should already have created the `prelude` arc shell.
      already staged, start its actual play mode instead.
    - Do not close the turn with an active main arc and no active mode.
    - Name the time jump in `TURN.md`.
-   - Run `glass turn audit`.
-   - Run `glass turn end --summary "prelude complete and main arc bridge staged" --state "<summaries/arc/quest/mode state updated>" --rolls "<rolls/checks or none>" --scene-status ended --next default`.
+   - Run `glass done --summary "prelude complete and main arc bridge staged" --state "<summaries/arc/quest/mode state updated>" --rolls "<rolls/checks or none>" --scene-status ended --next default`.
    - Run `glass mode end` for the old prelude/scene modes before starting
      `scene-prep` or the next actual play mode.
 

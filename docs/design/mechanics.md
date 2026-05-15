@@ -11,7 +11,7 @@ For how mechanics fit into a turn, see [`turn-loop.md`](turn-loop.md). For state
 Every uncertain action resolves through a single equation:
 
 ```
-total = 2d6 + skill_modifier + attribute_modifier + current_momentum
+total = 1d10 + skill_modifier + attribute_modifier
 margin = total - target_threshold(risk_level)
 tier = ladder(margin)
 ```
@@ -22,15 +22,17 @@ A check produces:
 - A **margin** (total minus the risk threshold)
 - An **outcome tier** (one of five)
 - A **momentum delta** (applied to the character's momentum)
+- A **momentum rider** (whether the resulting momentum adds a good beat,
+  complication, or nothing)
 
 ## Risk Levels
 
 | Risk | Threshold |
 |------|-----------|
-| `controlled` | 7 |
-| `standard` | 8 |
-| `risky` | 9 |
-| `desperate` | 10 |
+| `controlled` | 5 |
+| `standard` | 6 |
+| `risky` | 7 |
+| `desperate` | 8 |
 
 The actor making the roll picks risk based on scene state. For player-initiated
 rolls, the player picks. For NPC, hazard, opposition, or DM-side PC checks, the
@@ -259,7 +261,8 @@ Starting PCs have exactly three trained skills: one `artisan` and two
 
 ## Momentum
 
-A per-character integer that's clamped to `[-2, +3]`. It accumulates from check outcomes and feeds back into future check totals.
+A per-character integer that's clamped to `[-2, +3]`. It accumulates from check
+outcomes but does not modify future check totals.
 
 - `breakthrough` → +2
 - `advance` → +1
@@ -267,7 +270,12 @@ A per-character integer that's clamped to `[-2, +3]`. It accumulates from check 
 - `regress` → -1
 - `collapse` → -2
 
-Momentum represents narrative flow: a character on a roll genuinely *is* on a roll. A character whose plans keep collapsing struggles harder.
+Momentum represents narrative flow. After a check updates momentum, read the
+resulting value as a narrative rider:
+
+- `> 2`: add one extra good visible consequence.
+- `1` to `2`: no extra momentum rider.
+- `<= 0`: add one extra visible complication.
 
 The DM can also adjust momentum out-of-band (`glass character set-momentum`) for narrative reasons — a major story beat resets it, an inspiring NPC speech bumps it.
 
@@ -337,16 +345,17 @@ character_id: karrith
 skill: diplomacy
 attribute: presence
 risk: controlled
-dice: [3, 5]
+dice: [7]
 skill_modifier: 0
 attribute_modifier: 0
 momentum_in: +1
-total: 9
-target: 7
+total: 7
+target: 5
 margin: +2
 outcome: breakthrough
 momentum_delta: +2
 momentum_out: +3
+momentum_effect: additional_good
 ```
 
 Every roll is logged in Postgres with full context. This is non-negotiable — dice events are corpus data (see [`../principles/transcripts-as-corpus.md`](../principles/transcripts-as-corpus.md)).

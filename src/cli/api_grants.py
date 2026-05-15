@@ -24,12 +24,16 @@ _GRANT_FILE = ".glass-grants.json"
 _DEFAULT_TTL_SECONDS = 7200
 
 _PLAYER_ALLOWED: dict[str, set[str] | None] = {
+    "check": None,
+    "done": None,
+    "find": None,
+    "next": None,
     "beat": {"check", "start", "close", "convert"},
     "character": None,
     "clock": {"list", "show"},
     "msg": None,
     "roll": None,
-    "scene": {"tracker", "pressure"},
+    "scene": {"clock", "tracker", "pressure"},
     "table": {"current", "show"},
     "entity": {
         "neighborhood",
@@ -171,7 +175,7 @@ def _assert_command_allowed(claim: dict[str, Any], args: list[str]) -> None:
             agent_instruction(
                 f"player turns cannot run `glass {command}`",
                 "Use one of the player-facing commands allowed in TURN_START.",
-                "If the DM needs to act, close the turn with `glass turn end --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
+                "If the DM needs to act, close the turn with `glass done --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
             )
         )
 
@@ -182,7 +186,7 @@ def _assert_command_allowed(claim: dict[str, Any], args: list[str]) -> None:
         agent_instruction(
             f"player turns cannot run `glass {command} {subcommand}`",
             "Use an allowed player-facing subcommand.",
-            "If the DM needs this action, close the turn with `glass turn end --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
+            "If the DM needs this action, close the turn with `glass done --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
         )
     )
 

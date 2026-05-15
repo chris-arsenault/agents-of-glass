@@ -206,6 +206,24 @@ class GlassApiProxyTests(unittest.TestCase):
 
             claim = validate_grant(campaigns, token, ["msg", "read"])
             self.assertEqual(claim["actor"], "tev")
+            validate_grant(campaigns, token, ["check"])
+            validate_grant(
+                campaigns,
+                token,
+                [
+                    "done",
+                    "--summary",
+                    "Tev moves.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                    "--turn-type",
+                    "pass",
+                ],
+            )
+            validate_grant(campaigns, token, ["find", "duke"])
+            validate_grant(campaigns, token, ["next", "handoff", "dm"])
             validate_grant(campaigns, token, ["search", "text", "duke"])
             validate_grant(campaigns, token, ["tarot", "current"])
             validate_grant(campaigns, token, ["tarot", "list"])

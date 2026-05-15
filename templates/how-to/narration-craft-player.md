@@ -55,7 +55,7 @@ clear open question.
 
 **3. Resolve to a next state.** Your character ends somewhere different:
 physically, socially, emotionally, materially, or informationally. If you cannot
-state the delta in `glass turn end --state`, the turn has not advanced enough.
+state the delta in `glass done --state`, the turn has not advanced enough.
 
 ## Player-Specific Craft Rules
 
@@ -102,7 +102,7 @@ narration:
 
 These rewrites are short because the event carries the weight.
 
-## Self-Check Before `glass turn end`
+## Self-Check Before `glass done`
 
 Re-read what you wrote. For each paragraph, ask:
 
@@ -110,6 +110,6 @@ Re-read what you wrote. For each paragraph, ask:
 - Did I put speech, action, named knowledge, or a visible object on the page?
 - Did I explain significance that the scene can carry through action?
 - Did my close create a new state for the next actor?
-- Can I state the turn delta in `glass turn end --state`?
+- Can I state the turn delta in `glass done --state`?
 
 If any check fails, revise before ending the turn.

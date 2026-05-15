@@ -56,7 +56,7 @@ def require_dm() -> Role:
         agent_instruction(
             "this command is DM-only",
             "Do not run this command from a player turn.",
-            "If the DM needs to perform this action, close the current player turn with `glass turn end --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
+            "If the DM needs to perform this action, close the current player turn with `glass done --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
         )
     )
 

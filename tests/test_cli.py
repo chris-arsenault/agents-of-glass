@@ -21,6 +21,12 @@ from cli.commands.character import (
 )
 from cli.config import Paths
 from cli.config import get_paths, load_config
+from cli.constants import (
+    ATTRIBUTE_TIERS,
+    CHECK_DIE_SIDES,
+    RISK_THRESHOLDS,
+    SKILL_TIERS,
+)
 from cli.errors import GlassError
 from cli.local_env import load_repo_env
 from cli.embeddings import EmbeddingBatch
@@ -28,6 +34,7 @@ from cli.main import main
 from cli.messages import load_message_types
 from cli.scene_beats import scene_close_note
 from cli.state import load_state
+from cli.validation import momentum_narrative_effect
 
 
 def make_env(tmp_path: Path, campaign_id: str = "c1") -> dict[str, str]:
@@ -174,19 +181,88 @@ def arc_create_args(arc_id: str) -> list[str]:
     ]
 
 
+def _pass_rate(modifier: int, *, momentum: int, risk: str = "standard") -> float:
+    target = RISK_THRESHOLDS[risk]
+    passes = sum(
+        1
+        for die in range(1, CHECK_DIE_SIDES + 1)
+        if die + modifier >= target
+    )
+    return passes / CHECK_DIE_SIDES
+
+
+def _failure_rate(modifier: int, *, momentum: int, risk: str = "standard") -> float:
+    return 1.0 - _pass_rate(modifier, momentum=momentum, risk=risk)
+
+
 class GlassCliTests(unittest.TestCase):
-    def test_scene_close_note_frames_closure_as_available_not_overlong(self) -> None:
-        self.assertIsNone(scene_close_note(3))
+    def test_standard_roll_probabilities_ignore_momentum(self) -> None:
+        trained_standard = (
+            SKILL_TIERS["apprentice"] + ATTRIBUTE_TIERS["standard"]
+        )
+
+        self.assertEqual(_failure_rate(trained_standard, momentum=0), 0.50)
+        self.assertEqual(_failure_rate(trained_standard, momentum=3), 0.50)
         self.assertEqual(
-            scene_close_note(4),
-            "this scene has enough resolved material to close when the current "
-            "scene clock lands; keep any next clock choice deliberate.",
+            _failure_rate(SKILL_TIERS["fool"] + ATTRIBUTE_TIERS["standard"], momentum=0),
+            0.70,
+        )
+        self.assertEqual(_failure_rate(trained_standard, momentum=-2), 0.50)
+        self.assertEqual(
+            _failure_rate(SKILL_TIERS["fool"] + ATTRIBUTE_TIERS["standard"], momentum=-2),
+            0.70,
+        )
+
+    def test_roll_total_excludes_momentum(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env, player="tev", character_id="vel")
+            invoke_ok(runner, ["character", "set-momentum", "vel", "3"], player_env)
+
+            with patch("cli.commands.roll.random.SystemRandom") as rng_factory:
+                rng_factory.return_value.randint.side_effect = [1]
+                rolled = invoke_ok(
+                    runner,
+                    [
+                        "roll",
+                        "spar reading",
+                        "ingenuity",
+                        "--risk",
+                        "standard",
+                        "--character",
+                        "vel",
+                    ],
+                    player_env,
+                )
+
+            self.assertIn("total: 2", rolled.output)
+            self.assertIn("outcome: collapse", rolled.output)
+            self.assertIn("momentum_applied_to_total: false", rolled.output)
+
+    def test_momentum_narrative_effect_thresholds(self) -> None:
+        self.assertEqual(momentum_narrative_effect(3)[0], "additional_good")
+        self.assertEqual(momentum_narrative_effect(2)[0], "none")
+        self.assertEqual(momentum_narrative_effect(1)[0], "none")
+        self.assertEqual(momentum_narrative_effect(0)[0], "additional_complication")
+        self.assertEqual(momentum_narrative_effect(-2)[0], "additional_complication")
+
+    def test_scene_close_note_frames_closure_as_available_not_overlong(self) -> None:
+        self.assertIsNone(scene_close_note(5))
+        self.assertEqual(
+            scene_close_note(6),
+            "this scene is entering landing range, not automatic closure; keep "
+            "multiple active problem lanes live if the core tension has not "
+            "landed.",
         )
         self.assertEqual(
-            scene_close_note(5),
-            "this scene has ample resolved material; when the current scene clock "
-            "lands, close or transition unless a genuinely new scene question "
-            "needs its own clock.",
+            scene_close_note(8),
+            "this scene has substantial resolved material; close or transition "
+            "when the core tension lands unless a genuinely new scene question "
+            "still belongs here.",
         )
 
     def test_character_goal_validation_requires_two_or_three_goals(self) -> None:
@@ -468,7 +544,7 @@ class GlassCliTests(unittest.TestCase):
             self.assertIn("**Level:** 1 (2 XP)", mirror_path.read_text(encoding="utf-8"))
 
             with patch("cli.commands.roll.random.SystemRandom") as system_random:
-                system_random.return_value.randint.side_effect = [6, 6]
+                system_random.return_value.randint.side_effect = [10]
                 invoke_ok(
                     runner,
                     [
@@ -1122,6 +1198,132 @@ Recipients are `dm`, `party`, or a player id.
                 second_audit.output,
             )
 
+    def test_facade_check_and_done_cover_turn_start_and_closeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live player decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the first call",
+                    "--question",
+                    "What does Tev do with the opening pressure?",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                ["msg", "banter", "party", "Mara wants Tev to take the first clear line."],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                ["clock", "set", "dm-only-pressure", "--max", "4"],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+
+            checked = invoke_ok(runner, ["check"], player_env)
+            self.assertIn("unread_message_count: 1", checked.output)
+            self.assertIn("beat_check_marked: true", checked.output)
+            self.assertIn("ready_for_done: true", checked.output)
+            self.assertNotIn("dm-only-pressure", checked.output)
+
+            ended = invoke_ok(
+                runner,
+                [
+                    "done",
+                    "--summary",
+                    "Tev yields for Pell to answer the visible problem.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                    "--type",
+                    "pass",
+                ],
+                player_env,
+            )
+            self.assertIn("valid: true", ended.output)
+            self.assertIn("hard_requirements: []", ended.output)
+
+    def test_facade_next_wraps_handoff_and_dm_round_queue(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+
+            handoff = invoke_ok(runner, ["next", "handoff", "dm"], player_env)
+            self.assertIn("agent: dm", handoff.output)
+
+            rapid = invoke_ok(
+                runner,
+                ["next", "rapid-round", "--players", "tev,sumi", "react to the flare"],
+                dm_env,
+            )
+            self.assertIn('rapid_prompt: "react to the flare"', rapid.output)
+
+            state = runtime_state(env)
+            self.assertEqual(state["next_speakers"][0]["agent"], "dm")
+            self.assertEqual(state["next_speakers"][1]["agent"], "tev")
+            self.assertEqual(state["next_speakers"][1]["rapid_prompt"], "react to the flare")
+            self.assertEqual(state["next_speakers"][2]["agent"], "sumi")
+
     def test_prelude_turn_end_requires_scene_contract_before_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1349,6 +1551,185 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertIn("valid: true", ended.output)
 
+    def test_scene_clock_polarity_groups_and_direct_tick(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+
+            declared = invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "alarm",
+                    "--label",
+                    "Alarm spreads",
+                    "--goal",
+                    "The cutters wake the quay patrols.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                    "--polarity",
+                    "threat",
+                ],
+                dm_env,
+            )
+            self.assertIn("polarity: threat", declared.output)
+
+            checked = invoke_ok(runner, ["check"], dm_env)
+            self.assertIn("clock_groups:", checked.output)
+            self.assertIn("threat:", checked.output)
+            self.assertIn("This scene has no active objective clock", checked.output)
+
+            ticked = invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "tick",
+                    "alarm",
+                    "2",
+                    "--outcome",
+                    "The cutter flare catches the patrol mirror.",
+                ],
+                dm_env,
+            )
+            self.assertIn("before: 0", ticked.output)
+            self.assertIn("after: 2", ticked.output)
+            self.assertIn("delta: 2", ticked.output)
+
+    def test_failed_roll_requires_visible_consequence_at_closeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live player decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                    "--polarity",
+                    "objective",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the first call",
+                    "--question",
+                    "What does Tev do with the opening pressure?",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--character",
+                    "vel",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["check"], player_env)
+            with patch("cli.commands.roll.random.SystemRandom") as rng_factory:
+                rng_factory.return_value.randint.side_effect = [1]
+                rolled = invoke_ok(
+                    runner,
+                    [
+                        "roll",
+                        "spar reading",
+                        "ingenuity",
+                        "--risk",
+                        "desperate",
+                        "--character",
+                        "vel",
+                    ],
+                    player_env,
+                )
+            self.assertIn("outcome: collapse", rolled.output)
+
+            invalid = invoke_ok(
+                runner,
+                [
+                    "done",
+                    "--summary",
+                    "Vel tests the spar and loses footing.",
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "spar reading collapse",
+                    "--turn-type",
+                    "act",
+                ],
+                player_env,
+            )
+            self.assertIn("valid: false", invalid.output)
+            self.assertIn("roll needs a consequence", invalid.output)
+
+            valid = invoke_ok(
+                runner,
+                [
+                    "done",
+                    "--summary",
+                    "Vel tests the spar and loses footing.",
+                    "--state",
+                    "The spar snaps; Vel is hanging below the gangway.",
+                    "--rolls",
+                    "spar reading collapse",
+                    "--turn-type",
+                    "act",
+                ],
+                player_env,
+            )
+            self.assertIn("valid: true", valid.output)
+
     def test_turn_audit_pushes_pass_guidance_after_many_completed_beats(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1434,6 +1815,7 @@ Recipients are `dm`, `party`, or a player id.
 
             self.assertIn("ready_for_turn_end: true", audit.output)
             self.assertIn("This scene already has 9 completed beats.", audit.output)
+            self.assertIn("closed beats and 0 scene clock movements", audit.output)
             self.assertIn("`--turn-type pass`", audit.output)
             self.assertIn("`--next dm`", audit.output)
 

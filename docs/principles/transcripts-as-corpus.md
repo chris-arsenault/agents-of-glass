@@ -56,7 +56,7 @@ Tev (OOC): "I'll try to climb the gantry — risky athletics?"
 
 Karrith grabs the rail and starts hauling himself up, wind whipping the kite-cord around his ankle.
 
-> 🎲 athletics (vitality) @ risky → 8 vs 9 → stall
+> 🎲 athletics (vitality) @ risky → 6 vs 7 → stall
 
 He gets a few rungs up before the wind catches him sideways and he has to lock both arms around the rail, breathing hard.
 ```

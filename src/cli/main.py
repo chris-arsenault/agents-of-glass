@@ -23,6 +23,7 @@ from .commands.character import character
 from .commands.clock import clock
 from .commands.db import db
 from .commands.entity import entity
+from .commands.facade import check, done, find, next_command
 from .commands.lore import lore
 from .commands.mode import mode
 from .commands.msg import msg_group
@@ -188,6 +189,10 @@ def _echo_api_daemon(info) -> None:
 
 
 main.add_command(session)
+main.add_command(check)
+main.add_command(done)
+main.add_command(find)
+main.add_command(next_command)
 main.add_command(mode)
 main.add_command(roll)
 main.add_command(campaign)

@@ -31,6 +31,7 @@ Conventions:
 | `016_character_table_personality_fields.sql` | public table personality fields on characters |
 | `017_active_turn_runtime_and_turn_type.sql` | active-turn runtime staging columns plus committed `turns.turn_type` |
 | `018_scene_clocks_beats_and_turn_audit.sql` | scene-local clocks/beats plus active-turn audit and beat-check markers |
+| `019_scene_clock_polarity.sql` | objective/threat/timer polarity for scene-local clocks |
 
 ## Running
 

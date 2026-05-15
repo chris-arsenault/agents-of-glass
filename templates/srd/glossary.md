@@ -8,13 +8,14 @@ authority: rules
 
 - **attribute** — one of seven base stats: `vitality`, `finesse`, `focus`,
   `resolve`, `attunement`, `ingenuity`, `presence`.
-- **check** — 2d6 plus modifiers against a risk threshold.
+- **check** — 1d10 plus modifiers against a risk threshold.
 - **consequence** — lasting fictional state on a character.
 - **durable clock** — cross-scene numeric pressure.
 - **effect** — named fictional state that changes what future actions can do.
 - **effect tag** — free text on an item describing how it can matter.
 - **impact die** — `d6`, `d8`, or `d10` rolled for pressure reduction.
-- **momentum** — per-character narrative flow number in `[-2, +3]`.
+- **momentum** — per-character narrative flow number in `[-2, +3]`; it does
+  not modify roll totals.
 - **outcome tier** — `breakthrough`, `advance`, `stall`, `regress`, or
   `collapse`.
 - **pressure target** — a numeric value reduced by roll-mediated pressure.

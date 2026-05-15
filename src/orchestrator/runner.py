@@ -30,7 +30,14 @@ from .projection import (
     unsynced_workspace_changes,
     writable_probe_dirs,
 )
-from .state import AGENTS_BY_ID, Agent, SessionState, next_agent_for, utc_now
+from .state import (
+    AGENTS_BY_ID,
+    Agent,
+    SessionState,
+    advance_scene_play_player_cursor,
+    next_agent_for,
+    utc_now,
+)
 from .store import SessionStore
 
 
@@ -758,6 +765,8 @@ class Orchestrator:
             )
         elif result.action_order_entry is not None:
             self._advance_action_order(state.campaign, result.action_order_entry)
+        if active.mode in _SCENE_PLAY_MODES and result.agent.role == "player":
+            advance_scene_play_player_cursor(state, result.agent.id)
         synced = self.store.sync_from_glass(state)
         state.__dict__.update(synced.__dict__)
         self._validate_prelude_dm_handoff(state, result, active)
@@ -937,7 +946,7 @@ class Orchestrator:
                 f"System recovery notice: Mara's turn `{result.turn_id}` did not hand control to a playable mode.",
                 instruction,
                 "",
-                "On your next turn, make the missing handoff explicit, run `glass turn audit`, and close with `glass turn end`.",
+                "On your next turn, make the missing handoff explicit and close with `glass done`.",
             ]
         ).strip()
         queued_entry = self._peek_next_speaker_entry(state.campaign)
@@ -1059,7 +1068,7 @@ class Orchestrator:
         fixes = _turn_end_fix_suggestions(problems)
         lines = [
             f"System recovery notice: your turn `{turn_id}` did not close cleanly.",
-            f"Review the reported problems, correct them, then rerun `glass turn audit` and `glass turn end`.",
+            f"Review the reported problems, correct them, then rerun `glass done`.",
             "",
             "Problems:",
         ]
@@ -1101,7 +1110,7 @@ class Orchestrator:
             [
                 "",
                 "On your next turn, do one of the following before handing back to players:",
-                "- If active play should continue, declare a scene clock with `glass scene clock declare ...`, start or repair the active beat with `glass beat start ...` or `glass beat close`/`glass beat convert`, then run `glass beat check`, `glass turn audit`, and `glass turn end`.",
+                "- If active play should continue, declare a scene clock or repair the existing one, keep 2-3 active beats live across distinct problem lanes, then run `glass check` and `glass done`.",
                 "- If the scene is already done, close or transition the scene instead of continuing active play.",
             ]
         )
@@ -1130,17 +1139,21 @@ class Orchestrator:
             f"The scene has {completed_beats} completed beat(s). Do not hand this gap to another player by default.",
         ]
         if scene_note:
-            lines.append(f"`glass beat check` says: {scene_note}")
+            lines.append(f"`glass check` says: {scene_note}")
         if completed_beats > 8:
             lines.append(
                 "Strong closure nudge: this is enough resolved material. Prefer closing or transitioning unless a genuinely new scene question still belongs in this scene."
             )
+        else:
+            lines.append(
+                "This is usually a scene-board repair gap, not a scene ending. A closed beat by itself is not a reason for the DM to take a full turn after every player."
+            )
         lines.extend(
             [
                 "",
-                "On your next turn, run `glass beat check`, then choose deliberately:",
-                "- If the scene has landed, close or transition it now with the scene-transition workflow and `glass scene end`.",
-                "- If play must continue, declare the next scene clock/beat yourself; treat it as a new scene question, not an automatic replacement beat.",
+                "On your next turn, run `glass check`, then choose deliberately:",
+                "- If the scene has truly landed, close or transition it with the scene-transition workflow and `glass scene end`.",
+                "- If play continues, restore 2-3 active beats across different problem lanes, keep the existing scene question alive, and hand back to the player cursor.",
             ]
         )
         return "\n".join(lines).strip()
@@ -1162,7 +1175,7 @@ class Orchestrator:
                 "",
                 "On your next turn, choose one course correction:",
                 "- If the campaign should continue in this arc, start `scene-prep` with `glass mode start scene-prep <scene-id>` and stage the next scene from there.",
-                "- If the next scene is already fully staged, start its actual play mode with `glass mode start <scene-type> <scene-id>`, create a scene clock and beat, run `glass beat check`, then close the turn.",
+                "- If the next scene is already fully staged, start its actual play mode with `glass mode start <scene-type> <scene-id>`, create a scene clock and beat, run `glass check`, then close the turn.",
                 "- If the arc is actually complete, close the active arc instead of leaving it open.",
                 "",
                 f"Previous mode was `{previous_mode}`; previous scene was `{previous_scene}`.",
@@ -1526,7 +1539,7 @@ class Orchestrator:
         prompt = (
             f"Read {turn_start_ref} and follow its instructions. "
             f"Write your final public prose to {turn_prose_ref}, run "
-            "`glass turn end`, and exit."
+            "`glass done`, and exit."
         )
         turn_kind = _active_turn_kind_for(
             state=state,
@@ -1850,7 +1863,7 @@ class Orchestrator:
         except ValueError as exc:
             output_debug = _turn_path_debug(package)
             raise TurnFailure(
-                f"Turn {package.turn_id} did not complete `glass turn end`.",
+                f"Turn {package.turn_id} did not complete `glass done`.",
                 {
                     "reason": "invalid_turn_end",
                     "turn_id": package.turn_id,
@@ -2564,11 +2577,11 @@ def _turn_end_fix_suggestions(problems: list[str]) -> list[str]:
     seen: set[str] = set()
     for problem in problems:
         if "--turn-type" in problem:
-            fix = "Rerun `glass turn end` with `--turn-type act|answer|support|pass`."
+            fix = "Rerun `glass done` with `--turn-type act|answer|support|pass`."
         elif "run `glass turn audit` before `glass turn end`" in problem:
-            fix = "Run `glass turn audit`, address any hard requirements it prints, then rerun `glass turn end`."
+            fix = "Run `glass done` after addressing any hard requirements it prints."
         elif "You MUST still run glass beat check" in problem:
-            fix = "Run `glass beat check`, then rerun `glass turn end`."
+            fix = "Run `glass check`, then rerun `glass done`."
         elif "0 scene clocks" in problem:
             fix = "Have the DM declare a scene clock with `glass scene clock declare ...`."
         elif "0 active beats" in problem:
@@ -2586,7 +2599,7 @@ def _turn_end_fix_suggestions(problems: list[str]) -> list[str]:
         elif "`--next" in problem:
             fix = "Rerun with `--next default|dm|tev|sumi|renno|kit`."
         else:
-            fix = "Rerun `glass turn end` after correcting the reported field."
+            fix = "Rerun `glass done` after correcting the reported field."
         if fix not in seen:
             fixes.append(fix)
             seen.add(fix)
@@ -2623,7 +2636,7 @@ def _collect_turn_end(
 ) -> dict[str, Any]:
     if not isinstance(runtime_turn, dict):
         raise ValueError(
-            "missing active turn closeout in Postgres; run `glass turn end` after writing public prose"
+            "missing active turn closeout in Postgres; run `glass done` after writing public prose"
         )
     turn_id = str(runtime_turn.get("turn_id") or "").strip()
     if turn_id != expected_turn_id:
