@@ -257,7 +257,9 @@ The required agent users are `aog-mara`, `aog-tev`, `aog-sumi`, `aog-renno`, and
 
 ## Configuration
 
-A single `agents-of-glass.toml` at the repo root holds non-secret config: Postgres URL, FalkorDB URL, model selection, hard caps, debug flags, paths to lore-repo, templates dir, and campaigns dir.
+A single `agents-of-glass.toml` at the repo root holds non-secret config:
+Postgres URL, FalkorDB URL, model selection, hard caps, orchestrator pacing,
+debug flags, paths to lore-repo, templates dir, and campaigns dir.
 
 Secrets (API keys, database passwords) are injected by the operator's secrets-management solution at the environment level — not stored in the TOML, not committed.
 

@@ -34,32 +34,18 @@ a place where something can go wrong physically.
 - Gives enough public structure that players can fit characters into it without
   optimizing around unseen campaign prep.
 
-## Valid In-World Org Shapes
+## In-World Shape Test
 
-- Kite runners working a route or a dangerous transfer corridor.
-- Deep Shear mining crew.
-- Coremark hit squad or deniable retrieval team.
-- Conclave artifact retrieval cell that enters broken sites, sealed trains,
-  hostile vaults, or haunted cargo holds.
-- Jazzocracy band whose travel work includes dangerous couriers, sabotage
-  resistance, crowd evacuation, or resonance hazards.
-- Bloom containment team built for evacuation, quarantine breach, and field
-  triage, not only inspection.
-- Coast-road rescue and boarding crew that cuts people out of wrecks, storms,
-  monsters, or hostile checkpoints.
-- Understructure expedition team mapping ruins while something else lives there.
+The organization should feel native to the current campaign world while still
+being broad enough for different kinds of PCs. Tie it to existing public lore,
+but do not make the lore entry do all the work. The organization needs its own
+distinct appetite, internal culture, outside pressure, action-facing work, and
+reason for people with different methods to stay together.
 
-## Ensemble Shape Checks
+## Ensemble Shape Check
 
-Use ensemble shows as cast-shape references, not as the borrowed detail source:
-
-- `SG-1`
-- `Star Trek`
-- `Firefly`
-- `Warehouse 13`
-- `The X-Files`
-- `Buffy`
-- `Avengers`
+Use ensemble adventure fiction only as a cast-function check, not as the borrowed
+detail source and not as a list of character templates.
 
 Ask what the unit needs:
 
@@ -74,37 +60,16 @@ Ask what the unit needs:
 
 ## Non-Adjacent Pull
 
-Start with a plain search like "dangerous crews", "specialized field teams",
-"rescue unit", "boarding team", "expedition team", "disaster response team",
-or "hazard crew", then move to a real domain.
+Use a current nonfiction source about real people or groups under pressure. Do
+not seed the search with team categories, job titles, emergency-response terms,
+fiction, RPG advice, or campaign advice. The point is to import human texture
+first, then translate it into an action-facing organization.
 
-Good pull targets:
-
-- Search-and-rescue crews
-- Dive teams
-- Wildland fire modules
-- Coast Guard boarding teams
-- Mountain rescue or avalanche control teams
-- Disaster medical assistance teams
-- Stunt, pyrotechnic, or special-effects crews
-- Touring bands, when the borrowed details support travel, load-in, crowd
-  trouble, equipment failure, or show-must-go-on pressure
-- Survey teams that physically enter unstable terrain, caves, wrecks, or
-  dangerous infrastructure
-- Oil-rig maintenance crews
-- Lab field units only when they handle volatile specimens or hazardous sites in
-  person
-
-Borrow concrete operational details, not vibes:
-
-- entry and extraction habits
-- loadout norms
-- call-and-response language
-- who signs off on risk
-- what breaks the team rhythm
-- which role becomes central when conditions get bad
-- what everyone carries because the route home might fail
-- what tool or warning sign makes the team move now instead of discuss
+Borrow concrete observed behavior, not vibes. The pull should change what the
+organization wants when no mission is active; how members show status, trust,
+rivalry, or belonging; what objects matter; how conflict appears; what rituals
+or habits shape the group; what scenes the organization naturally creates; and
+what physical situations the group sends characters into.
 
 Avoid pulls whose strongest details are only paperwork, accreditation,
 liability, recordkeeping, or chain of custody. Those can sharpen texture, but

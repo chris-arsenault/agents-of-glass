@@ -103,7 +103,10 @@ Operator concerns only — no agent ever calls `aog`.
     the next scene and queue player housekeeping in the same DM turn. No-mode
     active lifecycle starts intermission only after prelude or an act close,
     and starts scene prep after intermission or as recovery inside an open act.
-12. **Loop.**
+12. **Apply turn pacing.** If another turn will run and the completed turn took
+    less than `[orchestrator].turn_minimum_seconds` (default 600), sleep for the
+    remaining time before spawning the next agent.
+13. **Loop.**
 
 ## Failure handling
 

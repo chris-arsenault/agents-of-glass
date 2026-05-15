@@ -40,6 +40,22 @@ PRIMARY_DRIVES = (
     "fear",
 )
 
+PULL_UTILIZATION_REQUIRED_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("source", ("source:", "source/domain", "source=")),
+    ("thesis", ("thesis:", "identity thesis", "thesis=")),
+    ("archetype", ("archetype",)),
+    ("drive", ("drive", "primary drive")),
+    ("trait", ("trait", "positive trait")),
+    ("table presence", ("table presence",)),
+    ("non-work want", ("non-work want", "non work want")),
+    ("opening social action", ("opening social action", "opening action")),
+    ("item", ("item", "inventory")),
+    ("skill", ("skill",)),
+    ("signature move", ("signature move", "signature")),
+    ("failure mode", ("failure", "complication")),
+    ("voice", ("voice", "prose")),
+)
+
 
 @click.group()
 def character() -> None:
@@ -91,7 +107,7 @@ def character() -> None:
 @click.option(
     "--pull-utilization",
     required=True,
-    help="Non-adjacent source/domain and where that concrete texture appears.",
+    help="Non-adjacent source, identity thesis, and all required usage surfaces.",
 )
 @click.option("--hp", "hp_max", type=int, default=10)
 @click.option(
@@ -169,10 +185,9 @@ def character_new(
         "Name one direct social action toward another PC that belongs in the public intro.",
     )
     normalized_life_prompts = _normalize_life_prompt_answers(life_prompts)
-    pull_utilization_note = _require_concrete_note(
+    pull_utilization_note = _require_pull_utilization_note(
         pull_utilization,
         "--pull-utilization",
-        "Name the non-adjacent source/domain and state exactly where the texture appears.",
     )
     if hp_max <= 0:
         raise GlassError(
@@ -1645,6 +1660,49 @@ def _require_concrete_note(value: str, option_name: str, instruction: str) -> st
     return cleaned
 
 
+def _require_pull_utilization_note(value: str, option_name: str) -> str:
+    cleaned = _require_concrete_note(
+        value,
+        option_name,
+        (
+            "Name the non-adjacent source, identity thesis, and every required "
+            "surface where the pull changes the character."
+        ),
+    )
+    if len(cleaned.split()) < 20:
+        raise GlassError(
+            agent_instruction(
+                f"{option_name} is too thin",
+                (
+                    "Use the shape `Source: ...; Thesis: ...; Used in: "
+                    "archetype, drive, trait, table presence, non-work want, "
+                    "opening social action, item, skill, signature move, "
+                    "failure mode, voice.`"
+                ),
+            )
+        )
+    normalized = cleaned.casefold()
+    missing = [
+        label
+        for label, accepted_terms in PULL_UTILIZATION_REQUIRED_TERMS
+        if not any(term in normalized for term in accepted_terms)
+    ]
+    if missing:
+        raise GlassError(
+            agent_instruction(
+                f"{option_name} is missing required pull surfaces: {', '.join(missing)}",
+                (
+                    "The non-adjacent pull must be an identity seed, not a "
+                    "single technique or item. Include `Source:`, `Thesis:`, "
+                    "and `Used in:` covering archetype, drive, trait, table "
+                    "presence, non-work want, opening social action, item, "
+                    "skill, signature move, failure mode, and voice."
+                ),
+            )
+        )
+    return cleaned
+
+
 def _validate_starting_skill_budget(skills: dict[str, str]) -> None:
     counts = Counter(skills.values())
     expected = Counter({"apprentice": 2, "artisan": 1})
@@ -2021,10 +2079,9 @@ def _normalize_character_set_fields(
         elif name == "life_prompt_answers":
             fields[name] = _normalize_life_prompt_answers_value(value)
         elif name == "pull_utilization_note":
-            fields[name] = _require_concrete_note(
+            fields[name] = _require_pull_utilization_note(
                 str(value),
                 "pull_utilization_note",
-                "Name the non-adjacent source/domain and state exactly where the texture appears.",
             )
         elif name == "attributes":
             merged = dict(existing.get("attributes") or {})

@@ -44,6 +44,11 @@ class CapsConfig:
 
 
 @dataclass(frozen=True)
+class OrchestratorConfig:
+    turn_minimum_seconds: int
+
+
+@dataclass(frozen=True)
 class AogConfig:
     repo_root: Path
     config_path: Path | None
@@ -55,6 +60,7 @@ class AogConfig:
     skip_player_persona: bool
     claude: ClaudeConfig
     caps: CapsConfig
+    orchestrator: OrchestratorConfig
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -89,6 +95,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "mode_scene_play_max_turns": 120,
         "mode_combat_max_turns": 8,
         "mode_travel_max_turns": 4,
+    },
+    "orchestrator": {
+        # Minimum wall-clock duration per successful turn. If an agent finishes
+        # faster, the orchestrator waits before starting the next turn. This
+        # keeps unattended runs from burning through the turn budget too fast.
+        "turn_minimum_seconds": 600,
     },
 }
 
@@ -129,6 +141,7 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
     agent = data.get("agent", {})
     claude = data.get("claude", {})
     caps = data.get("caps", {})
+    orchestrator = data.get("orchestrator", {})
 
     return AogConfig(
         repo_root=repo_root,
@@ -158,6 +171,12 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
             ),
             mode_combat_max_turns=int(caps.get("mode_combat_max_turns", 8)),
             mode_travel_max_turns=int(caps.get("mode_travel_max_turns", 4)),
+        ),
+        orchestrator=OrchestratorConfig(
+            turn_minimum_seconds=max(
+                int(orchestrator.get("turn_minimum_seconds", 600)),
+                0,
+            ),
         ),
     )
 

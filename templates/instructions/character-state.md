@@ -35,8 +35,9 @@ mirrors, not canonical numbers.
 2. Run `glass character new` with canonical species, culture, archetype,
    organization role, bio, two or three goals, primary drive, positive trait,
    table presence, non-work want, opening social action, two or three life-prompt
-   answers, a non-adjacent pull utilization note, and the starting skill budget:
-   exactly two `apprentice` skills and one `artisan` skill.
+   answers, a non-adjacent pull utilization note with source, thesis, and all
+   required usage surfaces, and the starting skill budget: exactly two
+   `apprentice` skills and one `artisan` skill.
 
    ```bash
    glass character new <id> --player <player-id> \
@@ -55,7 +56,7 @@ mirrors, not canonical numbers.
      --opening-social-action "<direct action toward another PC for the intro>" \
      --life-prompt "<prompt>=<concrete behavior answer>" \
      --life-prompt "<prompt>=<concrete behavior answer>" \
-     --pull-utilization "Source: <real-world domain/source>; used in <character detail>." \
+     --pull-utilization "Source: <real-world domain/source>; Thesis: <identity thesis>; Used in: archetype, drive, trait, table presence, non-work want, opening social action, item, skill, signature move, failure mode, voice." \
      --attribute <name>=<tier> \
      --skill "<skill>=artisan" \
      --skill "<skill>=apprentice" \
@@ -70,9 +71,11 @@ mirrors, not canonical numbers.
 4. The character must read as a table-facing person, not only a reserved
    professional. Record a social bit, a non-work want, and an opening action
    toward another PC.
-5. The pull utilization note must name the source/domain and where a concrete
-   detail appears: skill, trait, inventory item, signature move, backstory detail,
-   visible habit, or social behavior.
+5. The pull utilization note must name the source/domain and identity thesis, and
+   show where the pull appears across archetype, primary drive, positive trait,
+   table presence, non-work want, opening social action, at least one item, at
+   least one skill, signature move, failure mode or complication pattern, and
+   prose/voice texture.
 6. Add starting inventory, consequences, and signature moves with
    `glass character bulk-update --json '<payload>'` or the specific commands.
    Starting inventory must be exactly 3 items, and one item must be a weapon or

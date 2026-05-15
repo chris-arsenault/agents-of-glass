@@ -15,6 +15,7 @@ from cli.commands.character import (
     _normalize_goals,
     _normalize_life_prompt_answers,
     _render_public_character_mirror,
+    _require_pull_utilization_note,
     _signature_move_names,
     _signature_move_slots,
     _validate_starting_skill_budget,
@@ -157,7 +158,7 @@ def create_test_character(
             "--life-prompt",
             "what they collect=They keep bent route tags sorted by harbor color.",
             "--pull-utilization",
-            "Source: municipal ferry dispatch boards; used in route skills and tag-sorting habit.",
+            "Source: municipal ferry dispatch boards; Thesis: Vel turns public-route timing into hospitality, jokes, and urgent care, so every choice treats people as passengers to be welcomed rather than cases to process; Used in: archetype, drive, trait, table presence, non-work want, opening social action, item, skill, signature move, failure mode, voice.",
             "--skill",
             "spar reading=artisan",
             "--skill",
@@ -287,6 +288,22 @@ class GlassCliTests(unittest.TestCase):
         with self.assertRaises(GlassError):
             _normalize_life_prompt_answers(("what they do when bored=They pace.",))
 
+    def test_character_pull_utilization_requires_identity_surfaces(self) -> None:
+        note = (
+            "Source: municipal ferry dispatch boards; Thesis: Vel turns public-route "
+            "timing into hospitality, jokes, and urgent care, so every choice treats "
+            "people as passengers to be welcomed rather than cases to process; Used "
+            "in: archetype, drive, trait, table presence, non-work want, opening "
+            "social action, item, skill, signature move, failure mode, voice."
+        )
+
+        self.assertEqual(_require_pull_utilization_note(note, "--pull-utilization"), note)
+        with self.assertRaises(GlassError):
+            _require_pull_utilization_note(
+                "Source: municipal ferry dispatch boards; used in route skills.",
+                "--pull-utilization",
+            )
+
     def test_starting_skill_budget_requires_two_apprentice_one_artisan(self) -> None:
         _validate_starting_skill_budget(
             {
@@ -342,7 +359,10 @@ class GlassCliTests(unittest.TestCase):
                     },
                 ],
                 "pull_utilization_note": (
-                    "Source: municipal ferry dispatch boards; used in route skills."
+                    "Source: municipal ferry dispatch boards; Thesis: Vel turns route "
+                    "timing into hospitality and urgent care; Used in: archetype, "
+                    "drive, trait, table presence, non-work want, opening social "
+                    "action, item, skill, signature move, failure mode, voice."
                 ),
                 "attributes": {"vitality": "standard", "finesse": "advanced"},
                 "skills": {"quiet entry": "artisan"},

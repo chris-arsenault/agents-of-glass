@@ -12,6 +12,7 @@ from orchestrator.config import (
     AogConfig,
     CapsConfig,
     ClaudeConfig,
+    OrchestratorConfig,
     provider_for_actor,
 )
 from orchestrator.context import ContextBuilder
@@ -44,6 +45,7 @@ def make_config(
     agent_provider: str = "claude",
     codex_players: tuple[str, ...] = ("tev", "sumi"),
     skip_player_persona: bool = False,
+    turn_minimum_seconds: int = 0,
 ) -> AogConfig:
     return AogConfig(
         repo_root=root,
@@ -65,6 +67,9 @@ def make_config(
             mode_scene_play_max_turns=120,
             mode_combat_max_turns=8,
             mode_travel_max_turns=4,
+        ),
+        orchestrator=OrchestratorConfig(
+            turn_minimum_seconds=turn_minimum_seconds,
         ),
     )
 
@@ -197,6 +202,7 @@ class OrchestratorQueueTests(unittest.TestCase):
         self.assertIn("--skip-player-persona", result.output)
         self.assertIn("--use-session-id", result.output)
         self.assertIn("--no-use-session-id", result.output)
+        self.assertIn("--turn-minimum-seconds", result.output)
 
     def test_campaign_run_defaults_prelude_cap_to_120(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -338,6 +344,52 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(seen, [("mixed-codex", True)])
 
+    def test_campaign_run_turn_minimum_flag_overrides_toml(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "templates").mkdir()
+            (root / "campaigns").mkdir()
+            config_path = root / "agents-of-glass.toml"
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "[paths]",
+                        'templates = "templates"',
+                        'campaigns = "campaigns"',
+                        "",
+                        "[orchestrator]",
+                        "turn_minimum_seconds = 600",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            seen: list[int] = []
+
+            def fake_lifecycle(cli, *_args, **_kwargs):
+                seen.append(cli.config.orchestrator.turn_minimum_seconds)
+
+            with patch(
+                "orchestrator.main._run_campaign_lifecycle",
+                side_effect=fake_lifecycle,
+            ):
+                result = CliRunner().invoke(
+                    aog_main,
+                    [
+                        "--config",
+                        str(config_path),
+                        "campaign",
+                        "run",
+                        "c1",
+                        "--dry-run",
+                        "--turn-minimum-seconds",
+                        "30",
+                    ],
+                )
+
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertEqual(seen, [30])
+
     def test_web_stack_commands_are_exposed(self) -> None:
         result = CliRunner().invoke(aog_main, ["web", "--help"])
 
@@ -416,6 +468,56 @@ class OrchestratorQueueTests(unittest.TestCase):
 
         self.assertEqual(state.run_metadata["scene_play_next_player"], "renno")
         self.assertEqual(next_agent_for(state).id, "renno")
+
+    def test_run_loop_waits_for_turn_minimum_between_turns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root, turn_minimum_seconds=10)
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator)
+            orchestrator.store.save = Mock()
+            orchestrator.run_one_turn = Mock(
+                return_value=TurnResult(
+                    turn_id="c1-t0001",
+                    agent=AGENTS_BY_ID["tev"],
+                    turn_dir=campaign_root / "players" / "tev" / "turns" / "0001",
+                    spawn_cwd=campaign_root,
+                    prose="Tev acts.",
+                    dry_run=False,
+                )
+            )
+            orchestrator.commit_turn = Mock()
+
+            with (
+                patch("orchestrator.runner.time.monotonic", side_effect=[100.0, 103.0, 200.0]),
+                patch("orchestrator.runner.time.sleep") as sleep,
+                patch("builtins.print"),
+            ):
+                turns_run = orchestrator.run_loop(
+                    state,
+                    max_turns=2,
+                    dry_run=False,
+                )
+
+            self.assertEqual(turns_run, 2)
+            sleep.assert_called_once_with(7.0)
+
+    def test_turn_minimum_sleep_ignores_dry_run(self) -> None:
+        config = make_config(Path("/tmp/aog-test"), turn_minimum_seconds=10)
+        orchestrator = Orchestrator(config, SessionStore(config))
+
+        with patch("orchestrator.runner.time.sleep") as sleep:
+            orchestrator._sleep_for_turn_minimum(100.0, dry_run=True)
+
+        sleep.assert_not_called()
 
     def test_intermission_mode_starts_with_full_table_order(self) -> None:
         self.assertEqual(

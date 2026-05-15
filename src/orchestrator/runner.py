@@ -549,6 +549,7 @@ class Orchestrator:
         consecutive_redirects = 0
         try:
             while self._should_continue(state, turns_run, max_turns):
+                turn_started_at = time.monotonic()
                 self._ensure_turn_allowed(state)
                 state.mark_running()
                 self.store.save(state)
@@ -596,6 +597,11 @@ class Orchestrator:
                             raise TurnFailure(
                                 "recoverable turn redirects exceeded limit.", failure
                             ) from exc
+                        if self._should_continue(state, turns_run, max_turns):
+                            self._sleep_for_turn_minimum(
+                                turn_started_at,
+                                dry_run=dry_run,
+                            )
                         continue
                     state.mark_failed(exc.failure)
                     self.store.save(state)
@@ -605,6 +611,8 @@ class Orchestrator:
                     raise
                 consecutive_redirects = 0
                 turns_run += 1
+                if self._should_continue(state, turns_run, max_turns):
+                    self._sleep_for_turn_minimum(turn_started_at, dry_run=dry_run)
             if state.status == "running":
                 state.mark_ready()
                 self.store.save(state)
@@ -614,6 +622,26 @@ class Orchestrator:
             state.updated_at = utc_now()
             self.store.save(state)
             raise
+
+    def _sleep_for_turn_minimum(self, turn_started_at: float, *, dry_run: bool) -> None:
+        if dry_run:
+            return
+        minimum = int(self.config.orchestrator.turn_minimum_seconds)
+        if minimum <= 0:
+            return
+        elapsed = time.monotonic() - turn_started_at
+        remaining = minimum - elapsed
+        if remaining <= 0:
+            return
+        print(
+            (
+                "--- turn pacing: waiting "
+                f"{_format_duration(remaining)} to enforce "
+                f"{_format_duration(float(minimum))} minimum ---"
+            ),
+            flush=True,
+        )
+        time.sleep(remaining)
 
     def run_one_turn(self, state: SessionState, *, dry_run: bool) -> TurnResult:
         agent, turn_meta, queued_entry, action_entry = self._resolve_next_agent(state)

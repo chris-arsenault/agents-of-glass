@@ -27,10 +27,22 @@ applies_to_modes: [character-creation]
    offer, question, joke, favor, challenge, apology, invitation, or other move
    the other player can answer.
 5. Make one non-adjacent pull from a real-world domain before building. Do not
-   use fantasy, RPG, or fiction advice. Capture 2-3 concrete textures from that
-   domain and use at least one in a skill, trait, inventory item, signature move,
-   backstory detail, or social habit. The `glass character new --pull-utilization`
-   value must name the source/domain and exactly where that texture appears.
+   use fantasy, RPG, or fiction advice. Treat the pull as the strongest
+   anti-generic input in the character, not as decoration.
+   - Before creating the row, write an identity thesis for how the source changes
+     the character's wants, joy, social behavior, problem-solving style,
+     movement, possessions, failure mode, and table presence.
+   - The pull may become a past practice, family world, obsession, hobby, lost
+     trade, body habit, philosophy, rivalry pattern, aesthetic, superstition, or
+     style of competence. Adapt it freely, but do not reduce it to one item or
+     one skill.
+   - The final character must show the pull across archetype, primary drive,
+     positive trait, table presence, non-work want, opening social action, at
+     least one item, at least one skill, signature move, failure mode or
+     complication pattern, and prose/voice texture.
+   - The `glass character new --pull-utilization` value must name the source,
+     thesis, and all required usage surfaces. If the character would read mostly
+     the same after removing the pull, rebuild.
 6. Pick one primary drive and write it in `glass character new` and
    `players/<id>/public/intro.md`.
    Choose a drive not already claimed by another visible PC:
@@ -62,8 +74,8 @@ applies_to_modes: [character-creation]
 13. Create one character row with `glass character new`, including name,
    species, culture, archetype, organization role, bio, two or three goals,
    primary drive, positive trait, table presence, non-work want, opening social
-   action, 2-3 life prompts, non-adjacent pull utilization note, HP, attributes,
-   skills, and tags.
+   action, 2-3 life prompts, non-adjacent pull utilization note with source,
+   thesis, and all required usage surfaces, HP, attributes, skills, and tags.
    - The archetype must be the character's heroic class-like identity: what
      people would call them at level 20 when they are a mythic figure in the
      campaign world. Do not use a job title like recorder, clerk, examiner,
@@ -82,10 +94,10 @@ applies_to_modes: [character-creation]
      reads, evidence sorting, and preparatory-only tricks do not.
 15. Write `players/<id>/public/intro.md`. Include appearance, role, 3-5
    behavioral traits, backstory, goals, organization tie, primary drive, table
-   presence, non-work want, opening social action, non-adjacent pull texture, and
-   the 2-3 life-prompt answers. At least one trait must be positive, quirky,
-   playful, warm, funny, or otherwise visible as more than caution, burden,
-   competence, or private pressure.
+   presence, non-work want, opening social action, non-adjacent pull thesis and
+   visible character texture, and the 2-3 life-prompt answers. At least one
+   trait must be positive, quirky, playful, warm, funny, or otherwise visible as
+   more than caution, burden, competence, or private pressure.
 16. Optionally write `players/<id>/notes/<slug>.md` or
    `players/<id>/journal/<date>.md` when useful for public-facing play or later
    reflection. Character build should stand on public-facing play material, not

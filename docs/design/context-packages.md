@@ -282,7 +282,7 @@ and make the durable mutation path explicit.
 
 The orchestrator runs in the foreground. When it spawns each agent invocation, it streams the agent's stdout (and stderr) line-by-line to the operator's terminal, prefixed with the agent id (e.g. `[mara]`, `[tev]`). Full captures land beside the agent's TURN files for post-hoc inspection.
 
-This is the operator's primary debugging tool during play — you can see the agent reading files, calling `glass` commands, doing web searches, and writing files in real time. The default per-turn timeout is 60 minutes (`claude.turn_timeout_seconds = 3600`), bumped from 5 minutes after the first inspection runs showed real DM work needs more breathing room.
+This is the operator's primary debugging tool during play — you can see the agent reading files, calling `glass` commands, doing web searches, and writing files in real time. The default per-turn timeout is 60 minutes (`claude.turn_timeout_seconds = 3600`), bumped from 5 minutes after the first inspection runs showed real DM work needs more breathing room. The default pacing floor is 10 minutes per completed turn (`orchestrator.turn_minimum_seconds = 600`); if a turn finishes faster, the orchestrator waits before spawning the next agent.
 
 ## Turn History Policy
 

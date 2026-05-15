@@ -76,3 +76,9 @@ mode_default_max_turns = 12
 mode_scene_play_max_turns = 120
 mode_combat_max_turns = 8
 mode_travel_max_turns = 4
+
+[orchestrator]
+# Minimum wall-clock duration for each completed turn. If a turn finishes
+# faster, the orchestrator waits before starting the next one. Set to 0 for no
+# pacing delay.
+turn_minimum_seconds = 600

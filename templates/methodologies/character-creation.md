@@ -68,10 +68,21 @@ created with `glass character`; authored prose is committed with
 
 3. **Make the anti-sameness choices.**
    - Make one non-adjacent pull from a real-world domain before building. Do not
-     use fantasy, RPG, or fiction advice. Capture 2-3 concrete textures from
-     that domain and use at least one in a skill, trait, inventory item,
-     signature move, backstory detail, or social habit. Record the source/domain
-     and the exact utilization in `glass character new --pull-utilization`.
+     use fantasy, RPG, or fiction advice.
+   - Treat the pull as the strongest anti-generic input in the character, not as
+     decoration. Before creating the row, write an identity thesis for how the
+     source changes the character's wants, joy, social behavior, problem-solving
+     style, movement, possessions, failure mode, and table presence.
+   - The pull may become a past practice, family world, obsession, hobby, lost
+     trade, body habit, philosophy, rivalry pattern, aesthetic, superstition, or
+     style of competence. Adapt it freely, but do not reduce it to one item or
+     one skill.
+   - The final character must show the pull across archetype, primary drive,
+     positive trait, table presence, non-work want, opening social action, at
+     least one item, at least one skill, signature move, failure mode or
+     complication pattern, and prose/voice texture. Record that complete thesis
+     and utilization in `glass character new --pull-utilization`.
+   - If the character would read mostly the same after removing the pull, rebuild.
    - Pick one primary drive and write it in `glass character new` and
      `players/<id>/public/intro.md`. Choose a drive not already claimed by
      another visible PC: ambition, care/protection, revenge, curiosity, greed,
@@ -114,7 +125,8 @@ created with `glass character`; authored prose is committed with
    - One non-work want.
    - One opening social action toward another PC.
    - Two or three life-prompt answers as `prompt=answer`.
-   - One non-adjacent pull utilization note naming source/domain and exact use.
+   - One non-adjacent pull utilization note naming source/domain, identity
+     thesis, and exact use across all required character surfaces.
    - HP value.
    - Attribute and skill allocation.
 
@@ -137,7 +149,7 @@ glass character new <character-id> --player <your-agent-id> \
   --opening-social-action "<direct action toward another PC for the intro>" \
   --life-prompt "<prompt>=<concrete behavior answer>" \
   --life-prompt "<prompt>=<concrete behavior answer>" \
-  --pull-utilization "Source: <real-world domain/source>; used in <skill, trait, item, signature move, backstory detail, or social habit>." \
+  --pull-utilization "Source: <real-world domain/source>; Thesis: <identity thesis>; Used in: archetype, drive, trait, table presence, non-work want, opening social action, item, skill, signature move, failure mode, voice." \
   --hp <8|10|12> \
   --attribute <name>=<tier> \
   --attribute <name>=<tier> \
@@ -191,10 +203,10 @@ glass character bulk-update --json '{
 7. **Write authored player files.**
    - `players/<id>/public/intro.md`: public appearance, role, 3-5 behavioral
      traits, backstory, goals, organization tie, primary drive, table presence,
-     non-work want, opening social action, non-adjacent pull texture, and the 2-3
-     life-prompt answers. At least one trait must be positive, quirky, playful,
-     warm, funny, or otherwise visible as more than caution, burden, competence,
-     or private pressure.
+     non-work want, opening social action, non-adjacent pull thesis and visible
+     character texture, and the 2-3 life-prompt answers. At least one trait must
+     be positive, quirky, playful, warm, funny, or otherwise visible as more than
+     caution, burden, competence, or private pressure.
    - The intro must show one direct social action toward another PC and give the
      other player something concrete to answer.
    - `players/<id>/notes/<slug>.md` or `players/<id>/journal/<date>.md` only
@@ -240,6 +252,8 @@ setup/relationship turns instead.
      `primary_drive`, `positive_trait`, `table_presence`, `non_work_want`,
      `opening_social_action`, 2-3 `life_prompt_answers`, and
      `pull_utilization_note`.
+   - Reject characters whose pull utilization is only a technique, tool, or job
+     texture instead of a visible identity seed.
    - Read `players/*/public/intro.md` and `players/*/public/relationships.md`.
    - Read [`how-to/narration-craft-dm.md`](../how-to/narration-craft-dm.md)
      before writing the public party lock-in.
@@ -267,7 +281,8 @@ setup/relationship turns instead.
 - Do not hide required character facts only in messages, notes, or journals.
 - Do not create a character row without primary drive, positive trait, table
   presence, non-work want, opening social action, 2-3 life-prompt answers, and a
-  non-adjacent pull utilization note.
+  non-adjacent pull utilization note that names the source, thesis, and all
+  required usage surfaces.
 - Do not make job competence, tactical caution, or inward pressure the
   character's main public trait. Their visible table presence must be a social
   behavior another player can answer.

@@ -99,7 +99,7 @@ glass character new <id> --player <player-id> \
   --table-presence <text> --non-work-want <text> \
   --opening-social-action <text> \
   --life-prompt "<prompt>=<answer>" --life-prompt "<prompt>=<answer>" \
-  --pull-utilization <text>
+  --pull-utilization "Source: <source>; Thesis: <identity thesis>; Used in: archetype, drive, trait, table presence, non-work want, opening social action, item, skill, signature move, failure mode, voice."
 glass character get <id>
 glass character bulk-get <id>... [--all] [--no-signatures]
 glass character bulk-update --from update.json          # set fields, inventory, signatures, mirror, hp/momentum

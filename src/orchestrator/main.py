@@ -60,11 +60,13 @@ def _apply_cli_overrides(
     use_session_id: bool | None = None,
     use_codex: bool | None = None,
     skip_player_persona: bool | None = None,
+    turn_minimum_seconds: int | None = None,
 ) -> None:
     if (
         use_session_id is None
         and use_codex is None
         and skip_player_persona is None
+        and turn_minimum_seconds is None
     ):
         return
     provider = cli.config.agent_provider
@@ -84,6 +86,14 @@ def _apply_cli_overrides(
             else skip_player_persona
         ),
         claude=replace(cli.config.claude, use_session_id=session_flag),
+        orchestrator=(
+            cli.config.orchestrator
+            if turn_minimum_seconds is None
+            else replace(
+                cli.config.orchestrator,
+                turn_minimum_seconds=max(int(turn_minimum_seconds), 0),
+            )
+        ),
     )
     _rebuild_cli_state(cli)
 
@@ -1622,6 +1632,15 @@ def campaign_prepare_turn(
     default=None,
     help="Override [claude].use_session_id for this run.",
 )
+@click.option(
+    "--turn-minimum-seconds",
+    type=click.IntRange(min=0),
+    default=None,
+    help=(
+        "Override [orchestrator].turn_minimum_seconds for this run. "
+        "Use 0 for no pacing delay."
+    ),
+)
 @click.option("--dry-run", is_flag=True, help="Synthetic turns without Claude.")
 @click.pass_obj
 def campaign_run(
@@ -1639,6 +1658,7 @@ def campaign_run(
     use_codex: bool | None,
     skip_player_persona: bool | None,
     use_session_id: bool | None,
+    turn_minimum_seconds: int | None,
     dry_run: bool,
 ) -> None:
     """Create or continue a campaign from its durable phase/mode state."""
@@ -1648,6 +1668,7 @@ def campaign_run(
         use_session_id=use_session_id,
         use_codex=use_codex,
         skip_player_persona=skip_player_persona,
+        turn_minimum_seconds=turn_minimum_seconds,
     )
     _run_campaign_lifecycle(
         cli,

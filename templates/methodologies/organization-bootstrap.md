@@ -40,16 +40,22 @@ Every organization brief must answer:
      right now.
 
 2. **Do one anti-generic pull before writing.**
-   - Make one non-adjacent real-world pull outside the repo.
-   - Start by searching for "dangerous crews", "specialized field teams",
-     "rescue crews", "boarding teams", or another plain-language team search,
-     then choose a real operating domain rather than fiction advice.
+   - Make one non-adjacent real-world pull from a current nonfiction source
+     outside the repo.
+   - Do not begin from team-type, profession-type, emergency-response, fiction,
+     RPG, or campaign-advice searches. Begin from recent nonfiction about real
+     people or groups under pressure, then choose a source with vivid observed
+     behavior.
    - Use ensemble shows only as shape checks for cast function, not as the
      borrowed detail source.
-   - Prefer pulls where people move through risk together. If the borrowed
-     domain is paperwork-heavy, use only the details that support field action:
-     loadout, hand signals, extraction discipline, risk signoff, tool custody,
-     route control, triage, or emergency escalation.
+   - The pull must change at least four organization surfaces: what the
+     organization wants when no mission is active; how members show status,
+     trust, rivalry, or belonging; what kinds of scenes the organization
+     naturally creates; what action-facing situations it sends characters into;
+     and what the character creation brief makes players excited to become.
+   - The pull fails if its main contribution is checklist, custody,
+     authorization, safety hierarchy, documentation, or compliance. Procedure
+     can exist, but it cannot be the borrowed fantasy.
    - Record the pull with:
 
      ```bash
@@ -57,7 +63,7 @@ Every organization brief must answer:
        --source "<real-world domain/source>" \
        --used-in "organization identity" \
        --used-in "character creation brief" \
-       --note "<concrete borrowed detail and how it changes the org>"
+       --note "<borrowed behavior/culture and the organization surfaces it changes>"
      ```
 
 3. **Write the public organization.**
