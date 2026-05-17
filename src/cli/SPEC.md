@@ -66,7 +66,7 @@ glass scene clock declare <id> --label <text> --goal <text> --max N \
 glass scene clock tick <id> [delta] --outcome <text>
 glass scene pressure <target> <skill> <attribute> \
   --risk <level> --character <id> --impact <d6|d8|d10> \
-  [--bonus N] [--because <text>] [--note <text>]
+  [--bonus N] [--save-skill] [--because <text>] [--note <text>]
 
 glass clock set <id> --max N [--scope <scope>] [--anchor <id>] [--public]
 glass clock tick <id> [delta] [--note <text>]
@@ -78,13 +78,15 @@ glass clock resolve <id> [--note <text>]
 ### Dice
 
 ```
-glass roll <skill> <attribute> --risk <level> --character <id> [--target <id>]
+glass roll <skill> <attribute> --risk <level> --character <id> [--target <id>] [--save-skill]
 ```
 
 Returns a structured roll record (dice, modifiers, total, target, margin,
 outcome tier, momentum delta, and narrative momentum effect). Momentum is not
 added to the total. Logged to Postgres `dice_event` and the audit log. The
 orchestrator inlines a one-line summary into the transcript at the right point.
+Undeclared skills roll at `fool` and do not gain skill XP unless `--save-skill`
+declares them before the roll.
 
 `glass scene pressure` uses the same hit-check math, then rolls an impact die
 to reduce a scene tracker. It is generic: HP, resistance, distance, morale,

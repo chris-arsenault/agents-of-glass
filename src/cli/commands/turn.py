@@ -167,18 +167,14 @@ _ROLL_OUTCOMES_REQUIRING_CONSEQUENCE = {"stall", "regress", "collapse"}
 _ROLL_CONSEQUENCE_EVENTS = {
     "beat.close",
     "beat.convert",
+    "character.consequence-add",
+    "character.inventory-rm",
+    "character.set-hp",
+    "character.set-momentum",
     "clock.tick",
     "clock.resolve",
-    "msg.send",
-    "note.propose",
-    "note.write",
-    "quest.beat",
     "scene.clock.tick",
     "scene.tracker.tick",
-    "summary.append",
-    "summary.write",
-    "table.append",
-    "table.write",
 }
 
 
@@ -1006,9 +1002,7 @@ def _record_is_roll_consequence(record: dict[str, Any]) -> bool:
     event = str(record.get("event") or "").strip()
     if event == "scene.pressure":
         return _scene_pressure_has_numeric_consequence(record)
-    if event in _ROLL_CONSEQUENCE_EVENTS:
-        return True
-    return event.startswith("character.")
+    return event in _ROLL_CONSEQUENCE_EVENTS
 
 
 def _roll_consequence_report(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1054,25 +1048,10 @@ def _text_reports_change(value: str | None, *, empty_words: set[str]) -> bool:
 
 
 def _payload_reports_roll_consequence(payload: dict[str, Any]) -> bool:
-    state_empty = {"no state change", "none", "unchanged", "no change"}
-    state_items = [
-        str(item).strip()
-        for item in payload.get("state", [])
-        if str(item).strip()
-    ]
-    if any(item.lower() not in state_empty for item in state_items):
-        return True
-    if _text_reports_change(
-        str(payload.get("position") or ""),
-        empty_words={"none", "unchanged", "no change"},
-    ):
-        return True
-    if _text_reports_change(
+    return _text_reports_change(
         str(payload.get("pressure") or ""),
         empty_words={"none", "unchanged", "no change"},
-    ):
-        return True
-    return any(str(item).strip() for item in payload.get("open_questions", []))
+    )
 
 
 def _campaign_audit_records(paths: Paths, campaign_id: str) -> list[dict[str, Any]]:
@@ -1377,9 +1356,9 @@ def _turn_audit_report(
     ):
         soft_considerations.append(
             "A stall/regress/collapse roll has no follow-up consequence command; "
-            "record a clock/beat/pressure/state change or report the visible "
-            "consequence in `glass done --state`, `--position`, `--pressure`, "
-            "or `--open-question`."
+            "record a clock/beat/HP/inventory/consequence mutation before "
+            "closing, or pass `glass done --pressure \"<what changed, even "
+            "narrative-only>\"`."
         )
 
     if activity["messages_sent"] <= 0:
@@ -1484,9 +1463,13 @@ def _turn_end_validation_problems(
         and not _payload_reports_roll_consequence(payload)
     ):
         problems.append(
-            "stall/regress/collapse roll needs a consequence: add `--state`, "
-            "`--position`, `--pressure`, or `--open-question`, or record a "
-            "clock/beat/pressure/state change before closing."
+            "stall/regress/collapse roll needs a visible consequence. Either "
+            "record a clock/beat/HP/inventory/consequence mutation event before "
+            "closing (e.g. `glass scene clock tick`, `glass beat close`, "
+            "`glass character set-hp`, `glass character consequence-add`, "
+            "`glass character inventory-rm`), or pass `--pressure \"<what "
+            "changed, even narrative-only>\"` to explicitly record the "
+            "consequence in the turn-end block."
         )
     deduped: list[str] = []
     seen: set[str] = set()
@@ -1518,8 +1501,8 @@ def _turn_end_fix_suggestions(problems: list[str]) -> list[str]:
             fix = "Start `scene-prep` with `glass mode start scene-prep <scene-id>`, stage/start the next scene mode, or close the active arc, then rerun `glass turn audit` and `glass turn end`."
         elif "Resolve or convert it before another non-pass turn" in problem:
             fix = "Resolve the beat with `glass beat close`, convert it with `glass beat convert`, or pass instead of taking another non-pass turn."
-        elif "roll needs a consequence" in problem:
-            fix = "Rerun with a concrete consequence in `--state`, `--position`, `--pressure`, or `--open-question`, or first record it with a clock/beat/pressure/state command."
+        elif "roll needs a visible consequence" in problem:
+            fix = "Run a clock/beat/HP/inventory/consequence mutation command, or rerun with `--pressure \"<what changed>\"`."
         elif "requires exactly `--state \"no state change\"`" in problem:
             fix = "Rerun with `--state \"no state change\"` and no other `--state` values."
         elif "`pass` requires `--rolls none`" in problem:

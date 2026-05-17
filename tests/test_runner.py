@@ -666,6 +666,22 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertEqual(((root / ".glass-cwd" / "c1").stat().st_mode & 0o777), 0o710)
             self.assertEqual(((package.spawn_cwd / ".claude").stat().st_mode & 0o7777), 0o2770)
             self.assertEqual(((package.spawn_cwd / ".mcp.json").stat().st_mode & 0o777), 0o660)
+            self.assertEqual(
+                json.loads((package.spawn_cwd / ".mcp.json").read_text(encoding="utf-8")),
+                {"mcpServers": {}},
+            )
+            (package.spawn_cwd / ".mcp.json").write_text("{}\n", encoding="utf-8")
+            refresh_projection_from_canonical(
+                config=config,
+                campaign_root=campaign_root,
+                agent=package.agent,
+                turn_number=package.turn_number,
+                projection_root=package.spawn_cwd,
+            )
+            self.assertEqual(
+                json.loads((package.spawn_cwd / ".mcp.json").read_text(encoding="utf-8")),
+                {"mcpServers": {}},
+            )
             turn_start = package.turn_start_path.read_text(encoding="utf-8")
             self.assertIn("## Authoring Surface", turn_start)
             self.assertIn("glass done", turn_start)

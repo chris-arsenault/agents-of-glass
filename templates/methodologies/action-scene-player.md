@@ -31,9 +31,9 @@ few heartbeats. This sequence is binding for every player initiative turn.
    scene pressure` when reducing a tracker/target. In action scenes, uncertain
    consequential actions normally roll, apply pressure, or change a visible
    tracker; `rolls none` fits deterministic action, pure positioning, or setup.
-   If your action is not covered by an existing skill and you have a free
-   skill slot (cap `3 + level`), pass a new specific skill name to the roll
-   command and it will auto-declare at `fool`. See
+   If your action is not covered by an existing skill, roll it as an improvised
+   `fool` skill. Add `--save-skill` only when that skill should become durable
+   and a slot is available (cap `3 + level`). See
    [`srd/skill-advancement.md`](../srd/skill-advancement.md). Do not hand off
    just to ask the DM to choose dice for you. If a hidden fact is required
    before you can act, message the DM and end with `--next dm` plus

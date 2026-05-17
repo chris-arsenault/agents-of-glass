@@ -37,8 +37,11 @@ This sequence is binding for every full player turn in the character branch.
 6. Resolve uncertainty before prose. If a discovery attempt, social push,
    technical read, risky concealment, or contested interpretation has real
    stakes, use `glass roll` or `glass scene pressure` unless the table already
-   makes the answer obvious. If hidden information is required before the action
-   is valid, send the DM one clear message and end with `--next dm` plus
+   makes the answer obvious. If the action is not covered by a sheet skill,
+   roll it as an improvised `fool` skill; add `--save-skill` only when it
+   should become durable and a slot is available. If hidden information is
+   required before the action is valid, send the DM one clear message and end
+   with `--next dm` plus
    `--open-question`. On `stall`, `regress`, or `collapse`, make the result
    move play: record a visible cost, worse position, narrowed choice, beat
    movement, or scene clock tick, or name that consequence in `glass done`.

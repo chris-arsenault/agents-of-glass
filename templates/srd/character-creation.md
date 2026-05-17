@@ -87,7 +87,8 @@ Starting budget:
 - one `artisan`
 - two `apprentice`
 
-Unlisted skills default to `fool`.
+Improvised rolls on undeclared skills use `fool`, but do not become durable or
+gain skill xp. New skills declared after creation start at `fool`.
 
 Skill names should be specific, world-grounded, and broad enough to matter
 without becoming universal. Starting skill names must be present-tense action

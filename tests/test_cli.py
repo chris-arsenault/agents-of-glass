@@ -35,7 +35,7 @@ from cli.main import main
 from cli.messages import load_message_types
 from cli.scene_beats import scene_close_note
 from cli.state import load_state
-from cli.validation import momentum_narrative_effect
+from cli.validation import assert_valid_item_id, momentum_narrative_effect
 
 
 def make_env(tmp_path: Path, campaign_id: str = "c1") -> dict[str, str]:
@@ -243,6 +243,67 @@ class GlassCliTests(unittest.TestCase):
             self.assertIn("total: 2", rolled.output)
             self.assertIn("outcome: collapse", rolled.output)
             self.assertIn("momentum_applied_to_total: false", rolled.output)
+
+    def test_roll_improvised_skill_only_saves_with_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env, player="tev", character_id="vel")
+
+            with patch("cli.commands.roll.random.SystemRandom") as rng_factory:
+                rng_factory.return_value.randint.side_effect = [10]
+                improvised = invoke_ok(
+                    runner,
+                    [
+                        "roll",
+                        "climb anchor chain",
+                        "vitality",
+                        "--risk",
+                        "standard",
+                        "--character",
+                        "vel",
+                    ],
+                    player_env,
+            )
+            self.assertIn('skill: "climb anchor chain"', improvised.output)
+            self.assertIn("skill_tier: fool", improvised.output)
+            self.assertIn("skill_declared: false", improvised.output)
+            self.assertIn("skill_saved: false", improvised.output)
+            self.assertIn("skill_xp_eligible: false", improvised.output)
+            self.assertIn("skill_xp_before: null", improvised.output)
+            sheet_after_improvised = invoke_ok(
+                runner, ["character", "get", "vel"], player_env
+            )
+            self.assertNotIn("climb anchor chain", sheet_after_improvised.output)
+
+            with patch("cli.commands.roll.random.SystemRandom") as rng_factory:
+                rng_factory.return_value.randint.side_effect = [10]
+                saved = invoke_ok(
+                    runner,
+                    [
+                        "roll",
+                        "climb anchor chain",
+                        "vitality",
+                        "--risk",
+                        "standard",
+                        "--character",
+                        "vel",
+                        "--save-skill",
+                    ],
+                    player_env,
+                )
+            self.assertIn("skill_declared: true", saved.output)
+            self.assertIn("skill_saved: true", saved.output)
+            self.assertIn("skill_xp_eligible: true", saved.output)
+            self.assertIn("skill_xp_before: 0", saved.output)
+            self.assertIn("skill_xp_after: 2", saved.output)
+            sheet_after_saved = invoke_ok(
+                runner, ["character", "get", "vel"], player_env
+            )
+            self.assertIn("climb anchor chain: fool", sheet_after_saved.output)
 
     def test_momentum_narrative_effect_thresholds(self) -> None:
         self.assertEqual(momentum_narrative_effect(3)[0], "additional_good")
@@ -489,6 +550,28 @@ class GlassCliTests(unittest.TestCase):
         self.assertEqual(update["inventory_add"][0]["effect_tags"], ["passes casual review"])
         self.assertEqual(update["signature_moves"][0]["name"], "Quiet Door")
         self.assertIn("A hand on the latch.", update["signature_moves"][0]["body"])
+
+    def test_assert_valid_item_id_rejects_status_suffixes(self) -> None:
+        for bad in (
+            "pocket-flare-gun-spent",
+            "lantern-broken",
+            "ledger-lost",
+            "ringglass-witness-bell-cane-sealed",
+            "POCKET-FLARE-GUN-SPENT",
+        ):
+            with self.assertRaises(GlassError) as ctx:
+                assert_valid_item_id(bad)
+            self.assertIn("transient status", str(ctx.exception))
+            self.assertIn("consequence-add", str(ctx.exception))
+
+    def test_assert_valid_item_id_accepts_plain_ids(self) -> None:
+        for good in (
+            "pocket-flare-gun",
+            "ringglass-witness-bell-cane",
+            "route-seal",
+            "",
+        ):
+            assert_valid_item_id(good)
 
     def test_inventory_add_merges_qty_and_effect_tags(self) -> None:
         inventory = [{"id": "route-seal", "qty": 1, "effect_tags": ["official"]}]
@@ -1731,7 +1814,28 @@ Recipients are `dm`, `party`, or a player id.
                 player_env,
             )
             self.assertIn("valid: false", invalid.output)
-            self.assertIn("roll needs a consequence", invalid.output)
+            self.assertIn("roll needs a visible consequence", invalid.output)
+
+            # State text alone no longer satisfies; the agent must use
+            # --pressure (the dedicated mechanical-pressure field) or record
+            # an actual mutation event.
+            state_only = invoke_ok(
+                runner,
+                [
+                    "done",
+                    "--summary",
+                    "Vel tests the spar and loses footing.",
+                    "--state",
+                    "The spar snaps; Vel is hanging below the gangway.",
+                    "--rolls",
+                    "spar reading collapse",
+                    "--turn-type",
+                    "act",
+                ],
+                player_env,
+            )
+            self.assertIn("valid: false", state_only.output)
+            self.assertIn("roll needs a visible consequence", state_only.output)
 
             valid = invoke_ok(
                 runner,
@@ -1740,7 +1844,9 @@ Recipients are `dm`, `party`, or a player id.
                     "--summary",
                     "Vel tests the spar and loses footing.",
                     "--state",
-                    "The spar snaps; Vel is hanging below the gangway.",
+                    "no state change",
+                    "--pressure",
+                    "Spar snapped; Vel hanging below gangway, -1 hp deferred to next beat.",
                     "--rolls",
                     "spar reading collapse",
                     "--turn-type",
@@ -1804,6 +1910,8 @@ Recipients are `dm`, `party`, or a player id.
                         beat_id,
                         "--outcome",
                         f"Beat {index} resolves.",
+                        "--clock-delta",
+                        "0",
                     ],
                     dm_env,
                 )
@@ -2912,7 +3020,7 @@ Recipients are `dm`, `party`, or a player id.
                     "--outcome",
                     "The warrant is now the party's chosen burden.",
                     "--beats",
-                    "The party commits to the warrant.",
+                    "The party commits to the warrant.\\nThe warrant changes hands.",
                 ],
                 dm_env,
             )
@@ -2923,6 +3031,8 @@ Recipients are `dm`, `party`, or a player id.
             quest_log = (root / "shared" / "quest-log.md").read_text(encoding="utf-8")
             self.assertIn("The warrant clock starts.", quest_log)
             self.assertIn("The party commits to the warrant.", quest_log)
+            self.assertIn("The warrant changes hands.", quest_log)
+            self.assertNotIn("\\n", quest_log)
             summary = (
                 root / "arcs" / "first-arc" / "scenes" / "opening" / "summary.md"
             ).read_text(encoding="utf-8")
@@ -2982,6 +3092,120 @@ Recipients are `dm`, `party`, or a player id.
                 "The warrant enters party history as a public commitment.",
                 arc_summary,
             )
+
+
+    def test_scene_end_refuses_without_clock_disposition(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
+                dm_env,
+            )
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene", "clock", "declare", "cinder-cascade",
+                    "--label", "Cinder cascade",
+                    "--goal", "Reach the docks before dampers hold.",
+                    "--value", "0", "--max", "4",
+                    "--direction", "progress",
+                ],
+                dm_env,
+            )
+
+            no_disposition = runner.invoke(
+                main,
+                [
+                    "scene", "end",
+                    "--summary", "Scene closes with cascade pressure unresolved.",
+                    "--outcome", "Dampers held this round.",
+                ],
+                env=dm_env,
+            )
+            self.assertNotEqual(no_disposition.exit_code, 0)
+            self.assertIn("cinder-cascade", no_disposition.output)
+            self.assertIn("no disposition", no_disposition.output)
+
+            wrong_clock = runner.invoke(
+                main,
+                [
+                    "scene", "end",
+                    "--summary", "Scene closes with cascade pressure unresolved.",
+                    "--outcome", "Dampers held this round.",
+                    "--carry-clock", "cinder-cascade=Pressure follows the party to the docks.",
+                    "--retire-clock", "nonexistent-clock=just because",
+                ],
+                env=dm_env,
+            )
+            self.assertNotEqual(wrong_clock.exit_code, 0)
+            self.assertIn("nonexistent-clock", wrong_clock.output)
+            self.assertIn("not active in this scene", wrong_clock.output)
+
+            ended = invoke_ok(
+                runner,
+                [
+                    "scene", "end",
+                    "--summary", "Scene closes with cascade pressure unresolved.",
+                    "--outcome", "Dampers held this round.",
+                    "--carry-clock", "cinder-cascade=Pressure follows the party to the docks.",
+                ],
+                dm_env,
+            )
+            self.assertIn("ended_scene: opening", ended.output)
+            self.assertIn("disposition: carried", ended.output)
+            summary = (
+                tmp_path / "campaigns" / "c1" / "arcs" / "first-arc"
+                / "scenes" / "opening" / "summary.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("Scene Clock Dispositions", summary)
+            self.assertIn("Cinder cascade", summary)
+            self.assertIn("Pressure follows the party to the docks.", summary)
+
+    def test_scene_end_rejects_overlapping_dispositions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
+                dm_env,
+            )
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene", "clock", "declare", "cinder-cascade",
+                    "--label", "Cinder cascade",
+                    "--goal", "Reach the docks before dampers hold.",
+                    "--value", "0", "--max", "4",
+                    "--direction", "progress",
+                ],
+                dm_env,
+            )
+            overlap = runner.invoke(
+                main,
+                [
+                    "scene", "end",
+                    "--summary", "Scene closes.",
+                    "--outcome", "Cascade unresolved.",
+                    "--carry-clock", "cinder-cascade=carries on",
+                    "--retire-clock", "cinder-cascade=actually obsolete",
+                ],
+                env=dm_env,
+            )
+            self.assertNotEqual(overlap.exit_code, 0)
+            self.assertIn("cannot be both carried and retired", overlap.output)
 
 
 if __name__ == "__main__":

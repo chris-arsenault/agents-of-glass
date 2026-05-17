@@ -209,21 +209,22 @@ declared skills total: 4 at level 1, 5 at level 2, etc. The three creation
 slots are filled with the starting budget; one slot is free at level 1, and
 each level-up adds another.
 
-The fastest way to declare is to just roll a new skill name on a turn where
-the fiction reaches for it:
+Characters can roll one-off improvised skills at `fool`; those rolls do not
+use a skill slot, do not become durable, and do not gain skill xp.
+
+When the new skill should become part of the character's toolkit, save it while
+rolling:
 
 ```bash
-glass roll <new-skill-name> <attribute> --risk <level> --character <id>
+glass roll <new-skill-name> <attribute> --risk <level> --character <id> --save-skill
 ```
 
-If you have a free slot, the CLI silently adds the skill at `fool` and runs
-the roll. The roll modifier is the same as if you had improvised (fool, −2),
-but now the skill is on your sheet, gathers xp, and ranks up. If the cap is
-full, the command errors and you have to pick an existing skill (or wait for
-the next level).
+`--save-skill` declares the skill at `fool` before the roll if a slot is
+available. If the cap is full, declaration errors; roll without `--save-skill`
+to keep the check improvised, or pick an existing skill.
 
-You can also declare without rolling — usually during intermission training
-or as a quiet decision between scenes:
+You can also declare without rolling — usually during intermission training or
+as a quiet decision between scenes:
 
 ```bash
 glass character skill-declare <character-id> <new-skill-name>

@@ -6,6 +6,9 @@ from .constants import ATTRIBUTES
 from .errors import GlassError, agent_instruction
 
 
+ITEM_STATUS_SUFFIXES: tuple[str, ...] = ("-spent", "-broken", "-lost", "-sealed")
+
+
 def validate_key_values(
     values: tuple[str, ...],
     valid_values: dict[str, int],
@@ -50,6 +53,25 @@ def assert_attribute_name(attribute: str) -> None:
                 f"Use one of: {', '.join(ATTRIBUTES)}.",
             )
         )
+
+
+def assert_valid_item_id(item_id: str) -> None:
+    if not item_id:
+        return
+    lowered = item_id.lower()
+    for suffix in ITEM_STATUS_SUFFIXES:
+        if lowered.endswith(suffix):
+            raise GlassError(
+                agent_instruction(
+                    f"item id {item_id!r} encodes transient status in its identity",
+                    "Drop the status suffix from the id "
+                    f"({', '.join(ITEM_STATUS_SUFFIXES)}).",
+                    "Use `glass character consequence-add <character> <label>` to "
+                    "record unavailability, expended charges, damage, jammed gear, "
+                    "or other conditional state. Reserve `glass character inventory-rm` "
+                    "for permanent removal.",
+                )
+            )
 
 
 def clamp(value: int, floor: int, ceiling: int) -> int:

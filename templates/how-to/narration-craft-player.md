@@ -57,6 +57,23 @@ clear open question.
 physically, socially, emotionally, materially, or informationally. If you cannot
 state the delta in `glass done --state`, the turn has not advanced enough.
 
+## Do Not Turn Action Into Its Paper Trail
+
+Action-adventure stories can include maps, dossiers, legal authority, witnesses,
+records, and incriminating objects, but those are not usually the emotional
+engine of the scene. In *Raiders of the Lost Ark*, the medallion and government
+warehouse matter, but the movie lives in traps, chases, betrayal, fear, awe, and
+desperate choices. In *Andor*, bureaucracy is everywhere, but the story is not
+about winning an audit; it is about people acting under surveillance, coercion,
+violence, and revolt.
+
+Your character can make things legible, witnessed, preserved, tagged, or
+publicly undeniable, but do not let that become the default shape of every turn.
+If the danger is already visible enough to act on, the interesting move is what
+your character risks, breaks, saves, steals, confronts, admits, changes, or does
+with their body in the scene. Proof should create leverage for action; it should
+not replace action as the point of play.
+
 ## Player-Specific Craft Rules
 
 **Lead with the play move.** OOC process notes are useful only when another actor

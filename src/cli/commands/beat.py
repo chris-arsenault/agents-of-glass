@@ -186,7 +186,18 @@ def beat_start(
 @beat.command("close")
 @click.argument("beat_id")
 @click.option("--outcome", required=True)
-@click.option("--clock-delta", default=0, show_default=True, type=int)
+@click.option(
+    "--clock-delta",
+    type=int,
+    required=True,
+    help=(
+        "Movement applied to this beat's scene clock as the beat closes. "
+        "0 is valid (the beat resolved without moving the clock) but must be "
+        "stated explicitly. Use a positive integer when the beat advanced the "
+        "clock toward its goal/threat, or a negative integer when it walked "
+        "the clock back."
+    ),
+)
 @click.pass_context
 def beat_close(
     ctx: click.Context,
@@ -194,7 +205,7 @@ def beat_close(
     outcome: str,
     clock_delta: int,
 ) -> None:
-    """Close an active beat and optionally move its scene clock."""
+    """Close an active beat and record its scene-clock movement."""
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)

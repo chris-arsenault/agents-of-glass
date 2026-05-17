@@ -15,7 +15,7 @@ import click
 
 from .. import db as _db
 from .. import workspace as _workspace
-from .character import auto_declare_skill_for_roll
+from .character import resolve_skill_for_roll
 from ..campaign import (
     active_campaign_id,
     active_campaign_root,
@@ -105,6 +105,11 @@ from ..yaml_io import (
 @click.option("--risk", required=True, type=click.Choice(sorted(RISK_THRESHOLDS)))
 @click.option("--character", "character_id", required=True)
 @click.option("--target", "target_id")
+@click.option(
+    "--save-skill",
+    is_flag=True,
+    help="Declare this skill before rolling if it is not already on the sheet.",
+)
 @click.pass_context
 def roll(
     ctx: click.Context,
@@ -113,6 +118,7 @@ def roll(
     risk: str,
     character_id: str,
     target_id: str | None,
+    save_skill: bool,
 ) -> None:
     assert_attribute_name(attribute)
     paths = get_paths()
@@ -139,11 +145,12 @@ def roll(
                 )
             )
 
-        character, auto_declared = auto_declare_skill_for_roll(
+        character, skill, skill_declared, skill_saved = resolve_skill_for_roll(
             conn,
             campaign_id=campaign_id,
             character=character,
             skill=skill,
+            save_skill=save_skill,
         )
 
         skill_tier = character["skills"].get(skill, "fool")
@@ -195,6 +202,9 @@ def roll(
                 "momentum_applied_to_total": False,
                 "momentum_effect": momentum_effect,
                 "momentum_guidance": momentum_guidance,
+                "skill_declared": skill_declared,
+                "skill_saved": skill_saved,
+                "skill_xp_eligible": skill_declared,
             },
         )
         # Persist new momentum back to the character row.
@@ -211,11 +221,14 @@ def roll(
             skill_xp_delta = 1
         elif outcome == "breakthrough":
             skill_xp_delta = 2
-        existing_xp = int(character["skill_xp"].get(skill, 0))
-        skill_xp_before = existing_xp
-        skill_xp_after = existing_xp
+        skill_xp_before: int | None = None
+        skill_xp_after: int | None = None
         skill_bumped_to: str | None = None
-        if skill_xp_delta:
+        if skill_declared:
+            existing_xp = int(character["skill_xp"].get(skill, 0))
+            skill_xp_before = existing_xp
+            skill_xp_after = existing_xp
+        if skill_declared and skill_xp_delta:
             (
                 skill_xp_before,
                 skill_xp_after,
@@ -248,7 +261,7 @@ def roll(
         f"{rider_suffix}){target_suffix}"
     )
     queue_event(state, role.actor, summary)
-    if auto_declared:
+    if skill_saved:
         cap = _db.skill_slot_cap(character["level"])
         used = len(character["skills"])
         queue_event(
@@ -265,7 +278,9 @@ def roll(
     roll_row["skill_xp_before"] = skill_xp_before
     roll_row["skill_xp_after"] = skill_xp_after
     roll_row["skill_bumped_to"] = skill_bumped_to
-    roll_row["skill_auto_declared"] = auto_declared
+    roll_row["skill_declared"] = skill_declared
+    roll_row["skill_saved"] = skill_saved
+    roll_row["skill_xp_eligible"] = skill_declared
     roll_row["momentum_effect"] = momentum_effect
     roll_row["momentum_guidance"] = momentum_guidance
     roll_row["character_mirror"] = write_public_character_mirror(
@@ -284,6 +299,7 @@ def roll(
             risk=risk,
             character_id=character_id,
             target_id=target_id,
+            save_skill=save_skill,
         ),
         roll_row,
     )

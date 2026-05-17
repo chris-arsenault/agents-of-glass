@@ -15,7 +15,7 @@ import click
 
 from .. import db as _db
 from .. import workspace as _workspace
-from .character import auto_declare_skill_for_roll
+from .character import resolve_skill_for_roll
 from ..campaign import (
     active_campaign_id,
     active_campaign_root,
@@ -52,6 +52,7 @@ from ..messages import (
     roster,
 )
 from ..outcomes import (
+    append_clock_disposition_section,
     append_outcome_section,
     normalize_outcomes,
     outcome_section,
@@ -193,6 +194,26 @@ def scene_create(
 @click.option("--xp", "xp_spec", default=None,
               help="XP awards: 'tev=2,sumi=1,renno=3'. Calls character "
                    "award-xp per entry with reason=\"scene end: <scene_id>\".")
+@click.option(
+    "--carry-clock",
+    "carry_clock_specs",
+    multiple=True,
+    help=(
+        "Disposition for an active scene clock at scene close: "
+        "`<clock-id>=<reason>`. Use when the clock's pressure continues "
+        "beyond this scene and needs to surface in the next scene's prep."
+    ),
+)
+@click.option(
+    "--retire-clock",
+    "retire_clock_specs",
+    multiple=True,
+    help=(
+        "Disposition for an active scene clock at scene close: "
+        "`<clock-id>=<reason>`. Use when the clock is obsolete, was "
+        "resolved by fiction without a tick, or no longer matters."
+    ),
+)
 @click.pass_context
 def scene_end_cmd(
     ctx: click.Context,
@@ -200,6 +221,8 @@ def scene_end_cmd(
     beats: str | None,
     outcome_values: tuple[str, ...],
     xp_spec: str | None,
+    carry_clock_specs: tuple[str, ...],
+    retire_clock_specs: tuple[str, ...],
 ) -> None:
     """End the active scene + bundle wrap-up writes.
 
@@ -227,14 +250,82 @@ def scene_end_cmd(
     arc_id = current["arc_id"]
     outcome_lines = normalize_outcomes(outcome_values)
 
+    carry_dispositions = _parse_clock_disposition_specs(carry_clock_specs, "carry")
+    retire_dispositions = _parse_clock_disposition_specs(retire_clock_specs, "retire")
+    overlap = set(carry_dispositions) & set(retire_dispositions)
+    if overlap:
+        raise GlassError(
+            agent_instruction(
+                "the same clock cannot be both carried and retired: "
+                + ", ".join(sorted(overlap)),
+                "Pick one disposition per clock. Use `--carry-clock` when "
+                "pressure continues beyond the scene; use `--retire-clock` "
+                "when the clock is obsolete or resolved by fiction.",
+            )
+        )
+    with pg_connection() as conn:
+        active_scene_clocks = _db.scene_clock_list(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+        )
+    active_clock_ids = {str(item["clock_id"]) for item in active_scene_clocks}
+    declared_clock_ids = set(carry_dispositions) | set(retire_dispositions)
+    missing_dispositions = sorted(active_clock_ids - declared_clock_ids)
+    unknown_dispositions = sorted(declared_clock_ids - active_clock_ids)
+    if missing_dispositions:
+        raise GlassError(
+            agent_instruction(
+                "scene end refuses while active scene clocks have no disposition: "
+                + ", ".join(missing_dispositions),
+                "For each open scene clock, either resolve it during play with "
+                "`glass scene clock tick`, then rerun `glass scene end`, or "
+                "name an explicit disposition: `--carry-clock <id>=<reason>` "
+                "if the pressure continues beyond this scene, or "
+                "`--retire-clock <id>=<reason>` if the clock is obsolete or "
+                "was resolved by fiction without a tick.",
+            )
+        )
+    if unknown_dispositions:
+        raise GlassError(
+            agent_instruction(
+                "disposition given for clocks that are not active in this scene: "
+                + ", ".join(unknown_dispositions),
+                "Use `glass scene clock list` or `glass check` to see the "
+                "active scene clocks before dispositioning them.",
+            )
+        )
+    clock_dispositions: list[dict[str, str]] = []
+    for clock_record in active_scene_clocks:
+        clock_id = str(clock_record["clock_id"])
+        if clock_id in carry_dispositions:
+            clock_dispositions.append(
+                {
+                    "clock_id": clock_id,
+                    "label": str(clock_record.get("label") or clock_id),
+                    "disposition": "carried",
+                    "reason": carry_dispositions[clock_id],
+                    "value": int(clock_record.get("value", 0) or 0),
+                    "max": int(clock_record.get("max", 0) or 0),
+                }
+            )
+        else:
+            clock_dispositions.append(
+                {
+                    "clock_id": clock_id,
+                    "label": str(clock_record.get("label") or clock_id),
+                    "disposition": "retired",
+                    "reason": retire_dispositions[clock_id],
+                    "value": int(clock_record.get("value", 0) or 0),
+                    "max": int(clock_record.get("max", 0) or 0),
+                }
+            )
+
     summary_path: str | None = None
     if summary and summary.strip():
-        summary_path = _write_scene_summary(
-            workspace,
-            arc_id,
-            scene_id,
-            append_outcome_section(summary.strip(), outcome_lines),
-        )
+        body = append_outcome_section(summary.strip(), outcome_lines)
+        body = append_clock_disposition_section(body, clock_dispositions)
+        summary_path = _write_scene_summary(workspace, arc_id, scene_id, body)
     else:
         summary_path = _append_scene_outcomes(
             workspace,
@@ -242,10 +333,16 @@ def scene_end_cmd(
             scene_id,
             outcome_lines,
         )
+        if clock_dispositions and summary_path:
+            existing = Path(summary_path).read_text(encoding="utf-8")
+            Path(summary_path).write_text(
+                append_clock_disposition_section(existing, clock_dispositions),
+                encoding="utf-8",
+            )
 
     beat_lines: list[str] = []
     if beats:
-        for line in beats.splitlines():
+        for line in _split_quest_beat_lines(beats):
             text = line.strip().lstrip("-*").strip()
             if text:
                 _append_quest_beat(workspace, text, scene_id=scene_id, arc_id=arc_id)
@@ -358,6 +455,13 @@ def scene_end_cmd(
             turn_id=str(state.get("active_turn_id") or "").strip() or None,
             outcome="scene ended",
         )
+    for item in clock_dispositions:
+        queue_event(
+            state,
+            role.actor,
+            f"scene clock {item['disposition']}: {item['label']} "
+            f"({item['value']}/{item['max']}) — {item['reason']}",
+        )
     queue_event(
         state, role.actor,
         f"scene end: {ended}"
@@ -371,6 +475,7 @@ def scene_end_cmd(
         "table_archive_path": table_archive_path,
         "beats_logged": beat_lines,
         "xp_awards": xp_awards,
+        "clock_dispositions": clock_dispositions,
     }
     commit(
         paths, state, ctx, "scene.end",
@@ -379,6 +484,8 @@ def scene_end_cmd(
             beats=beats,
             outcomes=outcome_lines,
             xp=xp_spec,
+            carry_clock=list(carry_clock_specs),
+            retire_clock=list(retire_clock_specs),
         ),
         result,
     )
@@ -854,6 +961,11 @@ def scene_tracker_list(ctx: click.Context, all_scenes: bool) -> None:
 @click.option("--character", "character_id", required=True)
 @click.option("--impact", "impact_die", required=True, type=click.Choice(["d6", "d8", "d10"]))
 @click.option("--bonus", type=int, default=0, show_default=True)
+@click.option(
+    "--save-skill",
+    is_flag=True,
+    help="Declare this skill before rolling if it is not already on the sheet.",
+)
 @click.option("--because", default=None, help="Short explanation for bonuses, leverage, or item use.")
 @click.option("--note", default=None, help="Free-text fictional effect note. Not mechanically interpreted.")
 @click.pass_context
@@ -866,6 +978,7 @@ def scene_pressure(
     character_id: str,
     impact_die: str,
     bonus: int,
+    save_skill: bool,
     because: str | None,
     note: str | None,
 ) -> None:
@@ -937,11 +1050,12 @@ def scene_pressure(
                 )
             )
 
-        character, auto_declared = auto_declare_skill_for_roll(
+        character, skill, skill_declared, skill_saved = resolve_skill_for_roll(
             conn,
             campaign_id=campaign_id,
             character=character,
             skill=skill,
+            save_skill=save_skill,
         )
 
         skill_tier = character["skills"].get(skill, "fool")
@@ -988,6 +1102,9 @@ def scene_pressure(
             "momentum_applied_to_total": False,
             "momentum_effect": momentum_effect,
             "momentum_guidance": momentum_guidance,
+            "skill_declared": skill_declared,
+            "skill_saved": skill_saved,
+            "skill_xp_eligible": skill_declared,
         }
         roll_row = _db.roll_record(
             conn,
@@ -1025,11 +1142,14 @@ def scene_pressure(
             skill_xp_delta = 1
         elif outcome == "breakthrough":
             skill_xp_delta = 2
-        existing_xp = int(character["skill_xp"].get(skill, 0))
-        skill_xp_before = existing_xp
-        skill_xp_after = existing_xp
+        skill_xp_before: int | None = None
+        skill_xp_after: int | None = None
         skill_bumped_to: str | None = None
-        if skill_xp_delta:
+        if skill_declared:
+            existing_xp = int(character["skill_xp"].get(skill, 0))
+            skill_xp_before = existing_xp
+            skill_xp_after = existing_xp
+        if skill_declared and skill_xp_delta:
             (
                 skill_xp_before,
                 skill_xp_after,
@@ -1085,7 +1205,7 @@ def scene_pressure(
             }.get(momentum_effect, "")
         ),
     )
-    if auto_declared:
+    if skill_saved:
         cap = _db.skill_slot_cap(character["level"])
         used = len(character["skills"])
         queue_event(
@@ -1103,6 +1223,9 @@ def scene_pressure(
     roll_row["skill_xp_before"] = skill_xp_before
     roll_row["skill_xp_after"] = skill_xp_after
     roll_row["skill_bumped_to"] = skill_bumped_to
+    roll_row["skill_declared"] = skill_declared
+    roll_row["skill_saved"] = skill_saved
+    roll_row["skill_xp_eligible"] = skill_declared
     roll_row["momentum_effect"] = momentum_effect
     roll_row["momentum_guidance"] = momentum_guidance
     roll_row["character_mirror"] = write_public_character_mirror(
@@ -1146,6 +1269,7 @@ def scene_pressure(
             character_id=character_id,
             impact=impact_die,
             bonus=bonus,
+            save_skill=save_skill,
             because=because,
             note=note,
         ),
@@ -1183,6 +1307,54 @@ def _tracker_summary(prefix: str, tracker: dict[str, Any]) -> str:
         f"{prefix} {tracker.get('label', tracker.get('tracker_id'))}: "
         f"{tracker.get('value')}/{tracker.get('max')}"
     )
+
+
+def _parse_clock_disposition_specs(
+    specs: tuple[str, ...],
+    disposition: str,
+) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for entry in specs:
+        text = entry.strip()
+        if not text:
+            continue
+        if "=" not in text:
+            raise GlassError(
+                agent_instruction(
+                    f"invalid --{disposition}-clock {entry!r}",
+                    f"Use `<clock-id>=<reason>`, for example "
+                    f"`--{disposition}-clock cinder-cascade=\"Pressure carries "
+                    f"into the next dock scene\"`.",
+                )
+            )
+        clock_id, reason = text.split("=", 1)
+        clock_id = slugify(clock_id)
+        reason = reason.strip()
+        if not clock_id:
+            raise GlassError(
+                agent_instruction(
+                    f"--{disposition}-clock entry {entry!r} is missing a clock id",
+                    f"Use `<clock-id>=<reason>` with the scene clock id from "
+                    "`glass scene clock list` or `glass check`.",
+                )
+            )
+        if not reason:
+            raise GlassError(
+                agent_instruction(
+                    f"--{disposition}-clock {clock_id!r} is missing a reason",
+                    "Name why this clock is being "
+                    f"{'carried beyond the scene' if disposition == 'carry' else 'retired'}.",
+                )
+            )
+        if clock_id in out:
+            raise GlassError(
+                agent_instruction(
+                    f"clock {clock_id!r} appears more than once in --{disposition}-clock",
+                    "Each clock can only carry one disposition.",
+                )
+            )
+        out[clock_id] = reason
+    return out
 
 
 def _parse_xp_spec(spec: str) -> list[tuple[str, int]]:
@@ -1277,6 +1449,15 @@ def _append_quest_beat(
     with log_path.open("a", encoding="utf-8") as fh:
         fh.write(line)
     return log_path
+
+
+def _split_quest_beat_lines(text: str) -> list[str]:
+    normalized = (
+        text.replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+        .replace("\\r", "\n")
+    )
+    return normalized.splitlines()
 
 
 @scene.command("current")

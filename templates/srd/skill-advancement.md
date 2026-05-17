@@ -31,33 +31,35 @@ That leaves one free slot at level 1. Each level adds one more.
 
 ## Declaring a New Skill
 
-When a player tries something not covered by an existing skill, they may
-declare a new one and roll it on the same turn, as long as they have a free
-slot. The simplest path is to just roll it:
+When a player tries something not covered by an existing skill, they may roll
+it as an improvised `fool` skill. Improvised skills do not use a declared skill
+slot, do not become durable, and do not gain skill xp.
+
+If the action should become part of the character's durable toolkit, save the
+skill while rolling:
 
 ```bash
-glass roll <new-skill-name> <attribute> --risk <level> --character <id>
+glass roll <new-skill-name> <attribute> --risk <level> --character <id> --save-skill
 ```
 
-If `<new-skill-name>` is not already on the sheet and a slot is free, `glass
-roll` auto-declares the skill at `fool` and proceeds with the roll. The roll
-output reports `skill_auto_declared: true` and the player turn log records the
-new slot used.
+`--save-skill` declares the skill at `fool` before the roll if a slot is
+available, then lets that roll earn skill xp normally. If no slot is free, the
+command errors; roll without `--save-skill` to keep the check improvised.
 
-If no slot is free, the roll errors. The character must wait until the next
-level (which adds a slot) before declaring another skill. A player can also
-declare without rolling — typically during intermission training — with:
+Players can also declare without rolling — usually during intermission
+training or a quiet between-scene decision — with:
 
 ```bash
 glass character skill-declare <id> <new-skill-name>
 ```
 
+Use existing declared skills when they fit. Use improvised rolls for one-off
+actions. Use `--save-skill` only when the skill should persist on the sheet.
+
 ## Starting Tier
 
-Every declared skill starts at `fool` (skill modifier −2). This is the same
-modifier an undeclared skill would have, so the immediate roll is not
-mechanically better than improvising. The reason to declare is that a declared
-skill **accumulates skill xp** and ranks up over time.
+Every newly declared skill starts at `fool` (skill modifier −2). Declared
+skills **accumulate skill xp** and rank up over time.
 
 ## Per-Skill XP and Auto-Promotion
 

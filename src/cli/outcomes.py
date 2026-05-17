@@ -42,3 +42,35 @@ def append_outcome_section(body: str, outcomes: list[str]) -> str:
     if stripped:
         return f"{stripped}\n\n{outcome_section(outcomes)}"
     return outcome_section(outcomes)
+
+
+def clock_disposition_section(dispositions: list[dict[str, object]]) -> str:
+    if not dispositions:
+        return ""
+    lines = ["## Scene Clock Dispositions", ""]
+    for item in dispositions:
+        label = str(item.get("label") or item.get("clock_id") or "clock")
+        verb = str(item.get("disposition") or "")
+        reason = str(item.get("reason") or "").strip()
+        value = item.get("value")
+        max_value = item.get("max")
+        position = (
+            f" ({int(value)}/{int(max_value)})"
+            if isinstance(value, int) and isinstance(max_value, int) and max_value
+            else ""
+        )
+        lines.append(f"- **{label}**{position} — {verb}: {reason}")
+    return "\n".join(lines) + "\n"
+
+
+def append_clock_disposition_section(
+    body: str,
+    dispositions: list[dict[str, object]],
+) -> str:
+    section = clock_disposition_section(dispositions)
+    if not section:
+        return body
+    stripped = body.rstrip()
+    if stripped:
+        return f"{stripped}\n\n{section}"
+    return section

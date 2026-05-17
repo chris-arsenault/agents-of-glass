@@ -46,8 +46,8 @@ them. Examples:
 
 ```bash
 # Active play
-glass roll <skill> <attribute> --risk <level> --character <id>
-glass scene pressure <target> <skill> <attribute> --risk <level> --character <id> --impact <d6|d8|d10>
+glass roll <skill> <attribute> --risk <level> --character <id> [--save-skill]
+glass scene pressure <target> <skill> <attribute> --risk <level> --character <id> --impact <d6|d8|d10> [--save-skill]
 glass table write <path> --body "<markdown>"
 glass table append <path> --body "<markdown>"
 glass summary write campaign|arc|scene [id] --body "<markdown>"
@@ -58,11 +58,12 @@ glass msg <type> <recipient> <body>
 glass scene clock declare <id> --label "<label>" --goal "<goal>" --value <n> --max <n> --direction progress|countdown --polarity objective|threat|timer [--visibility public|dm]
 glass scene clock tick <id> [delta] --outcome "<visible progress or consequence>"
 glass beat start <id> --clock <clock-id> --label "<label>" --question "<question>"
-glass beat close <id> --outcome "<outcome>" [--clock-delta <n>]
+glass beat close <id> --outcome "<outcome>" --clock-delta <n>   # n required, 0 valid
 glass beat convert <id> --to-clock <clock-id> --reason "<reason>"
 
 # Scene transition / prep
-glass scene end --summary "<summary>" --outcome "<outcome>" --xp "tev=3,sumi=3,renno=3,kit=3"
+glass scene end --summary "<summary>" --outcome "<outcome>" --xp "tev=3,sumi=3,renno=3,kit=3" [--carry-clock <id>=<reason>]... [--retire-clock <id>=<reason>]...
+# scene end refuses if active scene clocks lack a disposition: either tick to resolve, --carry-clock, or --retire-clock
 glass arc close-check [<arc-id>]
 glass arc close <arc-id>
 glass scene create <scene-slug> --type <problem-family> [--arc <arc-id>]

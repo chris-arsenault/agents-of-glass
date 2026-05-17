@@ -101,6 +101,14 @@ a close rush`, `crosses gaps or snags loose cargo`, `detects unstable wall
 stress`, or `cuts fouled kite line under load` over tags that only describe mood
 or origin.
 
+## Item Ids Name Affordances, Not Status
+
+Item ids name the affordance class. They must not encode transient status. The
+CLI rejects ids ending in `-spent`, `-broken`, `-lost`, or `-sealed`. Use
+`glass character inventory-rm` for permanent removal; narrative state like
+jammed, sealed, or expended is recorded in scene prose and reconciled at the
+next use, not by mutating the item id.
+
 ## Mutation Sequence
 
 1. Gather every character mutation required by this turn before writing commands.
@@ -121,8 +129,9 @@ or origin.
 
 4. Let roll commands handle roll-induced momentum changes. Do not duplicate
    automatic momentum effects with a second character mutation.
-5. Use inventory commands when a meaningful portable asset is taken, spent,
-   received, broken, or kept for later leverage.
+5. Use inventory commands when a portable asset is gained or permanently lost.
+   Transient narrative state (jammed, sealed away, lent out, expended charges)
+   stays in scene prose; do not encode it in the item id.
 6. Mirror public character displays after visible sheet changes.
 7. Name the changed character ids and fields in `glass done --state`.
 
@@ -178,20 +187,20 @@ under fire`.
 
 To put a new skill on the sheet during play:
 
-- **On a roll**: pass a fresh skill name to `glass roll` or `glass scene
-  pressure`. If a free slot exists, the CLI auto-declares the skill at `fool`
-  and proceeds with the roll. The roll output reports
-  `skill_auto_declared: true` and an event is queued for the transcript. If
-  the cap is full, the command errors — pick an existing skill or wait for
-  the next level.
-- **Without a roll** (e.g., intermission training):
+- If a check uses a skill not on the sheet, `glass roll` and `glass scene
+  pressure` can still roll it as an improvised `fool` skill. Improvised skills
+  do not become durable and do not gain skill xp.
+- To save a new skill while rolling, use `--save-skill`:
 
   ```bash
-  glass character skill-declare <character-id> <skill-name>
+  glass roll <skill-name> <attribute> --risk <level> --character <id> --save-skill
   ```
 
-  Errors if the cap is full or the skill is already declared. The new skill
-  starts at `fool` with 0 skill xp.
+- `--save-skill` declares the skill at `fool` before the roll if a slot is
+  available. If the cap is full, the command errors; roll without
+  `--save-skill` to keep the check improvised.
+- To declare without rolling, use
+  `glass character skill-declare <character-id> <skill-name>`.
 
 Successful rolls grow the declared skill: `advance` grants +1 skill xp,
 `breakthrough` grants +2. Auto-promotion thresholds are 5 / 15 / 30 xp

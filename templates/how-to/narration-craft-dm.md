@@ -69,6 +69,30 @@ Do not force spectacle into every quiet beat. Do keep asking whether the table
 has something vivid and playable to touch, fear, save, break, misunderstand, or
 use sideways.
 
+## Do Not Turn Action Into Its Paper Trail
+
+Action-adventure stories can include maps, dossiers, legal authority, witnesses,
+records, and incriminating objects, but those are not usually the emotional
+engine of the scene. In *Raiders of the Lost Ark*, the medallion and government
+warehouse matter, but the movie lives in traps, chases, betrayal, fear, awe, and
+desperate choices. In *Andor*, bureaucracy is everywhere, but the story is not
+about winning an audit; it is about people acting under surveillance, coercion,
+violence, and revolt.
+
+Watch for the campaign turning adventure outcomes into proof that the adventure
+happened. A rescue should not repeatedly resolve as a witnessed rescue. A
+sabotage scene should not repeatedly resolve as a public comparison record. A
+dangerous object should not repeatedly become interesting only because it is
+evidence. Records and proof are allowed, but if they become the recurring
+destination, the campaign has drifted into the after-action paperwork of an
+action story instead of the action story itself.
+
+When proof appears, use it as leverage that throws characters into the next
+dangerous choice. Let it open a door, provoke an enemy, force a flight, expose a
+person to danger, demand a betrayal, or make a character choose what they will
+risk. The point is not to document danger until no one can deny it. The point is
+to survive danger, change it, and live with what that choice costs.
+
 ## Not A Legal Drama
 
 Mara cannot run the campaign as legal drama, audit drama, claims arbitration, or

@@ -23,7 +23,7 @@ from ..errors import GlassError, agent_instruction
 from ..paths_resolve import display_path
 from ..role import assert_character_writable, current_role, require_dm
 from ..state import append_audit, commit, current_mode_record, load_state, queue_event
-from ..validation import assert_attribute_name, validate_key_values
+from ..validation import assert_attribute_name, assert_valid_item_id, validate_key_values
 from ..yaml_io import command_params, emit, read_body
 
 
@@ -726,9 +726,8 @@ def character_skill_declare(
     `fool` with 0 skill xp and advances by use through normal rolls (5 xp ->
     apprentice, 15 -> artisan, 30 -> virtuoso).
 
-    Players normally do not need to call this directly: `glass roll` will
-    auto-declare a new skill when a free slot exists. Use this when staging a
-    declared skill outside of a roll (e.g., training during intermission).
+    Use this command when adding a skill outside the roll command. During a
+    roll, `--save-skill` declares a new skill before resolving the check.
     """
     skill_name = (skill or "").strip()
     if not skill_name:
@@ -810,33 +809,46 @@ def _skill_slot_cap_full_message(
     )
 
 
-def auto_declare_skill_for_roll(
+def resolve_skill_for_roll(
     conn: "_db.psycopg.Connection[Any]",  # type: ignore[name-defined]
     *,
     campaign_id: str,
     character: dict[str, Any],
     skill: str,
-) -> tuple[dict[str, Any], bool]:
-    """Auto-declare `skill` at fool if not present; raise if cap is full.
+    save_skill: bool = False,
+) -> tuple[dict[str, Any], str, bool, bool]:
+    """Resolve a roll skill.
 
-    Returns (refreshed_character, was_newly_declared). Callers should re-bind
-    the character to the refreshed value before reading `skills`/`skill_xp`.
+    Returns `(character, skill_name, declared, saved_now)`. Undeclared skills
+    can be rolled at `fool`, but they do not accrue skill XP unless saved.
     """
     skill_key = (skill or "").strip()
-    if not skill_key or skill_key in (character.get("skills") or {}):
-        return character, False
+    character_id = str(character.get("character_id") or "<unknown>")
+    if not skill_key:
+        raise GlassError(
+            agent_instruction(
+                "skill name is required",
+                "Roll one of the character's declared skills.",
+                f"Use `glass character get {character_id}` to see declared skills.",
+            )
+        )
+    skills = character.get("skills") or {}
+    if skill_key in skills:
+        return character, skill_key, True, False
+    if not save_skill:
+        return character, skill_key, False, False
     try:
         refreshed, added = _db.character_declare_skill(
             conn,
             campaign_id=campaign_id,
-            character_id=character["character_id"],
+            character_id=character_id,
             skill=skill_key,
         )
     except _db.SkillSlotCapFull as exc:
-        raise GlassError(
-            _skill_slot_cap_full_message(character["character_id"], exc)
-        ) from None
-    return refreshed, added
+        raise GlassError(_skill_slot_cap_full_message(character_id, exc)) from None
+    if not added:
+        return refreshed, skill_key, True, False
+    return refreshed, skill_key, True, True
 
 
 @character.command("set-hp", context_settings={"ignore_unknown_options": True})
@@ -1158,6 +1170,7 @@ def character_inventory_add(
                 "Use a positive quantity when adding inventory.",
             )
         )
+    assert_valid_item_id(item_id)
     normalized_effect_tags = _normalize_effect_tags(effect_tags)
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -1712,7 +1725,7 @@ def _validate_starting_skill_budget(skills: dict[str, str]) -> None:
         agent_instruction(
             "character creation requires exactly 3 trained skills",
             "Pass exactly two skills at `apprentice` and one skill at `artisan`.",
-            "Do not list `fool`, `virtuoso`, or `legend` skills at level 1; unlisted skills default to `fool`.",
+            "Do not list `fool`, `virtuoso`, or `legend` skills at level 1; additional skills must be declared later with `glass character skill-declare`.",
         )
     )
 
@@ -1972,6 +1985,7 @@ def _normalize_inventory_items(value: Any, field_name: str) -> list[dict[str, An
                     "Use a positive quantity.",
                 )
             )
+        assert_valid_item_id(item_id)
         items.append({"id": item_id, "qty": qty, "effect_tags": effect_tags})
     return items
 

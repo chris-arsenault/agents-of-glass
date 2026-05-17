@@ -30,8 +30,11 @@ the character branch.
    material. Prefer character ids from the TURN_START recipient roster; do not
    guess ids. Use `glass character bulk-get --all` if you need to confirm one.
 6. Resolve uncertainty before prose. Use `glass roll` for checks and `glass
-   scene pressure` when reducing a tracker or target. If a hidden fact is
-   required before you can act, message the DM and end with `--next dm` plus
+   scene pressure` when reducing a tracker or target. If the action is not
+   covered by a sheet skill, roll it as an improvised `fool` skill; add
+   `--save-skill` only when it should become durable and a slot is available.
+   If a hidden fact is required before you can act, message the DM and end with
+   `--next dm` plus
    `--open-question`. On `stall`, `regress`, or `collapse`, make the result
    move play: record a visible cost, worse position, narrowed choice, beat
    movement, or scene clock tick, or name that consequence in `glass done`.

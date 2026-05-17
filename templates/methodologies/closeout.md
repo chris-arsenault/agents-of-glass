@@ -25,15 +25,38 @@ either a durable update or an explicit "no change" in `glass done --state`.
    - Write one sentence naming what the scene proved, cost, changed, or left
      materially unstable.
    - Do not close on "unclear" or "to be decided" for the scene's core tension.
+   - Do not make the scene answer primarily "the party proved what happened."
+     Remember the action consequence first: who was saved, who was hurt, what
+     changed hands, what place became unsafe, what enemy adapted, what
+     relationship shifted, or what choice now costs more. Proof can be part of
+     the answer; it should not become the spine of every answer.
 
-3. **Apply hard state.**
-   - Use `glass character consequence-add`, `set-hp`, `set-momentum`,
-     `inventory-add`, or `inventory-rm` for character changes.
-   - Use `glass clock tick`, `resolve`, or `archive` for clocks.
-   - Use `glass scene tracker tick` for scene trackers that changed before
-     the scene ends.
-   - Use `glass entity claim`, `link`, `unlink`, or `ratify-claim` for graph
-     changes.
+3. **Apply hard state.** Work through every subsection below, and name the
+   answer for each in `glass done --state`. "No change" is a valid answer; an
+   unanswered subsection is not.
+
+   3a. **Clocks and trackers.** Run `glass clock list --scope scene --anchor
+   <scene-id> --all`, `glass clock list --scope arc --anchor <arc-id> --all`,
+   and `glass scene tracker list --all`. For each open clock or tracker, pick
+   one: advance it (`glass clock tick`, `glass scene clock tick`, `glass scene
+   tracker tick`), close it (`glass clock resolve`), retire obsolete pressure
+   (`glass clock archive --note "<why>"`), or explicitly record in `--state`
+   why fiction did not move it this scene.
+
+   3b. **Items.** Walk the transcript for items the fiction marked as taken,
+   permanently lost, destroyed, gained, or recovered. Use
+   `glass character inventory-add` for items newly gained and
+   `glass character inventory-rm` for items permanently removed. Do not
+   invent status-suffix item ids; the CLI rejects them. Transient state
+   (jammed, sealed, lent, expended) stays in scene prose.
+
+   3c. **HP and momentum.** Use `glass character set-hp` and
+   `glass character set-momentum` for changes the scene produced beyond what
+   `glass roll` already applied. Roll-induced momentum is automatic; do not
+   duplicate it.
+
+   3d. **Graph.** Use `glass entity claim`, `link`, `unlink`, or
+   `ratify-claim` for graph changes the scene introduced.
 
 4. **Update authored continuity.**
    - `glass summary write scene <scene-id> --arc <arc-id> --body "<scene summary>"`
@@ -41,6 +64,10 @@ either a durable update or an explicit "no change" in `glass done --state`.
      the scene changed the arc.
    - `glass summary append campaign --body "<campaign-relevant result>"` when
      the scene changed campaign-level continuity.
+   - Keep durable memory centered on what the action changed. Records, witnesses,
+     tags, and evidence can appear as one consequence, but summaries should not
+     repeatedly compress scenes into documentation, custody, public proof, or
+     official undeniability.
    - If the scene advances a recurring symbol, antagonist method, faction move,
      NPC consequence, repeated harm pattern, or unresolved campaign question,
      update the long-game thread with
@@ -67,14 +94,23 @@ either a durable update or an explicit "no change" in `glass done --state`.
      from the scene or did only housekeeping.
    - Prepare any reward/state commands.
 
-7. **End the scene.**
+7. **End the scene.** Every active scene clock must have an explicit
+   disposition or the command refuses. Either tick remaining clocks to
+   resolution during play with `glass scene clock tick`, or pass
+   `--carry-clock <id>=<reason>` when the pressure continues beyond this
+   scene, or `--retire-clock <id>=<reason>` when the clock is obsolete or
+   was resolved by fiction without a tick. Each clock may carry only one
+   disposition. Dispositions are written into the scene summary so the
+   reasoning carries forward.
 
 ```bash
 glass scene end \
   --summary "<compact scene summary>" \
   --outcome "<durable outcome>" \
   --beats "<party-visible beat>" \
-  --xp tev=3,sumi=3,renno=3,kit=3
+  --xp tev=3,sumi=3,renno=3,kit=3 \
+  --carry-clock cinder-cascade="Pressure follows the party to the docks" \
+  --retire-clock bloom-edge="Cordon Twelve held; threat dissolved in fiction"
 ```
 
 8. **Stage what follows before ending the DM turn.**

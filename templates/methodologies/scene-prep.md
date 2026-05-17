@@ -61,6 +61,10 @@ live, and `glass done` succeeds.
    - Default-answer pressure: why the party's usual extraction/load-path/proof
      answer is insufficient, expensive, risky, or only partly useful here.
      Preserve their toolkit; change what it has to solve.
+   - Paper-trail check: if records, witnesses, tags, legal authority, or proof
+     matter, name the dangerous choice they create. The scene should not be about
+     documenting that an adventure happened; it should be about what people risk
+     because the fact is now leverage.
    - Adventure draw: what makes this scene worth playing as fantasy adventure
      rather than only a plausible incident, errand, claim, or logistics problem.
      This does not have to be spectacle, but it should give the table something
@@ -155,6 +159,9 @@ live, and `glass done` succeeds.
 - Do not stage a scene that is only legal drama, audit drama, chain-of-custody
   preservation, or institutional negotiation. If paperwork matters, attach it to
   an antagonist move and a physical danger on screen or arriving now.
+- Do not let the recurring scene endpoint be that the party made events
+  witnessed, tagged, recorded, or undeniable. Let that matter when it is useful,
+  but make it produce a new danger, choice, cost, confrontation, or movement.
 - Do not stage a third consecutive scene in the same location or location family.
 - Do not stage a scene that repeats the last two scenes' problem family without
   naming what is different and why this repeat is worth playing.

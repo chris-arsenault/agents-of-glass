@@ -135,16 +135,31 @@ def quest_beat(
     current = _workspace.current_scene(workspace) or {}
     scene = scene_id or current.get("scene_id")
     arc = arc_id or current.get("arc_id")
-    log_path = _append_quest_beat(workspace, text, scene_id=scene, arc_id=arc)
+    beat_lines = [
+        line.strip().lstrip("-*").strip()
+        for line in _split_quest_beat_lines(text)
+    ]
+    beat_lines = [line for line in beat_lines if line]
+    if not beat_lines:
+        raise GlassError(
+            agent_instruction(
+                "quest beat text cannot be empty",
+                "Pass one concrete campaign-shifting beat after the command, for example `glass quest beat <what changed>`.",
+            )
+        )
+    log_path: Path | None = None
+    for beat_text in beat_lines:
+        log_path = _append_quest_beat(workspace, beat_text, scene_id=scene, arc_id=arc)
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    queue_event(state, role.actor, f"beat: {text[:60]}")
+    queue_event(state, role.actor, f"beat: {beat_lines[0][:60]}")
     result = {
-        "log_path": display_path(log_path),
+        "log_path": display_path(log_path) if log_path else None,
         "scene_id": scene,
         "arc_id": arc,
-        "text": text,
+        "text": "\n".join(beat_lines),
+        "beats": beat_lines,
     }
     commit(
         paths, state, ctx, "quest.beat",
@@ -178,3 +193,12 @@ def _append_quest_beat(
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(f"- {prefix}{text}\n")
     return log_path
+
+
+def _split_quest_beat_lines(text: str) -> list[str]:
+    normalized = (
+        text.replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+        .replace("\\r", "\n")
+    )
+    return normalized.splitlines()

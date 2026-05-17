@@ -36,9 +36,10 @@ This sequence is binding for every full player turn.
    technical read, risky concealment, or contested interpretation has real
    stakes, use `glass roll` or `glass scene pressure` unless the table already
    makes the answer obvious. If your action is not covered by an existing
-   skill on your sheet and you have a free skill slot (cap `3 + level`), pass
-   a new specific skill name to the roll command and it will auto-declare at
-   `fool`. See [`srd/skill-advancement.md`](../srd/skill-advancement.md). If
+   skill on your sheet, roll it as an improvised `fool` skill. Add
+   `--save-skill` only when that skill should become durable and a slot is
+   available (cap `3 + level`). See
+   [`srd/skill-advancement.md`](../srd/skill-advancement.md). If
    hidden information is required before the action is valid, send the DM one
    clear message and end with `--next dm` plus `--open-question`. On `stall`,
    `regress`, or `collapse`, make the result move play: record a visible cost,

@@ -579,8 +579,19 @@ def _prepare_tool_runtime_files(root: Path) -> None:
     (root / ".claude").mkdir(parents=True, exist_ok=True)
     (root / ".codex").mkdir(parents=True, exist_ok=True)
     mcp_path = root / ".mcp.json"
-    if not mcp_path.exists():
-        mcp_path.write_text("{}\n", encoding="utf-8")
+    desired_mcp_config = {"mcpServers": {}}
+    write_mcp_config = True
+    if mcp_path.exists():
+        try:
+            existing = json.loads(mcp_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            existing = None
+        write_mcp_config = not (
+            isinstance(existing, dict)
+            and isinstance(existing.get("mcpServers"), dict)
+        )
+    if write_mcp_config:
+        mcp_path.write_text(json.dumps(desired_mcp_config) + "\n", encoding="utf-8")
 
 
 def _overlay_template_docs(
