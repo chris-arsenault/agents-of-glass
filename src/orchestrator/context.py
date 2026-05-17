@@ -643,8 +643,9 @@ class ContextBuilder:
         lines.extend(
             [
                 "",
-                "**Out of surface**",
-                "- Do not browse the full CLI or repo source from inside a campaign turn. If the current methodology explicitly names an additional command, use it; otherwise close with a blocker or ask through the bus.",
+                "**Beyond this list**",
+                "- This list highlights the most common commands for this turn. The methodology is authoritative — when it names a command (often mode/scene/arc lifecycle calls, summary writes, thread advances, character mutations), run it even if it does not appear above. Use `glass <command> --help` for syntax when you need it.",
+                "- Reach for broader CLI exploration only after the methodology and this list are exhausted. Prefer asking through the bus over guessing.",
             ]
         )
         return "\n".join(_dedupe_blank_sensitive(lines))
@@ -699,6 +700,7 @@ class ContextBuilder:
                 "- `glass thread current` - inspect long-game threads before choosing a callback.",
                 '- `glass thread advance <thread-id> --note "<concrete visible beat>"` - only when prep seeds or advances a table-visible recurring symbol, antagonist method, faction move, repeated harm pattern, NPC consequence, or unresolved question.',
                 '- `glass table write scene.md --body "<visible board with 3 interactable toys>"` / `glass table use <campaign-markdown-path> --as <table-artifact>.md` - make the visible situation concrete.',
+                "- `glass mode end` - exit the bare `scene-prep` mode before starting the scene's play mode.",
                 "- `glass mode start <scene-play|action|combat|chase|social-pressure> <scene-slug>` - enter the scene's play mode after staging it.",
                 "- `glass next handoff <agent-id>` - only if the first spotlight must override normal rotation.",
                 "- `glass sync apply <path-or-directory> ...` - commit prep files, table artifacts, and summaries.",
@@ -726,31 +728,50 @@ class ContextBuilder:
         if mode == "arc-creation":
             return [
                 f"- `glass arc create <arc-id> --pull-source <source> --pull-utilization <note>` / `glass arc activate {active_arc}` - establish the active arc.",
+                f'- `glass clock set <clock-id> --scope arc --anchor {active_arc} --max <N> [--public]` - create arc-scoped durable countdowns when the methodology calls for them; do not leave them only in `plan.md`.',
                 '- `glass summary write arc --body "<arc premise and current direction>"` - seed compact arc continuity.',
                 '- `glass thread advance <thread-id> --note "<concrete visible beat>"` - open or advance long-game handles the arc can reuse later.',
                 "- `glass sync apply <path-or-directory> ...` - commit arc plan/context files.",
             ]
         if mode == "prelude":
             return [
+                "- `glass arc activate prelude` - activate the prelude arc at the start (or `glass arc create prelude ...` if it does not exist).",
                 "- `glass scene create prelude-opening --type scene-play --arc prelude` or `glass scene create prelude-action --type action --arc prelude` - stage the next prelude scene when needed.",
                 '- `glass scene clock declare <clock-id> --label "<clock label>" --goal "<visible goal>" --value 0 --max <N> --direction progress|countdown --polarity objective|threat|timer --visibility public` and `glass beat start <beat-id> --clock <clock-id> ...` - give prelude scenes explicit progress.',
                 '- `glass table write scene.md --body "<visible board>"` - set the prelude table.',
                 "- `glass mode start <scene-play|action> <scene-id>` - enter the created prelude scene.",
+                "- `glass arc activate <main-arc>` - on the final prelude wrap-up turn, activate the main opening arc.",
+                "- `glass mode end` - on the final prelude wrap-up turn, end the prelude/scene mode before staging the next phase.",
             ]
         if mode == "character-creation":
-            return [
+            commands = [
                 "- `glass character bulk-get --all` - inspect submitted sheets and relationship readiness.",
                 "- `glass character mirror <character-id>` - refresh public mirrors after accepting character state.",
                 '- `glass msg <type> <recipient> "<body>"` - request a specific missing character or relationship field.',
                 "- `glass sync apply <path-or-directory> ...` - commit DM setup/ratification notes.",
+            ]
+            if turn_type == "character-creation-dm-ratification":
+                commands.append(
+                    "- `glass mode end` - **ratification turn only**: run after every PC has a character row, public intro, and non-empty relationships file. This is the single character-creation turn that ends the mode; run it before `glass done`."
+                )
+            return commands
+        if mode == "organization-bootstrap":
+            return [
+                '- `glass campaign pull-note --source "<real-world domain/source>" --thesis "<identity thesis>"` - record the campaign\'s non-adjacent pull use.',
+                '- `glass table write scene.md --body "<who the organization is, what choices matter>"` - stage the public organization brief.',
+                "- `glass lore upsert shared/lore/organization.md` - register the authored organization lore with the lore system after writing it.",
+                "- `glass sync apply shared/lore/organization.md dm/notes/organization.md table/scene.md` - commit org-lore, private DM notes, and table brief.",
+                "- `glass mode end` - end the organization-bootstrap mode before character creation starts; run after the brief, lore, and pull note are committed.",
             ]
         if mode == "intermission":
             return [
                 f"- `glass arc close-check {active_arc}` - check whether the prior arc should continue, close, or reframe.",
                 "- `glass thread current` - inspect long-game threads before choosing the next arc or callback.",
                 "- `glass arc create <arc-id> --pull-source <source> --pull-utilization <note>` / `glass arc activate <arc-id>` - establish the next arc when needed.",
+                '- `glass summary append campaign --body "<intermission outcome and next arc direction>"` - keep campaign continuity current.',
                 "- `glass next handoff <agent-id>` - hand off only when a specific agent owns the next intermission decision.",
                 "- `glass sync apply <path-or-directory> ...` - commit intermission notes and summaries.",
+                "- `glass mode end` - on the closing intermission turn, end the intermission mode before the next arc begins.",
             ]
         return [
             "- `glass sync apply <path-or-directory> ...` - commit authored markdown.",

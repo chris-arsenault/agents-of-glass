@@ -485,7 +485,7 @@ def turn_append(
             handle.write(turn_markdown)
 
     next_speaker = str(turn_end.get("next") or "default")
-    if next_speaker != "default":
+    if next_speaker != "default" and resolved_mode != "character-creation":
         state["next_speakers"].append({"agent": next_speaker, "source": "turn.append"})
         queue_event(state, speaker_id, f"turn end handoff -> {next_speaker}")
     _clear_active_turn_state(state)
