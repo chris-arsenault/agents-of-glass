@@ -6,8 +6,10 @@ import {
   fetchCampaignFile,
   fetchFileSection,
   fetchLive,
+  fetchSceneIndex,
   fetchSummary,
   fetchTable,
+  fetchTurnRange,
 } from "../api";
 import { getConfig } from "../config";
 import { sectionTerms } from "../sections";
@@ -24,6 +26,8 @@ import type {
   MessageRecord,
   RollRecord,
   RuntimeState,
+  SceneIndexActive,
+  SceneIndexArc,
   SceneTrackerRecord,
   TablePayload,
   TarotRecord,
@@ -31,7 +35,8 @@ import type {
 } from "../types";
 import { fileMatches } from "../utils";
 
-const maxTurns = 100;
+const earlierTurnsWindow = 50;
+const aroundTurnRadius = 25;
 const maxMessages = 400;
 const maxEvents = 300;
 const maxRolls = 200;
@@ -78,9 +83,14 @@ interface SessionStore {
   cursors: LiveCursors;
   fileLists: Record<string, FileEntry[]>;
   selectedFile: FileContent | null;
+  sceneIndex: SceneIndexArc[];
+  sceneIndexActive: SceneIndexActive | null;
   isBootstrapping: boolean;
   isPolling: boolean;
   isFileLoading: boolean;
+  isLoadingEarlierTurns: boolean;
+  isLoadingTurnRange: boolean;
+  hasMoreEarlierTurns: boolean;
   error: string | null;
   databaseError: string | null;
   bootstrap: () => Promise<void>;
@@ -89,6 +99,9 @@ interface SessionStore {
   setCampaign: (campaignId: string) => Promise<void>;
   setActiveSection: (section: string) => Promise<void>;
   loadFile: (path: string) => Promise<void>;
+  loadEarlierTurns: () => Promise<number>;
+  loadSceneIndex: () => Promise<void>;
+  loadTurnsAround: (turnId: number) => Promise<void>;
 }
 
 type CampaignDataState = Pick<
@@ -109,6 +122,8 @@ type CampaignDataState = Pick<
   | "cursors"
   | "fileLists"
   | "selectedFile"
+  | "sceneIndex"
+  | "sceneIndexActive"
   | "databaseError"
 >;
 
@@ -130,6 +145,8 @@ function emptyCampaignData(): CampaignDataState {
     cursors: { ...initialCursors },
     fileLists: {},
     selectedFile: null,
+    sceneIndex: [],
+    sceneIndexActive: null,
     databaseError: null,
   };
 }
@@ -138,11 +155,12 @@ async function fetchCampaignSnapshot(
   campaignId: string,
   activeSection: string,
 ): Promise<CampaignDataState> {
-  const [summary, table, live, files] = await Promise.all([
+  const [summary, table, live, files, scenes] = await Promise.all([
     fetchSummary(campaignId),
     fetchTable(campaignId),
     fetchLive(campaignId, {}),
     fetchFileSection(campaignId, activeSection),
+    fetchSceneIndex(campaignId),
   ]);
   return {
     runtime: summary.runtime,
@@ -161,7 +179,13 @@ async function fetchCampaignSnapshot(
     generatedAt: live.generated_at,
     fileLists: { [activeSection]: files.files },
     selectedFile: null,
-    databaseError: summary.database_error ?? live.database_error ?? null,
+    sceneIndex: scenes.arcs,
+    sceneIndexActive: scenes.active,
+    databaseError:
+      summary.database_error ??
+      live.database_error ??
+      scenes.database_error ??
+      null,
   };
 }
 
@@ -188,9 +212,14 @@ export const useSessionStore = create<SessionStore>((set, get) => {
     cursors: initialCursors,
     fileLists: {},
     selectedFile: null,
+    sceneIndex: [],
+    sceneIndexActive: null,
     isBootstrapping: false,
     isPolling: false,
     isFileLoading: false,
+    isLoadingEarlierTurns: false,
+    isLoadingTurnRange: false,
+    hasMoreEarlierTurns: true,
     error: null,
     databaseError: null,
     bootstrap: async () => {
@@ -213,6 +242,7 @@ export const useSessionStore = create<SessionStore>((set, get) => {
           campaigns,
           campaignId: nextCampaignId,
           ...data,
+          hasMoreEarlierTurns: hasEarlierTurns(data.turns),
         });
       } catch (err) {
         set({ error: messageFromError(err) });
@@ -230,13 +260,17 @@ export const useSessionStore = create<SessionStore>((set, get) => {
         const live = await fetchLive(campaignId, cursors, {
           includeState: true,
         });
+        const introducesNewScene = sceneIndexNeedsRefresh(
+          get().sceneIndex,
+          live.turns,
+        );
         set((state) => ({
           runtime: live.runtime ?? state.runtime,
           clocks: live.clocks ?? state.clocks,
           sceneTrackers: live.scene_trackers ?? state.sceneTrackers,
           tarot: live.tarot ?? state.tarot,
           dmSurface: live.dm_surface ?? state.dmSurface,
-          turns: mergeByKey(state.turns, live.turns, "turn_id", maxTurns),
+          turns: mergeTurns(state.turns, live.turns),
           messages: mergeByKey(
             state.messages,
             live.messages,
@@ -249,6 +283,9 @@ export const useSessionStore = create<SessionStore>((set, get) => {
           generatedAt: live.generated_at,
           databaseError: live.database_error ?? state.databaseError,
         }));
+        if (introducesNewScene) {
+          void get().loadSceneIndex();
+        }
       } catch (err) {
         set({ error: messageFromError(err) });
       } finally {
@@ -263,12 +300,14 @@ export const useSessionStore = create<SessionStore>((set, get) => {
       }
       set({ isPolling: true, error: null });
       try {
-        const [campaignsResponse, summary, table, live] = await Promise.all([
-          fetchCampaigns(),
-          fetchSummary(campaignId),
-          fetchTable(campaignId),
-          fetchLive(campaignId, get().cursors, { includeState: true }),
-        ]);
+        const [campaignsResponse, summary, table, live, scenes] =
+          await Promise.all([
+            fetchCampaigns(),
+            fetchSummary(campaignId),
+            fetchTable(campaignId),
+            fetchLive(campaignId, get().cursors, { includeState: true }),
+            fetchSceneIndex(campaignId),
+          ]);
         set((state) => ({
           campaigns: sortCampaigns(campaignsResponse.campaigns),
           runtime: live.runtime ?? summary.runtime,
@@ -279,7 +318,7 @@ export const useSessionStore = create<SessionStore>((set, get) => {
           graph: summary.graph,
           table: table.table,
           dmSurface: live.dm_surface ?? summary.dm_surface ?? emptyDmSurface,
-          turns: mergeByKey(state.turns, live.turns, "turn_id", maxTurns),
+          turns: mergeTurns(state.turns, live.turns),
           messages: mergeByKey(
             state.messages,
             live.messages,
@@ -290,7 +329,13 @@ export const useSessionStore = create<SessionStore>((set, get) => {
           rolls: mergeByKey(state.rolls, live.rolls, "roll_id", maxRolls),
           cursors: live.cursors,
           generatedAt: live.generated_at,
-          databaseError: summary.database_error ?? live.database_error ?? null,
+          sceneIndex: scenes.arcs,
+          sceneIndexActive: scenes.active,
+          databaseError:
+            summary.database_error ??
+            live.database_error ??
+            scenes.database_error ??
+            null,
         }));
       } catch (err) {
         set({ error: messageFromError(err) });
@@ -311,10 +356,11 @@ export const useSessionStore = create<SessionStore>((set, get) => {
         isFileLoading: true,
         error: null,
         ...emptyCampaignData(),
+        hasMoreEarlierTurns: true,
       });
       try {
         const data = await fetchCampaignSnapshot(nextCampaignId, activeSection);
-        set(data);
+        set({ ...data, hasMoreEarlierTurns: hasEarlierTurns(data.turns) });
       } catch (err) {
         set({ error: messageFromError(err) });
       } finally {
@@ -355,6 +401,88 @@ export const useSessionStore = create<SessionStore>((set, get) => {
         set({ error: messageFromError(err) });
       } finally {
         set({ isFileLoading: false });
+      }
+    },
+    loadEarlierTurns: async () => {
+      const { campaignId, turns, isLoadingEarlierTurns, hasMoreEarlierTurns } =
+        get();
+      if (
+        !campaignId ||
+        isLoadingEarlierTurns ||
+        !hasMoreEarlierTurns ||
+        turns.length === 0
+      ) {
+        return 0;
+      }
+      const oldest = turns[0].turn_id;
+      if (oldest <= 1) {
+        set({ hasMoreEarlierTurns: false });
+        return 0;
+      }
+      const toTurn = oldest - 1;
+      const fromTurn = Math.max(1, toTurn - earlierTurnsWindow + 1);
+      set({ isLoadingEarlierTurns: true, error: null });
+      try {
+        const response = await fetchTurnRange(campaignId, fromTurn, toTurn);
+        const fetched = response.items.length;
+        set((state) => {
+          const merged = mergeTurns(state.turns, response.items);
+          const reachedStart = fromTurn <= 1;
+          return {
+            turns: merged,
+            hasMoreEarlierTurns:
+              !reachedStart && fetched > 0 && hasEarlierTurns(merged),
+            databaseError: response.database_error ?? state.databaseError,
+          };
+        });
+        return fetched;
+      } catch (err) {
+        set({ error: messageFromError(err) });
+        return 0;
+      } finally {
+        set({ isLoadingEarlierTurns: false });
+      }
+    },
+    loadSceneIndex: async () => {
+      const { campaignId } = get();
+      if (!campaignId) {
+        return;
+      }
+      try {
+        const scenes = await fetchSceneIndex(campaignId);
+        set({
+          sceneIndex: scenes.arcs,
+          sceneIndexActive: scenes.active,
+          databaseError: scenes.database_error ?? get().databaseError,
+        });
+      } catch (err) {
+        set({ error: messageFromError(err) });
+      }
+    },
+    loadTurnsAround: async (turnId: number) => {
+      const { campaignId, turns, isLoadingTurnRange } = get();
+      if (!campaignId || isLoadingTurnRange) {
+        return;
+      }
+      if (turns.some((turn) => turn.turn_id === turnId)) {
+        return;
+      }
+      const fromTurn = Math.max(1, turnId - aroundTurnRadius);
+      const toTurn = turnId + aroundTurnRadius;
+      set({ isLoadingTurnRange: true, error: null });
+      try {
+        const response = await fetchTurnRange(campaignId, fromTurn, toTurn);
+        set((state) => ({
+          turns: mergeTurns(state.turns, response.items),
+          hasMoreEarlierTurns: hasEarlierTurns(
+            mergeTurns(state.turns, response.items),
+          ),
+          databaseError: response.database_error ?? state.databaseError,
+        }));
+      } catch (err) {
+        set({ error: messageFromError(err) });
+      } finally {
+        set({ isLoadingTurnRange: false });
       }
     },
   };
@@ -464,6 +592,53 @@ export function selectSectionCount(
   return Object.values(state.fileLists)
     .flat()
     .filter((file) => fileMatches(file, terms)).length;
+}
+
+function hasEarlierTurns(turns: TurnRecord[]): boolean {
+  return turns.length > 0 && turns[0].turn_id > 1;
+}
+
+function sceneIndexNeedsRefresh(
+  index: SceneIndexArc[],
+  incomingTurns: TurnRecord[],
+): boolean {
+  if (incomingTurns.length === 0) {
+    return false;
+  }
+  const known = new Set<string>();
+  for (const arc of index) {
+    for (const scene of arc.scenes) {
+      known.add(`${arc.arc_id ?? ""}::${scene.scene_id ?? ""}`);
+    }
+  }
+  return incomingTurns.some(
+    (turn) => !known.has(`${turn.arc_id ?? ""}::${turn.scene_id ?? ""}`),
+  );
+}
+
+function mergeTurns(
+  current: TurnRecord[],
+  incoming: TurnRecord[],
+): TurnRecord[] {
+  if (incoming.length === 0) {
+    return current;
+  }
+  const byId = new Map<number, TurnRecord>();
+  for (const turn of current) {
+    byId.set(turn.turn_id, turn);
+  }
+  let changed = current.length !== byId.size;
+  for (const turn of incoming) {
+    const prior = byId.get(turn.turn_id);
+    if (prior !== turn) {
+      changed = true;
+    }
+    byId.set(turn.turn_id, turn);
+  }
+  if (!changed) {
+    return current;
+  }
+  return Array.from(byId.values()).sort((a, b) => a.turn_id - b.turn_id);
 }
 
 function mergeByKey<T extends object, K extends keyof T>(

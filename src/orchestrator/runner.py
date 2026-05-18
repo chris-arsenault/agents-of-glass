@@ -797,7 +797,6 @@ class Orchestrator:
             advance_scene_play_player_cursor(state, result.agent.id)
         synced = self.store.sync_from_glass(state)
         state.__dict__.update(synced.__dict__)
-        self._validate_prelude_dm_handoff(state, result, active)
         self._validate_scene_prep_dm_handoff(state, result, active)
         self._validate_active_play_scene_contract_handoff(state, result, active)
         self._redirect_active_play_contract_gap_to_dm(state, result, active)
@@ -1013,7 +1012,7 @@ class Orchestrator:
             return
         if not state.has_active_mode or state.active_mode.mode not in _SCENE_PLAY_MODES:
             return
-        if result.agent.id == "dm" and previous_active.mode in {"prelude", "scene-prep"}:
+        if result.agent.id == "dm" and previous_active.mode == "scene-prep":
             return
         snapshot = self._scene_contract_snapshot_for_scene(
             campaign=state.campaign,
@@ -1322,43 +1321,6 @@ class Orchestrator:
             else:
                 os.environ["GLASS_CONFIG"] = previous
 
-    def _validate_prelude_dm_handoff(
-        self,
-        state: SessionState,
-        result: TurnResult,
-        previous_active: Any,
-    ) -> None:
-        """Fail fast if the prelude coordinator did not enter table play.
-
-        `prelude` is a DM-only coordinator mode. Its job is to scaffold the
-        normal/action scenes and then hand control to `scene-play`, `action`,
-        initiative, or an explicit next-speaker queue. If the DM remains in
-        bare `prelude` with no queue, the scheduler will select the DM again
-        forever and the players never get a turn.
-        """
-        if result.dry_run or result.agent.id != "dm":
-            return
-        if previous_active.mode != "prelude":
-            return
-        if not state.has_active_mode or state.active_mode.mode != "prelude":
-            return
-        if self._peek_next_speaker_entry(state.campaign):
-            return
-        if self._peek_action_order_entry(state):
-            return
-        self._redirect_dm_handoff_repair(
-            state,
-            result,
-            reason="prelude_dm_no_handoff",
-            active_mode=state.active_mode.mode,
-            active_scene=state.active_mode.scene_id,
-            instruction=(
-                "Prelude is a coordinator mode. Start `scene-play` or `action`, "
-                "queue a player handoff/rapid round, or end `prelude` if the "
-                "prelude is actually complete."
-            ),
-        )
-
     def _validate_scene_prep_dm_handoff(
         self,
         state: SessionState,
@@ -1423,7 +1385,7 @@ class Orchestrator:
         """Fail fast if a DM handoff enters active play without clocks/beats."""
         if result.dry_run or result.agent.id != "dm":
             return
-        if previous_active.mode not in {"prelude", "scene-prep"}:
+        if previous_active.mode != "scene-prep":
             return
         if not state.has_active_mode or state.active_mode.mode not in _SCENE_PLAY_MODES:
             return
@@ -1513,7 +1475,7 @@ class Orchestrator:
             return None
         active_arc = str(glass_state.get("active_arc") or "")
         closed = {str(arc_id) for arc_id in glass_state.get("closed_arcs", [])}
-        if active_arc and active_arc != "prelude" and active_arc not in closed:
+        if active_arc and active_arc not in closed:
             return active_arc
         return None
 

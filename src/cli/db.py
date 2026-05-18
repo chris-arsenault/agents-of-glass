@@ -671,6 +671,132 @@ def runtime_state_upsert(
     conn.commit()
 
 
+_RUNTIME_STATE_UPDATE_COLUMNS: dict[str, tuple[str, str]] = {
+    "status": ("status", "%s"),
+    "created_at": ("created_at", "%s::timestamptz"),
+    "updated_at": ("updated_at", "%s::timestamptz"),
+    "wrapped_at": ("wrapped_at", "%s::timestamptz"),
+    "summary": ("summary", "%s"),
+    "turn_counter": ("turn_counter", "%s"),
+    "mode_stack": ("mode_stack", "%s::jsonb"),
+    "pending_events": ("pending_events", "%s::jsonb"),
+    "note_intake": ("note_intake", "%s::jsonb"),
+    "entities": ("entities", "%s::jsonb"),
+    "threads": ("threads", "%s::jsonb"),
+    "next_speakers": ("next_speakers", "%s::jsonb"),
+    "scene_closing_turns": ("scene_closing_turns", "%s"),
+    "active_turn_id": ("active_turn_id", "%s"),
+    "active_turn_number": ("active_turn_number", "%s"),
+    "active_turn_actor": ("active_turn_actor", "%s"),
+    "active_turn_role": ("active_turn_role", "%s"),
+    "active_turn_mode": ("active_turn_mode", "%s"),
+    "active_turn_scene_id": ("active_turn_scene_id", "%s"),
+    "active_turn_character_id": ("active_turn_character_id", "%s"),
+    "active_turn_kind": ("active_turn_kind", "%s"),
+    "active_turn_turn_type_required": ("active_turn_turn_type_required", "%s"),
+    "active_turn_allow_player_scene_close": (
+        "active_turn_allow_player_scene_close",
+        "%s",
+    ),
+    "active_turn_beat_checked_at": ("active_turn_beat_checked_at", "%s::timestamptz"),
+    "active_turn_audit_ran_at": ("active_turn_audit_ran_at", "%s::timestamptz"),
+    "closeout_summary": ("closeout_summary", "%s"),
+    "closeout_next_speaker": ("closeout_next_speaker", "%s"),
+    "closeout_scene_status": ("closeout_scene_status", "%s"),
+    "closeout_state_changes": ("closeout_state_changes", "%s::jsonb"),
+    "closeout_rolls": ("closeout_rolls", "%s"),
+    "closeout_open_questions": ("closeout_open_questions", "%s::jsonb"),
+    "closeout_position": ("closeout_position", "%s"),
+    "closeout_pressure": ("closeout_pressure", "%s"),
+    "closeout_turn_type": ("closeout_turn_type", "%s"),
+    "closeout_valid": ("closeout_valid", "%s"),
+    "closeout_problems": ("closeout_problems", "%s::jsonb"),
+    "closeout_updated_at": ("closeout_updated_at", "%s::timestamptz"),
+}
+
+_RUNTIME_STATE_JSONB_LIST_FIELDS = {
+    "mode_stack",
+    "pending_events",
+    "note_intake",
+    "next_speakers",
+    "closeout_state_changes",
+    "closeout_open_questions",
+    "closeout_problems",
+}
+
+_RUNTIME_STATE_JSONB_OBJECT_FIELDS = {
+    "entities",
+    "threads",
+}
+
+_RUNTIME_STATE_NON_ROW_FIELDS = {
+    "schema_version",
+    "campaign",
+    "turns",
+}
+
+
+def _runtime_state_update_param(key: str, value: Any) -> Any:
+    if key in _RUNTIME_STATE_JSONB_LIST_FIELDS:
+        return json.dumps(value if isinstance(value, list) else [])
+    if key in _RUNTIME_STATE_JSONB_OBJECT_FIELDS:
+        return json.dumps(value if isinstance(value, dict) else {})
+    return value
+
+
+def runtime_state_update_fields(
+    conn: "psycopg.Connection[Any]",
+    campaign_id: str,
+    fields: dict[str, Any],
+) -> None:
+    """Update selected runtime-state fields without rewriting the whole row.
+
+    Known fields write their concrete columns. Unknown runtime fields are
+    patched into state_extra, matching runtime_state_get's expansion behavior.
+    """
+    concrete: dict[str, Any] = {}
+    extra: dict[str, Any] = {}
+    for key, value in fields.items():
+        if key in _RUNTIME_STATE_NON_ROW_FIELDS:
+            continue
+        if key in _RUNTIME_STATE_UPDATE_COLUMNS:
+            concrete[key] = value
+        else:
+            extra[key] = value
+    if not concrete and not extra:
+        return
+
+    assignments: list[str] = []
+    params: list[Any] = []
+    for key, value in concrete.items():
+        column, placeholder = _RUNTIME_STATE_UPDATE_COLUMNS[key]
+        assignments.append(f"{column} = {placeholder}")
+        params.append(_runtime_state_update_param(key, value))
+    if extra:
+        assignments.append("state_extra = state_extra || %s::jsonb")
+        params.append(json.dumps(extra))
+    if "updated_at" not in concrete:
+        assignments.append("updated_at = now()")
+    params.append(campaign_id)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT campaign_id FROM campaign_runtime_states WHERE campaign_id = %s FOR UPDATE",
+            (campaign_id,),
+        )
+        if cur.fetchone() is None:
+            raise LookupError(f"runtime state {campaign_id!r} does not exist")
+        cur.execute(
+            f"""
+            UPDATE campaign_runtime_states
+            SET {", ".join(assignments)}
+            WHERE campaign_id = %s
+            """,
+            params,
+        )
+    conn.commit()
+
+
 def runtime_active_turn_get(
     conn: "psycopg.Connection[Any]", campaign_id: str
 ) -> dict[str, Any] | None:
@@ -1973,6 +2099,8 @@ def turn_list(
     mode: str | None = None,
     turn_id: int | None = None,
     after_turn: int | None = None,
+    from_turn: int | None = None,
+    to_turn: int | None = None,
     text: str | None = None,
     limit: int = 200,
     latest: bool = False,
@@ -1994,6 +2122,12 @@ def turn_list(
     if after_turn is not None:
         where.append("turn_id > %s")
         params.append(after_turn)
+    if from_turn is not None:
+        where.append("turn_id >= %s")
+        params.append(from_turn)
+    if to_turn is not None:
+        where.append("turn_id <= %s")
+        params.append(to_turn)
     if text:
         where.append(
             "(prose ILIKE %s OR markdown ILIKE %s OR event_summaries::text ILIKE %s "
@@ -2020,6 +2154,64 @@ def turn_list(
     if latest:
         records.reverse()
     return records
+
+
+def scene_index(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+) -> list[dict[str, Any]]:
+    """Aggregate turns into (arc_id, scene_id) groups for timeline navigation.
+
+    Returns rows sorted by the earliest turn in each group.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            WITH ranked AS (
+                SELECT
+                    turn_id,
+                    arc_id,
+                    scene_id,
+                    scene_type,
+                    mode,
+                    scene_status,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY arc_id, scene_id
+                        ORDER BY turn_id DESC
+                    ) AS rn
+                FROM turns
+                WHERE campaign_id = %s
+            )
+            SELECT
+                arc_id,
+                scene_id,
+                MIN(scene_type) FILTER (WHERE rn = 1) AS scene_type,
+                MIN(mode) FILTER (WHERE rn = 1) AS mode,
+                MIN(scene_status) FILTER (WHERE rn = 1) AS scene_status,
+                MIN(turn_id) AS first_turn_id,
+                MAX(turn_id) AS last_turn_id,
+                COUNT(*) AS turn_count
+            FROM ranked
+            GROUP BY arc_id, scene_id
+            ORDER BY MIN(turn_id) ASC
+            """,
+            (campaign_id,),
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "arc_id": row[0],
+            "scene_id": row[1],
+            "scene_type": row[2],
+            "mode": row[3],
+            "scene_status": row[4],
+            "first_turn_id": int(row[5]),
+            "last_turn_id": int(row[6]),
+            "turn_count": int(row[7]),
+        }
+        for row in rows
+    ]
 
 
 # --- event log ---

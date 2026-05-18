@@ -23,7 +23,7 @@ Every turn has two outputs:
 `TURN.md` is the visible story beat or process note. It is not the state
 transport layer.
 
-- Normal full turn: target 200-500 words.
+- Normal full turn: target 300-800 words. Prefer cutting a beat over compressing an event into a codified label when over budget.
 - Rapid response: answer only the prompt.
 - Housekeeping: short process-only note.
 - Scene transition or close: include the visible closure and next visible board.

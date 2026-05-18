@@ -338,6 +338,18 @@ class ContextBuilder:
         housekeeping_section = self._housekeeping_section(turn_meta) if housekeeping_turn else ""
         trackers_section = self._public_trackers_section(state)
         closing_section = self._closing_section(state, agent)
+        scene_framing_discipline_section = self._scene_framing_discipline_section(
+            agent,
+            active.mode,
+            rapid_turn=rapid_turn,
+            housekeeping_turn=housekeeping_turn,
+        )
+        codified_handles_section = self._codified_handles_vs_fiction_language_section(
+            agent,
+            active.mode,
+            rapid_turn=rapid_turn,
+            housekeeping_turn=housekeeping_turn,
+        )
         creative_section = (
             ""
             if housekeeping_turn or rapid_turn or scene_transition_turn
@@ -400,7 +412,7 @@ class ContextBuilder:
             output_contract_section = (
                 "## Output contract\n\n"
                 f"Write your final public turn prose to **`{turn_prose_ref}`** "
-                "and then close the turn with `glass done`. Target 200-500 "
+                "and then close the turn with `glass done`. Target 300-800 "
                 "words for a normal full turn. Public "
                 "prose is the creative summary of the visible story beat; use "
                 "table, scene summary, messages, character state, notes, and the "
@@ -504,6 +516,8 @@ class ContextBuilder:
             f"{housekeeping_section}"
             f"{trackers_section}"
             f"{closing_section}"
+            f"{scene_framing_discipline_section}"
+            f"{codified_handles_section}"
             f"{creative_section}"
             f"{output_contract_section}"
             f"{message_bus_section}"
@@ -713,6 +727,18 @@ class ContextBuilder:
                 '- `glass scene clock declare <clock-id> --label "<clock label>" --goal "<visible goal>" --value 0 --max <N> --direction progress|countdown --polarity objective|threat|timer --visibility public` - DM-only repair if active play lacks the required scene clock.',
                 '- `glass table append scene.md --body "<visible update>"` / `glass table write scene.md --body "<visible board>"` - keep immediate board state current.',
                 '- `glass summary append scene --body "<compact continuity>"` - update scene continuity only when durable facts changed.',
+                (
+                    "- `glass scene transition <next-scene-id> --new|--nested|--return [--close-parent] "
+                    "--type <problem-family> --arc <arc-id> --new-mode scene-play|action|combat|chase|social-pressure "
+                    '--summary "<closing summary>" --outcome "<outcome>" --xp "tev=3,sumi=3,renno=3,kit=3" '
+                    "--carry-clock <id>=<reason> --retire-clock <id>=<reason>` - close the current scene and stage the "
+                    "next one in one atomic command. `--new` replaces at the current stack level; `--nested` pushes a "
+                    "sub-scene (action burst, flashback) on top of the current; `--return <parent-id>` pops back to a "
+                    "named parent scene from a nested scene. Use `--new --close-parent` (with `--parent-summary`, "
+                    "`--parent-outcome`, `--parent-carry-clock`/`--parent-retire-clock`) only when a nested scene's "
+                    "resolution also resolves its parent. Required: scene-clock dispositions for any scenes that close."
+                ),
+                '- `glass arc close <arc-id> --summary "<arc summary>" --outcome "<outcome>" --carry-clock <id>=<reason> --retire-clock <id>=<reason>` - close the active arc after its final scene has ended; arc-scoped clocks need explicit dispositions.',
                 '- `glass next rapid-round "<specific prompt>"` / `glass next restart-order <agent-id>` / `glass next handoff <agent-id>` - use only when pacing or spotlight needs an explicit override.',
                 '- `glass msg <type> <recipient> "<body>"` - durable questions, warnings, offers, and private intent.',
             ]
@@ -722,7 +748,7 @@ class ContextBuilder:
                 "- `glass arc create <arc-id> --pull-source <source> --pull-utilization <note>` - create the first playable arc when planning is ready.",
                 "- `glass lore list` / `glass arc current` / `glass arc list` / `glass clock list --all` / `glass summary show campaign` - audit planning completeness before closing.",
                 "- `glass sync apply <path-or-directory> ...` - commit campaign framing, organization, and planning documents.",
-                "- `glass mode end` - when foundation, public context/framing, opening arc, prelude shell, summaries, and planning audit are complete; run before `glass done` to end campaign planning.",
+                "- `glass mode end` - when foundation, public context/framing, opening arc, summaries, and planning audit are complete; run before `glass done` to end campaign planning.",
                 '- `glass msg <type> <recipient> "<body>"` - request missing player-facing decisions.',
             ]
         if mode == "arc-creation":
@@ -732,16 +758,6 @@ class ContextBuilder:
                 '- `glass summary write arc --body "<arc premise and current direction>"` - seed compact arc continuity.',
                 '- `glass thread advance <thread-id> --note "<concrete visible beat>"` - open or advance long-game handles the arc can reuse later.',
                 "- `glass sync apply <path-or-directory> ...` - commit arc plan/context files.",
-            ]
-        if mode == "prelude":
-            return [
-                "- `glass arc activate prelude` - activate the prelude arc at the start (or `glass arc create prelude ...` if it does not exist).",
-                "- `glass scene create prelude-opening --type scene-play --arc prelude` or `glass scene create prelude-action --type action --arc prelude` - stage the next prelude scene when needed.",
-                '- `glass scene clock declare <clock-id> --label "<clock label>" --goal "<visible goal>" --value 0 --max <N> --direction progress|countdown --polarity objective|threat|timer --visibility public` and `glass beat start <beat-id> --clock <clock-id> ...` - give prelude scenes explicit progress.',
-                '- `glass table write scene.md --body "<visible board>"` - set the prelude table.',
-                "- `glass mode start <scene-play|action> <scene-id>` - enter the created prelude scene.",
-                "- `glass arc activate <main-arc>` - on the final prelude wrap-up turn, activate the main opening arc.",
-                "- `glass mode end` - on the final prelude wrap-up turn, end the prelude/scene mode before staging the next phase.",
             ]
         if mode == "character-creation":
             commands = [
@@ -1196,6 +1212,186 @@ class ContextBuilder:
             "brief — do not introduce new threads. The DM should be ending "
             "the scene any moment.\n\n"
         )
+
+    def _scene_framing_discipline_section(
+        self,
+        agent: Agent,
+        mode: str,
+        *,
+        rapid_turn: bool,
+        housekeeping_turn: bool,
+    ) -> str:
+        if rapid_turn or housekeeping_turn:
+            return ""
+        normalized = mode.lower()
+        dm_scene_modes = _ACTIVE_PLAY_MODES | {
+            "scene-prep",
+            "organization-bootstrap",
+            "campaign-planning",
+            "character-creation",
+            "arc-creation",
+            "intermission",
+        }
+        if agent.role == "dm" and normalized in dm_scene_modes:
+            return (
+                "## Scene framing discipline\n\n"
+                "**Keep game-state durability separate from fiction-state durability.** "
+                "The CLI's table artifacts, summaries, clocks, threads, and notes exist "
+                "to record continuity across turns. Do **not** make the scene's "
+                "fictional engine be witnesses, evidence, custody, proof, reports, "
+                "audits, marks, tags, public comparison records, or procedural "
+                "legitimacy. Those are easy state containers and they will quietly "
+                "become the default unless you actively push back. Clues should be "
+                "residue, not engine.\n\n"
+                "The fictional engine should be immediate physical danger, movement, "
+                "rescue, conflict, survival, irreversible bodily change, or a choice "
+                "that costs the character something now. Records and authority can "
+                "obstruct or reveal, but they are not the scene objective unless the "
+                "active methodology has explicitly named a courtroom, audit, "
+                "certification, or tribunal scene.\n\n"
+                "**Preflight before authoring — answer in your head:**\n\n"
+                "1. Is the scene objective something characters can physically do now "
+                "(carry, cut, run, brace, shove, shield, hold, hide, bargain)?\n"
+                "2. Is someone at risk before any later adjudication matters?\n"
+                "3. Are documents, witnesses, marks, or evidence only support "
+                "texture — not the engine?\n"
+                "4. Could the scene still work if nobody cared about proving "
+                "anything afterward?\n\n"
+                "If any answer is no, reshape the scene before writing. Drift test: "
+                "if the answer is mostly \"what can be proven later\" or \"who will "
+                "be able to witness this,\" you are in the wrong scene.\n\n"
+            )
+        if agent.role == "player" and normalized in _ACTIVE_PLAY_MODES:
+            return (
+                "## Scene framing discipline\n\n"
+                "**Keep game-state durability separate from fiction-state durability.** "
+                "The CLI's table artifacts, summaries, clocks, and messages exist to "
+                "record continuity. Do **not** make your turn's payload be producing "
+                "witness statements, evidence, marks, audit trails, public comparison "
+                "records, or procedural legitimacy. Those are easy state containers "
+                "and they will quietly become your default unless you push back. "
+                "Records should be residue, not action.\n\n"
+                "The interesting move is what your character risks, breaks, saves, "
+                "steals, confronts, admits, or does with their body in the scene "
+                "right now.\n\n"
+                "**Preflight before writing prose:**\n\n"
+                "1. What is your character physically doing this turn?\n"
+                "2. What body, object, place, or relationship changes because of it?\n"
+                "3. If documents, witnesses, or marks appear, are they support "
+                "texture — not the actual point?\n\n"
+                "If the answer is mostly \"establish what just happened\" or \"make "
+                "it undeniable later,\" reshape the turn around an actual physical "
+                "move.\n\n"
+            )
+        return ""
+
+    def _codified_handles_vs_fiction_language_section(
+        self,
+        agent: Agent,
+        mode: str,
+        *,
+        rapid_turn: bool,
+        housekeeping_turn: bool,
+    ) -> str:
+        if rapid_turn or housekeeping_turn:
+            return ""
+        normalized = mode.lower()
+        prose_authoring_modes = _ACTIVE_PLAY_MODES | {
+            "scene-prep",
+            "organization-bootstrap",
+            "campaign-planning",
+            "character-creation",
+            "arc-creation",
+            "intermission",
+        }
+        if agent.role == "dm" and normalized in prose_authoring_modes:
+            return (
+                "## Codified handles vs in-fiction language\n\n"
+                "**The CLI maintains codified handles so the system can stitch the "
+                "same referent across many turns and many days.** Clocks have "
+                "labels (`Shear Wash Builds`, `First Hatch Breath`). Beats have "
+                "labels. Items have ids (`foldout-shield-curtain`, "
+                "`pocket-flare-gun`). Scenes and arcs have slugs. Table artifacts "
+                "have filenames. These exist for **bookkeeping continuity** — so "
+                "turn 92 and turn 93 are addressing the same thing.\n\n"
+                "**These are addresses, not vocabulary.** A character does not "
+                "think \"the moving warm line\"; she thinks *the cable, hot "
+                "enough to smoke, sawing across the brackets*. She does not "
+                "think \"Shear Wash Builds is at 3/4\"; she thinks *the wind is "
+                "about to take me off the wall*. She does not think \"the "
+                "singing seed-rack\"; she thinks *the cracked rib in the third "
+                "strap, still humming*. The codified label is shorthand for the "
+                "reader stitching the transcript across turns. It is not how "
+                "the character perceives the world in the moment, and it is "
+                "not how the narrator should describe what happened.\n\n"
+                "**This is the same structural error as the legal-drama drift.** "
+                "There, system continuity (\"the game needs to remember what "
+                "happened\") leaked into in-fiction premise (\"the scene must "
+                "produce evidence so it can be remembered\"). Here, system "
+                "addressability (\"the game needs stable names for what "
+                "exists\") leaks into prose (\"each entity in the scene gets "
+                "its codified label, hyphenated and capitalized, as the noun "
+                "in the sentence\"). Same shape: infrastructure leaking into "
+                "fiction.\n\n"
+                "**Pair this with `resist-generic-drift`.** The anti-generic "
+                "principle is right — specificity is the defense against "
+                "fantasy tropes. But specificity that requires the reader to "
+                "have the lookup table open is not specificity, it is "
+                "shorthand. Specific prose commits to one detail in common "
+                "English (the wet cough of a fan, a knuckle scraped on a "
+                "rivet, a worker's foot already drifting toward a slick "
+                "line). It does not stack hyphenated compounds invented for "
+                "system addressability.\n\n"
+                "**Self-test before posting prose:** if a sentence only makes "
+                "sense to someone with the table artifact files open, rewrite "
+                "it. Codified handles may appear when they are already natural "
+                "in-world speech (character names, place names, established "
+                "slang the table uses out loud) or when the surrounding "
+                "sentence makes the physical event clear without the handle. "
+                "They may not be the spine of a sentence.\n\n"
+                "**Word-ceiling pressure rewards naming over describing.** "
+                "Naming a thing is shorter than describing it; under the "
+                "300-800 word target, the cheapest compression is to drop "
+                "back into codified handles. Resist that. If you are over "
+                "budget, cut a beat, do not compress an event into its "
+                "label.\n\n"
+            )
+        if agent.role == "player" and normalized in _ACTIVE_PLAY_MODES:
+            return (
+                "## Codified handles vs in-fiction language\n\n"
+                "**The CLI maintains codified handles so the system can stitch "
+                "the same referent across turns.** Clocks, beats, scene clocks, "
+                "items, scene slugs, table artifact filenames — these exist "
+                "so other agents and future-you can address the same thing "
+                "across many turns.\n\n"
+                "**These are addresses, not vocabulary.** Your character does "
+                "not think in clock labels or artifact filenames. She thinks "
+                "in physical sensation: *the cable, hot enough to smoke*, "
+                "*the wind about to take me off the wall*, *the cracked rib "
+                "in the third strap, still humming*. The codified label is "
+                "for the reader stitching the transcript across turns. It is "
+                "not your character's interior voice and it is not how the "
+                "scene should narrate what just happened.\n\n"
+                "**Specificity does not mean stacking hyphenated compounds.** "
+                "Specific prose commits to one detail in common English — the "
+                "weight of a wet glove, a scrape along a knuckle, a foot "
+                "already moving the wrong way — not a pile of invented "
+                "compound nouns the reader would need a lookup table to "
+                "parse.\n\n"
+                "**Self-test before posting prose:** if a sentence only makes "
+                "sense to someone who has the table files open, rewrite it. "
+                "Codified handles may appear when they are already natural "
+                "in-world speech or when the surrounding sentence makes the "
+                "physical event clear without them. They may not be the spine "
+                "of a sentence.\n\n"
+                "**Specialist character voices translate.** If your character "
+                "has a craft idiom — bioacoustic vocabulary, auctioneer "
+                "cadence, glasswright's ear — a specialist *narrating their "
+                "own work* translates as they go. One pointed term per beat, "
+                "with the physical action visible around it. Not stacks of "
+                "trade-noun compounds.\n\n"
+            )
+        return ""
 
     def _table_section(self, state: SessionState, agent: Agent, spawn_cwd: Path) -> str:
         scene_path = _agent_path(spawn_cwd / "table" / "scene.md", spawn_cwd)
@@ -1811,7 +2007,6 @@ def _turn_type_for(
         "organization-bootstrap": "organization-bootstrap",
         "campaign-planning": "campaign-planning",
         "character-creation": "character-creation",
-        "prelude": "prelude-arc",
         "intermission": "intermission",
         "arc-creation": "arc-creation",
         "scene-prep": "scene-prep",
@@ -1838,7 +2033,6 @@ def _methodology_for_turn(
         "organization-bootstrap": "organization-bootstrap.md",
         "campaign-planning": "campaign-planning.md",
         "character-creation": "character-creation.md",
-        "prelude": "prelude-arc.md",
         "intermission": "intermission.md",
         "arc-creation": "arc-creation.md",
         "scene-prep": "scene-prep.md",

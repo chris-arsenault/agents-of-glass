@@ -204,47 +204,6 @@ class OrchestratorQueueTests(unittest.TestCase):
         self.assertIn("--no-use-session-id", result.output)
         self.assertIn("--turn-minimum-seconds", result.output)
 
-    def test_campaign_run_defaults_prelude_cap_to_120(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "templates").mkdir()
-            (root / "campaigns").mkdir()
-            config_path = root / "agents-of-glass.toml"
-            config_path.write_text(
-                "\n".join(
-                    [
-                        "[paths]",
-                        'templates = "templates"',
-                        'campaigns = "campaigns"',
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            seen: list[int] = []
-
-            def fake_lifecycle(cli, *_args, **kwargs):
-                seen.append(int(kwargs["max_prelude_turns"]))
-
-            with patch(
-                "orchestrator.main._run_campaign_lifecycle",
-                side_effect=fake_lifecycle,
-            ):
-                result = CliRunner().invoke(
-                    aog_main,
-                    [
-                        "--config",
-                        str(config_path),
-                        "campaign",
-                        "run",
-                        "c1",
-                        "--dry-run",
-                    ],
-                )
-
-            self.assertEqual(result.exit_code, 0, result.output)
-            self.assertEqual(seen, [120])
-
     def test_campaign_run_session_id_flags_override_toml(self) -> None:
         for toml_enabled, option, expected in (
             (False, "--use-session-id", True),
@@ -397,9 +356,6 @@ class OrchestratorQueueTests(unittest.TestCase):
         self.assertIn("start", result.output)
         self.assertIn("stop", result.output)
         self.assertIn("restart", result.output)
-
-    def test_prelude_coordinator_mode_is_dm_only(self) -> None:
-        self.assertEqual(speaker_order_for("prelude"), ("dm",))
 
     def test_organization_bootstrap_mode_is_dm_only(self) -> None:
         self.assertEqual(speaker_order_for("organization-bootstrap"), ("dm",))
@@ -1841,7 +1797,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                     "c1",
                 )
 
-    def test_campaign_planning_validation_requires_main_arc_and_prelude(self) -> None:
+    def test_campaign_planning_validation_requires_main_arc(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = make_config(root)
@@ -1849,7 +1805,6 @@ class OrchestratorQueueTests(unittest.TestCase):
             (campaign_root / "dm").mkdir(parents=True)
             (campaign_root / "shared").mkdir(parents=True)
             (campaign_root / "arcs" / "opening").mkdir(parents=True)
-            (campaign_root / "arcs" / "prelude").mkdir(parents=True)
             (campaign_root / "dm" / "foundation.md").write_text(
                 "foundation\n",
                 encoding="utf-8",
@@ -1869,7 +1824,7 @@ class OrchestratorQueueTests(unittest.TestCase):
         validate = Mock()
         cli = SimpleNamespace(
             campaign_manager=SimpleNamespace(
-                load_state=Mock(return_value={"phase": "prelude"})
+                load_state=Mock(return_value={"phase": "active"})
             )
         )
         failure = {
@@ -1880,7 +1835,7 @@ class OrchestratorQueueTests(unittest.TestCase):
 
         with patch("orchestrator.main._end_current_mode") as end_mode, patch(
             "orchestrator.main._checkpoint_and_advance_bootstrap_phase",
-            return_value={"phase": "prelude"},
+            return_value={"phase": "active"},
         ) as checkpoint:
             recovered = _recover_bootstrap_phase_after_budget_exhaustion(
                 cli,
@@ -1888,7 +1843,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 mode_name="campaign-planning",
                 phase_label="campaign planning",
                 checkpoint_label="after-campaign-planning",
-                next_phase="prelude",
+                next_phase="active",
                 dry_run=False,
                 validate=validate,
                 failure=failure,
@@ -1953,33 +1908,6 @@ class OrchestratorQueueTests(unittest.TestCase):
                     "c1",
                 )
 
-    def test_creative_influence_omitted_during_prelude_coordinator(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            config = make_config(root)
-            campaign_root = config.campaigns_dir / "c1"
-            campaign_root.mkdir(parents=True)
-            state = SessionState.new(
-                campaign="c1",
-                initial_mode="prelude",
-                initial_scene="prelude",
-                initial_budget=None,
-            )
-            orchestrator = Orchestrator(config, SessionStore(config))
-            attach_runtime_mocks(orchestrator)
-
-            package = orchestrator.prepare_turn(state)
-
-            turn_start = package.turn_start_path.read_text(encoding="utf-8")
-            self.assertIn(
-                "You are **Mara**, the DM for a Glass Frontier TTRPG campaign.",
-                turn_start,
-            )
-            self.assertNotIn("operator", turn_start)
-            self.assertNotIn("shakedown", turn_start)
-            self.assertIn("methodologies/prelude-arc.md", turn_start)
-            self.assertNotIn("## Creative Influence", turn_start)
-
     def test_public_prose_detects_glass_command_lines(self) -> None:
         prose = (
             "The door opens.\n\n"
@@ -2018,7 +1946,6 @@ class OrchestratorQueueTests(unittest.TestCase):
             orchestrator.store.glass.invoke = Mock()
             orchestrator.store.sync_from_glass = Mock(return_value=state)
             orchestrator._tick_closing_countdown = Mock()
-            orchestrator._validate_prelude_dm_handoff = Mock()
             result = TurnResult(
                 turn_id="c1-t0001",
                 agent=AGENTS_BY_ID["tev"],
@@ -2086,76 +2013,6 @@ class OrchestratorQueueTests(unittest.TestCase):
                     {"path": "players/tev/public/extra.md", "status": "new"},
                     {"path": "players/tev/public/intro.md", "status": "modified"},
                 ],
-            )
-
-    def test_prelude_dm_turn_without_handoff_redirects_dm(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            config = make_config(root)
-            campaign_root = config.campaigns_dir / "c1"
-            campaign_root.mkdir(parents=True)
-            state = SessionState.new(
-                campaign="c1",
-                initial_mode="prelude",
-                initial_scene="prelude",
-                initial_budget=None,
-            )
-            orchestrator = Orchestrator(config, SessionStore(config))
-            attach_runtime_mocks(orchestrator)
-            orchestrator._peek_next_speaker_entry = Mock(return_value=None)
-            orchestrator._prepend_next_speaker_entry = Mock()
-            orchestrator._send_system_instruction = Mock()
-            result = TurnResult(
-                turn_id="c1-t0001",
-                agent=AGENTS_BY_ID["dm"],
-                turn_dir=campaign_root / "dm" / "turns" / "0001",
-                spawn_cwd=campaign_root,
-                prose="What do you do?",
-                dry_run=False,
-            )
-
-            orchestrator._validate_prelude_dm_handoff(
-                state,
-                result,
-                state.active_mode,
-            )
-            orchestrator._prepend_next_speaker_entry.assert_called_once()
-            orchestrator._send_system_instruction.assert_called_once()
-            events = [
-                json.loads(line)
-                for line in (campaign_root / "audit.jsonl").read_text(encoding="utf-8").splitlines()
-            ]
-            redirected = next(event for event in events if event["event"] == "turn.redirected")
-            self.assertEqual(redirected["reason"], "prelude_dm_no_handoff")
-            self.assertEqual(redirected["recipient"], "dm")
-
-    def test_prelude_dm_turn_with_queued_player_is_allowed(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            config = make_config(root)
-            campaign_root = config.campaigns_dir / "c1"
-            campaign_root.mkdir(parents=True)
-            state = SessionState.new(
-                campaign="c1",
-                initial_mode="prelude",
-                initial_scene="prelude",
-                initial_budget=None,
-            )
-            orchestrator = Orchestrator(config, SessionStore(config))
-            attach_runtime_mocks(orchestrator, next_speaker={"agent": "tev"})
-            result = TurnResult(
-                turn_id="c1-t0001",
-                agent=AGENTS_BY_ID["dm"],
-                turn_dir=campaign_root / "dm" / "turns" / "0001",
-                spawn_cwd=campaign_root,
-                prose="Tev, what do you do?",
-                dry_run=False,
-            )
-
-            orchestrator._validate_prelude_dm_handoff(
-                state,
-                result,
-                state.active_mode,
             )
 
     def test_scene_prep_dm_turn_without_play_mode_redirects_dm(self) -> None:
@@ -2233,7 +2090,7 @@ class OrchestratorQueueTests(unittest.TestCase):
 
             orchestrator._validate_scene_prep_dm_handoff(state, result, previous)
 
-    def test_prelude_handoff_into_active_play_redirects_dm_on_missing_scene_contract(
+    def test_scene_prep_handoff_into_active_play_redirects_dm_on_missing_scene_contract(
         self,
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2243,8 +2100,8 @@ class OrchestratorQueueTests(unittest.TestCase):
             campaign_root.mkdir(parents=True)
             state = SessionState.new(
                 campaign="c1",
-                initial_mode="prelude",
-                initial_scene="prelude",
+                initial_mode="scene-prep",
+                initial_scene="opening-setup",
                 initial_budget=None,
             )
             previous = state.active_mode

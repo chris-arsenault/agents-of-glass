@@ -82,7 +82,7 @@ class SessionStore:
             raise RuntimeError(f"glass init for {campaign!r} failed: {exc}") from exc
 
         # Check if the requested bootstrap mode is already on the stack
-        # (resume case). It may be below a child scene mode, e.g. the prelude
+        # (resume case). It may be below a child scene mode, e.g. a
         # coordinator beneath scene-play/action.
         existing = self._state_from_glass(campaign)
         already_active = (
@@ -313,8 +313,9 @@ class SessionStore:
         from cli.config import get_paths as _get_glass_paths
         from cli.config import load_config as _load_glass_config
         from cli.state import default_state as _default_glass_state
+        from cli.state import initialize_state as _initialize_runtime_state
         from cli.state import load_state as _load_runtime_state
-        from cli.state import save_state as _save_runtime_state
+        from cli.state import update_state_fields as _update_runtime_state_fields
 
         previous = os.environ.get("GLASS_CONFIG")
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
@@ -327,13 +328,20 @@ class SessionStore:
                 if "no runtime state" not in str(exc):
                     raise
                 glass_state = _default_glass_state(state.campaign)
-            glass_state["aog_status"] = state.status
-            glass_state["aog_failure"] = state.failure
-            glass_state["aog_run_metadata"] = state.run_metadata
-            glass_state["aog_claude_sessions"] = state.claude_sessions
-            glass_state["aog_last_speaker"] = state.last_speaker
-            glass_state["aog_turn_number"] = state.turn_number
-            _save_runtime_state(paths, glass_state)
+                _initialize_runtime_state(paths, glass_state)
+            _update_runtime_state_fields(
+                paths,
+                state.campaign,
+                {
+                    "aog_status": state.status,
+                    "aog_failure": state.failure,
+                    "aog_run_metadata": state.run_metadata,
+                    "aog_claude_sessions": state.claude_sessions,
+                    "aog_last_speaker": state.last_speaker,
+                    "aog_turn_number": state.turn_number,
+                },
+                state=glass_state,
+            )
         finally:
             if previous is None:
                 os.environ.pop("GLASS_CONFIG", None)

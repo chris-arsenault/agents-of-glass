@@ -83,7 +83,6 @@ from ..state import (
     load_state,
     normalize_state,
     queue_event,
-    save_state,
     state_path,
     state_summary,
     transcript_path,)
@@ -1124,7 +1123,7 @@ def _scene_contract_target_for_audit(
         }
     role = str(turn_context.get("role") or "").strip()
     mode_name = str(turn_context.get("mode") or "").strip()
-    if role != "dm" or mode_name not in {"prelude", "scene-prep"}:
+    if role != "dm" or mode_name != "scene-prep":
         return None
     current = current_mode_record(state)
     if not current:
@@ -1146,7 +1145,7 @@ def _scene_contract_gap_is_continuation(snapshot: dict[str, Any]) -> bool:
 
 def _open_active_arc_id(state: dict[str, Any]) -> str | None:
     active_arc = str(state.get("active_arc") or "").strip()
-    if not active_arc or active_arc == "prelude":
+    if not active_arc:
         return None
     closed = {str(arc_id) for arc_id in state.get("closed_arcs", [])}
     if active_arc in closed:
@@ -1542,12 +1541,18 @@ def _write_turn_closeout_artifact(
 def _turn_export_info(scene_id: str) -> dict[str, Any]:
     try:
         workspace = resolve_active_campaign_workspace()
-        current = _workspace.current_scene(workspace)
     except GlassError:
         return {}
-    if not current or current.get("scene_id") != scene_id:
-        return {}
-    arc_id = current.get("arc_id")
+    current = _workspace.current_scene(workspace)
+    # arc_id derivation: prefer scene→arc lookup (single source of truth from
+    # filesystem layout). Fall back to runtime active_scene_arc only when the
+    # scene doesn't exist under any arc yet (which can happen mid-create).
+    arc_id = _workspace.arc_for_scene(workspace, scene_id)
+    scene_type: str | None = None
+    if current and current.get("scene_id") == scene_id:
+        scene_type = current.get("scene_type")
+        if not arc_id:
+            arc_id = current.get("arc_id")
     transcript: Path | None = None
     if arc_id:
         transcript = workspace.scene_dir(str(arc_id), scene_id) / "transcript.md"
@@ -1556,7 +1561,7 @@ def _turn_export_info(scene_id: str) -> dict[str, Any]:
             transcript.write_text(f"# Scene: {scene_id}\n\n", encoding="utf-8")
     return {
         "arc_id": arc_id,
-        "scene_type": current.get("scene_type"),
+        "scene_type": scene_type,
         "scene_transcript_path": transcript,
     }
 

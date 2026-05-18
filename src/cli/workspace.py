@@ -18,7 +18,7 @@ import re
 import shutil
 
 from .config import get_paths
-from .state import load_state, save_state
+from .state import load_state, update_state_fields
 
 
 def slugify(value: str) -> str:
@@ -95,14 +95,22 @@ def load_campaign_state(workspace: CampaignWorkspace) -> dict[str, Any]:
     return load_state(get_paths(), workspace.campaign_id)
 
 
-def save_campaign_state(workspace: CampaignWorkspace, state: dict[str, Any]) -> None:
-    save_state(get_paths(), state)
+def _runtime_state_for_write(
+    workspace: CampaignWorkspace,
+    state: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return state if state is not None else load_campaign_state(workspace)
 
 
 # --- arcs ---
 
 
-def create_arc(workspace: CampaignWorkspace, arc_id: str) -> Path:
+def create_arc(
+    workspace: CampaignWorkspace,
+    arc_id: str,
+    *,
+    state: dict[str, Any] | None = None,
+) -> Path:
     arc_id = slugify(arc_id)
     arc_dir = workspace.arc_dir(arc_id)
     if arc_dir.exists():
@@ -115,12 +123,16 @@ def create_arc(workspace: CampaignWorkspace, arc_id: str) -> Path:
     (arc_dir / "summary.md").write_text(_arc_summary_stub(arc_id), encoding="utf-8")
     (arc_dir / "clocks.md").write_text(_arc_clocks_stub(arc_id), encoding="utf-8")
 
-    state = load_campaign_state(workspace)
+    state = _runtime_state_for_write(workspace, state)
     arcs = state.setdefault("arcs", [])
     if arc_id not in arcs:
         arcs.append(arc_id)
-    state["active_arc"] = arc_id
-    save_campaign_state(workspace, state)
+    update_state_fields(
+        get_paths(),
+        workspace.campaign_id,
+        {"arcs": arcs, "active_arc": arc_id},
+        state=state,
+    )
     return arc_dir
 
 
@@ -152,7 +164,12 @@ def current_arc(workspace: CampaignWorkspace) -> dict[str, Any] | None:
     }
 
 
-def activate_arc(workspace: CampaignWorkspace, arc_id: str) -> Path:
+def activate_arc(
+    workspace: CampaignWorkspace,
+    arc_id: str,
+    *,
+    state: dict[str, Any] | None = None,
+) -> Path:
     arc_id = slugify(arc_id)
     arc_dir = workspace.arc_dir(arc_id)
     if not arc_dir.exists():
@@ -161,12 +178,16 @@ def activate_arc(workspace: CampaignWorkspace, arc_id: str) -> Path:
             f"`glass arc create {arc_id} --pull-source <source> "
             "--pull-utilization <note>` first"
         )
-    state = load_campaign_state(workspace)
+    state = _runtime_state_for_write(workspace, state)
     arcs = state.setdefault("arcs", [])
     if arc_id not in arcs:
         arcs.append(arc_id)
-    state["active_arc"] = arc_id
-    save_campaign_state(workspace, state)
+    update_state_fields(
+        get_paths(),
+        workspace.campaign_id,
+        {"arcs": arcs, "active_arc": arc_id},
+        state=state,
+    )
     return arc_dir
 
 
@@ -178,13 +199,15 @@ def create_scene(
     scene_id: str,
     scene_type: str,
     arc_id: str | None = None,
+    *,
+    state: dict[str, Any] | None = None,
 ) -> Path:
     scene_id = slugify(scene_id)
     if not scene_type.strip():
         raise ValueError("scene type cannot be empty")
     scene_type = slugify(scene_type)
 
-    state = load_campaign_state(workspace)
+    state = _runtime_state_for_write(workspace, state)
     previous_scene = state.get("active_scene")
     previous_arc = state.get("active_scene_arc") or state.get("active_arc")
     arc = arc_id or state.get("active_arc")
@@ -232,24 +255,36 @@ def create_scene(
     (scene_dir / "audit.jsonl").write_text("", encoding="utf-8")
     initialize_table(workspace, scene_id=scene_id, scene_type=scene_type, arc_id=arc)
 
-    state["active_scene"] = scene_id
-    state["active_scene_arc"] = arc
-    state["active_scene_type"] = scene_type
+    fields: dict[str, Any] = {
+        "active_scene": scene_id,
+        "active_scene_arc": arc,
+        "active_scene_type": scene_type,
+    }
     if table_snapshot_path:
-        state["previous_table_snapshot"] = str(table_snapshot_path)
-    save_campaign_state(workspace, state)
+        fields["previous_table_snapshot"] = str(table_snapshot_path)
+    update_state_fields(get_paths(), workspace.campaign_id, fields, state=state)
     return scene_dir
 
 
-def end_scene(workspace: CampaignWorkspace) -> str:
-    state = load_campaign_state(workspace)
+def end_scene(
+    workspace: CampaignWorkspace,
+    *,
+    state: dict[str, Any] | None = None,
+) -> str:
+    state = _runtime_state_for_write(workspace, state)
     ended = state.get("active_scene")
     if not ended:
         raise ValueError("no active scene to end")
-    state["active_scene"] = None
-    state["active_scene_arc"] = None
-    state["active_scene_type"] = None
-    save_campaign_state(workspace, state)
+    update_state_fields(
+        get_paths(),
+        workspace.campaign_id,
+        {
+            "active_scene": None,
+            "active_scene_arc": None,
+            "active_scene_type": None,
+        },
+        state=state,
+    )
     return ended
 
 
@@ -290,6 +325,35 @@ def list_scenes(
             }
         )
     return out
+
+
+def arc_for_scene(
+    workspace: CampaignWorkspace,
+    scene_id: str,
+) -> str | None:
+    """Return the arc that owns this scene, derived from filesystem layout.
+
+    The single source of truth for scene→arc mapping. A scene lives at
+    `arcs/<arc>/scenes/<scene_id>/`. This walks the arcs directory and
+    returns the arc whose `scenes/<scene_id>/` directory exists. Returns
+    None if the scene doesn't exist under any arc.
+
+    Use this anywhere arc context is needed for a known scene_id — never
+    read `active_scene_arc` or `active_arc` from runtime state as a stand-in,
+    because those clear during scene-close and can produce None when the
+    scene's arc is still derivable from disk.
+    """
+    if not scene_id:
+        return None
+    arcs_dir = workspace.arcs_dir
+    if not arcs_dir.exists():
+        return None
+    for arc_dir in arcs_dir.iterdir():
+        if not arc_dir.is_dir():
+            continue
+        if (arc_dir / "scenes" / scene_id).exists():
+            return arc_dir.name
+    return None
 
 
 # --- table ---

@@ -42,6 +42,7 @@ import json
 import os
 import hashlib
 import shutil
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -246,12 +247,36 @@ def state_exists(paths: Paths, campaign_id: str) -> bool:
     return _load_state_from_postgres(campaign_id) is not None
 
 
-def save_state(paths: Paths, state: dict[str, Any]) -> None:
+def initialize_state(paths: Paths, state: dict[str, Any]) -> None:
+    """Create or replace the initial runtime-state row for a campaign.
+
+    Normal command commits must use update_state_fields via commit(); this
+    whole-row write is only for runtime provisioning/reset.
+    """
     state = normalize_state(state)
     state["updated_at"] = now_iso()
     _require_postgres_runtime()
     _save_state_to_postgres(state)
     _remove_stale_runtime_json(paths, state["campaign"])
+
+
+def update_state_fields(
+    paths: Paths,
+    campaign_id: str,
+    fields: dict[str, Any],
+    *,
+    state: dict[str, Any] | None = None,
+) -> None:
+    """Write selected runtime-state fields directly to Postgres.
+
+    When a caller already holds a state dict, keep it in sync so subsequent
+    result rendering and audit/projection code sees the same values.
+    """
+    if state is not None:
+        state.update(fields)
+    _require_postgres_runtime()
+    _update_state_fields_in_postgres(campaign_id, fields)
+    _remove_stale_runtime_json(paths, campaign_id)
 
 
 def _postgres_runtime_enabled() -> bool:
@@ -314,6 +339,24 @@ def _save_state_to_postgres(state: dict[str, Any]) -> None:
         ) from exc
 
 
+def _update_state_fields_in_postgres(campaign_id: str, fields: dict[str, Any]) -> None:
+    config = load_config()
+    pg_config = _db.load_pg_config(config)
+    try:
+        with _db.connect(pg_config) as conn:
+            _db.runtime_state_update_fields(conn, campaign_id, fields)
+    except GlassError:
+        raise
+    except Exception as exc:
+        raise GlassError(
+            agent_instruction(
+                f"postgres runtime state field update failed ({pg_config.describe()})",
+                "Run `glass db migrate`, then retry the command.",
+                f"Database detail: {exc}",
+            )
+        ) from exc
+
+
 # --- audit + commit + events ---
 
 
@@ -353,9 +396,24 @@ def commit(
     result: dict[str, Any],
     *,
     save: bool = True,
+    state_fields: Iterable[str] | None = None,
 ) -> None:
     if save:
-        save_state(paths, state)
+        if state_fields is None:
+            state_fields = _default_state_fields_for_event(event)
+        if state_fields is None:
+            raise GlassError(
+                agent_instruction(
+                    f"commit for {event!r} did not declare runtime state fields",
+                    "Use explicit DB field updates instead of whole runtime-state saves.",
+                    "Pass `state_fields=(...)` for the runtime fields this command changed, or `save=False` for read-only/audit-only commands.",
+                )
+            )
+        update_state_fields(
+            paths,
+            state["campaign"],
+            {field: state.get(field) for field in state_fields},
+        )
     append_audit(paths, state, ctx, event, params, result)
     _refresh_projection_committed_paths(paths, state, result)
     emit(result)
@@ -371,6 +429,133 @@ def queue_event(state: dict[str, Any], actor: str, summary: str) -> dict[str, An
     }
     state["pending_events"].append(event)
     return event
+
+
+_ACTIVE_TURN_FIELDS = (
+    "active_turn_id",
+    "active_turn_number",
+    "active_turn_actor",
+    "active_turn_role",
+    "active_turn_mode",
+    "active_turn_scene_id",
+    "active_turn_character_id",
+    "active_turn_kind",
+    "active_turn_turn_type_required",
+    "active_turn_allow_player_scene_close",
+    "active_turn_beat_checked_at",
+    "active_turn_audit_ran_at",
+)
+
+_CLOSEOUT_FIELDS = (
+    "closeout_summary",
+    "closeout_next_speaker",
+    "closeout_scene_status",
+    "closeout_state_changes",
+    "closeout_rolls",
+    "closeout_open_questions",
+    "closeout_position",
+    "closeout_pressure",
+    "closeout_turn_type",
+    "closeout_valid",
+    "closeout_problems",
+    "closeout_updated_at",
+)
+
+_SCENE_POINTER_FIELDS = (
+    "active_scene",
+    "active_scene_arc",
+    "active_scene_type",
+)
+
+_DEFAULT_EVENT_STATE_FIELDS: dict[str, tuple[str, ...]] = {
+    "campaign.pull-note": ("pending_events", "entities"),
+    "beat.check": ("active_turn_beat_checked_at",),
+    "beat.start": ("pending_events",),
+    "beat.close": ("pending_events",),
+    "beat.convert": ("pending_events",),
+    "msg.send": (),
+    "msg.read": (),
+    "roll": ("pending_events",),
+    "arc.create": ("arcs", "active_arc", "pending_events"),
+    "arc.activate": ("arcs", "active_arc", "pending_events"),
+    "arc.close": ("closed_arcs", "active_arc", "pending_events"),
+    "check": ("active_turn_beat_checked_at",),
+    "done": ("active_turn_audit_ran_at", *_CLOSEOUT_FIELDS),
+    "next.handoff": ("next_speakers", "pending_events"),
+    "next.rapid-round": ("next_speakers", "pending_events"),
+    "next.housekeeping-round": ("next_speakers", "pending_events"),
+    "next.restart-order": ("next_speakers", "pending_events"),
+    "next.clear": ("next_speakers",),
+    "mode.start": ("mode_stack", "pending_events"),
+    "mode.end": ("mode_stack", "action_order", "scene_trackers", "pending_events"),
+    "scene.create": (*_SCENE_POINTER_FIELDS, "previous_table_snapshot", "pending_events"),
+    "scene.end": (
+        *_SCENE_POINTER_FIELDS,
+        "scene_closing_turns",
+        "action_order",
+        "scene_trackers",
+        "pending_events",
+    ),
+    "scene.transition": (
+        *_SCENE_POINTER_FIELDS,
+        "mode_stack",
+        "scene_closing_turns",
+        "action_order",
+        "scene_trackers",
+        "pending_events",
+    ),
+    "scene.closing-down": ("scene_closing_turns", "pending_events"),
+    "scene.clock.declare": ("pending_events",),
+    "scene.clock.tick": ("pending_events",),
+    "scene.tracker.set": ("scene_trackers", "pending_events"),
+    "scene.tracker.tick": ("scene_trackers", "pending_events"),
+    "scene.pressure": ("pending_events",),
+    "session.wrap": ("status", "wrapped_at", "summary"),
+    "sync.apply": ("pending_events", "entities"),
+    "note.write": ("entities",),
+    "note.propose": ("note_intake",),
+    "note.ratify": ("note_intake", "entities"),
+    "note.reject": ("note_intake",),
+    "thread.advance": ("threads",),
+    "turn.begin": (*_ACTIVE_TURN_FIELDS, *_CLOSEOUT_FIELDS),
+    "turn.append": (
+        "turn_counter",
+        "pending_events",
+        "next_speakers",
+        *_ACTIVE_TURN_FIELDS,
+        *_CLOSEOUT_FIELDS,
+    ),
+    "turn.audit": ("active_turn_audit_ran_at",),
+    "turn.end": (*_CLOSEOUT_FIELDS,),
+    "turn.handoff": ("next_speakers", "pending_events"),
+    "turn.initiative": ("action_order", "pending_events"),
+    "turn.rapid-round": ("next_speakers", "pending_events"),
+    "turn.housekeeping-round": ("next_speakers", "pending_events"),
+    "turn.restart-order": ("next_speakers", "pending_events"),
+    "turn.clear-handoff": ("next_speakers",),
+    "quest.beat": ("pending_events",),
+    "entity.upsert": ("entities",),
+    "entity.claim": ("note_intake",),
+    "entity.ratify-claim": ("note_intake",),
+}
+
+_DEFAULT_EVENT_FIELD_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("character.", ("pending_events",)),
+    ("clock.", ("pending_events",)),
+    ("table.", ("pending_events",)),
+    ("summary.", ("pending_events", "entities")),
+    ("lore.", ("entities", "pending_events")),
+)
+
+
+def _default_state_fields_for_event(event: str) -> tuple[str, ...] | None:
+    fields = _DEFAULT_EVENT_STATE_FIELDS.get(event)
+    if fields is not None:
+        return fields
+    for prefix, prefix_fields in _DEFAULT_EVENT_FIELD_PREFIXES:
+        if event.startswith(prefix):
+            return prefix_fields
+    return None
 
 
 def inline_event_lines(events: list[dict[str, Any]]) -> list[str]:

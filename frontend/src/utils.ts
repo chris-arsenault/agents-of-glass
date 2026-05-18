@@ -46,3 +46,14 @@ export function fileMatches(entry: FileEntry, terms: string[]): boolean {
     `${entry.path} ${entry.title} ${entry.section}`.toLowerCase();
   return terms.some((term) => haystack.includes(term));
 }
+
+export function prettifyTitle(slug: string | null | undefined): string {
+  if (!slug) {
+    return "";
+  }
+  return slug
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}

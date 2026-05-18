@@ -21,6 +21,7 @@ from ..entities import (
 from ..errors import GlassError, agent_instruction
 from ..ids import now_iso
 from ..outcomes import (
+    append_clock_disposition_section,
     append_outcome_section,
     normalize_outcomes,
     outcome_section,
@@ -76,8 +77,9 @@ def arc_create(
     )
     workspace = _campaign_workspace()
     paths = get_paths()
+    state = load_state(paths, workspace.campaign_id)
     try:
-        arc_dir = _workspace.create_arc(workspace, arc_id)
+        arc_dir = _workspace.create_arc(workspace, arc_id, state=state)
     except FileExistsError as exc:
         raise GlassError(
             agent_instruction(
@@ -93,7 +95,6 @@ def arc_create(
                 "--pull-source <source> --pull-utilization <note>`.",
             )
         ) from exc
-    state = load_state(paths, workspace.campaign_id)
     normalized_arc_id = _workspace.slugify(arc_id)
     pull_note = _write_arc_pull_note(
         arc_dir,
@@ -414,8 +415,9 @@ def arc_activate(ctx: click.Context, arc_id: str) -> None:
     require_dm()
     workspace = _campaign_workspace()
     paths = get_paths()
+    state = load_state(paths, workspace.campaign_id)
     try:
-        arc_dir = _workspace.activate_arc(workspace, arc_id)
+        arc_dir = _workspace.activate_arc(workspace, arc_id, state=state)
     except FileNotFoundError as exc:
         raise GlassError(
             agent_instruction(
@@ -432,7 +434,6 @@ def arc_activate(ctx: click.Context, arc_id: str) -> None:
                 "Use the slug-like arc id shown by `glass arc list`.",
             )
         ) from exc
-    state = load_state(paths, workspace.campaign_id)
     normalized_arc_id = _workspace.slugify(arc_id)
     queue_event(state, "dm", f"arc activate: {normalized_arc_id}")
     result = {
@@ -449,14 +450,38 @@ def arc_activate(ctx: click.Context, arc_id: str) -> None:
               help="Arc/act summary written to arcs/<arc>/summary.md.")
 @click.option("--outcome", "outcome_values", multiple=True, required=True,
               help="Repeat 1-2 times. In-universe act outcome/consequence bullet.")
+@click.option(
+    "--carry-clock",
+    "carry_clock_specs",
+    multiple=True,
+    help=(
+        "Disposition for an active arc-scoped clock at arc close: "
+        "`<clock-id>=<reason>`. Use when the pressure continues into "
+        "subsequent arcs or campaign play. The clock stays active in "
+        "Postgres; re-anchor it later with `glass clock set` if needed."
+    ),
+)
+@click.option(
+    "--retire-clock",
+    "retire_clock_specs",
+    multiple=True,
+    help=(
+        "Disposition for an active arc-scoped clock at arc close: "
+        "`<clock-id>=<reason>`. The clock is archived (no longer surfaces "
+        "in default lists). Use when the arc's resolution made the clock "
+        "obsolete."
+    ),
+)
 @click.pass_context
 def arc_close(
     ctx: click.Context,
     arc_id: str | None,
     summary: str | None,
     outcome_values: tuple[str, ...],
+    carry_clock_specs: tuple[str, ...],
+    retire_clock_specs: tuple[str, ...],
 ) -> None:
-    require_dm()
+    role = require_dm()
     workspace = _campaign_workspace()
     paths = get_paths()
     state = load_state(paths, workspace.campaign_id)
@@ -466,7 +491,8 @@ def arc_close(
         raise GlassError(
             agent_instruction(
                 "cannot close an arc while a scene is active",
-                "End the active scene first with `glass scene end --outcome <outcome>`.",
+                "End the active scene first with `glass scene end --outcome <outcome>` "
+                "or transition out of it with `glass scene transition`.",
                 "Then run `glass arc close <arc-id> --outcome <outcome>`.",
             )
         )
@@ -495,13 +521,40 @@ def arc_close(
             )
         )
 
+    clock_dispositions = _validate_arc_clock_dispositions(
+        campaign_id=workspace.campaign_id,
+        arc_id=normalized_arc_id,
+        carry_specs=carry_clock_specs,
+        retire_specs=retire_clock_specs,
+    )
+
     outcome_lines = normalize_outcomes(outcome_values)
     summary_path = _write_arc_summary(
         workspace,
         normalized_arc_id,
         summary.strip() if summary else None,
         outcome_lines,
+        clock_dispositions=clock_dispositions,
     )
+
+    # Archive any clocks the DM chose to retire
+    if clock_dispositions:
+        with pg_connection() as conn:
+            for item in clock_dispositions:
+                if item["disposition"] != "retired":
+                    continue
+                try:
+                    _db.clock_set_status(
+                        conn,
+                        campaign_id=workspace.campaign_id,
+                        clock_id=str(item["clock_id"]),
+                        status="archived",
+                        actor=role.actor,
+                        note=str(item["reason"]),
+                    )
+                except LookupError:
+                    # Should not happen — we just listed these
+                    continue
 
     closed_arcs = state.setdefault("closed_arcs", [])
     if normalized_arc_id not in closed_arcs:
@@ -509,6 +562,12 @@ def arc_close(
     if state.get("active_arc") == normalized_arc_id:
         state["active_arc"] = None
 
+    for item in clock_dispositions:
+        queue_event(
+            state, role.actor,
+            f"arc clock {item['disposition']}: {item['label']} "
+            f"({item['value']}/{item['max']}) — {item['reason']}",
+        )
     queue_event(state, "dm", f"arc close: {normalized_arc_id}")
     result = {
         "campaign_id": workspace.campaign_id,
@@ -516,6 +575,7 @@ def arc_close(
         "summary_path": summary_path,
         "outcomes": outcome_lines,
         "active_arc": state.get("active_arc"),
+        "clock_dispositions": clock_dispositions,
     }
     commit(
         paths,
@@ -526,9 +586,131 @@ def arc_close(
             arc_id=arc_id,
             summary=summary,
             outcomes=outcome_lines,
+            carry_clock=list(carry_clock_specs),
+            retire_clock=list(retire_clock_specs),
         ),
         result,
     )
+
+
+def _validate_arc_clock_dispositions(
+    *,
+    campaign_id: str,
+    arc_id: str,
+    carry_specs: tuple[str, ...],
+    retire_specs: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    """Parse and validate arc-scoped clock dispositions for the closing arc.
+
+    Returns the disposition list. Raises GlassError on missing/unknown/overlap.
+    """
+    carry = _parse_arc_clock_disposition_specs(carry_specs, "carry")
+    retire = _parse_arc_clock_disposition_specs(retire_specs, "retire")
+    overlap = set(carry) & set(retire)
+    if overlap:
+        raise GlassError(
+            agent_instruction(
+                "the same clock cannot be both carried and retired: "
+                + ", ".join(sorted(overlap)),
+                "Pick one disposition per clock.",
+            )
+        )
+    with pg_connection() as conn:
+        arc_clocks = _db.clock_list(
+            conn,
+            campaign_id=campaign_id,
+            scope="arc",
+            anchor_id=arc_id,
+            include_archived=False,
+        )
+    # Only "active" clocks need disposition; resolved clocks are already handled.
+    active_clocks = [item for item in arc_clocks if item.get("status") == "active"]
+    active_ids = {str(item["clock_id"]) for item in active_clocks}
+    declared = set(carry) | set(retire)
+    missing = sorted(active_ids - declared)
+    unknown = sorted(declared - active_ids)
+    if missing:
+        raise GlassError(
+            agent_instruction(
+                f"arc close refuses while active arc-scoped clocks have no disposition: "
+                + ", ".join(missing),
+                "For each open arc clock, name an explicit disposition: "
+                "`--carry-clock <id>=<reason>` if the pressure continues beyond "
+                "the arc, or `--retire-clock <id>=<reason>` if the arc's "
+                "resolution made the clock obsolete.",
+                "Alternatively, resolve each clock during play with "
+                "`glass clock resolve <id> --note <why>` before closing the arc.",
+            )
+        )
+    if unknown:
+        raise GlassError(
+            agent_instruction(
+                f"disposition given for clocks not active in arc {arc_id!r}: "
+                + ", ".join(unknown),
+                "Use `glass clock list --scope arc --anchor "
+                f"{arc_id}` to see active arc-scoped clocks before "
+                "dispositioning them.",
+            )
+        )
+    dispositions: list[dict[str, Any]] = []
+    for clock in active_clocks:
+        clock_id = str(clock["clock_id"])
+        verb = "carried" if clock_id in carry else "retired"
+        reason = carry[clock_id] if verb == "carried" else retire[clock_id]
+        dispositions.append({
+            "clock_id": clock_id,
+            "label": str(clock.get("label") or clock_id),
+            "disposition": verb,
+            "reason": reason,
+            "value": int(clock.get("value", 0) or 0),
+            "max": int(clock.get("max", 0) or 0),
+        })
+    return dispositions
+
+
+def _parse_arc_clock_disposition_specs(
+    specs: tuple[str, ...],
+    disposition: str,
+) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for entry in specs:
+        text = entry.strip()
+        if not text:
+            continue
+        if "=" not in text:
+            raise GlassError(
+                agent_instruction(
+                    f"invalid --{disposition}-clock {entry!r}",
+                    f"Use `<clock-id>=<reason>`.",
+                )
+            )
+        clock_id, reason = text.split("=", 1)
+        clock_id = _workspace.slugify(clock_id)
+        reason = reason.strip()
+        if not clock_id:
+            raise GlassError(
+                agent_instruction(
+                    f"--{disposition}-clock entry {entry!r} is missing a clock id",
+                    "Use `<clock-id>=<reason>`.",
+                )
+            )
+        if not reason:
+            raise GlassError(
+                agent_instruction(
+                    f"--{disposition}-clock {clock_id!r} is missing a reason",
+                    f"Name why this clock is being "
+                    f"{'carried beyond the arc' if disposition == 'carry' else 'retired'}.",
+                )
+            )
+        if clock_id in out:
+            raise GlassError(
+                agent_instruction(
+                    f"clock {clock_id!r} appears more than once in --{disposition}-clock",
+                    "Each clock can only carry one disposition.",
+                )
+            )
+        out[clock_id] = reason
+    return out
 
 
 def _write_arc_summary(
@@ -536,6 +718,8 @@ def _write_arc_summary(
     arc_id: str,
     summary: str | None,
     outcomes: list[str],
+    *,
+    clock_dispositions: list[dict[str, Any]] | None = None,
 ) -> str:
     arc_dir = workspace.arc_dir(arc_id)
     arc_dir.mkdir(parents=True, exist_ok=True)
@@ -547,5 +731,6 @@ def _write_arc_summary(
         body = append_outcome_section(path.read_text(encoding="utf-8"), outcomes)
     else:
         body = header + outcome_section(outcomes)
+    body = append_clock_disposition_section(body, clock_dispositions or [])
     path.write_text(body.rstrip() + "\n", encoding="utf-8")
     return display_path(path)

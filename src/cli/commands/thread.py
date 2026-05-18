@@ -74,7 +74,6 @@ from ..state import (
     load_state,
     normalize_state,
     queue_event,
-    save_state,
     state_path,
     state_summary,
     transcript_path,)
@@ -176,4 +175,3 @@ class MessageGroup(click.Group):
         if args and args[0] in self.commands:
             return super().resolve_command(ctx, args)
         return super().resolve_command(ctx, ["send", *args])
-

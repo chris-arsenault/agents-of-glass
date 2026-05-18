@@ -21,8 +21,8 @@ from ..state import (
     campaign_runtime_dir,
     commit,
     default_state,
+    initialize_state,
     load_state,
-    save_state,
     scene_framing_path,
     state_exists,
     state_path,
@@ -63,7 +63,7 @@ def session_new(ctx: click.Context, campaign: str, session_id_unused: str | None
 
     existed = state_exists(paths, campaign)
     state = load_state(paths, campaign) if existed else default_state(campaign)
-    save_state(paths, state)
+    initialize_state(paths, state)
 
     transcript_file = transcript_path(paths, campaign)
     if not transcript_file.exists():

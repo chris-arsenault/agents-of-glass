@@ -33,7 +33,9 @@ party clearly leaves or commits, a clock lands, the scene has yielded what it
 can, or recent turns keep revisiting the same choices without changing them.
 
 For longer scenes, use `glass scene closing-down --rounds N`, then a final
-rapid round, then follow `methodologies/closeout.md` and call `glass scene end`.
+rapid round, then follow `methodologies/closeout.md` and call
+`glass scene transition <next-scene-id> --new ...` (the canonical scene
+boundary command — closes the current scene and stages the next in one call).
 Partial outcomes are fine; the core tension should not end as unknown.
 
 ## Scene Clocks
@@ -50,16 +52,24 @@ clocks.
 ## Nested Scenes
 
 Use a nested action scene only when the parent scene is genuinely paused and
-will resume:
+will resume (a burst of violence inside a social scene, a flashback, a brief
+sub-encounter). `glass scene transition --nested` pushes the sub-scene on
+top of the current one without closing it; the parent's scene clocks and
+beats stay live underneath. Pop back with `glass scene transition <parent-id>
+--return` when the sub-scene resolves:
 
 ```bash
-glass scene create vestige-square-fight --type action --arc <arc>
-glass mode start action vestige-square-fight
-# play the action scene
-glass mode end
+glass scene transition vestige-square-fight --nested \
+  --type action --arc <arc> --new-mode action
+# play the nested action scene
+glass scene transition <parent-scene-id> --return \
+  --summary "<closing summary for the nested scene>" \
+  --outcome "<outcome>" --xp tev=2,sumi=2,renno=2,kit=2 \
+  --carry-clock <id>=<reason> --retire-clock <id>=<reason>
 ```
 
-Most scene shifts are cleaner as ending the current scene and starting another.
+Most scene shifts are cleaner as `--new` (close-and-replace) rather than
+nested. Use nested only when the parent's tension genuinely resumes.
 
 ## Quest Beats and XP
 
@@ -74,4 +84,6 @@ discovery, or arc-changing consequence.
 Add focused bonus XP when a character resolves a beat in an interesting way that
 increases scene momentum and has strong narrative weight. Usually this is +1 XP
 to the character most responsible; use +2 only for a scene-defining turn. The
-DM includes those bonuses in the `glass scene end --xp` totals.
+DM includes those bonuses in the `glass scene transition --xp` totals (or
+`glass scene end --xp` if the scene is closing without a successor, e.g.
+right before `glass arc close`).

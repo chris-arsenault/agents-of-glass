@@ -303,6 +303,48 @@ export interface TableResourcePayload {
   table: TablePayload;
 }
 
+export interface TurnRangePayload {
+  campaign_id: string;
+  from_turn: number;
+  to_turn: number;
+  items: TurnRecord[];
+  database_error?: string;
+}
+
+export interface SceneIndexScene {
+  scene_id: string | null;
+  scene_type: string | null;
+  mode: string | null;
+  status: string | null;
+  first_turn_id: number;
+  last_turn_id: number;
+  turn_count: number;
+  summary_path: string | null;
+}
+
+export interface SceneIndexArc {
+  arc_id: string | null;
+  first_turn_id: number;
+  last_turn_id: number;
+  turn_count: number;
+  summary_path: string | null;
+  scenes: SceneIndexScene[];
+}
+
+export interface SceneIndexActive {
+  arc_id: string | null;
+  scene_id: string | null;
+  scene_type: string | null;
+}
+
+export interface SceneIndexPayload {
+  campaign_id: string;
+  generated_at: string;
+  arcs: SceneIndexArc[];
+  active: SceneIndexActive | null;
+  database_error?: string;
+}
+
 export interface FileListPayload {
   campaign_id: string;
   root: string;

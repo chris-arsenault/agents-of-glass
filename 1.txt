@@ -1,0 +1,81 @@
+
+• You’re right. The failure is that I’m compressing table state into a summary instead of summarizing the fiction.
+
+  What is pushing me there:
+
+  - The turn context is full of artifact labels, beat labels, clock names, and proper nouns: First Hatch Breath, Bad Air
+    Spreads, Second Knock, white-cloth hand, green floor cue, warm rack. I start treating those labels as meaningful prose
+    instead of translating them back into normal language.
+  - The closeout command asks for compact continuity, durable state, rolls, pressure, position, and open questions. That
+    biases me toward packing every state handle into one sentence so nothing is “lost.” The result is not a summary; it is a
+    bag of tags.
+  - I’m overfitting to continuity safety. I try to preserve exact game-state references, so I write things like “first
+    breath secured” instead of “the crew got breathable air through the hatch to the trapped children.” The former is table
+    jargon. The latter is an actual event.
+  - I’m assuming the next reader has all table artifacts in short-term memory. That is wrong for a summary. A summary should
+    re-establish referents plainly, even if it costs a few extra words.
+  - I’m letting clock/beat language leak into fiction language. “Bad Air carries forward at 2/4” is useful state, but it is
+    not an in-world sentence and should not be the spine of the scene summary.
+  - I’m using too many named objects without verbs. “Nalla under the warm rack, white-cloth hand retreating, cinderline
+    floor road” sounds dense but does not say clearly what happened or why anyone cares.
+
+  A better summary shape would be:
+
+  “Second Knock reached Skiffmoor’s lower hatch and opened only a narrow gap, because the air above the floor was unsafe.
+  The crew got breathable air to the trapped children and kept them crawling low, but an unknown adult inside kept
+  interfering with the rescue. The children say Nalla is trapped deeper inside near a hot rack, so the next scene moves from
+  opening the hatch to crawling in after her.”
+
+  That is the standard I should be using: place, action, result, remaining danger. State labels can live in the --state
+  field, not in the human summary.
+
+
+› what about the prompt is leading you towards that?  we previously had an issue where everything went to legal drama,
+  since you were confusing game state preserevation with in universe need for evidence. we added a clause to turn start to
+  alert you of the differnece and things turned around.  what do you think is the mistake your making here that we can
+  isolate? it's clearly something simlar
+
+
+• Yes. The isolatable mistake is:
+
+  I am confusing continuity preservation with handle preservation.
+
+  The prompt gives me lots of handles: clock names, beat names, table artifact names, scene ids, item labels, NPC labels,
+  and closeout fields. I then treat those handles as the content that must survive, instead of translating them into
+  ordinary events.
+
+  That is similar to the old legal-drama issue:
+
+  - Old mistake: “Game state needs durable record” became “the fiction must care about evidence and proof.”
+  - Current mistake: “Game state has durable labels” becomes “the summary should preserve the labels themselves.”
+
+  The prompt pressure comes from a few places:
+
+  - “compact continuity” makes me overcompress.
+  - “durable updates,” “table artifacts,” “clocks,” “beats,” and “scene summary” all appear close together, so I blend them
+    into one register.
+  - The recent turn summaries are already compact state prose, so they teach me the wrong style when I use them as source
+    texture.
+  - Clock/beat names are capitalized and evocative, so I start using them like in-world nouns: “First Hatch Breath,” “Low-
+    Crawl Extraction,” “Bad Air Spreads.”
+  - The audit requires state completeness, so I try to sneak completeness into the prose summary instead of leaving it in
+    --state.
+
+  The clause to add is probably something like:
+
+  > Continuity Summary Discipline: Keep summary prose separate from state handles. A scene summary should be readable by
+  > someone who does not know the clock names, beat names, table artifact slugs, or prior shorthand. Translate every game
+  > handle into a plain in-world event: who acted, who was at risk, what changed, and what danger remains. Do not use clock
+  > names, beat names, scene ids, artifact slugs, or title-case labels as the spine of a sentence. Put mechanical labels and
+  > exact tracker values in --state / --pressure, not in the narrative summary, unless they are clearly introduced in
+  > ordinary language.
+
+  Even shorter isolation:
+
+  > Do not summarize the index. Summarize the event.
+
+  A good required self-check would be:
+
+  “Could a player who missed the last hour understand this summary without opening the table files?”
+
+  If no, it is not a summary.

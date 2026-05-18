@@ -30,7 +30,7 @@ from cli.web_api_server import (
 from cli.config import get_paths, load_config
 from cli.errors import GlassError
 from cli.local_env import load_repo_env
-from cli.state import default_state, save_state
+from cli.state import default_state, initialize_state
 from orchestrator import permissions
 
 
@@ -50,7 +50,7 @@ def initialize_postgres_state(config: Path, campaign_id: str) -> None:
         with _db.connect(pg_config) as conn:
             _db.migrate(conn)
             _db.delete_campaign_data(conn, campaign_id)
-        save_state(get_paths(), default_state(campaign_id))
+        initialize_state(get_paths(), default_state(campaign_id))
     finally:
         if previous is None:
             os.environ.pop("GLASS_CONFIG", None)

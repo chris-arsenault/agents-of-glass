@@ -240,7 +240,6 @@ def speaker_order_for(mode: str) -> tuple[str, ...]:
         "wrap",
         "organization-bootstrap",
         "campaign-planning",
-        "prelude",
         "scene-prep",
     }:
         return ("dm",)

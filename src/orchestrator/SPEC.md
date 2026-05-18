@@ -31,13 +31,13 @@ Campaign management (see [`/docs/design/game-start.md`](../../docs/design/game-s
 ```
 aog campaign run [<id>]                     # IMPLEMENTED — phase-aware lifecycle driver:
                                             #   1. create campaigns/<id>/ from templates/
-                                            #   2. invoke DM in campaign-planning mode (foundation + opening arc)
+                                            #   2. run organization bootstrap
                                             #   3. run character creation
-                                            #   4. run two-scene prelude shakedown
+                                            #   4. invoke DM in campaign-planning mode (foundation + opening arc)
                                             #   5. advance/run active play
-                                            # flags: --max-planning-turns N, --max-creation-turns N,
-                                            #        --max-prelude-turns N, --max-turns N,
-                                            #        --skip-prelude, --use-session-id,
+                                            # flags: --max-organization-turns N, --max-creation-turns N,
+                                            #        --max-planning-turns N, --max-turns N,
+                                            #        --skip-character-creation, --use-session-id,
                                             #        --no-use-session-id, --dry-run
 aog campaign show <id>                      # IMPLEMENTED — print runtime state summary
 aog campaign list                           # IMPLEMENTED — list all campaigns with phase
@@ -101,8 +101,8 @@ Operator concerns only — no agent ever calls `aog`.
     `glass scene end` for v1. If a DM scene-play/action turn leaves an open act
     with no active mode, the turn fails; ordinary scene boundaries must stage
     the next scene and queue player housekeeping in the same DM turn. No-mode
-    active lifecycle starts intermission only after prelude or an act close,
-    and starts scene prep after intermission or as recovery inside an open act.
+    active lifecycle starts intermission only after an act close, and
+    starts scene prep after intermission or as recovery inside an open act.
 12. **Apply turn pacing.** If another turn will run and the completed turn took
     less than `[orchestrator].turn_minimum_seconds` (default 600), sleep for the
     remaining time before spawning the next agent.

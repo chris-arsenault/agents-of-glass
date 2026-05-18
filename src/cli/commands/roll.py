@@ -78,7 +78,6 @@ from ..state import (
     load_state,
     normalize_state,
     queue_event,
-    save_state,
     state_path,
     state_summary,
     transcript_path,)

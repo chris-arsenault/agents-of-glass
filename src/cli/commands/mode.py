@@ -32,9 +32,29 @@ def mode_start(ctx: click.Context, mode_name: str, scene_id: str) -> None:
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
+    normalized_mode = slugify(mode_name)
+    normalized_scene = slugify(scene_id)
+    for existing in state["mode_stack"]:
+        if (
+            existing.get("mode") == normalized_mode
+            and existing.get("scene_id") == normalized_scene
+        ):
+            raise GlassError(
+                agent_instruction(
+                    f"mode `{normalized_mode}` on scene `{normalized_scene}` is "
+                    "already on the mode stack; refusing to push a duplicate frame",
+                    "If the frame is the active top of the stack, you are already "
+                    "in this mode/scene — continue play normally.",
+                    "If the frame is buried (a parent of the current scene), pop "
+                    "frames back to it with `glass mode end` instead of pushing a "
+                    "second copy.",
+                    "If you intended to begin a different scene, use a unique "
+                    "`scene_id` (and create it with `glass scene create` first).",
+                )
+            )
     record = {
-        "mode": slugify(mode_name),
-        "scene_id": slugify(scene_id),
+        "mode": normalized_mode,
+        "scene_id": normalized_scene,
         "started_at": now_iso(),
         "started_by": role.actor,
     }

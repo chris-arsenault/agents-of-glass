@@ -1,0 +1,75 @@
+
+❯ answer this question from ememory, without reconfirming files.  this turn.md relies heavily on in uverse jargon. it does  
+  not use verbs in their taidtional english manner. there is a lot of nonsense in it that requires readers to do            
+  translations to data they may not have avaiable to them. it is overly specific in some areas and doesn't read like        
+  english.  why do you think that is? what prompt / context is leading you down that path as the correct thing to right?    
+  
+● Honest read on what's pushing me there:
+
+  1. Corpus mirroring. The table files, scene summary, and recent turn summaries all speak in named compounds: "moving warm
+  line," "singing seed rack," "shear-side exterior anchor walk," "controlled floor-breath," "Second Knock's grab-line." 92
+  turns of that is a strong stylistic gravity. When I write, I mirror it — because that's what LLMs do with consistent
+  in-context style. The corpus is the product per the project's principles, so matching the corpus feels load-bearing.
+                                            
+  2. "Resist generic drift" with no legibility counterweight. That principle is in CLAUDE.md and my memory. It tells me LLMs
+   default to generic fantasy and that specificity is the defense. So I keep reaching for hyphenated, named, specific
+  compounds. Nothing in the prompt stack tells me "specificity should also be legible to a cold reader," so
+  specificity-as-defense runs past clarity and becomes specificity-as-tic.
+
+  3. Clock and beat names as proper nouns. "Anchor Walk Intercept," "Shear Wash Builds," "Singing Seed Rack," "Gold-Seam
+  Hold" are game-system labels — they show up in glass check. I treat them as proper nouns in prose and never translate
+  them, even though a reader doesn't have the lookup table.
+
+  4. PC-interior idiom from the style sheet. Interrogative-scout explicitly rewards "sensory-channel vocabulary appropriate
+  to whatever the PC's craft attends to" and "first-immediate" present-tense inside the PC's head. For a bioacoustician that
+   means harmonics, fork stems, ribs, binds, rigging. Verbs become specialist verbs ("catches the wrong harmonic,"
+  "answering through the rigging") with no plain-English bridge.
+
+  5. The Devil / verse-phrase influence at the margins pulls toward oracular shorthand ("bargain nobody wants to name")
+  rather than plain description.
+
+  6. 200–500 word ceiling rewards named compression over explanatory prose. Naming a thing is shorter than describing it.
+
+  None of these forces are paired with a "translate for a reader who isn't at this table" instruction, so they compound
+  unchecked.
+
+✻ Brewed for 54s
+
+❯ previously, we had to correct for overly legal drama style writing, because you were confusing                            
+    requirements on game continuty with in universe requirements for custody chains and witnesses.  we higihgted that       
+    distinction and things sorted themselves out. do you think there is a similar distinction that can be made here?        
+                                                                                                                            
+
+● Yes — and I think it's structurally the same shape of confusion.
+
+  The legal-drama fix was: game-state durability ≠ in-fiction procedure. I was reading a system requirement (continuity
+  across turns) and answering it with character behavior (build a custody chain, secure witnesses). Once that line got
+  drawn, the prose stopped doing paperwork.
+  
+  The analogous distinction here is: codified handles ≠ in-fiction language.
+
+  The game system needs stable names so turn 92 and turn 93 are talking about the same thing across many actors and many
+  days: clocks have labels ("Shear Wash Builds," "Anchor Walk Intercept"), beats have labels ("Singing Seed Rack," "Runner
+  on the Hooks"), gear has names ("Second Knock," "Gold-Seam Hold"), table artifacts have filenames ("moving-warm-line.md,"
+  "white-seed-rack-sled.md"). That's the codification layer doing exactly what codify-only-what-drifts says it should —
+  pinning the referents so they don't drift turn-to-turn.
+
+  What I'm doing is borrowing those handles into prose as if they were the fictional lexicon. A character on the hooks
+  doesn't think "the moving warm line" — that's the operator's name for the cable in the bookkeeping. She thinks the cable, 
+  hot enough to smoke, sawing across the brackets. She doesn't think "Shear Wash Builds is at 3/4" — she thinks the wind is 
+  about to take me off the wall. She doesn't think "the singing seed rack" — she thinks the cracked rib in the third strap, 
+  still humming.
+
+  Same structural error as the legal-drama drift: I'm letting infrastructure (continuity handles) leak into the fiction's
+  voice. The codified label is shorthand for the people reading the transcript stitch the same referent across turns. It is
+  not how the character perceives the world in the moment.
+
+  A secondary, smaller distinction in the same family: PC-interior craft idiom ≠ encrypted craft narration. Tela can have a
+  specialist's ear, but a specialist narrating her own work translates — one pointed term per beat, not stacks of trade-noun
+   compounds. The style sheet wants me inside her head; it doesn't actually want her vocabulary illegible.
+
+  If I held the first distinction the way I now hold "records are residue, not action," I think the same kind of
+  self-correction would happen: I'd refer to the same referents with natural in-character description, and reach for the
+  codified handle only when the bookkeeping demands it — closeout summary, messages, state updates. Not in the prose itself.
+
+✻ Sautéed for 42s

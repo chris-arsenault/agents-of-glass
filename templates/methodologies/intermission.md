@@ -7,7 +7,7 @@ applies_to_modes: [intermission]
 
 # Intermission
 
-Intermission is the table-facing planning room after a prelude or closed act.
+Intermission is the table-facing planning room after a closed act.
 It is not used between ordinary scenes inside an open act.
 
 ## DM Opening Turn

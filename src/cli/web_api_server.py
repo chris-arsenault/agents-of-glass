@@ -184,30 +184,40 @@ def _read_api_payload(path: str, query: dict[str, list[str]]) -> dict[str, Any] 
     segments = [urllib.parse.unquote(part) for part in path.strip("/").split("/") if part]
     if segments == ["v1", "campaigns"]:
         return _campaigns_payload()
-    if len(segments) != 4 or segments[:2] != ["v1", "campaigns"]:
+    if len(segments) < 4 or segments[:2] != ["v1", "campaigns"]:
         return None
     campaign_id = _validate_campaign_id(segments[2])
     route = segments[3]
-    if route == "dashboard":
-        return _campaign_dashboard_payload(campaign_id, query)
-    if route == "summary":
-        return _campaign_summary_payload(campaign_id)
-    if route == "live":
-        return _campaign_live_payload(campaign_id, query)
-    if route in {"current-turn-output", "turn-output"}:
-        return _campaign_current_turn_output_payload(campaign_id, query)
-    if route == "table":
-        return _campaign_table_resource_payload(campaign_id)
-    if route == "turns":
-        return _campaign_turns_payload(campaign_id, query)
-    if route == "messages":
-        return _campaign_messages_payload(campaign_id, query)
-    if route == "events":
-        return _campaign_events_payload(campaign_id, query)
-    if route == "rolls":
-        return _campaign_rolls_payload(campaign_id, query)
-    if route == "files":
-        return _campaign_files_payload(campaign_id, query)
+    subroute = segments[4] if len(segments) >= 5 else None
+    extra = segments[5:]
+    if extra:
+        return None
+    if subroute is None:
+        if route == "dashboard":
+            return _campaign_dashboard_payload(campaign_id, query)
+        if route == "summary":
+            return _campaign_summary_payload(campaign_id)
+        if route == "live":
+            return _campaign_live_payload(campaign_id, query)
+        if route in {"current-turn-output", "turn-output"}:
+            return _campaign_current_turn_output_payload(campaign_id, query)
+        if route == "table":
+            return _campaign_table_resource_payload(campaign_id)
+        if route == "turns":
+            return _campaign_turns_payload(campaign_id, query)
+        if route == "scenes":
+            return _campaign_scenes_payload(campaign_id)
+        if route == "messages":
+            return _campaign_messages_payload(campaign_id, query)
+        if route == "events":
+            return _campaign_events_payload(campaign_id, query)
+        if route == "rolls":
+            return _campaign_rolls_payload(campaign_id, query)
+        if route == "files":
+            return _campaign_files_payload(campaign_id, query)
+        return None
+    if route == "turns" and subroute == "range":
+        return _campaign_turns_range_payload(campaign_id, query)
     return None
 
 
@@ -389,6 +399,163 @@ def _campaign_turns_payload(
     try:
         with db.connect(db.load_pg_config(load_config())) as conn:
             payload.update(_turn_delta(conn, campaign_id, after_turn=after_turn, limit=limit))
+    except Exception as exc:
+        payload["database_error"] = str(exc)
+    return payload
+
+
+def _campaign_scenes_payload(campaign_id: str) -> dict[str, Any]:
+    campaign_root = _campaign_root(campaign_id)
+    payload: dict[str, Any] = {
+        "campaign_id": campaign_id,
+        "generated_at": _now_iso(),
+        "arcs": [],
+        "active": _active_arc_scene(campaign_root),
+    }
+    try:
+        with db.connect(db.load_pg_config(load_config())) as conn:
+            rows = db.scene_index(conn, campaign_id=campaign_id)
+    except Exception as exc:
+        payload["database_error"] = str(exc)
+        return payload
+    payload["arcs"] = _arc_index_from_scene_rows(campaign_root, rows)
+    return payload
+
+
+def _arc_index_from_scene_rows(
+    campaign_root: Path,
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    grouped: dict[str | None, list[dict[str, Any]]] = {}
+    arc_order: list[str | None] = []
+    for row in rows:
+        arc_id = row["arc_id"]
+        if arc_id not in grouped:
+            grouped[arc_id] = []
+            arc_order.append(arc_id)
+        grouped[arc_id].append(row)
+    arcs: list[dict[str, Any]] = []
+    for arc_id in arc_order:
+        scenes = grouped[arc_id]
+        scene_entries = [
+            _scene_index_entry(campaign_root, arc_id, scene_row)
+            for scene_row in scenes
+        ]
+        first_turn_id = min(scene["first_turn_id"] for scene in scene_entries)
+        last_turn_id = max(scene["last_turn_id"] for scene in scene_entries)
+        turn_count = sum(scene["turn_count"] for scene in scene_entries)
+        arcs.append(
+            {
+                "arc_id": arc_id,
+                "first_turn_id": first_turn_id,
+                "last_turn_id": last_turn_id,
+                "turn_count": turn_count,
+                "summary_path": _arc_summary_path(campaign_root, arc_id),
+                "scenes": scene_entries,
+            }
+        )
+    return arcs
+
+
+def _scene_index_entry(
+    campaign_root: Path,
+    arc_id: str | None,
+    row: dict[str, Any],
+) -> dict[str, Any]:
+    scene_id = row["scene_id"]
+    return {
+        "scene_id": scene_id,
+        "scene_type": row["scene_type"],
+        "mode": row["mode"],
+        "status": row["scene_status"],
+        "first_turn_id": row["first_turn_id"],
+        "last_turn_id": row["last_turn_id"],
+        "turn_count": row["turn_count"],
+        "summary_path": _scene_summary_path(campaign_root, arc_id, scene_id),
+    }
+
+
+def _arc_summary_path(campaign_root: Path, arc_id: str | None) -> str | None:
+    if not arc_id:
+        return None
+    relative = Path("arcs") / arc_id / "summary.md"
+    if (campaign_root / relative).is_file():
+        return relative.as_posix()
+    return None
+
+
+def _scene_summary_path(
+    campaign_root: Path,
+    arc_id: str | None,
+    scene_id: str | None,
+) -> str | None:
+    if not arc_id or not scene_id:
+        return None
+    relative = Path("arcs") / arc_id / "scenes" / scene_id / "summary.md"
+    if (campaign_root / relative).is_file():
+        return relative.as_posix()
+    return None
+
+
+def _active_arc_scene(campaign_root: Path) -> dict[str, Any] | None:
+    workspace = workspace_db.CampaignWorkspace(campaign_root.name, campaign_root)
+    try:
+        current = workspace_db.current_scene(workspace)
+    except Exception:
+        return None
+    if not current:
+        return None
+    return {
+        "arc_id": current.get("arc_id"),
+        "scene_id": current.get("scene_id"),
+        "scene_type": current.get("scene_type"),
+    }
+
+
+def _campaign_turns_range_payload(
+    campaign_id: str,
+    query: dict[str, list[str]],
+) -> dict[str, Any]:
+    from_turn = _query_int_or_none(query, "from_turn", minimum=1, maximum=1_000_000)
+    to_turn = _query_int_or_none(query, "to_turn", minimum=1, maximum=1_000_000)
+    if from_turn is None or to_turn is None:
+        raise GlassError(
+            agent_instruction(
+                "turns/range requires both `from_turn` and `to_turn`",
+                "Request `/turns/range?from_turn=<int>&to_turn=<int>` with the inclusive turn_id bounds you want.",
+            )
+        )
+    if to_turn < from_turn:
+        raise GlassError(
+            agent_instruction(
+                "turns/range: `to_turn` must be >= `from_turn`",
+                "Swap the parameters or request a non-empty range.",
+            )
+        )
+    span = to_turn - from_turn + 1
+    max_span = 500
+    if span > max_span:
+        raise GlassError(
+            agent_instruction(
+                f"turns/range: requested span {span} exceeds max {max_span}",
+                f"Split the range into windows of at most {max_span} turns and request them separately.",
+            )
+        )
+    payload: dict[str, Any] = {
+        "campaign_id": campaign_id,
+        "from_turn": from_turn,
+        "to_turn": to_turn,
+        "items": [],
+    }
+    try:
+        with db.connect(db.load_pg_config(load_config())) as conn:
+            payload["items"] = db.turn_list(
+                conn,
+                campaign_id=campaign_id,
+                from_turn=from_turn,
+                to_turn=to_turn,
+                limit=span,
+            )
     except Exception as exc:
         payload["database_error"] = str(exc)
     return payload

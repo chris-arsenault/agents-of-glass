@@ -62,12 +62,16 @@ glass beat close <id> --outcome "<outcome>" --clock-delta <n>   # n required, 0 
 glass beat convert <id> --to-clock <clock-id> --reason "<reason>"
 
 # Scene transition / prep
+glass scene transition <next-scene-id> --new|--nested|--return [--close-parent] --type <problem-family> [--arc <arc-id>] [--new-mode scene-play|action|combat|chase|social-pressure] --summary "<closing summary>" --outcome "<outcome>" --xp "tev=3,sumi=3,renno=3,kit=3" [--carry-clock <id>=<reason>]... [--retire-clock <id>=<reason>]... [--parent-summary "<...>"] [--parent-outcome "<...>"] [--parent-carry-clock <id>=<reason>]... [--parent-retire-clock <id>=<reason>]...
+# Single atomic transition. --new closes current + opens next at same stack level. --nested keeps current alive and pushes a sub-scene. --return <parent-id> closes current and pops back to a named parent on the stack. --new --close-parent closes both the current and its immediate parent before opening the next.
 glass scene end --summary "<summary>" --outcome "<outcome>" --xp "tev=3,sumi=3,renno=3,kit=3" [--carry-clock <id>=<reason>]... [--retire-clock <id>=<reason>]...
-# scene end refuses if active scene clocks lack a disposition: either tick to resolve, --carry-clock, or --retire-clock
+# scene end is the low-level "close current scene without a successor" command; prefer scene transition during active play.
 glass arc close-check [<arc-id>]
-glass arc close <arc-id>
+glass arc close <arc-id> --summary "<arc summary>" --outcome "<outcome>" [--carry-clock <id>=<reason>]... [--retire-clock <id>=<reason>]...
+# arc close refuses if active arc-scoped clocks lack a disposition.
 glass scene create <scene-slug> --type <problem-family> [--arc <arc-id>]
 glass mode start <scene-play|action|combat|chase|social-pressure> <scene-slug>
+# scene create + mode start are low-level recovery primitives. mode start refuses duplicate (mode, scene_id) frames on the stack.
 glass thread current
 glass thread advance <thread-id> --note "<concrete visible beat>"
 glass next housekeeping-round --previous-scene "<closed>" --next-scene "<next>"

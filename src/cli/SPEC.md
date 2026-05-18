@@ -37,7 +37,15 @@ glass scene create <slug> --type <label>       # creates arcs/<active-arc>/scene
                                                # use --arc <slug> to attach to a non-active arc
 glass scene current
 glass scene list [--arc <slug>]
-glass scene end --outcome <text>               # archives table, ends the active scene
+glass scene transition <next-scene-id> --new|--nested|--return [--close-parent]
+                                               # canonical scene-boundary command.
+                                               # --new closes current + opens next at same stack level.
+                                               # --nested pushes a sub-scene on top without closing.
+                                               # --return <parent-id> closes nested + pops to parent.
+                                               # required clock dispositions for any scene that closes.
+glass scene end --outcome <text>               # low-level: closes current scene without a successor.
+                                               # use only when no next scene is being staged
+                                               # (e.g. immediately before glass arc close).
                                                # --outcome is repeatable, max 2 bullets
 glass table current                            # optional/debug: list live player-agent-visible table files
 glass table show [path]                        # read player-agent-visible table file/dir
@@ -218,7 +226,7 @@ recurse over markdown files:
 
 ```
 glass sync apply players/tev/public/intro.md
-glass sync apply arcs/prelude table
+glass sync apply arcs/<arc> table
 glass sync apply
 ```
 

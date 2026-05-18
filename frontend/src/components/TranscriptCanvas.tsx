@@ -40,6 +40,14 @@ export function TranscriptCanvas({ jumpTurnId, onJumpHandled }: CanvasProps) {
   const rolls = useSessionStore((state) => state.rolls);
   const messages = useSessionStore((state) => state.messages);
   const characters = useSessionStore((state) => state.characters);
+  const loadEarlierTurns = useSessionStore((state) => state.loadEarlierTurns);
+  const loadTurnsAround = useSessionStore((state) => state.loadTurnsAround);
+  const isLoadingEarlierTurns = useSessionStore(
+    (state) => state.isLoadingEarlierTurns,
+  );
+  const hasMoreEarlierTurns = useSessionStore(
+    (state) => state.hasMoreEarlierTurns,
+  );
 
   const [view, setView] = useState<StageView>("transcript");
   const [filter, setFilter] = useState<TranscriptFilter>("all");
@@ -74,10 +82,34 @@ export function TranscriptCanvas({ jumpTurnId, onJumpHandled }: CanvasProps) {
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const lastEntryIdRef = useRef<string | null>(null);
+  const firstEntryIdRef = useRef<string | null>(null);
   const freshEntryIdRef = useRef<string | null>(null);
   const lastViewRef = useRef<StageView>(view);
+  const prependAnchorRef = useRef<{ height: number; top: number } | null>(null);
 
-  // Autoscroll on new entries.
+  // Capture scroll metrics before a prepend, so we can restore visual position.
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    const first = visibleEntries.at(0);
+    if (!node || !first) {
+      return;
+    }
+    if (
+      firstEntryIdRef.current !== null &&
+      firstEntryIdRef.current !== first.id &&
+      prependAnchorRef.current
+    ) {
+      const { height, top } = prependAnchorRef.current;
+      const delta = node.scrollHeight - height;
+      if (delta > 0) {
+        node.scrollTop = top + delta;
+      }
+      prependAnchorRef.current = null;
+    }
+    firstEntryIdRef.current = first.id;
+  }, [visibleEntries]);
+
+  // Autoscroll on new entries at the bottom.
   useLayoutEffect(() => {
     const last = visibleEntries.at(-1);
     if (!last) {
@@ -99,7 +131,38 @@ export function TranscriptCanvas({ jumpTurnId, onJumpHandled }: CanvasProps) {
     }
   }, [view, visibleEntries]);
 
-  // Jump-to-turn (from agent lane click or cmd-k).
+  // Auto-load earlier turns when the user scrolls near the top.
+  useEffect(() => {
+    if (view !== "transcript" && view !== "interleaved") {
+      return;
+    }
+    const node = scrollRef.current;
+    if (!node) {
+      return;
+    }
+    const onScroll = () => {
+      if (!hasMoreEarlierTurns || isLoadingEarlierTurns) {
+        return;
+      }
+      if (node.scrollTop <= 80) {
+        prependAnchorRef.current = {
+          height: node.scrollHeight,
+          top: node.scrollTop,
+        };
+        void loadEarlierTurns().then((fetched) => {
+          if (!fetched) {
+            prependAnchorRef.current = null;
+          }
+        });
+      }
+    };
+    node.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      node.removeEventListener("scroll", onScroll);
+    };
+  }, [hasMoreEarlierTurns, isLoadingEarlierTurns, loadEarlierTurns, view]);
+
+  // Jump-to-turn (from agent lane click, cmd-k, or timeline navigator).
   useEffect(() => {
     if (jumpTurnId === null) return;
     const node = scrollRef.current;
@@ -109,37 +172,39 @@ export function TranscriptCanvas({ jumpTurnId, onJumpHandled }: CanvasProps) {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
       target.classList.add("is-fresh");
       window.setTimeout(() => target.classList.remove("is-fresh"), 1600);
+      onJumpHandled();
+      return;
     }
-    onJumpHandled();
-  }, [jumpTurnId, onJumpHandled]);
+    // Target turn isn't loaded yet; fetch a window around it and re-run via deps.
+    void loadTurnsAround(jumpTurnId);
+  }, [jumpTurnId, loadTurnsAround, onJumpHandled, visibleEntries]);
 
   return (
     <section className="stage" aria-label="Transcript">
-      <header className="stage__head">
-        <div className="stage__head-title">
-          <span className="stage__head-eyebrow">
-            {view === "transcript"
-              ? "Conclave transcript"
-              : view === "interleaved"
-                ? "Interleaved ledger"
-                : "Message bus"}
-          </span>
-          <span className="stage__head-name">
-            {view === "transcript"
-              ? "Live ledger"
-              : view === "interleaved"
-                ? "Turns + bus traffic"
-                : "Inter-agent comms"}
-          </span>
-        </div>
-        <div className="stage__head-controls" role="tablist">
-          <ViewToggle view={view} setView={setView} />
-          {view !== "bus" && (
-            <FilterToggle filter={filter} setFilter={setFilter} />
-          )}
-        </div>
-      </header>
+      <StageHeader
+        filter={filter}
+        setFilter={setFilter}
+        setView={setView}
+        view={view}
+      />
       <div className="stage__transcript" ref={scrollRef}>
+        {view !== "bus" && (
+          <EarlierTurnsBanner
+            hasMore={hasMoreEarlierTurns}
+            isLoading={isLoadingEarlierTurns}
+            firstTurnId={turns.at(0)?.turn_id ?? null}
+            onLoad={() => {
+              const node = scrollRef.current;
+              if (node) {
+                prependAnchorRef.current = {
+                  height: node.scrollHeight,
+                  top: node.scrollTop,
+                };
+              }
+              void loadEarlierTurns();
+            }}
+          />
+        )}
         {visibleEntries.length === 0 ? (
           <div className="empty-state">
             {view === "bus"
@@ -202,6 +267,78 @@ function renderEntry(
     );
   }
   return null;
+}
+
+function StageHeader({
+  filter,
+  setFilter,
+  setView,
+  view,
+}: {
+  filter: TranscriptFilter;
+  setFilter: (next: TranscriptFilter) => void;
+  setView: (next: StageView) => void;
+  view: StageView;
+}) {
+  const headerCopy: Record<StageView, { eyebrow: string; name: string }> = {
+    transcript: { eyebrow: "Conclave transcript", name: "Live ledger" },
+    interleaved: { eyebrow: "Interleaved ledger", name: "Turns + bus traffic" },
+    bus: { eyebrow: "Message bus", name: "Inter-agent comms" },
+  };
+  const copy = headerCopy[view];
+  return (
+    <header className="stage__head">
+      <div className="stage__head-title">
+        <span className="stage__head-eyebrow">{copy.eyebrow}</span>
+        <span className="stage__head-name">{copy.name}</span>
+      </div>
+      <div className="stage__head-controls" role="tablist">
+        <ViewToggle view={view} setView={setView} />
+        {view !== "bus" && (
+          <FilterToggle filter={filter} setFilter={setFilter} />
+        )}
+      </div>
+    </header>
+  );
+}
+
+function EarlierTurnsBanner({
+  hasMore,
+  isLoading,
+  firstTurnId,
+  onLoad,
+}: {
+  hasMore: boolean;
+  isLoading: boolean;
+  firstTurnId: number | null;
+  onLoad: () => void;
+}) {
+  if (isLoading) {
+    return (
+      <div className="transcript__earlier transcript__earlier--loading">
+        Loading earlier turns…
+      </div>
+    );
+  }
+  if (!hasMore) {
+    if (firstTurnId === null || firstTurnId > 1) {
+      return null;
+    }
+    return (
+      <div className="transcript__earlier transcript__earlier--start">
+        Start of campaign.
+      </div>
+    );
+  }
+  return (
+    <button
+      className="transcript__earlier transcript__earlier--button"
+      onClick={onLoad}
+      type="button"
+    >
+      Load earlier turns
+    </button>
+  );
 }
 
 function ViewToggle({

@@ -84,10 +84,11 @@ from ..state import (
     load_state,
     normalize_state,
     queue_event,
-    save_state,
     state_path,
     state_summary,
-    transcript_path,)
+    transcript_path,
+    update_state_fields,
+)
 from ..validation import (
     assert_attribute_name,
     clamp,
@@ -129,8 +130,15 @@ def scene_create(
     require_dm()
     workspace = _campaign_workspace()
     paths = get_paths()
+    state = load_state(paths, workspace.campaign_id)
     try:
-        scene_dir = _workspace.create_scene(workspace, scene_id, scene_type, arc_id=arc_id)
+        scene_dir = _workspace.create_scene(
+            workspace,
+            scene_id,
+            scene_type,
+            arc_id=arc_id,
+            state=state,
+        )
     except FileExistsError as exc:
         raise GlassError(
             agent_instruction(
@@ -154,7 +162,6 @@ def scene_create(
                 "Use slug-like scene and type names, then retry the scene command.",
             )
         ) from exc
-    state = load_state(paths, workspace.campaign_id)
     normalized_scene_type = _workspace.slugify(scene_type)
     normalized_scene_id = _workspace.slugify(scene_id)
     active_scene_arc = state.get("active_scene_arc")
@@ -249,234 +256,30 @@ def scene_end_cmd(
     scene_id = current["scene_id"]
     arc_id = current["arc_id"]
     outcome_lines = normalize_outcomes(outcome_values)
-
-    carry_dispositions = _parse_clock_disposition_specs(carry_clock_specs, "carry")
-    retire_dispositions = _parse_clock_disposition_specs(retire_clock_specs, "retire")
-    overlap = set(carry_dispositions) & set(retire_dispositions)
-    if overlap:
-        raise GlassError(
-            agent_instruction(
-                "the same clock cannot be both carried and retired: "
-                + ", ".join(sorted(overlap)),
-                "Pick one disposition per clock. Use `--carry-clock` when "
-                "pressure continues beyond the scene; use `--retire-clock` "
-                "when the clock is obsolete or resolved by fiction.",
-            )
-        )
-    with pg_connection() as conn:
-        active_scene_clocks = _db.scene_clock_list(
-            conn,
-            campaign_id=campaign_id,
-            scene_id=scene_id,
-        )
-    active_clock_ids = {str(item["clock_id"]) for item in active_scene_clocks}
-    declared_clock_ids = set(carry_dispositions) | set(retire_dispositions)
-    missing_dispositions = sorted(active_clock_ids - declared_clock_ids)
-    unknown_dispositions = sorted(declared_clock_ids - active_clock_ids)
-    if missing_dispositions:
-        raise GlassError(
-            agent_instruction(
-                "scene end refuses while active scene clocks have no disposition: "
-                + ", ".join(missing_dispositions),
-                "For each open scene clock, either resolve it during play with "
-                "`glass scene clock tick`, then rerun `glass scene end`, or "
-                "name an explicit disposition: `--carry-clock <id>=<reason>` "
-                "if the pressure continues beyond this scene, or "
-                "`--retire-clock <id>=<reason>` if the clock is obsolete or "
-                "was resolved by fiction without a tick.",
-            )
-        )
-    if unknown_dispositions:
-        raise GlassError(
-            agent_instruction(
-                "disposition given for clocks that are not active in this scene: "
-                + ", ".join(unknown_dispositions),
-                "Use `glass scene clock list` or `glass check` to see the "
-                "active scene clocks before dispositioning them.",
-            )
-        )
-    clock_dispositions: list[dict[str, str]] = []
-    for clock_record in active_scene_clocks:
-        clock_id = str(clock_record["clock_id"])
-        if clock_id in carry_dispositions:
-            clock_dispositions.append(
-                {
-                    "clock_id": clock_id,
-                    "label": str(clock_record.get("label") or clock_id),
-                    "disposition": "carried",
-                    "reason": carry_dispositions[clock_id],
-                    "value": int(clock_record.get("value", 0) or 0),
-                    "max": int(clock_record.get("max", 0) or 0),
-                }
-            )
-        else:
-            clock_dispositions.append(
-                {
-                    "clock_id": clock_id,
-                    "label": str(clock_record.get("label") or clock_id),
-                    "disposition": "retired",
-                    "reason": retire_dispositions[clock_id],
-                    "value": int(clock_record.get("value", 0) or 0),
-                    "max": int(clock_record.get("max", 0) or 0),
-                }
-            )
-
-    summary_path: str | None = None
-    if summary and summary.strip():
-        body = append_outcome_section(summary.strip(), outcome_lines)
-        body = append_clock_disposition_section(body, clock_dispositions)
-        summary_path = _write_scene_summary(workspace, arc_id, scene_id, body)
-    else:
-        summary_path = _append_scene_outcomes(
-            workspace,
-            arc_id,
-            scene_id,
-            outcome_lines,
-        )
-        if clock_dispositions and summary_path:
-            existing = Path(summary_path).read_text(encoding="utf-8")
-            Path(summary_path).write_text(
-                append_clock_disposition_section(existing, clock_dispositions),
-                encoding="utf-8",
-            )
-
-    beat_lines: list[str] = []
-    if beats:
-        for line in _split_quest_beat_lines(beats):
-            text = line.strip().lstrip("-*").strip()
-            if text:
-                _append_quest_beat(workspace, text, scene_id=scene_id, arc_id=arc_id)
-                beat_lines.append(text)
-
-    xp_awards: list[dict[str, Any]] = []
-    if xp_spec:
-        with pg_connection() as conn:
-            for agent, delta in _parse_xp_spec(xp_spec):
-                character_id = lookup_player_character_id(campaign_id, agent)
-                if not character_id:
-                    raise GlassError(
-                        agent_instruction(
-                            f"cannot award scene XP to {agent!r}",
-                            "Use an agent id with exactly one character in this campaign.",
-                            "If the player has no character or multiple rows, resolve the character sheet before awarding scene XP.",
-                        )
-                    )
-                try:
-                    updated, before, after = _db.character_award_xp(
-                        conn,
-                        campaign_id=campaign_id,
-                        character_id=character_id,
-                        delta=delta,
-                        actor=role.actor,
-                        reason=f"scene end: {scene_id}",
-                        session_id=session_id,
-                        scene_id=scene_id,
-                    )
-                except LookupError:
-                    raise GlassError(
-                        agent_instruction(
-                            f"unknown character {character_id!r}",
-                            "Use the character id assigned to the target player in this campaign.",
-                        )
-                    ) from None
-                xp_awards.append({
-                    "player": agent,
-                    "character_id": character_id,
-                    "delta": delta,
-                    "xp_before": before,
-                    "xp_after": after,
-                    "level": updated["level"],
-                    "mirror": write_public_character_mirror(
-                        paths,
-                        campaign_id,
-                        updated,
-                    ),
-                })
-
-    table_archive_path: str | None = None
-    try:
-        table_archive_path = str(
-            _workspace.archive_table(
-                workspace,
-                arc_id=arc_id,
-                scene_id=scene_id,
-                clear_live=True,
-            )
-        )
-    except FileNotFoundError:
-        table_archive_path = None
-
-    try:
-        ended = _workspace.end_scene(workspace)
-    except ValueError as exc:
-        raise GlassError(
-            agent_instruction(
-                str(exc),
-                "Check the active scene with `glass scene current`, then end only that scene.",
-            )
-        ) from exc
-
-    state["active_scene"] = None
-    state["active_scene_arc"] = None
-    state["active_scene_type"] = None
-    state["scene_closing_turns"] = None
-    state["action_order"] = None
-    trackers = state.get("scene_trackers")
-    if isinstance(trackers, dict):
-        state["scene_trackers"] = {
-            key: value
-            for key, value in trackers.items()
-            if not isinstance(value, dict) or value.get("scene_id") != scene_id
-        }
-    with pg_connection() as conn:
-        _db.scene_tracker_delete_scene(
-            conn,
-            campaign_id=campaign_id,
-            scene_id=scene_id,
-        )
-        _db.action_order_clear_scene(
-            conn,
-            campaign_id=campaign_id,
-            scene_id=scene_id,
-        )
-        _db.scene_beat_drop_scene(
-            conn,
-            campaign_id=campaign_id,
-            scene_id=scene_id,
-            actor=role.actor,
-            turn_id=str(state.get("active_turn_id") or "").strip() or None,
-            outcome="scene ended",
-        )
-        _db.scene_clock_drop_scene(
-            conn,
-            campaign_id=campaign_id,
-            scene_id=scene_id,
-            actor=role.actor,
-            turn_id=str(state.get("active_turn_id") or "").strip() or None,
-            outcome="scene ended",
-        )
-    for item in clock_dispositions:
-        queue_event(
-            state,
-            role.actor,
-            f"scene clock {item['disposition']}: {item['label']} "
-            f"({item['value']}/{item['max']}) — {item['reason']}",
-        )
-    queue_event(
-        state, role.actor,
-        f"scene end: {ended}"
-        + (f" (+{len(xp_awards)} xp awards)" if xp_awards else ""),
+    clock_dispositions = _validate_scene_clock_dispositions(
+        campaign_id=campaign_id,
+        scene_id=scene_id,
+        carry_specs=carry_clock_specs,
+        retire_specs=retire_clock_specs,
+        label="scene end",
     )
-    result = {
-        "campaign_id": workspace.campaign_id,
-        "ended_scene": ended,
-        "summary_path": summary_path,
-        "outcomes": outcome_lines,
-        "table_archive_path": table_archive_path,
-        "beats_logged": beat_lines,
-        "xp_awards": xp_awards,
-        "clock_dispositions": clock_dispositions,
-    }
+    close_result = _apply_scene_close(
+        ctx=ctx,
+        paths=paths,
+        workspace=workspace,
+        state=state,
+        campaign_id=campaign_id,
+        session_id=session_id,
+        role=role,
+        scene_id=scene_id,
+        arc_id=arc_id,
+        summary=summary,
+        beats=beats,
+        outcome_lines=outcome_lines,
+        xp_spec=xp_spec,
+        clock_dispositions=clock_dispositions,
+    )
+    result = {"campaign_id": workspace.campaign_id, **close_result}
     commit(
         paths, state, ctx, "scene.end",
         command_params(
@@ -489,6 +292,721 @@ def scene_end_cmd(
         ),
         result,
     )
+
+
+_SCENE_TRANSITION_PLAY_MODES: tuple[str, ...] = (
+    "scene-play",
+    "action",
+    "combat",
+    "chase",
+    "social-pressure",
+)
+
+
+@scene.command("transition")
+@click.argument("next_scene_id")
+@click.option(
+    "--new",
+    "kind",
+    flag_value="new",
+    help="Close the current scene; open the next scene at the same stack level.",
+)
+@click.option(
+    "--nested",
+    "kind",
+    flag_value="nested",
+    help=(
+        "Keep the current scene alive; push a sub-scene on top (action burst, "
+        "flashback, sub-encounter). The current scene's clocks and beats stay "
+        "live under the new frame."
+    ),
+)
+@click.option(
+    "--return",
+    "kind",
+    flag_value="return",
+    help=(
+        "Close the current nested scene; pop back to the parent named in "
+        "<next-scene-id>. The parent must already be on the stack."
+    ),
+)
+@click.option(
+    "--close-parent",
+    is_flag=True,
+    help=(
+        "Only valid with --new. Also close the immediate parent scene above "
+        "the current. Requires --parent-summary, --parent-outcome, and "
+        "--parent-carry-clock/--parent-retire-clock dispositions for the "
+        "parent's active scene clocks."
+    ),
+)
+@click.option(
+    "--type",
+    "scene_type",
+    default=None,
+    help="Scene protocol/toolkit label. Required for --new and --nested.",
+)
+@click.option(
+    "--arc",
+    "arc_id_override",
+    default=None,
+    help="Arc for the new scene. Defaults to the active arc.",
+)
+@click.option(
+    "--new-mode",
+    "new_mode",
+    type=click.Choice(list(_SCENE_TRANSITION_PLAY_MODES)),
+    default="scene-play",
+    show_default=True,
+    help="Mode to start for the new scene.",
+)
+@click.option("--summary", default=None,
+              help="Closing summary for the current scene (required when closing).")
+@click.option("--outcome", "outcome_values", multiple=True,
+              help="In-universe outcome bullet(s) for the current scene close. 1-2 required when closing.")
+@click.option("--beats", default=None,
+              help="Newline-separated quest-log beats for the current scene close.")
+@click.option("--xp", "xp_spec", default=None,
+              help="XP awards for the crew on the current scene close: 'tev=3,sumi=3,...'.")
+@click.option("--carry-clock", "carry_clock_specs", multiple=True,
+              help="<clock-id>=<reason> for current scene clocks whose pressure continues beyond the scene.")
+@click.option("--retire-clock", "retire_clock_specs", multiple=True,
+              help="<clock-id>=<reason> for current scene clocks that are obsolete or resolved by fiction.")
+@click.option("--parent-summary", default=None,
+              help="(--close-parent only) Closing summary for the parent scene.")
+@click.option("--parent-outcome", "parent_outcome_values", multiple=True,
+              help="(--close-parent only) Outcome bullet(s) for the parent scene close. 1-2 required.")
+@click.option("--parent-beats", default=None,
+              help="(--close-parent only) Quest-log beats for the parent scene close.")
+@click.option("--parent-carry-clock", "parent_carry_clock_specs", multiple=True,
+              help="(--close-parent only) <clock-id>=<reason> for parent scene clocks that continue.")
+@click.option("--parent-retire-clock", "parent_retire_clock_specs", multiple=True,
+              help="(--close-parent only) <clock-id>=<reason> for parent scene clocks that retire.")
+@click.option("--force", is_flag=True,
+              help="Override the parent-on-stack guard for --new. Almost never correct; prefer --return or --close-parent.")
+@click.pass_context
+def scene_transition_cmd(
+    ctx: click.Context,
+    next_scene_id: str,
+    kind: str | None,
+    close_parent: bool,
+    scene_type: str | None,
+    arc_id_override: str | None,
+    new_mode: str,
+    summary: str | None,
+    outcome_values: tuple[str, ...],
+    beats: str | None,
+    xp_spec: str | None,
+    carry_clock_specs: tuple[str, ...],
+    retire_clock_specs: tuple[str, ...],
+    parent_summary: str | None,
+    parent_outcome_values: tuple[str, ...],
+    parent_beats: str | None,
+    parent_carry_clock_specs: tuple[str, ...],
+    parent_retire_clock_specs: tuple[str, ...],
+    force: bool,
+) -> None:
+    """Close the current scene and (optionally) stage the next one in one atomic command.
+
+    Exactly one of --new, --nested, --return must be passed. Use --new to
+    replace the current scene at the same stack level (most common), --nested
+    to push a sub-scene on top of the current one (action burst, flashback),
+    or --return to pop back to a named parent scene from a nested scene.
+    """
+    role = require_dm()
+    if kind is None:
+        raise GlassError(
+            agent_instruction(
+                "`glass scene transition` requires exactly one of --new, --nested, --return",
+                "Use --new to replace the current scene, --nested to push a sub-scene, "
+                "or --return to pop back to a named parent scene.",
+            )
+        )
+    if close_parent and kind != "new":
+        raise GlassError(
+            agent_instruction(
+                "--close-parent is only valid with --new",
+                "Use --new --close-parent to close both the current and its immediate parent, "
+                "then open the next scene at the resulting stack depth.",
+            )
+        )
+    workspace = _campaign_workspace()
+    paths = get_paths()
+    campaign_id = active_campaign_id()
+    state = load_state(paths, campaign_id)
+    session_id = state["campaign"]
+
+    next_scene_slug = slugify(next_scene_id)
+    mode_stack: list[dict[str, Any]] = state.get("mode_stack") or []
+    if not mode_stack:
+        raise GlassError(
+            agent_instruction(
+                "scene transition requires an active mode on the stack",
+                "Use `glass mode start <mode> <scene>` to enter a scene before transitioning out of it.",
+            )
+        )
+    top_frame = mode_stack[-1]
+
+    # Stack collision: next_scene_id cannot already be on the stack
+    for frame in mode_stack:
+        if frame.get("scene_id") == next_scene_slug and kind != "return":
+            raise GlassError(
+                agent_instruction(
+                    f"scene id {next_scene_slug!r} is already on the mode stack",
+                    "Pick a unique scene id, or use --return to pop back to it if it is a parent.",
+                )
+            )
+
+    parent_frame: dict[str, Any] | None = mode_stack[-2] if len(mode_stack) >= 2 else None
+
+    if kind == "nested":
+        return _scene_transition_nested(
+            ctx=ctx, paths=paths, workspace=workspace, state=state,
+            campaign_id=campaign_id, role=role,
+            next_scene_slug=next_scene_slug, scene_type=scene_type,
+            arc_id_override=arc_id_override, new_mode=new_mode,
+            top_frame=top_frame, mode_stack=mode_stack,
+        )
+
+    if kind == "return":
+        return _scene_transition_return(
+            ctx=ctx, paths=paths, workspace=workspace, state=state,
+            campaign_id=campaign_id, session_id=session_id, role=role,
+            target_scene_slug=next_scene_slug, mode_stack=mode_stack,
+            top_frame=top_frame,
+            summary=summary, outcome_values=outcome_values, beats=beats,
+            xp_spec=xp_spec,
+            carry_clock_specs=carry_clock_specs,
+            retire_clock_specs=retire_clock_specs,
+        )
+
+    # kind == "new"
+    if parent_frame is not None and not (close_parent or force):
+        raise GlassError(
+            agent_instruction(
+                f"the mode stack has a parent scene {parent_frame.get('scene_id')!r}; "
+                "`--new` from a nested scene almost never makes sense",
+                "Did you mean `--return " + str(parent_frame.get("scene_id"))
+                + "` to pop back to the parent, "
+                "`--new --close-parent` to close both the current and the parent, "
+                "or `--force` to abandon the parent silently (rare)?",
+            )
+        )
+    return _scene_transition_new(
+        ctx=ctx, paths=paths, workspace=workspace, state=state,
+        campaign_id=campaign_id, session_id=session_id, role=role,
+        next_scene_slug=next_scene_slug, scene_type=scene_type,
+        arc_id_override=arc_id_override, new_mode=new_mode,
+        top_frame=top_frame, mode_stack=mode_stack, parent_frame=parent_frame,
+        close_parent=close_parent, force=force,
+        summary=summary, outcome_values=outcome_values, beats=beats,
+        xp_spec=xp_spec,
+        carry_clock_specs=carry_clock_specs,
+        retire_clock_specs=retire_clock_specs,
+        parent_summary=parent_summary,
+        parent_outcome_values=parent_outcome_values,
+        parent_beats=parent_beats,
+        parent_carry_clock_specs=parent_carry_clock_specs,
+        parent_retire_clock_specs=parent_retire_clock_specs,
+    )
+
+
+def _require_scene_type(scene_type: str | None) -> str:
+    if not scene_type or not scene_type.strip():
+        raise GlassError(
+            agent_instruction(
+                "--type is required for --new and --nested",
+                "Pass a scene protocol/toolkit label, e.g. `--type scene-play` "
+                "or `--type chase`.",
+            )
+        )
+    return scene_type.strip()
+
+
+def _create_scene_record(
+    *,
+    workspace: _workspace.CampaignWorkspace,
+    state: dict[str, Any],
+    next_scene_slug: str,
+    scene_type: str,
+    arc_id: str | None,
+) -> tuple[Path, str, str]:
+    try:
+        scene_dir = _workspace.create_scene(
+            workspace,
+            next_scene_slug,
+            scene_type,
+            arc_id=arc_id,
+            state=state,
+        )
+    except FileExistsError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Choose a new scene id; existing closed scenes cannot be reopened "
+                "by `glass scene transition`. (Returning to a parent scene on the "
+                "stack uses `--return`.)",
+            )
+        ) from exc
+    except FileNotFoundError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Create or activate the target arc first with "
+                "`glass arc create <arc-id> --pull-source <source> --pull-utilization <note>`.",
+            )
+        ) from exc
+    except ValueError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Use slug-like scene and type names.",
+            )
+        ) from exc
+    return (
+        scene_dir,
+        _workspace.slugify(scene_type),
+        _workspace.slugify(next_scene_slug),
+    )
+
+
+def _push_mode_frame(
+    *,
+    state: dict[str, Any],
+    role: Role,
+    new_mode: str,
+    next_scene_slug: str,
+) -> dict[str, Any]:
+    new_mode_slug = slugify(new_mode)
+    frame = {
+        "mode": new_mode_slug,
+        "scene_id": next_scene_slug,
+        "started_at": now_iso(),
+        "started_by": role.actor,
+    }
+    state["mode_stack"].append(frame)
+    return frame
+
+
+def _scene_transition_nested(
+    *,
+    ctx: click.Context,
+    paths: Paths,
+    workspace: _workspace.CampaignWorkspace,
+    state: dict[str, Any],
+    campaign_id: str,
+    role: Role,
+    next_scene_slug: str,
+    scene_type: str | None,
+    arc_id_override: str | None,
+    new_mode: str,
+    top_frame: dict[str, Any],
+    mode_stack: list[dict[str, Any]],
+) -> None:
+    resolved_type = _require_scene_type(scene_type)
+    arc_for_new = arc_id_override or state.get("active_arc") or top_frame.get("scene_id")
+    scene_dir, resolved_type_slug, resolved_scene_slug = _create_scene_record(
+        workspace=workspace,
+        state=state,
+        next_scene_slug=next_scene_slug,
+        scene_type=resolved_type,
+        arc_id=arc_for_new,
+    )
+    new_frame = _push_mode_frame(
+        state=state, role=role,
+        new_mode=new_mode, next_scene_slug=resolved_scene_slug,
+    )
+    queue_event(
+        state, role.actor,
+        f"scene transition --nested: parent {top_frame.get('scene_id')} stays live; "
+        f"nested {resolved_scene_slug} ({resolved_type_slug}) on top",
+    )
+    queue_event(
+        state, role.actor,
+        f"mode start {new_frame['mode']} @ {resolved_scene_slug}",
+    )
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "kind": "nested",
+        "parent_scene": top_frame.get("scene_id"),
+        "new_scene": {
+            "scene_id": resolved_scene_slug,
+            "scene_type": resolved_type_slug,
+            "arc_id": arc_for_new,
+            "path": str(scene_dir),
+            "mode": new_frame["mode"],
+        },
+        "mode_stack": list(mode_stack),
+    }
+    commit(
+        paths, state, ctx, "scene.transition",
+        command_params(
+            kind="nested",
+            next_scene_id=resolved_scene_slug,
+            scene_type=resolved_type_slug,
+            arc=arc_for_new,
+            new_mode=new_frame["mode"],
+        ),
+        result,
+    )
+
+
+def _scene_transition_return(
+    *,
+    ctx: click.Context,
+    paths: Paths,
+    workspace: _workspace.CampaignWorkspace,
+    state: dict[str, Any],
+    campaign_id: str,
+    session_id: str,
+    role: Role,
+    target_scene_slug: str,
+    mode_stack: list[dict[str, Any]],
+    top_frame: dict[str, Any],
+    summary: str | None,
+    outcome_values: tuple[str, ...],
+    beats: str | None,
+    xp_spec: str | None,
+    carry_clock_specs: tuple[str, ...],
+    retire_clock_specs: tuple[str, ...],
+) -> None:
+    # Validate target is a parent on the stack (not the top, not absent)
+    target_index = None
+    for index in range(len(mode_stack) - 2, -1, -1):
+        if mode_stack[index].get("scene_id") == target_scene_slug:
+            target_index = index
+            break
+    if target_index is None:
+        raise GlassError(
+            agent_instruction(
+                f"--return target {target_scene_slug!r} is not a parent on the mode stack",
+                "Use `glass mode current` to inspect the stack. --return only works "
+                "for scenes already buried below the current frame.",
+            )
+        )
+
+    current_scene_id = str(top_frame.get("scene_id"))
+    # arc_id derivation: prefer scene→arc filesystem lookup (single source of
+    # truth from where the scene actually lives on disk). Fall back to
+    # workspace runtime state only when the scene isn't on disk yet.
+    current_arc_id = _workspace.arc_for_scene(workspace, current_scene_id)
+    if not current_arc_id:
+        current_meta = _workspace.current_scene(workspace)
+        current_arc_id = (
+            current_meta["arc_id"] if current_meta else state.get("active_scene_arc")
+        )
+    if not current_arc_id:
+        raise GlassError(
+            agent_instruction(
+                f"cannot resolve arc for scene {current_scene_id!r}",
+                "The current scene is not on disk under any arc, and no arc context "
+                "is available from runtime state. Recover via `glass arc activate "
+                "<arc-id>` and `glass mode current` before retrying.",
+            )
+        )
+    if not outcome_values:
+        raise GlassError(
+            agent_instruction(
+                "--outcome is required for --return (1-2 bullets)",
+                "Pass `--outcome \"<in-universe close>\"` to record the closing nested scene.",
+            )
+        )
+    outcome_lines = normalize_outcomes(outcome_values)
+    clock_dispositions = _validate_scene_clock_dispositions(
+        campaign_id=campaign_id,
+        scene_id=current_scene_id,
+        carry_specs=carry_clock_specs,
+        retire_specs=retire_clock_specs,
+        label="scene transition --return",
+    )
+    close_result = _apply_scene_close(
+        ctx=ctx, paths=paths, workspace=workspace, state=state,
+        campaign_id=campaign_id, session_id=session_id, role=role,
+        scene_id=current_scene_id, arc_id=str(current_arc_id),
+        summary=summary, beats=beats, outcome_lines=outcome_lines,
+        xp_spec=xp_spec, clock_dispositions=clock_dispositions,
+    )
+    # Pop frames until target is at top
+    popped: list[str] = []
+    while mode_stack and mode_stack[-1].get("scene_id") != target_scene_slug:
+        popped.append(str(mode_stack.pop().get("scene_id")))
+    # Restore workspace state to point at the parent (the helper cleared it)
+    parent_frame = mode_stack[-1] if mode_stack else None
+    parent_arc_id = None
+    if parent_frame is not None:
+        parent_scene_id = str(parent_frame.get("scene_id"))
+        # Read parent's arc_id from the scene directory on disk
+        parent_arc_id = _workspace.arc_for_scene(workspace, parent_scene_id)
+        update_state_fields(
+            paths,
+            campaign_id,
+            {
+                "active_scene": parent_scene_id,
+                "active_scene_arc": parent_arc_id,
+                "active_scene_type": _lookup_scene_type(
+                    workspace, parent_arc_id, parent_scene_id
+                ),
+            },
+            state=state,
+        )
+
+    queue_event(
+        state, role.actor,
+        f"scene transition --return: closed {current_scene_id}; "
+        f"popped to parent {target_scene_slug}",
+    )
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "kind": "return",
+        "closed_scene": close_result,
+        "parent_scene": target_scene_slug,
+        "popped_scenes": popped,
+        "mode_stack": list(mode_stack),
+    }
+    commit(
+        paths, state, ctx, "scene.transition",
+        command_params(
+            kind="return",
+            next_scene_id=target_scene_slug,
+            summary=summary,
+            outcomes=outcome_lines,
+            xp=xp_spec,
+            carry_clock=list(carry_clock_specs),
+            retire_clock=list(retire_clock_specs),
+        ),
+        result,
+    )
+
+
+def _scene_transition_new(
+    *,
+    ctx: click.Context,
+    paths: Paths,
+    workspace: _workspace.CampaignWorkspace,
+    state: dict[str, Any],
+    campaign_id: str,
+    session_id: str,
+    role: Role,
+    next_scene_slug: str,
+    scene_type: str | None,
+    arc_id_override: str | None,
+    new_mode: str,
+    top_frame: dict[str, Any],
+    mode_stack: list[dict[str, Any]],
+    parent_frame: dict[str, Any] | None,
+    close_parent: bool,
+    force: bool,
+    summary: str | None,
+    outcome_values: tuple[str, ...],
+    beats: str | None,
+    xp_spec: str | None,
+    carry_clock_specs: tuple[str, ...],
+    retire_clock_specs: tuple[str, ...],
+    parent_summary: str | None,
+    parent_outcome_values: tuple[str, ...],
+    parent_beats: str | None,
+    parent_carry_clock_specs: tuple[str, ...],
+    parent_retire_clock_specs: tuple[str, ...],
+) -> None:
+    resolved_type = _require_scene_type(scene_type)
+    if not outcome_values:
+        raise GlassError(
+            agent_instruction(
+                "--outcome is required for --new (1-2 bullets)",
+                "Pass `--outcome \"<in-universe outcome of the closing scene>\"`.",
+            )
+        )
+    outcome_lines = normalize_outcomes(outcome_values)
+
+    current_scene_id = str(top_frame.get("scene_id"))
+    # arc_id derivation: prefer scene→arc filesystem lookup (single source of
+    # truth from where the scene actually lives on disk).
+    current_arc_id = _workspace.arc_for_scene(workspace, current_scene_id)
+    if not current_arc_id:
+        current_meta = _workspace.current_scene(workspace)
+        current_arc_id = (
+            current_meta["arc_id"] if current_meta else state.get("active_scene_arc")
+        )
+    if not current_arc_id:
+        raise GlassError(
+            agent_instruction(
+                f"cannot resolve arc for scene {current_scene_id!r}",
+                "The current scene is not on disk under any arc, and no arc "
+                "context is available from runtime state. Recover via "
+                "`glass arc activate <arc-id>` and `glass mode current` before "
+                "retrying.",
+            )
+        )
+    clock_dispositions = _validate_scene_clock_dispositions(
+        campaign_id=campaign_id,
+        scene_id=current_scene_id,
+        carry_specs=carry_clock_specs,
+        retire_specs=retire_clock_specs,
+        label="scene transition --new",
+    )
+
+    parent_close_args: dict[str, Any] | None = None
+    if close_parent:
+        # Resolve parent only if it's an active-play scene frame. Non-scene-play
+        # parent frames (scene-prep, intermission, character-creation, etc.) are
+        # phase modes, not closeable scenes. Silently ignore --close-parent in
+        # those cases — the system already knows the parent shouldn't be closed
+        # the way scenes are closed.
+        if parent_frame is None or str(parent_frame.get("mode") or "") not in _SCENE_TRANSITION_PLAY_MODES:
+            parent_close_args = None
+        else:
+            parent_scene_id = str(parent_frame.get("scene_id"))
+            parent_arc_id = _workspace.arc_for_scene(workspace, parent_scene_id) or current_arc_id
+            if not parent_outcome_values:
+                raise GlassError(
+                    agent_instruction(
+                        "--parent-outcome is required when --close-parent will close a scene-play parent",
+                        "Pass `--parent-outcome \"<in-universe outcome of the parent close>\"`.",
+                    )
+                )
+            parent_outcome_lines = normalize_outcomes(
+                parent_outcome_values, label="--parent-outcome",
+            )
+            parent_clock_dispositions = _validate_scene_clock_dispositions(
+                campaign_id=campaign_id,
+                scene_id=parent_scene_id,
+                carry_specs=parent_carry_clock_specs,
+                retire_specs=parent_retire_clock_specs,
+                label="parent scene close",
+            )
+            parent_close_args = {
+                "scene_id": parent_scene_id,
+                "arc_id": str(parent_arc_id),
+                "summary": parent_summary,
+                "beats": parent_beats,
+                "outcome_lines": parent_outcome_lines,
+                "clock_dispositions": parent_clock_dispositions,
+            }
+
+    # Close current scene
+    close_result = _apply_scene_close(
+        ctx=ctx, paths=paths, workspace=workspace, state=state,
+        campaign_id=campaign_id, session_id=session_id, role=role,
+        scene_id=current_scene_id, arc_id=str(current_arc_id),
+        summary=summary, beats=beats, outcome_lines=outcome_lines,
+        xp_spec=xp_spec, clock_dispositions=clock_dispositions,
+    )
+    mode_stack.pop()  # pop current frame
+
+    parent_close_result: dict[str, Any] | None = None
+    if parent_close_args is not None:
+        # Restore workspace active-scene to parent so helper can close it
+        update_state_fields(
+            paths,
+            campaign_id,
+            {
+                "active_scene": parent_close_args["scene_id"],
+                "active_scene_arc": parent_close_args["arc_id"],
+                "active_scene_type": _lookup_scene_type(
+                    workspace,
+                    parent_close_args["arc_id"],
+                    parent_close_args["scene_id"],
+                ),
+            },
+            state=state,
+        )
+        parent_close_result = _apply_scene_close(
+            ctx=ctx, paths=paths, workspace=workspace, state=state,
+            campaign_id=campaign_id, session_id=session_id, role=role,
+            scene_id=parent_close_args["scene_id"],
+            arc_id=parent_close_args["arc_id"],
+            summary=parent_close_args["summary"],
+            beats=parent_close_args["beats"],
+            outcome_lines=parent_close_args["outcome_lines"],
+            xp_spec=None,  # XP awarded once on the inner close
+            clock_dispositions=parent_close_args["clock_dispositions"],
+        )
+        mode_stack.pop()  # pop parent frame
+
+    # Create the new scene
+    arc_for_new = arc_id_override or state.get("active_arc") or current_arc_id
+    scene_dir, resolved_type_slug, resolved_scene_slug = _create_scene_record(
+        workspace=workspace,
+        state=state,
+        next_scene_slug=next_scene_slug,
+        scene_type=resolved_type,
+        arc_id=arc_for_new,
+    )
+    new_frame = _push_mode_frame(
+        state=state, role=role,
+        new_mode=new_mode, next_scene_slug=resolved_scene_slug,
+    )
+    queue_event(
+        state, role.actor,
+        f"scene transition --new: closed {current_scene_id}"
+        + (
+            f" + parent {parent_close_args['scene_id']}"
+            if parent_close_args else ""
+        )
+        + f"; opened {resolved_scene_slug} ({resolved_type_slug})",
+    )
+    queue_event(
+        state, role.actor,
+        f"mode start {new_frame['mode']} @ {resolved_scene_slug}",
+    )
+    result = {
+        "campaign_id": workspace.campaign_id,
+        "kind": "new",
+        "closed_scene": close_result,
+        "closed_parent": parent_close_result,
+        "new_scene": {
+            "scene_id": resolved_scene_slug,
+            "scene_type": resolved_type_slug,
+            "arc_id": arc_for_new,
+            "path": str(scene_dir),
+            "mode": new_frame["mode"],
+        },
+        "mode_stack": list(mode_stack),
+    }
+    commit(
+        paths, state, ctx, "scene.transition",
+        command_params(
+            kind="new",
+            close_parent=close_parent,
+            force=force,
+            next_scene_id=resolved_scene_slug,
+            scene_type=resolved_type_slug,
+            arc=arc_for_new,
+            new_mode=new_frame["mode"],
+            summary=summary,
+            outcomes=outcome_lines,
+            xp=xp_spec,
+            carry_clock=list(carry_clock_specs),
+            retire_clock=list(retire_clock_specs),
+            parent_summary=parent_summary,
+            parent_outcomes=(
+                list(parent_close_args["outcome_lines"]) if parent_close_args else []
+            ),
+            parent_carry_clock=list(parent_carry_clock_specs),
+            parent_retire_clock=list(parent_retire_clock_specs),
+        ),
+        result,
+    )
+
+
+def _lookup_scene_type(
+    workspace: _workspace.CampaignWorkspace,
+    arc_id: str | None,
+    scene_id: str,
+) -> str | None:
+    """Read scene type from the scene's prep.md frontmatter."""
+    if not arc_id:
+        return None
+    prep = workspace.scene_dir(arc_id, scene_id) / "prep.md"
+    try:
+        text = prep.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("scene_type:"):
+            return stripped.split(":", 1)[1].strip()
+    return None
 
 
 # A "round" is one full cycle through the speaker order. For all current
@@ -1307,6 +1825,263 @@ def _tracker_summary(prefix: str, tracker: dict[str, Any]) -> str:
         f"{prefix} {tracker.get('label', tracker.get('tracker_id'))}: "
         f"{tracker.get('value')}/{tracker.get('max')}"
     )
+
+
+def _validate_scene_clock_dispositions(
+    *,
+    campaign_id: str,
+    scene_id: str,
+    carry_specs: tuple[str, ...],
+    retire_specs: tuple[str, ...],
+    label: str = "scene end",
+) -> list[dict[str, Any]]:
+    """Parse and validate scene-clock dispositions for a closing scene.
+
+    Returns the disposition list (carry+retire) for the caller to record.
+    Raises GlassError on missing/unknown/overlap.
+    """
+    carry_dispositions = _parse_clock_disposition_specs(carry_specs, "carry")
+    retire_dispositions = _parse_clock_disposition_specs(retire_specs, "retire")
+    overlap = set(carry_dispositions) & set(retire_dispositions)
+    if overlap:
+        raise GlassError(
+            agent_instruction(
+                "the same clock cannot be both carried and retired: "
+                + ", ".join(sorted(overlap)),
+                "Pick one disposition per clock.",
+            )
+        )
+    with pg_connection() as conn:
+        active_scene_clocks = _db.scene_clock_list(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+        )
+    active_clock_ids = {str(item["clock_id"]) for item in active_scene_clocks}
+    declared_clock_ids = set(carry_dispositions) | set(retire_dispositions)
+    missing = sorted(active_clock_ids - declared_clock_ids)
+    unknown = sorted(declared_clock_ids - active_clock_ids)
+    if missing:
+        raise GlassError(
+            agent_instruction(
+                f"{label} refuses while active scene clocks have no disposition: "
+                + ", ".join(missing),
+                "For each open scene clock, either resolve it during play with "
+                "`glass scene clock tick`, then retry, or name an explicit "
+                "disposition: `--carry-clock <id>=<reason>` if the pressure "
+                "continues beyond this scene, or `--retire-clock <id>=<reason>` "
+                "if the clock is obsolete or was resolved by fiction without a "
+                "tick.",
+            )
+        )
+    if unknown:
+        raise GlassError(
+            agent_instruction(
+                f"disposition given for clocks not active in scene {scene_id!r}: "
+                + ", ".join(unknown),
+                "Use `glass scene clock list` or `glass check` to see the "
+                "active scene clocks before dispositioning them.",
+            )
+        )
+    dispositions: list[dict[str, Any]] = []
+    for clock_record in active_scene_clocks:
+        clock_id = str(clock_record["clock_id"])
+        verb = "carried" if clock_id in carry_dispositions else "retired"
+        reason = (
+            carry_dispositions[clock_id]
+            if verb == "carried"
+            else retire_dispositions[clock_id]
+        )
+        dispositions.append(
+            {
+                "clock_id": clock_id,
+                "label": str(clock_record.get("label") or clock_id),
+                "disposition": verb,
+                "reason": reason,
+                "value": int(clock_record.get("value", 0) or 0),
+                "max": int(clock_record.get("max", 0) or 0),
+            }
+        )
+    return dispositions
+
+
+def _apply_scene_close(
+    *,
+    ctx: click.Context,
+    paths: Paths,
+    workspace: _workspace.CampaignWorkspace,
+    state: dict[str, Any],
+    campaign_id: str,
+    session_id: str,
+    role: Role,
+    scene_id: str,
+    arc_id: str,
+    summary: str | None,
+    beats: str | None,
+    outcome_lines: list[str],
+    xp_spec: str | None,
+    clock_dispositions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Apply the full scene-close sequence: summary, beats, XP, table archive,
+    pop mode frame, drop DB state, queue events.
+
+    Caller is responsible for the audit `commit()`. Returns the close-result dict.
+    """
+    summary_path: str | None = None
+    if summary and summary.strip():
+        body = append_outcome_section(summary.strip(), outcome_lines)
+        body = append_clock_disposition_section(body, clock_dispositions)
+        summary_path = _write_scene_summary(workspace, arc_id, scene_id, body)
+    else:
+        summary_path = _append_scene_outcomes(
+            workspace,
+            arc_id,
+            scene_id,
+            outcome_lines,
+        )
+        if clock_dispositions and summary_path:
+            existing = Path(summary_path).read_text(encoding="utf-8")
+            Path(summary_path).write_text(
+                append_clock_disposition_section(existing, clock_dispositions),
+                encoding="utf-8",
+            )
+
+    beat_lines: list[str] = []
+    if beats:
+        for line in _split_quest_beat_lines(beats):
+            text = line.strip().lstrip("-*").strip()
+            if text:
+                _append_quest_beat(workspace, text, scene_id=scene_id, arc_id=arc_id)
+                beat_lines.append(text)
+
+    xp_awards: list[dict[str, Any]] = []
+    if xp_spec:
+        with pg_connection() as conn:
+            for agent, delta in _parse_xp_spec(xp_spec):
+                character_id = lookup_player_character_id(campaign_id, agent)
+                if not character_id:
+                    raise GlassError(
+                        agent_instruction(
+                            f"cannot award scene XP to {agent!r}",
+                            "Use an agent id with exactly one character in this campaign.",
+                            "If the player has no character or multiple rows, resolve the character sheet before awarding scene XP.",
+                        )
+                    )
+                try:
+                    updated, before, after = _db.character_award_xp(
+                        conn,
+                        campaign_id=campaign_id,
+                        character_id=character_id,
+                        delta=delta,
+                        actor=role.actor,
+                        reason=f"scene end: {scene_id}",
+                        session_id=session_id,
+                        scene_id=scene_id,
+                    )
+                except LookupError:
+                    raise GlassError(
+                        agent_instruction(
+                            f"unknown character {character_id!r}",
+                            "Use the character id assigned to the target player in this campaign.",
+                        )
+                    ) from None
+                xp_awards.append({
+                    "player": agent,
+                    "character_id": character_id,
+                    "delta": delta,
+                    "xp_before": before,
+                    "xp_after": after,
+                    "level": updated["level"],
+                    "mirror": write_public_character_mirror(
+                        paths,
+                        campaign_id,
+                        updated,
+                    ),
+                })
+
+    table_archive_path: str | None = None
+    try:
+        table_archive_path = str(
+            _workspace.archive_table(
+                workspace,
+                arc_id=arc_id,
+                scene_id=scene_id,
+                clear_live=True,
+            )
+        )
+    except FileNotFoundError:
+        table_archive_path = None
+
+    try:
+        ended = _workspace.end_scene(workspace, state=state)
+    except ValueError as exc:
+        raise GlassError(
+            agent_instruction(
+                str(exc),
+                "Check the active scene with `glass scene current`, then end only that scene.",
+            )
+        ) from exc
+
+    state["active_scene"] = None
+    state["active_scene_arc"] = None
+    state["active_scene_type"] = None
+    state["scene_closing_turns"] = None
+    state["action_order"] = None
+    trackers = state.get("scene_trackers")
+    if isinstance(trackers, dict):
+        state["scene_trackers"] = {
+            key: value
+            for key, value in trackers.items()
+            if not isinstance(value, dict) or value.get("scene_id") != scene_id
+        }
+    with pg_connection() as conn:
+        _db.scene_tracker_delete_scene(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+        )
+        _db.action_order_clear_scene(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+        )
+        _db.scene_beat_drop_scene(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+            actor=role.actor,
+            turn_id=str(state.get("active_turn_id") or "").strip() or None,
+            outcome="scene ended",
+        )
+        _db.scene_clock_drop_scene(
+            conn,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+            actor=role.actor,
+            turn_id=str(state.get("active_turn_id") or "").strip() or None,
+            outcome="scene ended",
+        )
+    for item in clock_dispositions:
+        queue_event(
+            state,
+            role.actor,
+            f"scene clock {item['disposition']}: {item['label']} "
+            f"({item['value']}/{item['max']}) — {item['reason']}",
+        )
+    queue_event(
+        state, role.actor,
+        f"scene end: {ended}"
+        + (f" (+{len(xp_awards)} xp awards)" if xp_awards else ""),
+    )
+    return {
+        "ended_scene": ended,
+        "summary_path": summary_path,
+        "outcomes": outcome_lines,
+        "table_archive_path": table_archive_path,
+        "beats_logged": beat_lines,
+        "xp_awards": xp_awards,
+        "clock_dispositions": clock_dispositions,
+    }
 
 
 def _parse_clock_disposition_specs(

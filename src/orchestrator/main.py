@@ -17,7 +17,6 @@ from .campaign import (
     PHASE_CHARACTER_CREATION,
     PHASE_ORGANIZATION_BOOTSTRAP,
     PHASE_PLANNING,
-    PHASE_PRELUDE,
 )
 from .config import config_env_value, load_config
 from .runner import Orchestrator, TurnFailure
@@ -26,7 +25,6 @@ from .store import SessionStore
 
 MODE_INTERMISSION = "intermission"
 MODE_SCENE_PREP = "scene-prep"
-PRELUDE_ARC_ID = "prelude"
 
 
 # umask 002 so subdirs the orchestrator creates inside the campaign
@@ -311,11 +309,9 @@ def _run_campaign_lifecycle(
     max_organization_turns: int,
     max_planning_turns: int,
     max_creation_turns: int,
-    max_prelude_turns: int,
     max_active_turns: int | None,
     review_stop_budget: int | None,
     skip_character_creation: bool,
-    skip_prelude: bool,
     dry_run: bool,
 ) -> None:
     """Create or continue a campaign from durable phase/mode state."""
@@ -416,48 +412,21 @@ def _run_campaign_lifecycle(
         mode_name="campaign-planning",
         scene_id="planning",
         phase_label="campaign planning",
-        step_label="[4/6] Campaign planning",
+        step_label="[4/5] Campaign planning",
         start_message=(
-            f"[4/6] Invoking Mara for campaign planning "
+            f"[4/5] Invoking Mara for campaign planning "
             f"(max {max_planning_turns} turns)"
         ),
         max_turns=max_planning_turns,
         checkpoint_label="after-campaign-planning",
-        next_phase=PHASE_PRELUDE,
+        next_phase=PHASE_ACTIVE,
         dry_run=dry_run,
         validate=_validate_campaign_planning_complete,
     )
-    # Phase 5: prelude shakedown
-    if skip_prelude:
-        click.secho("[5/6] Prelude skipped (--skip-prelude).", fg="yellow")
-        click.echo()
-        click.secho(
-            f"Campaign '{campaign_id}' advanced through campaign_planning.",
-            fg="green",
-        )
-        click.echo(f"Next phase: {PHASE_PRELUDE}")
-        click.echo("Runtime state: Postgres runtime row")
-        return
-    cm_state = _run_bootstrap_phase(
-        cli,
-        campaign_id=campaign_id,
-        cm_state=cm_state,
-        phase_name=PHASE_PRELUDE,
-        mode_name="prelude",
-        scene_id="prelude",
-        phase_label="prelude",
-        step_label="[5/6] Prelude",
-        start_message=f"[5/6] Running bootstrap prelude (max {max_prelude_turns} turns)",
-        max_turns=max_prelude_turns,
-        checkpoint_label="after-prelude",
-        next_phase=PHASE_ACTIVE,
-        dry_run=dry_run,
-        validate=None,
-    )
-    # Phase 6: active campaign handoff
+    # Phase 5: active campaign handoff
     if cm_state.get("phase") != PHASE_ACTIVE:
         cm_state = cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
-    click.secho("[6/6] Active campaign", fg="green")
+    click.secho("[5/5] Active campaign", fg="green")
     active_state = cli.store.load(campaign_id)
     turns_remaining = max_active_turns
     while True:
@@ -562,7 +531,7 @@ def _start_next_active_mode(cli: CliState, *, campaign_id: str) -> str | None:
     """Start the next no-intervention active-play bridge mode.
 
     A no-mode active campaign is an intentional pause surface. Intermission is
-    an act/prelude boundary, not a scene boundary: after intermission closes we
+    an act boundary, not a scene boundary: after intermission closes we
     open scene prep; inside an already-active act we recover into scene prep
     rather than opening another intermission.
     """
@@ -573,9 +542,6 @@ def _start_next_active_mode(cli: CliState, *, campaign_id: str) -> str | None:
     except Exception:
         cm_state = {}
     arc_id = _active_main_arc_id(cm_state)
-    raw_active_arc = str(cm_state.get("active_arc") or "")
-    if not arc_id and raw_active_arc == PRELUDE_ARC_ID:
-        arc_id = _ensure_main_arc_active(cli, campaign_id)
     next_mode = _next_mode_after_no_active_mode(
         latest_mode,
         active_arc=arc_id,
@@ -618,7 +584,7 @@ def _next_mode_after_no_active_mode(
 def _active_main_arc_id(cm_state: dict) -> str | None:
     closed = {str(arc_id) for arc_id in cm_state.get("closed_arcs", [])}
     active_arc = str(cm_state.get("active_arc") or "")
-    if active_arc and active_arc != PRELUDE_ARC_ID and active_arc not in closed:
+    if active_arc and active_arc not in closed:
         return active_arc
     return None
 
@@ -724,14 +690,12 @@ def _ensure_main_arc_active(cli: CliState, campaign_id: str) -> str | None:
         return None
     closed = {str(arc_id) for arc_id in cm_state.get("closed_arcs", [])}
     active_arc = str(cm_state.get("active_arc") or "")
-    if active_arc and active_arc != PRELUDE_ARC_ID and active_arc not in closed:
+    if active_arc and active_arc not in closed:
         return active_arc
     candidates = [
         str(arc_id)
         for arc_id in cm_state.get("arcs", [])
-        if str(arc_id)
-        and str(arc_id) != PRELUDE_ARC_ID
-        and str(arc_id) not in closed
+        if str(arc_id) and str(arc_id) not in closed
     ]
     if not candidates:
         return None
@@ -1144,11 +1108,8 @@ def _validate_campaign_planning_complete(cli: CliState, campaign_id: str) -> Non
         if arcs_root.exists()
         else []
     )
-    if "prelude" not in arc_dirs:
-        failures.append("arcs/prelude is missing")
-    main_arcs = [arc_id for arc_id in arc_dirs if arc_id != "prelude"]
-    if not main_arcs:
-        failures.append("no non-prelude opening arc was created")
+    if not arc_dirs:
+        failures.append("no opening arc was created during campaign planning")
 
     if failures:
         detail = "\n".join(f"- {failure}" for failure in failures)
@@ -1598,21 +1559,9 @@ def campaign_prepare_turn(
     help="Safety net only. The DM ends character creation when done.",
 )
 @click.option(
-    "--max-prelude-turns",
-    type=int,
-    default=120,
-    show_default=True,
-    help="Safety net only. The DM ends prelude when done.",
-)
-@click.option(
     "--skip-character-creation",
     is_flag=True,
     help="Stop after organization bootstrap. Useful for inspecting the party org.",
-)
-@click.option(
-    "--skip-prelude",
-    is_flag=True,
-    help="Stop after campaign planning without running the bootstrap prelude.",
 )
 @click.option(
     "--use-codex/--use-claude",
@@ -1652,9 +1601,7 @@ def campaign_run(
     max_organization_turns: int,
     max_planning_turns: int,
     max_creation_turns: int,
-    max_prelude_turns: int,
     skip_character_creation: bool,
-    skip_prelude: bool,
     use_codex: bool | None,
     skip_player_persona: bool | None,
     use_session_id: bool | None,
@@ -1676,11 +1623,9 @@ def campaign_run(
         max_organization_turns=max_organization_turns,
         max_planning_turns=max_planning_turns,
         max_creation_turns=max_creation_turns,
-        max_prelude_turns=max_prelude_turns,
         max_active_turns=max_turns,
         review_stop_budget=None if no_review_stops else skip_review_stops,
         skip_character_creation=skip_character_creation,
-        skip_prelude=skip_prelude,
         dry_run=dry_run,
     )
 

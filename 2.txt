@@ -1,0 +1,130 @@
+ Yes. The likely prompt pattern is that the narration is being optimized for internal table continuity, not for reader
+  comprehension.
+
+  The biggest causes I see:
+
+  1. Jargon laundering from table state into prose
+     I copied the scene’s local labels as if they were already meaningful: cinderline, warm rack, kiln-cloth seal, bad-air
+     stain, green nose, floor road, milky spacer. In the table state those are useful handles. In public prose they become a
+     glossary dump unless each one is re-grounded in plain physical terms.
+  2. The “rules-first actor” style pushes compression too hard
+     The style asks for terse, mechanical, action-led prose. I over-applied that into clipped fragments: “Two thumb-widths.
+     No more.” “Down, not up.” That can work when the physical situation is already clear, but here it replaces explanation.
+     The result feels precise without being intelligible.
+  3. Mechanics were treated as narration
+     The instruction to surface mechanics inside prose led to lines like “He rolls rig load-bearing lines with ingenuity:
+     13, breakthrough.” That satisfies the table contract but breaks external readability unless the piece is clearly
+     written as a play log. It makes the prose serve the audit instead of the reader.
+  4. I assumed too much prior visual context
+     The turn reads like paragraph 37 of a tactical transcript. It does not answer basic reader questions: Where is Tarn?
+     What is he trying to save? What object is moving? Why does it help? What danger does it avoid? The prose gestures at
+     all of those, but mostly through internal names.
+  5. Prompt pressure favors state delta over causal clarity
+     The turn instructions emphasize clocks, beats, pressure, durable changes, and concrete board movement. That makes me
+     write toward “what changed mechanically” instead of “what happened in English.” So I produce lines that are valid to
+     the campaign engine but opaque to a reader.
+  6. Domain vocabulary became a substitute for verbs
+     I used verbs like “noses,” “rides,” “kisses,” “pins,” “drops,” “pays” in overloaded ways. Some are vivid, but too many
+     are figurative or craft-coded. The reader has to infer the actual action: Tarn pushes a folded heat shield and guide
+     rope through a narrow hatch to hold a snagged cloth down so children can crawl past.
+
+  A better prompting constraint would be something like:
+
+  “Before using any in-universe term, restate the physical thing in ordinary English once. Every paragraph must answer: who
+  moves, what they move, where it goes, and why it matters. Mechanics may appear only after the action is understandable
+  without them.”
+
+  The deeper issue is that the current prompt stack rewards high-density continuity tokens over plain causal storytelling. I
+  need an explicit “external reader pass” that demotes jargon and forces ordinary-English grounding before style flourishes.
+
+
+› the prompt stack ie meant to keep the game consitent, not to influence the narrative. the narrative should be readable
+  text, and it shouldn't re-explain every term. but it shouldn't ever overly on terms either. your confusing table slugs
+  with narrative events. previously, we had to correct for overly legal drama style writing, because you were confusing
+  requirements on game continuty with in universe requirements for custody chains and witnesses.  we higihgted that
+  distinction and things sorted themselves out. do you think there is a similar distinction that can be made here?
+
+
+• Yes. The useful distinction is:
+
+  Table handles are not narrative events.
+
+  The prompt stack needs table handles so the game can stay consistent: beat names, artifact names, clock names, scene
+  slugs, inventory labels, pressure labels. But those are addresses for continuity, not prose material by default.
+
+  A cleaner split might be:
+
+  Game-State Address
+  : The exact label used to find or mutate state: Low-Crawl Extraction, warm-rack-under-cinderline, First Body Through,
+  foldout-shield-curtain.
+
+  Fictional Referent
+  : The thing actually present in the world: a narrow crawlspace, a hot rack with teeth, a strip of cloth snagged near a
+  child, Tarn’s folded heat shield.
+
+  Narrative Event
+  : What happens in readable English: Tarn pushes a folded heat shield through the hatch and uses it to pin the snagged
+  cloth down so the child has room to crawl past.
+
+  The failure happens when I skip from Game-State Address straight into prose. That produces sentences that are technically
+  consistent but semantically thin: they reference the right board objects without turning them into an event a reader can
+  visualize.
+
+  This is very similar to the previous “custody chain / witness” issue. There, I confused game-state durability with in-
+  fiction procedural legitimacy. Here, I’m confusing game-state addressability with narrative concreteness.
+
+  A prompt correction could be:
+
+  > Use table labels, slugs, beats, and clock names to decide what exists and what changes. Do not treat them as narration.
+  > In public prose, render the fictional referent and the action. A table term may appear only when it is already natural
+  > in-world speech or when the surrounding sentence makes the physical event clear without the term.
+
+  And maybe the practical test:
+
+  > If a sentence only makes sense to someone who has read the table artifact name, rewrite it.
+
+  That doesn’t mean re-explaining every term. It means the verbs and objects need to carry the event. “Tarn feeds the green
+  line under the rack and pins the burned cloth down” can keep established terms. “The green nose rides the floor road” is
+  me narrating a continuity handle instead of an action.
+
+
+› do you think it would be useful to have more state enocding places for you to place them? e.g. a narrative summary and a
+  game-state-dump ?  or would that just confuse you
+
+
+• It could help, but only if the separation is very explicit. More state surfaces by themselves would probably make the
+  problem worse, because I’d have more labeled material to accidentally launder into prose.
+
+  The useful version is not “more places for state.” It is different output roles with different language rules:
+
+  Narrative Summary
+  : Plain readable fiction. No clock names, beat names, artifact slugs, command concepts, or table labels unless they are
+  natural in-world nouns. Must describe actions, bodies, objects, speech, and consequences.
+
+  Game-State Dump
+  : Structured continuity. Clock movement, beat closure, object positions, unresolved threats, exact labels. This can be
+  dense and ugly because it is for agents and tooling.
+
+  That distinction would probably help because it gives the jargon a legal home. Right now TURN.md and glass done --summary
+  both ask for continuity, so I partly write public prose like it is also a state packet. If the prompt says “state goes
+  only here; prose must not carry state labels,” that gives a firm boundary.
+
+  But I would avoid naming the plain one “narrative summary” if it still needs to be the actual public turn prose. “Summary”
+  can pull me toward compressed continuity language again. Better labels might be:
+
+  - Public Fiction
+  - State Ledger
+
+  The sharper instruction would be:
+
+  > First write the State Ledger in whatever exact terms the game needs. Then write Public Fiction from the ledger,
+  > replacing table labels with visible actions and ordinary objects. Do not copy phrases from the ledger into the fiction
+  > unless they are character speech or established in-world terminology.
+
+  The risk is that I might over-separate and produce fiction that loses important continuity. To prevent that, the public
+  fiction still needs a final check:
+
+  > A reader should know what changed without knowing the clock or beat names.
+
+  So yes, separate places could be useful, but the value comes from forbidding cross-contamination, not from adding more
+  encoded state.

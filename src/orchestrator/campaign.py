@@ -3,7 +3,7 @@
 A campaign workspace lives at `campaigns/<id>/` and is populated by copying
 the `templates/` tree at campaign-bootstrap time. Bootstrap phase fields
 (init / organization_bootstrap / character_creation / campaign_planning /
-prelude / active) live in
+active) live in
 the Postgres runtime state row. `state.json` is a stale legacy path only and
 is removed when touched.
 
@@ -29,7 +29,6 @@ PHASE_INIT = "init"
 PHASE_ORGANIZATION_BOOTSTRAP = "organization_bootstrap"
 PHASE_CHARACTER_CREATION = "character_creation"
 PHASE_PLANNING = "campaign_planning"
-PHASE_PRELUDE = "prelude"
 PHASE_ACTIVE = "active"
 
 PHASE_ORDER = (
@@ -37,7 +36,6 @@ PHASE_ORDER = (
     PHASE_ORGANIZATION_BOOTSTRAP,
     PHASE_CHARACTER_CREATION,
     PHASE_PLANNING,
-    PHASE_PRELUDE,
     PHASE_ACTIVE,
 )
 
@@ -177,6 +175,7 @@ class CampaignManager:
 
         from cli import db as _glass_db
         from cli.config import load_config as _load_glass_config
+        from cli.state import default_state as _default_glass_state
 
         previous_config = os.environ.get("GLASS_CONFIG")
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
@@ -189,9 +188,21 @@ class CampaignManager:
                 )
             pg_config = _glass_db.load_pg_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
-                existing = _glass_db.runtime_state_get(conn, state["campaign"]) or {}
-                merged = {**existing, **state}
-                _glass_db.runtime_state_upsert(conn, merged)
+                if _glass_db.runtime_state_get(conn, state["campaign"]) is None:
+                    _glass_db.runtime_state_upsert(
+                        conn,
+                        {**_default_glass_state(state["campaign"]), **state},
+                    )
+                else:
+                    _glass_db.runtime_state_update_fields(
+                        conn,
+                        state["campaign"],
+                        {
+                            key: value
+                            for key, value in state.items()
+                            if key != "campaign"
+                        },
+                    )
         finally:
             if previous_config is None:
                 os.environ.pop("GLASS_CONFIG", None)

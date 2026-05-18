@@ -51,7 +51,7 @@ Every campaign foundation must name:
    - Record 2-3 concrete observations from the source, then choose at least one
      campaign surface it changes: campaign question, scarcity, faction
      behavior, named NPC practice, location procedure, hazard, clock segment,
-     opening-arc pressure, or prelude pressure.
+     opening-arc pressure, or first-scene pressure.
    - Before writing major outputs, run:
 
      ```bash
@@ -111,29 +111,20 @@ Every campaign foundation must name:
    - Follow `methodologies/arc-creation.md` to populate the arc plan and
      context.
 
-7. **Create the prelude arc shell.**
-   - Run `glass arc create prelude --pull-source "<real-world source/domain>" --pull-utilization "<which prelude pressure, clue, or shakedown test uses it>"`.
-   - Write `arcs/prelude/plan.md` with prelude purpose, scene 1 pressure,
-     scene 2 pressure, safety limits, and carry-forward questions.
-   - Write `arcs/prelude/context.md` with only player-facing premise.
-   - Commit with `glass sync apply arcs/prelude`.
-
-8. **Update summaries.**
+7. **Update summaries.**
    - Write a compact campaign summary:
      `glass summary write campaign --body "<current campaign foundation summary>"`.
    - Write the opening main arc summary with
      `glass summary write arc <arc-id> --body "<current arc summary>"`.
-   - Write the prelude arc summary with
-     `glass summary write arc prelude --body "<what the shakedown is testing>"`.
 
-9. **Run the planning audit.**
+8. **Run the planning audit.**
    - `glass lore list`
    - `glass arc current`
    - `glass arc list`
    - `glass clock list --all`
    - `glass summary show campaign`
 
-10. **Close the planning turn.**
+9. **Close the planning turn.**
     - Write `TURN.md` as a short public planning summary.
     - When the phase is complete, run `glass mode end` before closeout.
     - Run `glass done --summary "<what is now ready>" --state "<files and CLI state updated; campaign-planning mode ended>" --rolls none --scene-status ended --next default`.
@@ -144,8 +135,8 @@ Every campaign foundation must name:
 - Do not bulk-copy world-bible material.
 - Do not hide durable facts only in turn prose.
 - Do not create the campaign before character creation is complete.
-- Do not create prelude scenes during this turn.
-- Do not create a main arc or prelude arc without `glass arc create --pull-source ... --pull-utilization ...`.
+- Do not create scenes during this turn (the opening arc's first scene is staged at scene-prep or directly via `scene transition`, not here).
+- Do not create the opening main arc without `glass arc create --pull-source ... --pull-utilization ...`.
 - Do not claim a non-adjacent pull without recording where the borrowed detail is
   used.
 - Do not frame the campaign as a procedural/legal dispute with occasional danger
@@ -162,4 +153,4 @@ methodology again:
 
 - `glass campaign foundation set` for question, scarcity, and public framing.
 - `glass campaign planning-check` for required files, lore count, active arc,
-  prelude shell, and summary presence.
+  and summary presence.

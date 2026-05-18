@@ -3,7 +3,9 @@ import {
   ChevronRight,
   Compass,
   Drama,
+  FileText,
   Gauge,
+  ListTree,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -13,15 +15,23 @@ import {
   usePlayerIds,
   useSessionStore,
 } from "../store/sessionStore";
-import type { CharacterRecord } from "../types";
-import { shortText } from "../utils";
+import type {
+  CharacterRecord,
+  SceneIndexArc,
+  SceneIndexScene,
+} from "../types";
+import { classNames, prettifyTitle, shortText } from "../utils";
 import { CharacterHud } from "./CharacterHud";
 import { ClockBand } from "./ClockBand";
 import { Modal } from "./Modal";
 import { PinCard } from "./PinCard";
 import { SheetRenderer } from "./SheetRenderer";
 
-export function ContextRail() {
+interface ContextRailProps {
+  onJumpTurn?: (turnId: number) => void;
+}
+
+export function ContextRail({ onJumpTurn }: ContextRailProps = {}) {
   const playerIds = usePlayerIds();
   const characters = useSessionStore((state) => state.characters);
   const clocks = useSessionStore((state) => state.clocks);
@@ -33,6 +43,9 @@ export function ContextRail() {
   const loadFile = useSessionStore((state) => state.loadFile);
   const selectedFile = useSessionStore((state) => state.selectedFile);
   const isFileLoading = useSessionStore((state) => state.isFileLoading);
+  const sceneIndex = useSessionStore((state) => state.sceneIndex);
+  const sceneIndexActive = useSessionStore((state) => state.sceneIndexActive);
+  const loadTurnsAround = useSessionStore((state) => state.loadTurnsAround);
 
   const [modalPath, setModalPath] = useState<string | null>(null);
 
@@ -84,6 +97,19 @@ export function ContextRail() {
     [open],
   );
 
+  const jumpToTurn = useCallback(
+    (turnId: number) => {
+      void loadTurnsAround(turnId);
+      onJumpTurn?.(turnId);
+    },
+    [loadTurnsAround, onJumpTurn],
+  );
+
+  const totalScenes = useMemo(
+    () => sceneIndex.reduce((sum, arc) => sum + arc.scenes.length, 0),
+    [sceneIndex],
+  );
+
   const modalSubtitle = modalPath ?? "";
   const modalTitle = selectedFile?.path === modalPath
     ? selectedFile.title || modalPath || "Document"
@@ -101,6 +127,21 @@ export function ContextRail() {
           </div>
         </header>
         <div className="rail__body">
+          <Section
+            count={totalScenes}
+            defaultOpen
+            icon={ListTree}
+            label="Timeline"
+          >
+            <TimelineList
+              activeArcId={sceneIndexActive?.arc_id ?? null}
+              activeSceneId={sceneIndexActive?.scene_id ?? null}
+              arcs={sceneIndex}
+              onJumpTurn={jumpToTurn}
+              onOpenSummary={open}
+            />
+          </Section>
+
           <Section count={scenePrep ? 1 : 0} icon={Sparkles} label="Scene Prep">
             {scenePrep ? (
               <PinCard
@@ -274,6 +315,159 @@ function Section({
 
 function EmptyTag({ children }: { children: React.ReactNode }) {
   return <div className="empty-state">{children}</div>;
+}
+
+function TimelineList({
+  activeArcId,
+  activeSceneId,
+  arcs,
+  onJumpTurn,
+  onOpenSummary,
+}: {
+  activeArcId: string | null;
+  activeSceneId: string | null;
+  arcs: SceneIndexArc[];
+  onJumpTurn: (turnId: number) => void;
+  onOpenSummary: (path: string) => void;
+}) {
+  if (arcs.length === 0) {
+    return <EmptyTag>No turns yet</EmptyTag>;
+  }
+  return (
+    <div className="timeline">
+      {arcs.map((arc) => (
+        <TimelineArc
+          activeArcId={activeArcId}
+          activeSceneId={activeSceneId}
+          arc={arc}
+          key={`arc-${arc.arc_id ?? "unscoped"}`}
+          onJumpTurn={onJumpTurn}
+          onOpenSummary={onOpenSummary}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TimelineArc({
+  activeArcId,
+  activeSceneId,
+  arc,
+  onJumpTurn,
+  onOpenSummary,
+}: {
+  activeArcId: string | null;
+  activeSceneId: string | null;
+  arc: SceneIndexArc;
+  onJumpTurn: (turnId: number) => void;
+  onOpenSummary: (path: string) => void;
+}) {
+  const isActiveArc = arc.arc_id !== null && arc.arc_id === activeArcId;
+  const arcTitle = arc.arc_id ? prettifyTitle(arc.arc_id) : "Unscoped";
+  return (
+    <div className={classNames("timeline__arc", isActiveArc && "is-active")}>
+      <div className="timeline__arc-head">
+        <button
+          className="timeline__arc-title"
+          onClick={() => onJumpTurn(arc.first_turn_id)}
+          title={`Jump to turn ${arc.first_turn_id}`}
+          type="button"
+        >
+          {arcTitle}
+        </button>
+        <span className="timeline__range">
+          {arc.first_turn_id}–{arc.last_turn_id}
+        </span>
+        {arc.summary_path && (
+          <button
+            aria-label={`Open ${arcTitle} summary`}
+            className="timeline__doc"
+            onClick={() => onOpenSummary(arc.summary_path!)}
+            title="Open arc summary"
+            type="button"
+          >
+            <FileText aria-hidden="true" size={11} />
+          </button>
+        )}
+      </div>
+      <ul className="timeline__scenes">
+        {arc.scenes.map((scene) => (
+          <TimelineScene
+            isActive={
+              scene.scene_id !== null &&
+              scene.scene_id === activeSceneId &&
+              arc.arc_id === activeArcId
+            }
+            key={`scene-${arc.arc_id ?? "unscoped"}-${scene.scene_id ?? "none"}`}
+            onJumpTurn={onJumpTurn}
+            onOpenSummary={onOpenSummary}
+            scene={scene}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function TimelineScene({
+  isActive,
+  onJumpTurn,
+  onOpenSummary,
+  scene,
+}: {
+  isActive: boolean;
+  onJumpTurn: (turnId: number) => void;
+  onOpenSummary: (path: string) => void;
+  scene: SceneIndexScene;
+}) {
+  const title = sceneLabel(scene);
+  const status = scene.status?.toLowerCase() ?? "";
+  return (
+    <li
+      className={classNames(
+        "timeline__scene",
+        isActive && "is-active",
+        status && `is-status-${status}`,
+      )}
+    >
+      <button
+        className="timeline__scene-title"
+        onClick={() => onJumpTurn(scene.first_turn_id)}
+        title={`Jump to turn ${scene.first_turn_id}`}
+        type="button"
+      >
+        <span className="timeline__scene-name">{title}</span>
+        <span className="timeline__scene-meta">
+          {scene.scene_type ?? scene.mode ?? "—"}
+          {scene.status ? ` · ${scene.status}` : ""}
+        </span>
+      </button>
+      <span className="timeline__range">
+        {scene.first_turn_id}–{scene.last_turn_id}
+      </span>
+      {scene.summary_path && (
+        <button
+          aria-label={`Open ${title} summary`}
+          className="timeline__doc"
+          onClick={() => onOpenSummary(scene.summary_path!)}
+          title="Open scene summary"
+          type="button"
+        >
+          <FileText aria-hidden="true" size={11} />
+        </button>
+      )}
+    </li>
+  );
+}
+
+function sceneLabel(scene: SceneIndexScene): string {
+  if (scene.scene_id) {
+    return prettifyTitle(scene.scene_id);
+  }
+  if (scene.mode) {
+    return prettifyTitle(scene.mode);
+  }
+  return "Unscoped";
 }
 
 function stripFrontmatter(content: string): string {

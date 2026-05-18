@@ -5,9 +5,11 @@ import type {
   FileListPayload,
   LiveCursors,
   LivePayload,
+  SceneIndexPayload,
   SummaryPayload,
   TableResourcePayload,
   TurnOutputPayload,
+  TurnRangePayload,
 } from "./types";
 
 async function getJson<T>(path: string): Promise<T> {
@@ -102,5 +104,27 @@ export function fetchCampaignFile(
 export function fetchTurnOutput(campaignId: string): Promise<TurnOutputPayload> {
   return getJson<TurnOutputPayload>(
     `/v1/campaigns/${encodeURIComponent(campaignId)}/turn-output`,
+  );
+}
+
+export function fetchSceneIndex(
+  campaignId: string,
+): Promise<SceneIndexPayload> {
+  return getJson<SceneIndexPayload>(
+    `/v1/campaigns/${encodeURIComponent(campaignId)}/scenes`,
+  );
+}
+
+export function fetchTurnRange(
+  campaignId: string,
+  fromTurn: number,
+  toTurn: number,
+): Promise<TurnRangePayload> {
+  const params = new URLSearchParams({
+    from_turn: String(fromTurn),
+    to_turn: String(toTurn),
+  });
+  return getJson<TurnRangePayload>(
+    `/v1/campaigns/${encodeURIComponent(campaignId)}/turns/range?${params.toString()}`,
   );
 }

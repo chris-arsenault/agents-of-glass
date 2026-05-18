@@ -46,10 +46,9 @@ required.
 
 ## Prep and Lifecycle Methodologies
 
-- `campaign-planning.md`: post-character campaign foundation, opening arc, and prelude shell.
+- `campaign-planning.md`: post-character campaign foundation and opening arc.
 - `arc-creation.md`: multi-scene pressure unit.
 - `character-creation.md`: overview of PC creation, relationship round, and DM ratification.
-- `prelude-arc.md`: exactly two-scene prelude.
 - `scene-prep.md`: stage a scene and enter actual play.
 - `intermission.md`: table planning between acts.
 - `closeout.md`: required scene and act closeout sequence.

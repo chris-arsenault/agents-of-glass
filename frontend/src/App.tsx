@@ -122,7 +122,7 @@ function App() {
         {route === "live" && (
           <>
             <div className="app-rail">
-              <ContextRail />
+              <ContextRail onJumpTurn={handleJumpTurn} />
             </div>
             <div className="app-lanes">
               <AgentLanes onJumpTurn={handleJumpTurn} />

@@ -34,8 +34,12 @@ from cli.embeddings import EmbeddingBatch
 from cli.main import main
 from cli.messages import load_message_types
 from cli.scene_beats import scene_close_note
-from cli.state import load_state
+from cli.state import load_state, update_state_fields
 from cli.validation import assert_valid_item_id, momentum_narrative_effect
+from orchestrator.campaign import CampaignManager, PHASE_ORGANIZATION_BOOTSTRAP
+from orchestrator.config import load_config as load_aog_config
+from orchestrator.runner import Orchestrator, TurnResult
+from orchestrator.store import SessionStore
 
 
 def make_env(tmp_path: Path, campaign_id: str = "c1") -> dict[str, str]:
@@ -182,6 +186,169 @@ def arc_create_args(arc_id: str) -> list[str]:
     ]
 
 
+def start_scene_campaign(
+    runner: CliRunner,
+    env: dict[str, str],
+    *,
+    arc_id: str = "first-arc",
+    scene_id: str = "opening",
+    scene_type: str = "social",
+    mode: str = "scene-play",
+) -> None:
+    dm_env = {**env, "GLASS_ROLE": "dm"}
+    invoke_ok(
+        runner,
+        ["session", "new", "--campaign", env["GLASS_CAMPAIGN_ID"]],
+        env,
+    )
+    invoke_ok(runner, arc_create_args(arc_id), dm_env)
+    invoke_ok(
+        runner,
+        ["scene", "create", scene_id, "--type", scene_type, "--arc", arc_id],
+        dm_env,
+    )
+    invoke_ok(runner, ["mode", "start", mode, scene_id], dm_env)
+
+
+def append_bookkeeping_dm_turn(
+    runner: CliRunner,
+    env: dict[str, str],
+    tmp_path: Path,
+    *,
+    turn_number: int,
+    scene_id: str,
+    body: str,
+    summary: str,
+    mode: str = "scene-play",
+) -> dict:
+    dm_env = {**env, "GLASS_ROLE": "dm"}
+    campaign_id = env["GLASS_CAMPAIGN_ID"]
+    turn_id = f"{campaign_id}-t{turn_number:04d}"
+    invoke_ok(
+        runner,
+        [
+            "turn",
+            "begin",
+            "--turn-id",
+            turn_id,
+            "--actor",
+            "dm",
+            "--role",
+            "dm",
+            "--mode",
+            mode,
+            "--scene",
+            scene_id,
+            "--kind",
+            "bookkeeping",
+            "--no-turn-type-required",
+            "--disallow-player-scene-close",
+        ],
+        env,
+    )
+    invoke_ok(runner, ["turn", "audit"], dm_env)
+    invoke_ok(
+        runner,
+        [
+            "turn",
+            "end",
+            "--summary",
+            summary,
+            "--state",
+            "no state change",
+            "--rolls",
+            "none",
+            "--next",
+            "default",
+        ],
+        dm_env,
+    )
+    turn_file = tmp_path / f"turn-{turn_number:04d}.md"
+    turn_file.write_text(body, encoding="utf-8")
+    invoke_ok(
+        runner,
+        ["turn", "append", str(turn_file), "--speaker", "dm"],
+        dm_env,
+    )
+    turns = runtime_state(env)["turns"]
+    return turns[-1]
+
+
+def orchestrated_bookkeeping_dm_turn(
+    runner: CliRunner,
+    env: dict[str, str],
+    orchestrator: Orchestrator,
+    state,
+    *,
+    body: str,
+    summary: str,
+) -> TurnResult:
+    agent, turn_meta, queued_entry, action_entry = orchestrator._resolve_next_agent(state)
+    if agent.id != "dm":
+        raise AssertionError(f"expected queued DM turn, got {agent.id!r}")
+    package = orchestrator.context_builder.build(state, agent, turn_meta=turn_meta)
+    dm_env = {**env, "GLASS_ROLE": agent.glass_role}
+    invoke_ok(
+        runner,
+        [
+            "turn",
+            "begin",
+            "--turn-id",
+            package.turn_id,
+            "--actor",
+            agent.id,
+            "--role",
+            agent.role,
+            "--mode",
+            state.active_mode.mode,
+            "--scene",
+            state.active_mode.scene_id,
+            "--kind",
+            "bookkeeping",
+            "--no-turn-type-required",
+            "--disallow-player-scene-close",
+        ],
+        dm_env,
+    )
+    invoke_ok(runner, ["turn", "audit"], dm_env)
+    invoke_ok(
+        runner,
+        [
+            "turn",
+            "end",
+            "--summary",
+            summary,
+            "--state",
+            "no state change",
+            "--rolls",
+            "none",
+            "--next",
+            "default",
+        ],
+        dm_env,
+    )
+    package.turn_prose_path.write_text(body, encoding="utf-8")
+    return TurnResult(
+        turn_id=package.turn_id,
+        agent=agent,
+        turn_dir=package.turn_dir,
+        spawn_cwd=package.spawn_cwd,
+        prose=body,
+        dry_run=False,
+        turn_end={
+            "summary": summary,
+            "state": "no state change",
+            "rolls": "none",
+            "next": "default",
+        },
+        turn_prose_path=package.turn_prose_path,
+        turn_closeout_path=package.turn_closeout_path,
+        duration_seconds=0.0,
+        queued_speaker_entry=queued_entry,
+        action_order_entry=action_entry,
+    )
+
+
 def _pass_rate(modifier: int, *, momentum: int, risk: str = "standard") -> float:
     target = RISK_THRESHOLDS[risk]
     passes = sum(
@@ -197,6 +364,57 @@ def _failure_rate(modifier: int, *, momentum: int, risk: str = "standard") -> fl
 
 
 class GlassCliTests(unittest.TestCase):
+    def test_runtime_state_field_update_writes_selected_db_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
+            try:
+                paths = get_paths()
+                update_state_fields(
+                    paths,
+                    env["GLASS_CAMPAIGN_ID"],
+                    {
+                        "active_scene": "opening",
+                        "active_scene_arc": "first-arc",
+                        "active_scene_type": "social",
+                    },
+                )
+                saved = load_state(paths, env["GLASS_CAMPAIGN_ID"])
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+
+            self.assertEqual(saved["active_scene"], "opening")
+            self.assertEqual(saved["active_scene_arc"], "first-arc")
+            self.assertEqual(saved["active_scene_type"], "social")
+
+    def test_campaign_manager_phase_update_writes_existing_runtime_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            env = make_env(tmp_path, "scratch")
+            campaign_id = "phase-campaign"
+            reset_postgres_runtime(Path(env["GLASS_CONFIG"]), campaign_id)
+            config = load_aog_config(env["GLASS_CONFIG"])
+            manager = CampaignManager(config)
+
+            with patch("orchestrator.permissions.apply_campaign_permissions"):
+                manager.create(campaign_id)
+            state = manager.advance_phase(campaign_id, PHASE_ORGANIZATION_BOOTSTRAP)
+
+            saved = runtime_state(
+                {**env, "GLASS_CAMPAIGN_ID": campaign_id}
+            )
+            self.assertEqual(state["phase"], PHASE_ORGANIZATION_BOOTSTRAP)
+            self.assertEqual(saved["phase"], PHASE_ORGANIZATION_BOOTSTRAP)
+            self.assertEqual(saved["phase_history"][-1]["phase"], PHASE_ORGANIZATION_BOOTSTRAP)
+
     def test_standard_roll_probabilities_ignore_momentum(self) -> None:
         trained_standard = (
             SKILL_TIERS["apprentice"] + ATTRIBUTE_TIERS["standard"]
@@ -1427,14 +1645,14 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(state["next_speakers"][1]["rapid_prompt"], "react to the flare")
             self.assertEqual(state["next_speakers"][2]["agent"], "sumi")
 
-    def test_prelude_turn_end_requires_scene_contract_before_handoff(self) -> None:
+    def test_scene_prep_turn_end_requires_scene_contract_before_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             runner = CliRunner()
             env = make_env(tmp_path)
             dm_env = {**env, "GLASS_ROLE": "dm"}
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
-            invoke_ok(runner, ["mode", "start", "prelude", "prelude"], dm_env)
+            invoke_ok(runner, ["mode", "start", "scene-prep", "opening-setup"], dm_env)
             invoke_ok(
                 runner,
                 [
@@ -1447,11 +1665,11 @@ Recipients are `dm`, `party`, or a player id.
                     "--role",
                     "dm",
                     "--mode",
-                    "prelude",
+                    "scene-prep",
                     "--scene",
-                    "prelude",
+                    "opening-setup",
                     "--kind",
-                    "prelude",
+                    "scene-prep",
                     "--no-turn-type-required",
                     "--disallow-player-scene-close",
                 ],
@@ -3146,7 +3364,7 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertNotEqual(wrong_clock.exit_code, 0)
             self.assertIn("nonexistent-clock", wrong_clock.output)
-            self.assertIn("not active in this scene", wrong_clock.output)
+            self.assertIn("not active in scene", wrong_clock.output)
 
             ended = invoke_ok(
                 runner,
@@ -3206,6 +3424,508 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertNotEqual(overlap.exit_code, 0)
             self.assertIn("cannot be both carried and retired", overlap.output)
+
+    def test_mode_start_rejects_duplicate_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
+                dm_env,
+            )
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            duplicate = runner.invoke(
+                main,
+                ["mode", "start", "scene-play", "opening"],
+                env=dm_env,
+            )
+            self.assertNotEqual(duplicate.exit_code, 0)
+            self.assertIn("already on the mode stack", duplicate.output)
+            self.assertIn("refusing to push a duplicate frame", duplicate.output)
+
+    def test_scene_transition_new_closes_current_and_opens_next(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
+                dm_env,
+            )
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            transition = invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "second",
+                    "--new",
+                    "--type", "scene-play",
+                    "--arc", "first-arc",
+                    "--summary", "The opening resolved.",
+                    "--outcome", "Door is open.",
+                ],
+                dm_env,
+            )
+            self.assertIn("kind: new", transition.output)
+            self.assertIn("scene_id: second", transition.output)
+            state = runtime_state(env)
+            self.assertEqual(state["active_scene"], "second")
+            self.assertEqual(state["active_scene_arc"], "first-arc")
+            self.assertEqual(state["mode_stack"][-1]["scene_id"], "second")
+
+    def test_scene_transition_rejects_duplicate_scene_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
+                dm_env,
+            )
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            duplicate = runner.invoke(
+                main,
+                [
+                    "scene", "transition", "opening",
+                    "--new",
+                    "--type", "scene-play",
+                    "--arc", "first-arc",
+                    "--summary", "x",
+                    "--outcome", "x",
+                ],
+                env=dm_env,
+            )
+            self.assertNotEqual(duplicate.exit_code, 0)
+            self.assertIn("already on the mode stack", duplicate.output)
+
+    def test_scene_transition_nested_keeps_parent_alive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
+                dm_env,
+            )
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            nested = invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "interrupt-fight",
+                    "--nested",
+                    "--type", "action",
+                    "--arc", "first-arc",
+                    "--new-mode", "action",
+                ],
+                dm_env,
+            )
+            self.assertIn("kind: nested", nested.output)
+            self.assertIn("scene_id: opening", nested.output)
+            self.assertIn("scene_id: interrupt-fight", nested.output)
+
+    def test_runtime_state_e2e_sequential_scene_commands_keep_direct_db_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+
+            start_scene_campaign(runner, env)
+            invoke_ok(runner, ["mode", "start", "scene-prep", "prep-next"], dm_env)
+
+            state = runtime_state(env)
+            self.assertEqual(state["active_arc"], "first-arc")
+            self.assertEqual(state["active_scene"], "opening")
+            self.assertEqual(state["active_scene_arc"], "first-arc")
+            self.assertEqual(state["active_scene_type"], "social")
+            self.assertEqual(
+                [frame["scene_id"] for frame in state["mode_stack"]],
+                ["opening", "prep-next"],
+            )
+            summaries = [event["summary"] for event in state["pending_events"]]
+            self.assertTrue(
+                any("arc create: first-arc" in item for item in summaries)
+            )
+            self.assertTrue(
+                any("scene create: opening" in item for item in summaries)
+            )
+            self.assertTrue(
+                any(
+                    "mode start scene-prep @ prep-next" in item
+                    for item in summaries
+                )
+            )
+
+    def test_scene_transition_return_restores_parent_scene_without_whole_state_save(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+
+            start_scene_campaign(runner, env)
+            invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "interrupt-fight",
+                    "--nested",
+                    "--type", "action",
+                    "--arc", "first-arc",
+                    "--new-mode", "action",
+                ],
+                dm_env,
+            )
+            returned = invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "opening",
+                    "--return",
+                    "--summary", "The interruption is resolved.",
+                    "--outcome", "The fight is contained.",
+                ],
+                dm_env,
+            )
+
+            self.assertIn("kind: return", returned.output)
+            state = runtime_state(env)
+            self.assertEqual(state["active_scene"], "opening")
+            self.assertEqual(state["active_scene_arc"], "first-arc")
+            self.assertEqual(len(state["mode_stack"]), 1)
+            self.assertEqual(state["mode_stack"][0]["mode"], "scene-play")
+            self.assertEqual(state["mode_stack"][0]["scene_id"], "opening")
+            self.assertFalse(
+                (tmp_path / "campaigns" / "c1" / "arcs" / "None").exists()
+            )
+
+    def test_cross_arc_scene_transition_attributes_followup_turn_to_new_arc(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+
+            start_scene_campaign(runner, env, arc_id="first-arc", scene_id="opening")
+            invoke_ok(runner, arc_create_args("second-arc"), dm_env)
+            transition = invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "distant-door",
+                    "--new",
+                    "--type", "scene-play",
+                    "--arc", "second-arc",
+                    "--summary", "The first arc gives way.",
+                    "--outcome", "The crew crosses into the second arc.",
+                ],
+                dm_env,
+            )
+            self.assertIn("scene_id: distant-door", transition.output)
+
+            turn = append_bookkeeping_dm_turn(
+                runner,
+                env,
+                tmp_path,
+                turn_number=1,
+                scene_id="distant-door",
+                body="Mara frames the second arc doorway.",
+                summary="Mara frames the second arc doorway.",
+            )
+
+            state = runtime_state(env)
+            self.assertEqual(state["active_arc"], "second-arc")
+            self.assertEqual(state["active_scene"], "distant-door")
+            self.assertEqual(state["active_scene_arc"], "second-arc")
+            self.assertEqual(turn["scene_id"], "distant-door")
+            self.assertEqual(turn["arc_id"], "second-arc")
+            self.assertFalse(
+                (tmp_path / "campaigns" / "c1" / "arcs" / "None").exists()
+            )
+
+    def test_orchestrator_play_loop_runs_across_scene_transition(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path, "orchestrator-play")
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+
+            start_scene_campaign(
+                runner,
+                env,
+                arc_id="first-arc",
+                scene_id="opening",
+            )
+            invoke_ok(
+                runner,
+                [
+                    "scene", "clock", "declare", "opening-pressure",
+                    "--label", "Opening pressure",
+                    "--goal", "Find the clean crossing.",
+                    "--max", "4",
+                    "--direction", "progress",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat", "start", "opening-beat",
+                    "--clock", "opening-pressure",
+                    "--label", "Crossing question",
+                    "--question", "Who controls the clean crossing?",
+                ],
+                dm_env,
+            )
+            invoke_ok(runner, arc_create_args("second-arc"), dm_env)
+
+            config = load_aog_config(env["GLASS_CONFIG"])
+            store = SessionStore(config)
+            orchestrator = Orchestrator(config, store)
+            scripted_turns = [
+                (
+                    "Mara plays the opening pressure forward.",
+                    "Mara advances the opening scene.",
+                ),
+                (
+                    "Mara plays the second arc doorway.",
+                    "Mara advances the transitioned scene.",
+                ),
+            ]
+
+            def fake_run_one_turn(state, *, dry_run: bool):
+                self.assertFalse(dry_run)
+                body, summary = scripted_turns.pop(0)
+                return orchestrated_bookkeeping_dm_turn(
+                    runner,
+                    env,
+                    orchestrator,
+                    state,
+                    body=body,
+                    summary=summary,
+                )
+
+            with patch.object(orchestrator, "run_one_turn", side_effect=fake_run_one_turn):
+                invoke_ok(runner, ["turn", "handoff", "dm"], dm_env)
+                first_state = store.load(env["GLASS_CAMPAIGN_ID"])
+                self.assertEqual(
+                    orchestrator.run_loop(first_state, max_turns=1, dry_run=False),
+                    1,
+                )
+
+                transition = invoke_ok(
+                    runner,
+                    [
+                        "scene", "transition", "distant-door",
+                        "--new",
+                        "--type", "scene-play",
+                        "--arc", "second-arc",
+                        "--summary", "The opening route resolves.",
+                        "--outcome", "The crew reaches the distant door.",
+                        "--retire-clock", "opening-pressure=The crossing is resolved.",
+                    ],
+                    dm_env,
+                )
+                self.assertIn("scene_id: distant-door", transition.output)
+                invoke_ok(
+                    runner,
+                    [
+                        "scene", "clock", "declare", "distant-pressure",
+                        "--label", "Distant pressure",
+                        "--goal", "Open the distant door.",
+                        "--max", "4",
+                        "--direction", "progress",
+                    ],
+                    dm_env,
+                )
+                invoke_ok(
+                    runner,
+                    [
+                        "beat", "start", "distant-beat",
+                        "--clock", "distant-pressure",
+                        "--label", "Door question",
+                        "--question", "What does the door demand?",
+                    ],
+                    dm_env,
+                )
+                invoke_ok(runner, ["turn", "handoff", "dm"], dm_env)
+                second_state = store.load(env["GLASS_CAMPAIGN_ID"])
+                self.assertEqual(
+                    orchestrator.run_loop(second_state, max_turns=1, dry_run=False),
+                    1,
+                )
+
+            state = runtime_state(env)
+            self.assertEqual(state["turn_counter"], 2)
+            self.assertEqual(state["active_arc"], "second-arc")
+            self.assertEqual(state["active_scene"], "distant-door")
+            self.assertEqual(state["active_scene_arc"], "second-arc")
+            self.assertEqual(state["turns"][0]["scene_id"], "opening")
+            self.assertEqual(state["turns"][0]["arc_id"], "first-arc")
+            self.assertEqual(state["turns"][1]["scene_id"], "distant-door")
+            self.assertEqual(state["turns"][1]["arc_id"], "second-arc")
+            self.assertFalse(scripted_turns)
+
+    def test_scene_transition_new_close_parent_keeps_new_scene_active(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
+                dm_env,
+            )
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "interrupt-fight",
+                    "--nested",
+                    "--type", "action",
+                    "--arc", "first-arc",
+                    "--new-mode", "scene-play",
+                ],
+                dm_env,
+            )
+
+            transition = invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "third",
+                    "--new",
+                    "--close-parent",
+                    "--type", "scene-play",
+                    "--arc", "first-arc",
+                    "--summary", "The interruption resolves.",
+                    "--outcome", "The room clears.",
+                    "--parent-outcome", "The opening scene is also settled.",
+                ],
+                dm_env,
+            )
+
+            self.assertIn("kind: new", transition.output)
+            self.assertIn("scene_id: third", transition.output)
+            state = runtime_state(env)
+            self.assertEqual(state["active_scene"], "third")
+            self.assertEqual(state["active_scene_arc"], "first-arc")
+            self.assertEqual(state["active_scene_type"], "scene-play")
+            self.assertEqual(len(state["mode_stack"]), 1)
+            self.assertEqual(state["mode_stack"][-1]["scene_id"], "third")
+
+    def test_close_parent_transition_attributes_followup_turn_to_replacement_scene(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+
+            start_scene_campaign(runner, env)
+            invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "interrupt-fight",
+                    "--nested",
+                    "--type", "action",
+                    "--arc", "first-arc",
+                    "--new-mode", "scene-play",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "third",
+                    "--new",
+                    "--close-parent",
+                    "--type", "scene-play",
+                    "--arc", "first-arc",
+                    "--summary", "The interruption resolves.",
+                    "--outcome", "The room clears.",
+                    "--parent-outcome", "The opening scene is also settled.",
+                ],
+                dm_env,
+            )
+
+            turn = append_bookkeeping_dm_turn(
+                runner,
+                env,
+                tmp_path,
+                turn_number=1,
+                scene_id="third",
+                body="Mara opens the replacement scene.",
+                summary="Mara opens the replacement scene.",
+            )
+
+            state = runtime_state(env)
+            self.assertEqual(state["active_scene"], "third")
+            self.assertEqual(state["active_scene_arc"], "first-arc")
+            self.assertEqual(turn["scene_id"], "third")
+            self.assertEqual(turn["arc_id"], "first-arc")
+            self.assertEqual(len(state["mode_stack"]), 1)
+            self.assertEqual(state["mode_stack"][-1]["scene_id"], "third")
+            self.assertFalse(
+                (tmp_path / "campaigns" / "c1" / "arcs" / "None").exists()
+            )
+
+    def test_scene_transition_new_refuses_with_parent_on_stack(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
+                dm_env,
+            )
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene", "transition", "interrupt-fight",
+                    "--nested",
+                    "--type", "action",
+                    "--arc", "first-arc",
+                    "--new-mode", "action",
+                ],
+                dm_env,
+            )
+            bad = runner.invoke(
+                main,
+                [
+                    "scene", "transition", "third",
+                    "--new",
+                    "--type", "scene-play",
+                    "--arc", "first-arc",
+                    "--summary", "x",
+                    "--outcome", "x",
+                ],
+                env=dm_env,
+            )
+            self.assertNotEqual(bad.exit_code, 0)
+            self.assertIn("parent scene", bad.output)
+            self.assertIn("--return", bad.output)
+            self.assertIn("--close-parent", bad.output)
+            self.assertIn("--force", bad.output)
 
 
 if __name__ == "__main__":
