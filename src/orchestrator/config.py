@@ -23,8 +23,7 @@ class CapsConfig:
     session_max_turns: int
     mode_default_max_turns: int
     mode_scene_play_max_turns: int
-    mode_combat_max_turns: int
-    mode_travel_max_turns: int
+    mode_action_max_turns: int
 
     def budget_for(self, mode: str) -> int | None:
         normalized = mode.lower()
@@ -34,10 +33,8 @@ class CapsConfig:
             return 15
         if normalized == "scene-play":
             return self.mode_scene_play_max_turns
-        if normalized == "combat":
-            return self.mode_combat_max_turns
-        if normalized in {"travel", "travel/montage", "montage"}:
-            return self.mode_travel_max_turns
+        if normalized == "action":
+            return self.mode_action_max_turns
         if normalized == "wrap":
             return 3
         return self.mode_default_max_turns
@@ -93,8 +90,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "session_max_turns": 200,
         "mode_default_max_turns": 12,
         "mode_scene_play_max_turns": 120,
-        "mode_combat_max_turns": 8,
-        "mode_travel_max_turns": 4,
+        "mode_action_max_turns": 120,
     },
     "orchestrator": {
         # Minimum wall-clock duration per successful turn. If an agent finishes
@@ -169,8 +165,7 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
             mode_scene_play_max_turns=int(
                 caps.get("mode_scene_play_max_turns", 120)
             ),
-            mode_combat_max_turns=int(caps.get("mode_combat_max_turns", 8)),
-            mode_travel_max_turns=int(caps.get("mode_travel_max_turns", 4)),
+            mode_action_max_turns=int(caps.get("mode_action_max_turns", 120)),
         ),
         orchestrator=OrchestratorConfig(
             turn_minimum_seconds=max(

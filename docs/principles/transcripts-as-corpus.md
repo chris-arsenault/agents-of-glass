@@ -41,7 +41,7 @@ consume the structured turn feed, not per-agent turn folders.
 
 **State mutations are events, recorded by the CLI, not by the agent.** When Karrith takes 3 damage, the agent calls `glass character set-hp karrith -3`. The CLI logs the event to Postgres and the orchestrator inlines a one-line mechanical event (`> ❤️ karrith hp -3 (5 → 2)`) into the transcript at the right point. The agent doesn't repeat the mutation in a structured field at the end of their turn. Snapshots can be reconstructed from the event log; events can't be reconstructed from snapshots.
 
-**Mode transitions are first-class records.** "Entering combat at chase-through-ringglass-market" is its own transcript entry, written by the orchestrator when the DM calls `glass mode start combat`. Mode boundaries are how analysis later carves the corpus into scenes.
+**Mode transitions are first-class records.** "Entering action at chase-through-ringglass-market" is its own transcript entry, written by the orchestrator when the DM calls `glass mode start action`. Scene `--type` carries labels like combat or chase; mode boundaries are how analysis later carves the corpus into scenes.
 
 **Failures are preserved.** A session that ended badly is more valuable than a session that didn't end. Don't delete bad runs. Don't auto-retry. The corpus includes the wreckage.
 

@@ -38,6 +38,7 @@ from cli.state import load_state, update_state_fields
 from cli.validation import assert_valid_item_id, momentum_narrative_effect
 from orchestrator.campaign import CampaignManager, PHASE_ORGANIZATION_BOOTSTRAP
 from orchestrator.config import load_config as load_aog_config
+from orchestrator.main import main as aog_main
 from orchestrator.runner import Orchestrator, TurnResult
 from orchestrator.store import SessionStore
 
@@ -122,6 +123,7 @@ def create_test_character(
     player: str = "tev",
     character_id: str = "vel",
     name: str = "Vel Arannis",
+    primary_drive: str | None = None,
 ) -> None:
     invoke_ok(
         runner,
@@ -148,7 +150,7 @@ def create_test_character(
             "--goal",
             "Pay down the route debt.",
             "--primary-drive",
-            "care/protection" if character_id == "vel" else "curiosity",
+            primary_drive or ("care/protection" if character_id == "vel" else "curiosity"),
             "--positive-trait",
             "Laughs at bad dock jokes and keeps a scorecard of the worst ones.",
             "--table-presence",
@@ -3448,6 +3450,23 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("already on the mode stack", duplicate.output)
             self.assertIn("refusing to push a duplicate frame", duplicate.output)
 
+    def test_mode_start_rejects_toolkit_labels_as_modes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            blocked = runner.invoke(
+                main,
+                ["mode", "start", "combat", "opening"],
+                env=dm_env,
+            )
+
+            self.assertNotEqual(blocked.exit_code, 0)
+            self.assertIn("`combat` is a scene type, not a mode", blocked.output)
+            self.assertIn("glass mode start action", blocked.output)
+
     def test_scene_transition_new_closes_current_and_opens_next(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -3778,6 +3797,233 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(state["turns"][1]["scene_id"], "distant-door")
             self.assertEqual(state["turns"][1]["arc_id"], "second-arc")
             self.assertFalse(scripted_turns)
+
+    def test_campaign_run_mocked_agents_start_scene_prep_after_bootstrap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            campaign_id = "mocked-lifecycle"
+            runner = CliRunner()
+            env = make_env(tmp_path, campaign_id)
+            (tmp_path / "campaigns" / campaign_id).rmdir()
+            campaign_root = tmp_path / "campaigns" / campaign_id
+            players = ("tev", "sumi", "renno", "kit")
+            drives = {
+                "tev": "care/protection",
+                "sumi": "curiosity",
+                "renno": "duty",
+                "kit": "ambition",
+            }
+
+            def agent_env(stream_env: dict[str, str], role: str | None = None) -> dict[str, str]:
+                patched = dict(stream_env)
+                patched["GLASS_API_INTERNAL"] = "1"
+                patched["GLASS_API_URL"] = ""
+                patched["GLASS_API_GRANT"] = ""
+                if role is not None:
+                    patched["GLASS_ROLE"] = role
+                return patched
+
+            def glass(stream_env: dict[str, str], args: list[str], role: str | None = None) -> None:
+                invoke_ok(runner, args, agent_env(stream_env, role))
+
+            def close_turn(stream_env: dict[str, str], summary: str) -> None:
+                glass(stream_env, ["turn", "audit"])
+                glass(
+                    stream_env,
+                    [
+                        "turn",
+                        "end",
+                        "--summary",
+                        summary,
+                        "--state",
+                        "no state change",
+                        "--rolls",
+                        "none",
+                        "--next",
+                        "default",
+                    ],
+                )
+                Path(stream_env["AOG_TURN_PROSE"]).write_text(summary + "\n", encoding="utf-8")
+
+            def write_player_public_files(player_id: str) -> None:
+                public = campaign_root / "players" / player_id / "public"
+                public.mkdir(parents=True, exist_ok=True)
+                (public / "intro.md").write_text(
+                    f"{player_id} arrives with a concrete table-facing want.\n",
+                    encoding="utf-8",
+                )
+                (public / "relationships.md").write_text(
+                    f"{player_id} has a clear tie to every other crew member.\n",
+                    encoding="utf-8",
+                )
+
+            def fake_stream(_command, **kwargs):
+                stream_env = kwargs["env"]
+                state = runtime_state(stream_env)
+                mode = str(state["active_turn_mode"])
+                role = str(stream_env["GLASS_ROLE"])
+                actor = str(state["active_turn_actor"])
+
+                if mode == "intermission":
+                    raise AssertionError("campaign lifecycle entered intermission before scene prep")
+
+                if mode == "organization-bootstrap":
+                    (campaign_root / "shared" / "lore").mkdir(parents=True, exist_ok=True)
+                    (campaign_root / "dm" / "notes").mkdir(parents=True, exist_ok=True)
+                    (campaign_root / "table").mkdir(parents=True, exist_ok=True)
+                    (campaign_root / "shared" / "lore" / "organization.md").write_text(
+                        "The Bellweather Compact moves people through blocked civic routes.\n",
+                        encoding="utf-8",
+                    )
+                    (campaign_root / "dm" / "notes" / "organization.md").write_text(
+                        "Private pressure: the Compact owes favors to a hidden dispatcher.\n",
+                        encoding="utf-8",
+                    )
+                    (campaign_root / "table" / "scene.md").write_text(
+                        "Character creation opens around the Compact's route table.\n",
+                        encoding="utf-8",
+                    )
+                    glass(stream_env, ["mode", "end"], "dm")
+                    close_turn(stream_env, "Mara establishes the party organization.")
+                    return "", "", 0, False
+
+                if mode == "character-creation":
+                    if role.startswith("player:"):
+                        player = role.split(":", 1)[1]
+                        create_test_character(
+                            runner,
+                            agent_env(stream_env),
+                            player=player,
+                            character_id=f"{player}-hero",
+                            name=f"{player.title()} Example",
+                            primary_drive=drives[player],
+                        )
+                        write_player_public_files(player)
+                        close_turn(stream_env, f"{player} creates a character.")
+                        return "", "", 0, False
+                    self.assertEqual(actor, "dm")
+                    for player in players:
+                        write_player_public_files(player)
+                    glass(stream_env, ["mode", "end"], "dm")
+                    close_turn(stream_env, "Mara ratifies the finished crew.")
+                    return "", "", 0, False
+
+                if mode == "campaign-planning":
+                    (campaign_root / "dm").mkdir(parents=True, exist_ok=True)
+                    (campaign_root / "shared").mkdir(parents=True, exist_ok=True)
+                    (campaign_root / "dm" / "foundation.md").write_text(
+                        "The campaign opens with a civic route nobody can safely name.\n",
+                        encoding="utf-8",
+                    )
+                    (campaign_root / "context.md").write_text(
+                        "Opening context: the Compact has one clean lead and one debt.\n",
+                        encoding="utf-8",
+                    )
+                    (campaign_root / "shared" / "campaign-framing.md").write_text(
+                        "The first arc asks who controls public passage.\n",
+                        encoding="utf-8",
+                    )
+                    glass(stream_env, arc_create_args("first-arc"), "dm")
+                    glass(stream_env, ["mode", "end"], "dm")
+                    close_turn(stream_env, "Mara plans the opening arc.")
+                    return "", "", 0, False
+
+                if mode == "scene-prep":
+                    glass(
+                        stream_env,
+                        ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
+                        "dm",
+                    )
+                    glass(stream_env, ["mode", "end"], "dm")
+                    glass(stream_env, ["mode", "start", "scene-play", "opening"], "dm")
+                    glass(
+                        stream_env,
+                        [
+                            "scene",
+                            "clock",
+                            "declare",
+                            "opening-pressure",
+                            "--label",
+                            "Opening pressure",
+                            "--goal",
+                            "Secure the first clean route.",
+                            "--max",
+                            "4",
+                            "--direction",
+                            "progress",
+                        ],
+                        "dm",
+                    )
+                    glass(
+                        stream_env,
+                        [
+                            "beat",
+                            "start",
+                            "opening-beat",
+                            "--clock",
+                            "opening-pressure",
+                            "--label",
+                            "Route question",
+                            "--question",
+                            "Who controls the first clean route?",
+                        ],
+                        "dm",
+                    )
+                    glass(stream_env, ["beat", "check"], "dm")
+                    close_turn(stream_env, "Mara stages the opening scene.")
+                    return "", "", 0, False
+
+                if mode == "scene-play":
+                    glass(stream_env, ["beat", "check"], role)
+                    close_turn(stream_env, f"{actor} plays the opening scene.")
+                    return "", "", 0, False
+
+                close_turn(stream_env, f"{actor} completes {mode}.")
+                return "", "", 0, False
+
+            with (
+                patch("orchestrator.main._ensure_operator_groups_active"),
+                patch("orchestrator.main._ensure_falkor_reachable"),
+                patch("orchestrator.main._ensure_glass_api_for_run"),
+                patch("orchestrator.main._checkpoint_or_raise", return_value={"checkpoint_id": "test"}),
+                patch("orchestrator.permissions.apply_campaign_permissions"),
+                patch("orchestrator.runner.ensure_background_server", return_value="http://api"),
+                patch("orchestrator.runner.mint_grant", return_value="grant"),
+                patch("orchestrator.runner._resolve_provider_executable", return_value="/bin/true"),
+                patch("orchestrator.runner._stream_subprocess", side_effect=fake_stream),
+            ):
+                result = runner.invoke(
+                    aog_main,
+                    [
+                        "--config",
+                        env["GLASS_CONFIG"],
+                        "campaign",
+                        "run",
+                        campaign_id,
+                        "--max-organization-turns",
+                        "1",
+                        "--max-creation-turns",
+                        "5",
+                        "--max-planning-turns",
+                        "1",
+                        "--max-turns",
+                        "1",
+                        "--no-review-stops",
+                        "--turn-minimum-seconds",
+                        "0",
+                    ],
+                    catch_exceptions=False,
+                )
+
+            self.assertEqual(result.exit_code, 0, result.output)
+            state = runtime_state(env)
+            self.assertEqual(state["phase"], "active")
+            self.assertEqual(state["active_arc"], "first-arc")
+            self.assertEqual(state["active_scene"], "opening")
+            self.assertEqual(state["mode_stack"][-1]["mode"], "scene-play")
+            self.assertEqual(state["mode_stack"][-1]["scene_id"], "opening")
+            self.assertNotIn("intermission", [turn["mode"] for turn in state["turns"]])
+            self.assertIn("scene-prep", [turn["mode"] for turn in state["turns"]])
 
     def test_scene_transition_new_close_parent_keeps_new_scene_active(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

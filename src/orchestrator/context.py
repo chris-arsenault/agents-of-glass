@@ -355,6 +355,10 @@ class ContextBuilder:
             if housekeeping_turn or rapid_turn or scene_transition_turn
             else self._creative_influence_section(state, agent)
         )
+        previous_orgs_section = self._previous_campaign_organizations_section(
+            state,
+            agent,
+        )
         if rapid_turn:
             output_contract_section = (
                 "## Output contract\n\n"
@@ -524,6 +528,7 @@ class ContextBuilder:
             "## Context boundary\n\n"
             f"{context_boundary}"
             f"{session_context_section}"
+            f"{previous_orgs_section}"
             "## Authoring Surface\n\n"
             "Read and edit the workspace-relative files named in this turn. "
             "The turn `TURN.md` file is collected automatically; do not sync "
@@ -685,7 +690,7 @@ class ContextBuilder:
                 '- `glass msg <type> <recipient> "<body>"` - send only upkeep-relevant notices.',
             ]
         if turn_type == "scene-transition-dm":
-            type_hint = active_scene_type or "scene-play|action|combat|chase|social-pressure|custom"
+            type_hint = active_scene_type or "social|exploration|combat|chase|custom"
             return [
                 f'- `glass scene end --summary "<scene summary>" --outcome "<resolved outcome>" --xp "tev=3,sumi=3,renno=3,kit=3"` - close `{active_scene}` and award scene XP.',
                 f"- `glass arc close-check {active_arc}` - after the scene is closed, decide whether the active arc continues, closes, or reframes before making another scene.",
@@ -698,7 +703,7 @@ class ContextBuilder:
                 "- `glass thread current` - inspect long-game threads before choosing a callback.",
                 '- `glass thread advance <thread-id> --note "<concrete visible beat>"` - only when the closed scene or new scene visibly advances a recurring symbol, antagonist method, faction move, repeated harm pattern, NPC consequence, or unresolved question.',
                 '- `glass table write scene.md --body "<visible board with 3 interactable toys>"` / `glass table use <campaign-markdown-path> --as <table-artifact>.md` - put the next scene\'s board on screen.',
-                "- `glass mode end` then `glass mode start <scene-play|action|combat|chase|social-pressure> <next-scene>` - switch from transition into the staged scene mode.",
+                "- `glass mode end` then `glass mode start <scene-play|action> <next-scene>` - switch from transition into the staged scene mode.",
                 f"- `glass next housekeeping-round --previous-scene {active_scene} --next-scene <next-scene>` - queue cleanup turns after scene closeout.",
                 '- `glass summary write scene --body "<compact scene continuity>"` / `glass summary append arc --body "<arc continuity>"` - keep durable continuity compact.',
                 "- `glass sync apply <path-or-directory> ...` - commit authored markdown after the hard state commands.",
@@ -715,7 +720,7 @@ class ContextBuilder:
                 '- `glass thread advance <thread-id> --note "<concrete visible beat>"` - only when prep seeds or advances a table-visible recurring symbol, antagonist method, faction move, repeated harm pattern, NPC consequence, or unresolved question.',
                 '- `glass table write scene.md --body "<visible board with 3 interactable toys>"` / `glass table use <campaign-markdown-path> --as <table-artifact>.md` - make the visible situation concrete.',
                 "- `glass mode end` - exit the bare `scene-prep` mode before starting the scene's play mode.",
-                "- `glass mode start <scene-play|action|combat|chase|social-pressure> <scene-slug>` - enter the scene's play mode after staging it.",
+                "- `glass mode start <scene-play|action> <scene-slug>` - enter the scene's play mode after staging it.",
                 "- `glass next handoff <agent-id>` - only if the first spotlight must override normal rotation.",
                 "- `glass sync apply <path-or-directory> ...` - commit prep files, table artifacts, and summaries.",
             ]
@@ -729,7 +734,7 @@ class ContextBuilder:
                 '- `glass summary append scene --body "<compact continuity>"` - update scene continuity only when durable facts changed.',
                 (
                     "- `glass scene transition <next-scene-id> --new|--nested|--return [--close-parent] "
-                    "--type <problem-family> --arc <arc-id> --new-mode scene-play|action|combat|chase|social-pressure "
+                    "--type <problem-family> --arc <arc-id> --new-mode scene-play|action "
                     '--summary "<closing summary>" --outcome "<outcome>" --xp "tev=3,sumi=3,renno=3,kit=3" '
                     "--carry-clock <id>=<reason> --retire-clock <id>=<reason>` - close the current scene and stage the "
                     "next one in one atomic command. `--new` replaces at the current stack level; `--nested` pushes a "
@@ -1495,7 +1500,7 @@ class ContextBuilder:
         body = body or "_No scene summary has been written yet._"
         body = _trim_context_markdown(body, max_chars=4000)
 
-        if active.mode in {"scene-play", "action", "combat", "chase", "social-pressure"}:
+        if active.mode in {"scene-play", "action"}:
             if agent.role == "dm":
                 maintenance = (
                     "Before ending your turn, keep this compact continuity "
@@ -1567,6 +1572,93 @@ class ContextBuilder:
             )
         lines.append("")
         return "\n".join(lines) + "\n"
+
+    def _previous_campaign_organizations_section(
+        self,
+        state: SessionState,
+        agent: Agent,
+    ) -> str:
+        if agent.role != "dm" or state.active_mode.mode != "organization-bootstrap":
+            return ""
+
+        patterns = self._previous_campaign_organization_patterns(
+            current_campaign=state.campaign,
+            limit=5,
+        )
+        if not patterns:
+            return (
+                "## Previous Campaign Organization Check\n\n"
+                "No previous campaign organization briefs were found. Still avoid "
+                "defaulting to a rescue-route, extraction, audit, or procedure-led "
+                "crew unless the current pull makes the organization materially "
+                "different.\n\n"
+            )
+
+        lines = [
+            "## Previous Campaign Organization Check",
+            "",
+            "Before choosing this campaign's organization, compare against these "
+            "five most recent previous campaign organization patterns. Avoid "
+            "repeating their mission, operating method, internal culture, "
+            "default scenes, role shape, and non-adjacent pull domain. If a "
+            "candidate shares more than one major axis with one of these, bend "
+            "or discard it before writing.",
+            "",
+        ]
+        for pattern in patterns:
+            lines.append(f"- `{pattern['campaign_id']}`")
+            if pattern["public_org"]:
+                lines.append(f"  - Public org: {pattern['public_org']}")
+            if pattern["private_org"]:
+                lines.append(f"  - DM pattern: {pattern['private_org']}")
+            if pattern["pull_note"]:
+                lines.append(f"  - Pull note: {pattern['pull_note']}")
+        lines.append("")
+        return "\n".join(lines) + "\n"
+
+    def _previous_campaign_organization_patterns(
+        self,
+        *,
+        current_campaign: str,
+        limit: int,
+    ) -> list[dict[str, str]]:
+        campaigns_root = self.config.campaigns_dir
+        if not campaigns_root.exists():
+            return []
+
+        candidates: list[tuple[float, str, dict[str, str]]] = []
+        for campaign_root in campaigns_root.iterdir():
+            if not campaign_root.is_dir():
+                continue
+            campaign_id = campaign_root.name
+            if campaign_id == current_campaign or campaign_id.startswith("."):
+                continue
+
+            public_path = campaign_root / "shared" / "lore" / "organization.md"
+            private_path = campaign_root / "dm" / "notes" / "organization.md"
+            pull_path = campaign_root / "dm" / "notes" / "pulls" / "campaign-non-adjacent.md"
+            paths = (public_path, private_path, pull_path)
+            if not any(path.is_file() for path in paths):
+                continue
+
+            newest_mtime = _safe_mtime(campaign_root)
+            for path in paths:
+                newest_mtime = max(newest_mtime, _safe_mtime(path))
+            candidates.append(
+                (
+                    newest_mtime,
+                    campaign_id,
+                    {
+                        "campaign_id": campaign_id,
+                        "public_org": _previous_campaign_excerpt(public_path, max_chars=650),
+                        "private_org": _previous_campaign_excerpt(private_path, max_chars=450),
+                        "pull_note": _previous_campaign_excerpt(pull_path, max_chars=450),
+                    },
+                )
+            )
+
+        candidates.sort(key=lambda item: (-item[0], item[1]))
+        return [item[2] for item in candidates[:limit]]
 
     def _active_scene_summary_path(self, state: SessionState) -> Path | None:
         scene_id = state.active_mode.scene_id
@@ -1903,6 +1995,21 @@ def _trim_context_markdown(markdown: str, *, max_chars: int) -> str:
     )
 
 
+def _safe_mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def _previous_campaign_excerpt(path: Path, *, max_chars: int) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError, UnicodeDecodeError):
+        return ""
+    return _preview_text(text, max_chars=max_chars)
+
+
 def _clear_stale_turn_artifacts(turn_dir: Path) -> None:
     # Include legacy artifact names so reruns of an old prepared turn do not
     # leave obsolete files beside the current contract.
@@ -1964,7 +2071,7 @@ def _message_recipient_player_ids(state: SessionState | None) -> list[str]:
     return list(PLAYER_IDS)
 
 
-_ACTION_SCENE_MODES = {"action", "combat", "chase", "social-pressure"}
+_ACTION_SCENE_MODES = {"action"}
 _ACTIVE_PLAY_MODES = {"scene-play", *_ACTION_SCENE_MODES}
 
 

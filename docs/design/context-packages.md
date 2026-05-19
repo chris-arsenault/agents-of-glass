@@ -35,7 +35,7 @@ the table, using the personality, voice, tastes, and habits in
 `players/tev/public/character.md`. Make choices as the player, and when you
 speak or act in fiction, embody only what the character knows and can do.
 
-It's your turn. Mode: **combat** | Scene: **ringglass-market-chase**.
+It's your turn. Mode: **action** | Scene: **ringglass-market-chase**.
 
 ## Table
 Read `table/scene.md` for the current visible situation, then read any named
@@ -313,7 +313,7 @@ Beyond raw markdown, the orchestrator records per-turn metadata in Postgres for 
 | `campaign_id` | scope |
 | `arc_id` | which arc |
 | `scene_id` | which scene |
-| `scene_type` | protocol/toolkit label, e.g. scene-play / action / travel / combat / custom |
+| `scene_type` | toolkit label, e.g. combat / chase / travel / investigation / custom |
 | `speaker` | agent id |
 | `role` | dm / player |
 | `character_id` | the PC, if applicable |

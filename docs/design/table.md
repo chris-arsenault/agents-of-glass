@@ -74,9 +74,9 @@ Do not infer table visibility from graph rows or DM notes.
 `glass scene create` snapshots any still-active previous table, then creates a
 fresh live table for the new top-level scene.
 
-Nested modes and subscene protocols keep the existing table. A combat, chase,
-or social-pressure exchange that erupts inside a scene should update the table,
-not replace it.
+Nested modes and subscene protocols keep the existing table. An `action`
+subscene typed as combat, chase, or social-pressure should update the table, not
+replace it.
 
 `glass scene end --outcome` archives the final live table into the scene
 directory and replaces the live table with an inactive pointer.

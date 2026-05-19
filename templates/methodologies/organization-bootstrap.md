@@ -36,6 +36,12 @@ Every organization brief must answer:
 1. **Read the org-facing surfaces.**
    - Read `dm/persona.md`, `shared/lore/`, `table/scene.md`, and
      [`how-to/party-organization.md`](../how-to/party-organization.md).
+   - Read the `Previous Campaign Organization Check` embedded in
+     `TURN_START.md`. Treat it as an anti-repeat constraint, not background
+     color: before choosing the organization, compare against the last five
+     campaign organizations and avoid repeating their mission, operating
+     method, internal culture, default scenes, role shape, or non-adjacent pull
+     domain.
    - Search the world bible only for concepts the organization obviously needs
      right now.
 
@@ -48,6 +54,9 @@ Every organization brief must answer:
      behavior.
    - Use ensemble shows only as shape checks for cast function, not as the
      borrowed detail source.
+   - Do not reuse a pull domain, work culture, or organization fantasy visible
+     in the `Previous Campaign Organization Check`. If the first good source
+     points back toward one of those patterns, keep searching.
    - The pull must change at least four organization surfaces: what the
      organization wants when no mission is active; how members show status,
      trust, rivalry, or belonging; what kinds of scenes the organization

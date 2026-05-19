@@ -2,7 +2,7 @@
 title: Action Scene Methodology Index
 status: authored
 audience: players, dm
-applies_to_modes: [action, combat, chase, social-pressure]
+applies_to_modes: [action]
 toolkit_examples: [combat, chase, social-pressure, escape, duel, infiltration, disaster, heist]
 ---
 

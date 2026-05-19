@@ -25,7 +25,7 @@ Closure isn't one problem. It operates at three nested scales, each with its own
 | Scale | What's closing | Failure mode | Budget unit |
 |-------|----------------|--------------|-------------|
 | **Beat** | A single dramatic moment within a scene (a check resolves, an NPC reacts, a clue surfaces) | "Yes, and…" forever — the moment never lands | Turns |
-| **Scene** | A full mode block (the chase, the negotiation, the combat) | The chase that gets one more twist | Beats per scene + wall-clock turns |
+| **Scene** | A full play-mode block (the chase, the negotiation, the combat) | The chase that gets one more twist | Beats per scene + wall-clock turns |
 | **Session** | The whole sitting, with a clear stopping point | New mode keeps starting, party never goes home | Scenes per session + arc-completion |
 
 Don't conflate them. The same shape of guard applies at each scale, but the budgets and signals are different.
@@ -41,13 +41,13 @@ Ordered cheapest → most elaborate. Build all of them eventually; pick the star
 When entering a mode, the DM writes a structured `mode-entry` block before any turns fire:
 
 ```yaml
-mode: combat
+mode: action
 scene_id: chase-through-ringglass-market
 resolution_conditions:
   - party escapes the market patrol
   - party is captured
   - party kills/disables the patrol leader
-turn_budget: 8
+turn_budget: 120
 twist_budget: 2
 stakes_ceiling: high
 ```
@@ -60,7 +60,7 @@ Orchestrator validates the block exists. Every subsequent DM turn gets the resol
 
 `turn_budget` and `twist_budget` are counted by the orchestrator, not the agents.
 
-- At 75% of `turn_budget`: orchestrator injects `WRAP PRESSURE: 6 of 8` into the DM prompt.
+- At 75% of `turn_budget`: orchestrator injects `WRAP PRESSURE: 90 of 120` into the DM prompt.
 - At 100%: orchestrator forces `mode end`. DM must narrate closure with whatever state exists.
 
 The DM doesn't get to vote on this. **Single most important guard.** Soft pressure never works alone.

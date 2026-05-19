@@ -23,6 +23,16 @@ def mode() -> None:
     """Mode stack commands."""
 
 
+_DEPRECATED_PLAY_MODE_LABELS = {
+    "combat",
+    "chase",
+    "social-pressure",
+    "travel",
+    "travel-montage",
+    "montage",
+}
+
+
 @mode.command("start")
 @click.argument("mode_name")
 @click.argument("scene_id")
@@ -34,6 +44,14 @@ def mode_start(ctx: click.Context, mode_name: str, scene_id: str) -> None:
     state = load_state(paths, campaign_id)
     normalized_mode = slugify(mode_name)
     normalized_scene = slugify(scene_id)
+    if normalized_mode in _DEPRECATED_PLAY_MODE_LABELS:
+        raise GlassError(
+            agent_instruction(
+                f"`{normalized_mode}` is a scene type, not a mode",
+                "Use `glass mode start action <scene-id>` for quickfire play or `glass mode start scene-play <scene-id>` for open scene play.",
+                "Keep labels like combat, chase, social-pressure, travel, and montage in the scene `--type` or scene notes.",
+            )
+        )
     for existing in state["mode_stack"]:
         if (
             existing.get("mode") == normalized_mode

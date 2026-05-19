@@ -297,9 +297,6 @@ def scene_end_cmd(
 _SCENE_TRANSITION_PLAY_MODES: tuple[str, ...] = (
     "scene-play",
     "action",
-    "combat",
-    "chase",
-    "social-pressure",
 )
 
 
@@ -344,7 +341,7 @@ _SCENE_TRANSITION_PLAY_MODES: tuple[str, ...] = (
     "--type",
     "scene_type",
     default=None,
-    help="Scene protocol/toolkit label. Required for --new and --nested.",
+    help="Scene toolkit label. Required for --new and --nested.",
 )
 @click.option(
     "--arc",
@@ -516,7 +513,7 @@ def _require_scene_type(scene_type: str | None) -> str:
         raise GlassError(
             agent_instruction(
                 "--type is required for --new and --nested",
-                "Pass a scene protocol/toolkit label, e.g. `--type scene-play` "
+                "Pass a scene toolkit label, e.g. `--type social`, `--type combat`, "
                 "or `--type chase`.",
             )
         )
@@ -852,7 +849,10 @@ def _scene_transition_new(
         # phase modes, not closeable scenes. Silently ignore --close-parent in
         # those cases — the system already knows the parent shouldn't be closed
         # the way scenes are closed.
-        if parent_frame is None or str(parent_frame.get("mode") or "") not in _SCENE_TRANSITION_PLAY_MODES:
+        if (
+            parent_frame is None
+            or str(parent_frame.get("mode") or "") not in _SCENE_TRANSITION_PLAY_MODES
+        ):
             parent_close_args = None
         else:
             parent_scene_id = str(parent_frame.get("scene_id"))

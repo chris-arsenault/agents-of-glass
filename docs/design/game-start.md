@@ -57,11 +57,11 @@ For the campaign-level state machine, see [Phase state](#phase-state). For the o
 ```
 
 There are no "sessions." A scene is the unit of play; its `--type` is a
-protocol/toolkit label, not an exhaustive taxonomy. Common protocols are
-`scene-play`, `action`, and `travel/montage`; toolkit labels like `combat`,
-`chase`, `social-pressure`, `investigation`, or a custom slug help the DM frame
-the scene. The agents play as long as the operator runs the orchestrator. When a
-scene ends, the next scene starts when the DM is ready.
+toolkit label, not an exhaustive taxonomy. Runtime active play has two
+protocols, `scene-play` and `action`; labels like `combat`, `chase`,
+`social-pressure`, `travel`, `investigation`, or a custom slug help the DM frame
+the scene without becoming modes. The agents play as long as the operator runs
+the orchestrator. When a scene ends, the next scene starts when the DM is ready.
 
 ## Phase State
 

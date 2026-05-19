@@ -2,7 +2,7 @@
 title: Action Scene Player Methodology
 status: authored
 audience: players
-applies_to_modes: [action, combat, chase, social-pressure]
+applies_to_modes: [action]
 ---
 
 # Action Scene - Player

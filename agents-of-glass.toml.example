@@ -74,8 +74,7 @@ turn_timeout_seconds = 3600
 session_max_turns = 200
 mode_default_max_turns = 12
 mode_scene_play_max_turns = 120
-mode_combat_max_turns = 8
-mode_travel_max_turns = 4
+mode_action_max_turns = 120
 
 [orchestrator]
 # Minimum wall-clock duration for each completed turn. If a turn finishes

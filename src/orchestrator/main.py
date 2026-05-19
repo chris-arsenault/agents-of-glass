@@ -574,7 +574,11 @@ def _next_mode_after_no_active_mode(
     active_arc: str | None = None,
     has_prior_intermission: bool = False,
 ) -> str:
-    if (latest_turn_mode or "").lower() == MODE_INTERMISSION:
+    latest = (latest_turn_mode or "").lower()
+    active_play_modes = {"scene-play", "action"}
+    if latest == MODE_INTERMISSION:
+        return MODE_SCENE_PREP
+    if active_arc and latest not in active_play_modes:
         return MODE_SCENE_PREP
     if active_arc and has_prior_intermission:
         return MODE_SCENE_PREP

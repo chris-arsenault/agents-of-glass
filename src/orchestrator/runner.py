@@ -68,7 +68,7 @@ _GLASS_COMMAND_LINE_RE = re.compile(
     r"(roll|character|clock|summary|entity|search|tarot|lore|note|arc|"
     r"scene|table|mode|turn|thread|msg|turns|sync)\b"
 )
-_SCENE_PLAY_MODES = {"scene-play", "action", "combat", "chase", "social-pressure"}
+_SCENE_PLAY_MODES = {"scene-play", "action"}
 _PROVIDER_EXECUTABLES = {
     "claude": "claude",
     "codex": "codex",
@@ -1202,7 +1202,7 @@ class Orchestrator:
                 "",
                 "On your next turn, choose one course correction:",
                 "- If the campaign should continue in this arc, start `scene-prep` with `glass mode start scene-prep <scene-id>` and stage the next scene from there.",
-                "- If the next scene is already fully staged, start its actual play mode with `glass mode start <scene-type> <scene-id>`, create a scene clock and beat, run `glass check`, then close the turn.",
+                "- If the next scene is already fully staged, start its actual play mode with `glass mode start <scene-play|action> <scene-id>`, create a scene clock and beat, run `glass check`, then close the turn.",
                 "- If the arc is actually complete, close the active arc instead of leaving it open.",
                 "",
                 f"Previous mode was `{previous_mode}`; previous scene was `{previous_scene}`.",
@@ -1349,7 +1349,7 @@ class Orchestrator:
             instruction=(
                 "Scene-prep must hand into actual play. Create or repair the "
                 "scene/table files, end `scene-prep` if it is still active, "
-                "then start `scene-play`, `action`, or another actual play mode."
+                "then start `scene-play` or `action`."
             ),
         )
 

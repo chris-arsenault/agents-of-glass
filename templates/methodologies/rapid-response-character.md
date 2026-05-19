@@ -2,7 +2,7 @@
 title: Rapid Response Character Methodology
 status: authored
 audience: players
-applies_to_modes: [scene-play, action, combat, chase, social-pressure]
+applies_to_modes: [scene-play, action]
 ---
 
 # Rapid Response - Character Branch

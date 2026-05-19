@@ -129,19 +129,18 @@ live, and `glass done` succeeds.
 
 9. **Hand into actual play.**
    - If `scene-prep` is the active mode, run `glass mode end`.
-   - Run `glass mode start <scene-type> <scene-slug>`.
-   - If the started mode is `scene-play`, `action`, `combat`, `chase`, or
-     `social-pressure`, confirm the objective scene clock is live.
-   - If the started mode is `scene-play`, `action`, `combat`, `chase`, or
-     `social-pressure`, start 2-3 active beats before handing to players:
+   - Run `glass mode start <scene-play|action> <scene-slug>`. Use `action`
+     for quickfire combat, chase, disaster, escape, or social-pressure scenes;
+     keep that label in the scene `--type`, not the mode.
+   - Confirm the objective scene clock is live.
+   - Start 2-3 active beats before handing to players:
      `glass beat start <beat-id> --clock <objective-clock-id> --label ... --question ...`.
      The beats should be distinct problem lanes, not three versions of the same
      task. They can share the objective clock or attach one lane to a
      threat/timer clock. Closing a normal beat should usually move a clock by 1;
      use 2 only for a major scene-shifting breakthrough after setup or
      coordination.
-   - If the started mode is `scene-play`, `action`, `combat`, `chase`, or
-     `social-pressure`, run `glass check` before handing off.
+   - Run `glass check` before handing off.
    - If the first actor is not the normal default, run `glass next handoff <agent-id>`.
 
 10. **Close the prep turn.**

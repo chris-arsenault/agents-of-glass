@@ -43,7 +43,7 @@ AGENTS: tuple[Agent, ...] = (
 PLAYER_IDS: tuple[str, ...] = tuple(agent.id for agent in AGENTS if agent.role == "player")
 AGENTS_BY_ID: dict[str, Agent] = {agent.id: agent for agent in AGENTS}
 SCENE_PLAY_PLAYER_CURSOR_KEY = "scene_play_next_player"
-PLAYER_CURSOR_MODES = {"scene-play", "action", "combat", "chase", "social-pressure"}
+PLAYER_CURSOR_MODES = {"scene-play", "action"}
 
 
 def next_player_after(player_id: str | None) -> str:
@@ -245,8 +245,6 @@ def speaker_order_for(mode: str) -> tuple[str, ...]:
         return ("dm",)
     if normalized == "intermission":
         return tuple(agent.id for agent in AGENTS)
-    if normalized in {"travel", "travel/montage", "montage"}:
-        return PLAYER_IDS
     if normalized == "character-creation":
         return PLAYER_IDS + ("dm",)
     if normalized in PLAYER_CURSOR_MODES:

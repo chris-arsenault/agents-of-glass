@@ -111,7 +111,7 @@ _TURN_END_SCENE_STATUS_CHOICES = (
     "blocked",
 )
 _TURN_END_TURN_TYPE_CHOICES = ("act", "answer", "support", "pass")
-_ACTIVE_PLAY_MODE_NAMES = {"scene-play", "action", "combat", "chase", "social-pressure"}
+_ACTIVE_PLAY_MODE_NAMES = {"scene-play", "action"}
 PASS_GUIDANCE_COMPLETED_BEATS = 8
 _TURN_END_NEXT_SET = set(_TURN_END_NEXT_CHOICES)
 _TURN_END_SCENE_STATUS_SET = set(_TURN_END_SCENE_STATUS_CHOICES)
@@ -1689,7 +1689,7 @@ def turn_initiative(
         raise GlassError(
             agent_instruction(
                 "initiative requires an active mode and scene",
-                "The DM should start action play first with `glass mode start action <scene-id>` or the scene's action mode.",
+                "The DM should start action play first with `glass mode start action <scene-id>`.",
                 "Then run `glass turn initiative` once, from the DM turn that opens action play.",
             )
         )

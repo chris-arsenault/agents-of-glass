@@ -68,7 +68,7 @@ Operator concerns only — no agent ever calls `aog`.
 
 1. **Pick the next agent.** Handoff/rapid-response/housekeeping queue first,
    then persisted action-scene initiative order if present, otherwise the mode
-   default (round-robin, DM-only, travel order, etc.).
+   default (round-robin, DM-only, etc.).
 2. **Generate `TURN_START.md`** under the spawning agent's canonical numbered campaign turn directory. Contains pointers (relative to the projected campaign workspace) to persona, the methodology for this role + turn type, the player-agent-visible public table, scene framing, campaign-level context, instruction surfaces, recent-turn summary snapshot, actual-play creative influence when applicable, plus the path where the agent must write prose (`turns/TURN.md` in the active projected turn dir).
    The turn-type switch is programmatic here: queued rapid-response turns,
    queued player housekeeping, action-order turns, DM action openings, and DM

@@ -100,7 +100,7 @@ The transcript is a markdown file. The orchestrator owns its structure:
 Example:
 
 ```markdown
-## Turn 24 — Tev (player) — combat, ringglass-market-chase
+## Turn 24 — Tev (player) — action, ringglass-market-chase
 
 Tev (OOC): "Okay Karrith's gonna swing on the patrol leader."
 
@@ -127,11 +127,12 @@ The same applies to questions the player has, intents the player has, requests f
 
 ## Action Scenes
 
-Action scenes are the quickfire version of the turn loop. `combat`, `chase`,
-and `social-pressure` are toolkit examples, not an exhaustive list. The actual
-distinction is protocol: tight turn order, fictional time measured in seconds
-or a few heartbeats, player-chosen rolls happening more often, and a visible
-objective tracked honestly.
+Action scenes are the quickfire version of the turn loop. Runtime mode is
+`action`; labels such as `combat`, `chase`, and `social-pressure` belong in the
+scene `--type`, prep, and table artifacts. The actual distinction is protocol:
+tight turn order, fictional time measured in seconds or a few heartbeats,
+player-chosen rolls happening more often, and a visible objective tracked
+honestly.
 
 Action scenes use a persisted action order rolled by the DM after the opening
 layout:

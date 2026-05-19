@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 import json
+import os
 from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -65,8 +66,7 @@ def make_config(
             session_max_turns=200,
             mode_default_max_turns=12,
             mode_scene_play_max_turns=120,
-            mode_combat_max_turns=8,
-            mode_travel_max_turns=4,
+            mode_action_max_turns=120,
         ),
         orchestrator=OrchestratorConfig(
             turn_minimum_seconds=turn_minimum_seconds,
@@ -485,6 +485,14 @@ class OrchestratorQueueTests(unittest.TestCase):
         self.assertEqual(_next_mode_after_no_active_mode(None), "intermission")
         self.assertEqual(
             _next_mode_after_no_active_mode(
+                "campaign-planning",
+                active_arc="caulden-rack",
+                has_prior_intermission=False,
+            ),
+            "scene-prep",
+        )
+        self.assertEqual(
+            _next_mode_after_no_active_mode(
                 "scene-play",
                 active_arc="caulden-rack",
                 has_prior_intermission=False,
@@ -514,12 +522,14 @@ class OrchestratorQueueTests(unittest.TestCase):
         self.assertEqual(_consume_review_stop(2), (True, 1))
         self.assertEqual(_consume_review_stop(None), (True, None))
 
-    def test_scene_play_has_expanded_default_budget(self) -> None:
+    def test_scene_and_action_modes_have_expanded_default_budgets(self) -> None:
         config = make_config(Path("/tmp/aog-test"))
 
         self.assertEqual(config.caps.budget_for("scene-play"), 120)
+        self.assertEqual(config.caps.budget_for("action"), 120)
         self.assertEqual(config.caps.budget_for("intermission"), 15)
         self.assertEqual(config.caps.budget_for("character-creation"), 12)
+        self.assertEqual(config.caps.budget_for("combat"), 12)
 
     def test_prepare_turn_peeks_next_speaker_without_consuming(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1763,6 +1773,66 @@ class OrchestratorQueueTests(unittest.TestCase):
             self.assertIn("methodologies/organization-bootstrap.md", turn_start)
             self.assertNotIn("## Creative Influence", turn_start)
             self.assertNotIn("Verse phrase:", turn_start)
+
+    def test_organization_bootstrap_embeds_last_five_previous_orgs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+
+            def write_campaign(campaign_id: str, marker: str, mtime: float) -> None:
+                campaign_root = config.campaigns_dir / campaign_id
+                public_path = campaign_root / "shared" / "lore" / "organization.md"
+                private_path = campaign_root / "dm" / "notes" / "organization.md"
+                pull_path = (
+                    campaign_root
+                    / "dm"
+                    / "notes"
+                    / "pulls"
+                    / "campaign-non-adjacent.md"
+                )
+                public_path.parent.mkdir(parents=True, exist_ok=True)
+                private_path.parent.mkdir(parents=True, exist_ok=True)
+                pull_path.parent.mkdir(parents=True, exist_ok=True)
+                public_path.write_text(
+                    f"# {marker} public org\nMission pattern {marker}.\n",
+                    encoding="utf-8",
+                )
+                private_path.write_text(
+                    f"# {marker} private org\nHidden pressure {marker}.\n",
+                    encoding="utf-8",
+                )
+                pull_path.write_text(
+                    f"# {marker} pull\nNon-adjacent domain {marker}.\n",
+                    encoding="utf-8",
+                )
+                for path in (campaign_root, public_path, private_path, pull_path):
+                    os.utime(path, (mtime, mtime))
+
+            for index in range(1, 8):
+                write_campaign(f"prior-{index}", f"marker-{index}", 1000 + index)
+            write_campaign("current", "current-marker", 2000)
+
+            state = SessionState.new(
+                campaign="current",
+                initial_mode="organization-bootstrap",
+                initial_scene="organization-bootstrap",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator)
+
+            package = orchestrator.prepare_turn(state)
+
+            turn_start = package.turn_start_path.read_text(encoding="utf-8")
+            self.assertIn("## Previous Campaign Organization Check", turn_start)
+            self.assertIn("Avoid repeating their mission", turn_start)
+            for index in range(3, 8):
+                self.assertIn(f"`prior-{index}`", turn_start)
+                self.assertIn(f"marker-{index}", turn_start)
+            self.assertNotIn("`prior-1`", turn_start)
+            self.assertNotIn("`prior-2`", turn_start)
+            self.assertNotIn("- `current`", turn_start)
+            self.assertNotIn("current-marker", turn_start)
 
     def test_organization_bootstrap_validation_accepts_org_only_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

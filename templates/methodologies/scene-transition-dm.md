@@ -2,7 +2,7 @@
 title: Scene Transition DM Methodology
 status: authored
 audience: dm
-applies_to_modes: [scene-play, action, combat, chase, social-pressure]
+applies_to_modes: [scene-play, action]
 ---
 
 # Scene Transition - DM
@@ -43,8 +43,9 @@ next one in a single atomic call. Do not chain `glass scene end` +
    directory, `table/`, and any changed DM notes, lore, or shared files.
 7. Run the atomic transition. `glass scene transition <next-scene-id> --new`
    closes the current scene with the summary/outcome/beats/xp/clock
-   dispositions, creates the new scene record, and pushes its scene-play (or
-   action / combat / chase / social-pressure) mode frame:
+   dispositions, creates the new scene record, and pushes its `scene-play` or
+   `action` mode frame. Use labels like combat, chase, travel, or
+   social-pressure as the scene `--type`, not as modes:
 
    ```bash
    glass scene transition <next-scene-id> --new \
