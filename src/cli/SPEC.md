@@ -211,25 +211,6 @@ glass note reject <intake-id>       # DM only — drop a player draft
 
 Note: lore drafts are encyclopedia-shaped (frontmatter + sections); journal entries are journal-shaped (free-form prose). The CLI does not enforce this — it's a convention. See [`../../docs/design/agents.md`](../../docs/design/agents.md).
 
-### Entities (graph)
-
-```
-glass entity upsert <path>          # DM only — markdown → FalkorDB
-glass entity neighborhood <id>      # read — show typed edges
-glass entity relations <id> [--type REL] [--direction out|in|both]
-glass entity between <a> <b>
-glass entity edges --type REL
-glass entity stance <a> <b>
-glass entity find [--query Q] [--type T]
-glass entity claim <a> <REL> <b> --summary TEXT
-glass entity ratify-claim <claim-id> # DM only
-glass entity similar <section-id>   # read — section similarity fallback
-```
-
-`entity query` remains the DM-only arbitrary Cypher escape hatch. Player-facing
-graph commands are bounded so players can ask relationship questions without
-raw graph access.
-
 ### Lore curation
 
 The world bible at `../the-glass-frontier-lore/` is the DM's reference. It is not bulk-copied into the campaign. The DM imports specific entries on demand. See [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md#curate-dont-copy).
@@ -238,8 +219,7 @@ The world bible at `../the-glass-frontier-lore/` is the DM's reference. It is no
 glass lore import <world-bible-path> [--as <new-name>]   # DM only
                                        # copies world-bible entry into campaigns/<id>/shared/lore/,
                                        # preserves directory structure (or renames via --as),
-                                       # tags frontmatter with `source: world-bible/<path>`,
-                                       # calls glass entity upsert on the result
+                                       # tags frontmatter with `source: world-bible/<path>`
 glass lore list                        # read — list imported entries (campaign canon)
 glass lore search <query>              # DM only — search the world bible without importing
 ```
@@ -308,7 +288,7 @@ glass sync apply
 
 With no paths, it commits changed writable markdown files from the current
 projection. Successful markdown writes are registered with the persistence
-facade, so searchable markdown and entity graph side effects stay centralized.
+facade, so searchable markdown and local entity metadata stay centralized.
 The legacy `--from scratch/sync.json` manifest form remains supported for rare
 generated batches.
 

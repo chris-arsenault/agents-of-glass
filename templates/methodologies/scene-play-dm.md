@@ -45,7 +45,7 @@ and maintains durable state. This sequence is binding for every full DM turn.
    durable canon; `glass scene tracker` or `glass scene pressure` for scene
    math; `glass clock` for cross-scene pressure; `glass character` for PC
    state; `glass quest beat` for story-shifting public beats; and
-   `glass entity`/`glass note` for graph or note state. When a portable asset
+   `glass note` for note state. When a portable asset
    could matter later, offer it concretely and persist it if taken. Commit
    authored markdown with `glass sync apply`.
 7. Keep the scene honest. Advance the live tension or narrow the board; do not

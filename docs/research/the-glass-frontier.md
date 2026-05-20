@@ -54,16 +54,16 @@ A separate service whose job is to decide when a chronicle is done and emit a cl
 
 Template-based prompts with context fragments injected per template. We probably won't need this complexity — markdown role prompts + scene-context strings should suffice — but the *idea* of "swap context fragments per intent type" is a reusable trick.
 
-### Postgres knowledge graph schema (`POSTGRES_MIGRATION.md`)
+### Postgres structured-world schema (`POSTGRES_MIGRATION.md`)
 
-A generic property graph (`node` + `edge` tables) plus thin typed companion tables (`character`, `location`, `chronicle`, `chronicle_turn`). They're moving toward this from earlier S3-blob storage. We'll likely *not* use this exact schema (we prefer FalkorDB for the graph), but the typed-companion-table pattern is good for our hard-state Postgres.
+A generic relationship schema (`node` + `edge` tables) plus thin typed companion tables (`character`, `location`, `chronicle`, `chronicle_turn`). They're moving toward this from earlier S3-blob storage. We are not using this exact schema, but the typed-companion-table pattern is good for our hard-state Postgres.
 
 ## What We're Explicitly Not Cribbing
 
 - **The TypeScript stack.** Python is the orchestrator language. No reason for two languages.
 - **Lambda / API Gateway / WebSocket plumbing.** We're not building a service.
 - **The React client.** No human at the table; no UI.
-- **The S3-based world-state stores** (`packages/persistence`). FalkorDB + Postgres replace these.
+- **The S3-based world-state stores** (`packages/persistence`). Markdown plus Postgres replace these.
 - **The world schema versioning** (`worldSchema.json`, `apps/world-schema-api`). Useful for a multi-tenant product; not for our experiment.
 - **The progress emitter** (Step Functions → SQS → API Gateway). Our orchestrator is in-process.
 - **The DTO Zod layer.** We'll have our own type contracts in Python, simpler.
@@ -71,12 +71,9 @@ A generic property graph (`node` + `edge` tables) plus thin typed companion tabl
 ## Key Files to Re-Read When Designing
 
 - `apps/gm-api/src/gmEngine.ts` — top-level turn handling
-- `apps/gm-api/src/gmGraph/orchestrator.ts` — pipeline structure
-- `apps/gm-api/src/gmGraph/nodes/classifiers/IntentClassifierNode.ts` — intent classification prompt shape
-- `apps/gm-api/src/gmGraph/nodes/IntentHandlerNodes.ts` — per-intent response styles, temperatures
 - `packages/skill-check-resolver/src/SkillCheckResolver.ts` — the math
 - `packages/dto/src/mechanics.ts` — the constants
-- `POSTGRES_MIGRATION.md` — graph + thin-table schema reference
+- `POSTGRES_MIGRATION.md` — thin-table schema reference
 - `AGENTS.md` — their guardrails (some transferable: "preserve user-authored tweaks," "no fallback logic")
 
 ## Open Questions

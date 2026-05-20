@@ -27,7 +27,7 @@ Schema (v5):
   mode_stack:           list[ModeFrame]
   pending_events:       list[{event_id, actor, ts, summary}]
   note_intake:          list — DM intake queue
-  entities:             dict — graph mirror cache
+  entities:             dict — local entity metadata cache
   threads:              dict — DM thread tracker
   turns:                list — structured turn rows mirrored from Postgres
   next_speakers:        list[{agent, rapid_prompt?, housekeeping?, scene_transition?}] — handoff queue
@@ -534,9 +534,6 @@ _DEFAULT_EVENT_STATE_FIELDS: dict[str, tuple[str, ...]] = {
     "turn.restart-order": ("next_speakers", "pending_events"),
     "turn.clear-handoff": ("next_speakers",),
     "quest.beat": ("pending_events",),
-    "entity.upsert": ("entities",),
-    "entity.claim": ("note_intake",),
-    "entity.ratify-claim": ("note_intake",),
 }
 
 _DEFAULT_EVENT_FIELD_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (

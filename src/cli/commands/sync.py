@@ -306,7 +306,7 @@ def _apply_table(
         path.write_text(existing + separator + text, encoding="utf-8")
     else:
         path.write_text(text, encoding="utf-8")
-    persisted = persistence.register_markdown(path, state=state, graph=False)
+    persisted = persistence.register_markdown(path, state=state, entity=False)
     queue_event(state, role.actor, f"table {mode} {display_path(path)}")
     return {**result, "persistence": persisted.to_dict()}
 
@@ -366,7 +366,7 @@ def _apply_summary(
         path.write_text(existing + separator + text, encoding="utf-8")
     else:
         path.write_text(text, encoding="utf-8")
-    persisted = persistence.register_markdown(path, state=state, graph=False)
+    persisted = persistence.register_markdown(path, state=state, entity=False)
     queue_event(
         state,
         role.actor,
@@ -389,7 +389,7 @@ def _apply_projected_file(
     persistence: CampaignPersistence,
     dry_run: bool,
 ) -> dict[str, Any]:
-    graph = _validate_projected_sync_path(rel, workspace)
+    entity = _validate_projected_sync_path(rel, workspace)
     text = _read_workspace_text(source)
     destination = (workspace.root / rel).resolve()
     result = {
@@ -401,7 +401,7 @@ def _apply_projected_file(
     }
     if dry_run:
         return result
-    persisted = persistence.write_markdown(destination, text, state=state, graph=graph)
+    persisted = persistence.write_markdown(destination, text, state=state, entity=entity)
     return {**result, "persistence": persisted.to_dict()}
 
 

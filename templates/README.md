@@ -58,14 +58,14 @@ The orchestrator copies `templates/` into a per-campaign root at campaign creati
   `methodologies/`.
 - **SRD-shaped** (public rules for player/DM roles) — `srd/`.
 - **How-to-shaped** (optional examples and craft guidance) — `how-to/`.
-- **Encyclopedia-shaped** (frontmatter + prose + sections, FalkorDB-mirrored when canonized) — `shared/lore/`, players' `drafts/`, players' `notes/`, DM's `notes/`.
+- **Encyclopedia-shaped** (frontmatter + prose + sections, indexed when canonized) — `shared/lore/`, players' `drafts/`, players' `notes/`, DM's `notes/`.
 - **Journal-shaped** (free-form, no schema) — players' `journal/`, DM's `journal/`, `workspace/`, `secret/`, and `intake/`.
 - **Table-shaped** (short, current, player-agent-visible) —
   `table/scene.md` plus named markdown artifacts at `table/` root. These
   artifacts are player-visible lore candidates: NPCs, places, documents, ships,
   clues, objects, or anything else the scene needs. There is no authored
   `table/index.md`. This is the material projected to player CWDs and shown in
-  the web UI's Active Table. DM notes, hooks, lore, graph entities, and messages
+  the web UI's Active Table. DM notes, hooks, lore, and messages
   are separate surfaces even when human viewers can inspect them elsewhere.
 - **Summary-shaped** (authored continuity compression) — `summary.md` at
   campaign, arc/act, and scene level. These are summaries of what remains true,
@@ -74,8 +74,7 @@ The orchestrator copies `templates/` into a per-campaign root at campaign creati
 Don't blur them. The shape signals the intent.
 
 Runtime authority is split intentionally: markdown is the readable authored
-surface, Postgres owns hard/queryable state and the public turn corpus, and
-FalkorDB owns entity relationships. See
+surface, and Postgres owns hard/queryable state and the public turn corpus. See
 [`docs/design/persistence.md`](../docs/design/persistence.md).
 
 ## What gets committed

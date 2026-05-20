@@ -32,14 +32,9 @@ is already recorded.
    names the exact command. Do not browse the full CLI looking for alternate
    search tools.
 
-5. Use graph commands for relationships between named things when TURN_START
-   exposes them or the methodology requires them:
-
-   ```bash
-   glass entity relations <entity-id>
-   glass entity between <a> <b>
-   glass entity stance <a> <b>
-   ```
+5. Use text, semantic, and turn search for relationship recall. Relationship
+   state is represented in authored markdown and summaries, not a separate
+   relationship store.
 
 6. Act on the retrieved context in the same turn or state the remaining blocker
    in `glass done --state`.

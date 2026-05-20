@@ -27,8 +27,8 @@ board, create visible pressure, roll action order, and exit.
 6. Persist the board before prose. Write visible position and stakes into
    `table/scene.md`; create/update named table artifacts for visible reusable
    lore; create public trackers with `glass scene tracker`; update character,
-   clock, lore, note, entity, hook, or quest-beat state that already changed.
-   Commit authored markdown with `glass sync apply`.
+   clock, lore, note, hook, or quest-beat state that already changed. Commit
+   authored markdown with `glass sync apply`.
 7. Roll and persist action order with `glass turn initiative`.
 8. Write concise public prose to the `TURN.md` path from TURN_START: the threat,
    positions, visible objective, and what the action order means on screen.

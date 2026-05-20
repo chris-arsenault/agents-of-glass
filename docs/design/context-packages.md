@@ -66,7 +66,7 @@ turn sequence, `srd/` for public rules, and `how-to/` for optional examples.
 - glass character set-hp / set-momentum / inventory-add (single-change convenience)
 - glass msg <type> <recipient> <body>
 - glass sync apply [path-or-directory ...] (commit projected markdown edits)
-- glass entity neighborhood / similar (read-only graph queries)
+- glass search text / semantic (indexed prose recall)
 - glass turns find / feed ... (query past turns)
 
 When done, exit.
@@ -118,9 +118,6 @@ The DM's TURN_START has additional pointers: thread/beat states, intake of unrat
 - Indexed prose search (`glass search text ...` and vector-backed
   `glass search semantic ...`)
 - Their own journal directory
-- Entity graph (`glass entity neighborhood`, `relations`, `between`, `edges`,
-  `stance`, `find`, `similar`; players can propose edges with
-  `glass entity claim`)
 
 ### Queryable by DM only
 - **World bible** — `../the-glass-frontier-lore/player/` and `../the-glass-frontier-lore/dm/`. The full canon. The DM consults it as reference at any time. **Players never see it directly.** Bulk-copying it would poison every agent's context. See [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md#curate-dont-copy) for the curation principle.
@@ -161,7 +158,7 @@ table-root markdown artifacts for visible lore or references that prevent
 repeated clarification turns. There is no authored `table/index.md`.
 
 This is the same boundary the web UI's Active Table uses. The viewer may expose
-DM notes, graph entities, hooks, messages, lore, and other campaign files in
+DM notes, hooks, messages, lore, and other campaign files in
 other panes, but those are inspection surfaces. A player agent has table
 visibility only when the relevant information is present under `table/` in its
 projected CWD.
@@ -222,13 +219,13 @@ campaigns/<id>/                        # per-campaign live root, copied from tem
 
 **Note on the lore vs notes split:**
 
-- The campaign's `shared/lore/` is **encyclopedia-shaped** — same frontmatter + prose + sections pattern as the world bible (`../the-glass-frontier-lore/`), FalkorDB-mirrored. Canonical, DM-ratified.
-- Player `journal/` and DM `notes/`, `workspace/` are **journal-shaped** — free-form, private, for thinking. Not canonical, not graph-mirrored.
+- The campaign's `shared/lore/` is **encyclopedia-shaped** — same frontmatter + prose + sections pattern as the world bible (`../the-glass-frontier-lore/`). Canonical, DM-ratified.
+- Player `journal/` and DM `notes/`, `workspace/` are **journal-shaped** — free-form, private, for thinking. Not canonical campaign lore.
 
-Players draft lore entries in their `drafts/` directory (encyclopedia-shaped), then call `glass note propose` to push to the DM's `intake/`. The DM ratifies (entry moves to the campaign's `shared/lore/` and gets graph-upserted) or rejects. Personal-thought scribbles stay in `journal/`.
+Players draft lore entries in their `drafts/` directory (encyclopedia-shaped), then call `glass note propose` to push to the DM's `intake/`. The DM ratifies (entry moves to the campaign's `shared/lore/` and is indexed) or rejects. Personal-thought scribbles stay in `journal/`.
 
 The recent-turn excerpt in `TURN_START.md` is an orchestrator-maintained
-projection of canonical state (Postgres + graph + structured turns). Agents
+projection of canonical state (Postgres + markdown + structured turns). Agents
 read this excerpt and can query deeper history through `glass`; they don't
 connect to the database directly. Old-context recall should use `glass search`
 or `glass turns find`, not another actor transition just to repeat recorded
@@ -258,8 +255,8 @@ on role-authorized document surfaces and in the current turn dir; before Claude
 starts, the orchestrator proves the actor can create, edit, and delete arbitrary
 files in that current turn dir. Persistent mutations must go through `glass`:
 `glass sync apply` commits projected markdown edits, while `glass character`,
-`glass scene`, `glass clock`, `glass entity`, and related commands own hard
-state. The local `glass` API runs commands against the canonical campaign while
+`glass scene`, `glass clock`, and related commands own hard state. The local
+`glass` API runs commands against the canonical campaign while
 using the projection as cwd, so agents can author at normal relative paths
 without seeing extra canonical files.
 

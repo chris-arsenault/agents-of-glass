@@ -4,7 +4,7 @@ A closed-loop, fully agentic tabletop RPG simulation. One DM agent, four player 
 
 The world is the Kaleidos system from [The Glass Frontier](docs/research/the-glass-frontier-lore.md) — a shattered ring world, a planet dusted in crystal, a solar system relearning how to be one civilization. Serious hopecore. The agents inhabit this world the way fictional players inhabit a game.
 
-This is a research project, not a product. The output is a corpus of scene transcripts and the structured graph that grew alongside them. Later passes turn the corpus into narrative.
+This is a research project, not a product. The output is a corpus of scene transcripts, authored notes, and structured runtime events. Later passes turn the corpus into narrative.
 
 ## Why
 
@@ -12,7 +12,7 @@ The interesting question isn't "can an LLM run a TTRPG game." That's been done. 
 
 - **What kind of fiction emerges when nobody at the table is human, but every participant is a *specific person* with preferences and friction?**
 - **Can a multi-agent loop produce something with more texture than single-prompt narrative generation — improv, push-back, mistakes, in-jokes — by giving each agent enough autonomy to actually disagree?**
-- **What does the structured byproduct (graph state, per-character notes, dice events, beat advancement) look like as a first-class artifact alongside the prose?**
+- **What does the structured byproduct (per-character notes, dice events, beat advancement, searchable lore) look like as a first-class artifact alongside the prose?**
 
 We don't know the answers. The project is set up to find out. See [docs/principles/goals-and-motivation.md](docs/principles/goals-and-motivation.md) for the long version.
 
@@ -20,8 +20,8 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 
 - **One DM agent** (Mara) and **four player agents** (Tev, Sumi, Renno, Kit). Each is a fictional person with a name, voice, likes, dislikes, playstyle. They are *not* archetypes.
 - Each agent is its own `claude -p` invocation. The orchestrator is a dumb Python loop that owns turn order, mode state, transcript append, which agent runs next, and per-actor Claude Code session ids.
-- The agents talk to state through a single CLI (`glass`). They do not write SQL or Cypher directly.
-- Authored prose lives in markdown, entity relationships live in FalkorDB, and hard/queryable state — turns, events, HP, inventory, dice, momentum — lives in Postgres.
+- The agents talk to state through a single CLI (`glass`). They do not write SQL directly.
+- Authored prose lives in markdown, and hard/queryable state — turns, events, HP, inventory, dice, momentum, search — lives in Postgres.
 - The lore comes from `the-glass-frontier-lore`; the game-design pieces are cribbed from `the-glass-frontier`. Neither repo's code is being ported.
 
 ## What's Here

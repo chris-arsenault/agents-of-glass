@@ -9,7 +9,7 @@ The notes here are working documents. They get updated when we re-read source ma
 
 ## Existing Notes
 
-- [the-glass-frontier-lore.md](the-glass-frontier-lore.md) — the worldbuilding wiki + graph database project that supplies our setting and lore patterns
+- [the-glass-frontier-lore.md](the-glass-frontier-lore.md) — the worldbuilding wiki that supplies our setting and lore patterns
 - [the-glass-frontier.md](the-glass-frontier.md) — the TypeScript chronicle engine that supplies our game-design pieces (skill checks, intent taxonomy, beat tracking)
 - [persona-prompting.md](persona-prompting.md) — prompt-engineering notes behind the runtime identity and persona/character prompt surface
 
@@ -21,7 +21,6 @@ These are topics we expect to investigate but haven't started. Each placeholder 
 - [transcript-analysis-techniques.md](transcript-analysis-techniques.md) — what kinds of analysis are tractable on TTRPG transcripts
 - [agent-personality-stability.md](agent-personality-stability.md) — keeping the five people consistent across many invocations
 - [closure-signals-in-fiction.md](closure-signals-in-fiction.md) — what marks a scene "done" in human-written fiction, for cribbing into the closer agent
-- [graph-coherence-checks.md](graph-coherence-checks.md) — what consistency checks the lore repo runs, and which we'd want
 
 ## Conventions
 

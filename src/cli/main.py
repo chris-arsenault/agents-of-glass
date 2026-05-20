@@ -22,7 +22,6 @@ from .commands.campaign import campaign
 from .commands.character import character
 from .commands.clock import clock
 from .commands.db import db
-from .commands.entity import entity
 from .commands.facade import check, done, find, next_command
 from .commands.lore import lore
 from .commands.mode import mode
@@ -200,7 +199,6 @@ main.add_command(character)
 main.add_command(clock)
 main.add_command(beat)
 main.add_command(note)
-main.add_command(entity)
 main.add_command(thread)
 main.add_command(msg_group)
 main.add_command(turn)

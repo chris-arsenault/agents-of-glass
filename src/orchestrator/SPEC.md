@@ -42,7 +42,7 @@ aog campaign run [<id>]                     # IMPLEMENTED — phase-aware lifecy
 aog campaign show <id>                      # IMPLEMENTED — print runtime state summary
 aog campaign list                           # IMPLEMENTED — list all campaigns with phase
 aog campaign clear <id> [--yes]             # IMPLEMENTED — wipe campaign workspace
-aog campaign checkpoint <id> [--label text] # IMPLEMENTED — snapshot filesystem + Postgres + FalkorDB
+aog campaign checkpoint <id> [--label text] # IMPLEMENTED — snapshot filesystem + Postgres
 aog campaign checkpoints <id>               # IMPLEMENTED — list available checkpoints
 aog campaign restore <id> <checkpoint>      # IMPLEMENTED — restore all persistence surfaces
 aog campaign reconcile <id> [--repair]      # IMPLEMENTED — inspect/refresh disposable projections
@@ -123,14 +123,12 @@ No automatic retries. No automatic recovery. See [`../../docs/design/architectur
 
 - Mode stack, turn number, last speaker, current speaker queue → all in Postgres.
 - Markdown content (transcript, framing, lore, journals) → all on disk, git-tracked.
-- Graph state → in FalkorDB.
 - Vector recall state → in Postgres `search_chunks`, including persisted embeddings.
 - Per-actor Claude Code session ids → in Postgres runtime state.
 - Per-agent turn artifacts (`dm/turns/*`, `players/<id>/turns/*`) → discardable after commit; rebuilt on resume as needed.
 
-Operator checkpoints capture and restore all four durable surfaces: campaign
-filesystem, Postgres runtime/search/vector rows, FalkorDB graph nodes/edges,
-and disposable projections/permissions.
+Operator checkpoints capture and restore the durable campaign filesystem,
+Postgres runtime/search/vector rows, and disposable projections/permissions.
 
 `aog session resume <id>` should be idempotent — running it on a clean session is a no-op.
 
@@ -139,7 +137,7 @@ and disposable projections/permissions.
 - Make narrative decisions.
 - Override agent prose.
 - Parse agent prose for "intent" or "next speaker hints" (see [`../../docs/principles/codify-only-what-drifts.md`](../../docs/principles/codify-only-what-drifts.md)).
-- Write to Postgres or FalkorDB except via the `glass` CLI (same rule that applies to agents).
+- Write to Postgres except via the `glass` CLI (same rule that applies to agents).
 
 ## Open after the v0 build
 

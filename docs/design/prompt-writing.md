@@ -14,7 +14,7 @@ Agents of Glass has four layers that must stay distinct:
   personality the model should embody at the table.
 - **Character:** the in-fiction PC a player controls. The character has limited
   knowledge and acts inside the world.
-- **World state:** table, scene, transcript, lore, graph, rolls, clocks, and
+- **World state:** table, scene, transcript, lore, rolls, clocks, and
   Postgres-backed hard state.
 
 The prompt should tell the model which layer is active before listing files.

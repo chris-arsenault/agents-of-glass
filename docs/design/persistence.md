@@ -1,6 +1,6 @@
 # Persistence Contract
 
-Agents of Glass has three persistence surfaces. They overlap deliberately, but
+Agents of Glass has two persistence surfaces. They overlap deliberately, but
 each one has a different authority.
 
 ## Markdown
@@ -55,28 +55,6 @@ The viewer UI may also inspect markdown files directly for debugging and
 audience context. That broad inspection does not change table visibility:
 Active Table is still only `campaigns/<id>/table/**`.
 
-## FalkorDB
-
-FalkorDB is the entity relationship graph. It exists because prose-only
-relationship state drifts: agents lose track of how NPCs, factions, places,
-objects, scenes, and beats relate to each other.
-
-FalkorDB owns:
-
-- entity nodes mirrored from canonical lore and selected DM notes
-- section nodes for entity prose chunks
-- typed edges such as `MEMBER_OF`, `LOCATED_IN`, `AT_WAR_WITH`,
-  `ATTITUDE_TOWARD`, or custom UPPERCASE_SNAKE_CASE relationships
-- relationship properties, provenance, and graph traversal
-
-The graph is not a prose store. Prose stays in markdown. The graph is the
-coherence layer over that prose.
-
-DMs can use arbitrary Cypher through `glass entity query`. Players get bounded
-question surfaces: `relations`, `between`, `edges`, `stance`, `find`,
-`neighborhood`, and `similar`. Players may propose relationships with
-`glass entity claim`; the DM ratifies claims into canonical edges.
-
 ## Search
 
 Agents should not solve old-context recall by asking another agent to repeat
@@ -86,7 +64,6 @@ known information. They should query bounded stores:
 - structured viewer feed: `glass turns feed --after-turn N`
 - indexed prose recall: `glass search text ...`
 - semantic-search surface: `glass search semantic ...`
-- relationship recall: `glass entity relations`, `between`, `edges`, `stance`
 - actual-play influence recall: `glass tarot current` / `glass tarot list`
 
 `glass search semantic` is vector-backed recall over Postgres `search_chunks`
@@ -107,13 +84,12 @@ it snapshots every state surface that can change what agents see or remember.
 
 - the live campaign filesystem under `campaigns/<id>/`
 - all Postgres rows for the campaign, including `search_chunks.embedding_vector`
-- all FalkorDB graph nodes and edges tagged with the campaign id
 
 Checkpoints live outside agent discovery at
 `campaigns/.checkpoints/<campaign-id>/<checkpoint-id>/`. Restoring a checkpoint
 archives the previous live campaign state under that checkpoint root, replaces
-the live filesystem, restores Postgres rows, restores the FalkorDB graph, clears
-stale projected CWDs, and reapplies filesystem permissions.
+the live filesystem, restores Postgres rows, clears stale projected CWDs, and
+reapplies filesystem permissions.
 
 Use:
 
@@ -135,8 +111,8 @@ If the value is authored prose, put it in markdown.
 If the value is a number, event, turn, queue, permissioned message, or ordered
 fact, put it in Postgres.
 
-If the value is a relationship between named things, put it in FalkorDB through
-`glass entity`.
+If the value is a relationship between named things, write it into durable
+authored markdown and keep the relevant summary current.
 
 If agents need to read it often, provide a markdown projection or a bounded CLI
 query. Do not make them ask another actor for information already recorded.

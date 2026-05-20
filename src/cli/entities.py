@@ -1,8 +1,7 @@
 """Markdown frontmatter + entity-from-path helpers.
 
-The entity record is the in-state cache for a graph node — id, title,
-sections, frontmatter, edges. The graph (FalkorDB) is canonical;
-this dict in state["entities"] is a fast local lookup.
+The entity record is the in-state cache for authored entity-shaped markdown:
+id, title, sections, frontmatter, and relationship placeholders.
 """
 
 from __future__ import annotations

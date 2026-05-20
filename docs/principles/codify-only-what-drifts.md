@@ -6,7 +6,7 @@ The rule for what goes in a schema vs what stays in prose.
 
 **Codify the things agents drift on. Everything else is prose.**
 
-Codification — the `glass` CLI, Postgres tables, FalkorDB nodes and edges — exists as a *coherence mechanism*. Its job is to make sure five separate Claude invocations agree on the things they cannot reliably re-derive. It is not a turn-structure enforcer, not an intent classifier, not a play-style policy.
+Codification — the `glass` CLI, Postgres tables, and indexed authored files — exists as a *coherence mechanism*. Its job is to make sure five separate Claude invocations agree on the things they cannot reliably re-derive. It is not a turn-structure enforcer, not an intent classifier, not a play-style policy.
 
 Outside the narrow list below, default to prose. The agents are smart enough.
 
@@ -17,7 +17,7 @@ Drift-prone things that must stay consistent across agents:
 - **Dice outcomes** — agents cannot generate fair randomness. `glass roll` produces verifiable rolls.
 - **Numerical character state** — HP, momentum, attribute tiers, skill tiers. Agents lose track of numbers.
 - **Inventory lists** — what items a character has, in what quantity. Agents will quietly add or drop things.
-- **Canonical names** — places, NPCs, factions. The DM ratifies new entities into the graph; everyone references them by id.
+- **Canonical names** — places, NPCs, factions. The DM ratifies durable entities into campaign lore and local metadata; everyone references the same names and paths.
 - **Speaker / mode / scene / turn / session labels** — the orchestrator's own state. These are not in question by anyone.
 - **Mechanical event timing** — when a roll happened, when HP changed, in what order. The audit log records these per turn.
 

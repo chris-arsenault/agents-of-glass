@@ -31,7 +31,7 @@ surface. Use workspace-relative paths exactly as they appear in `TURN_START`.
    ```
 
 5. Use dedicated commands instead of sync for hard state: `glass character`,
-   `glass scene`, `glass clock`, `glass entity`, `glass roll`, `glass table`,
+   `glass scene`, `glass clock`, `glass roll`, `glass table`,
    and `glass msg`.
 6. Read back command-created files or command output when verification is
    needed.

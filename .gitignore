@@ -19,6 +19,10 @@ frontend/node_modules/
 frontend/dist/
 frontend/coverage/
 
+# Rust
+target/
+**/target/
+
 # IDE
 .vscode/
 .idea/

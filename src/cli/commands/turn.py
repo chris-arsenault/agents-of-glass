@@ -132,7 +132,7 @@ _TURN_AUDIT_RECALL_EVENTS = {
     "turns.feed",
     "turns.find",
 }
-_TURN_AUDIT_RECALL_PREFIXES = ("entity.",)
+_TURN_AUDIT_RECALL_PREFIXES: tuple[str, ...] = ()
 _TURN_AUDIT_STATE_UPDATE_EVENTS = {
     "beat.close",
     "beat.convert",

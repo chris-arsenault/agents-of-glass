@@ -228,39 +228,6 @@ export interface TarotRecord {
   active: boolean;
 }
 
-export interface GraphEntity {
-  id?: string;
-  uid?: string;
-  title?: string;
-  type?: string;
-  status?: string;
-  prominence?: string;
-  file_path?: string;
-  tags?: string[];
-}
-
-export interface GraphEdge {
-  type: string;
-  source: string;
-  source_title: string;
-  target: string;
-  target_title: string;
-}
-
-export interface GraphEntityType {
-  type: string;
-  count: number;
-}
-
-export interface GraphSnapshot {
-  available: boolean;
-  target: string;
-  entities: GraphEntity[];
-  edges: GraphEdge[];
-  entity_types: GraphEntityType[];
-  error?: string;
-}
-
 export interface LiveCursors {
   turn: number | null;
   messages: string | null;
@@ -276,7 +243,6 @@ export interface SummaryPayload {
   clocks: ClockRecord[];
   scene_trackers: SceneTrackerRecord[];
   tarot: TarotRecord[];
-  graph: GraphSnapshot;
   dm_surface: DmSurfacePayload;
   database_error?: string;
 }

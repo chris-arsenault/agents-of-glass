@@ -2,8 +2,8 @@
 
 A read-only campaign viewer for the operator and anyone the operator lets watch.
 It is not a player-agent projection. Human viewers may inspect the whole
-campaign workspace: DM notes, lore, messages, narrations, table files, graph
-state, and operational debug surfaces as the UI grows.
+campaign workspace: DM notes, lore, messages, narrations, table files, and
+operational debug surfaces as the UI grows.
 
 ## Visibility Model
 
@@ -22,7 +22,7 @@ It renders only `campaigns/<id>/table/**`:
 - named `table/*.md` artifacts
 - `table/handouts/**`
 
-Do not populate Active Table from graph entities, DM notes, hooks, NPC notes,
+Do not populate Active Table from DM notes, hooks, NPC notes,
 monster files, messages, transcript text, clocks, rolls, or the viewer's file
 browser. Those may be visible elsewhere in the web UI, but they are not on the
 player-agent table unless the DM explicitly puts or links them under `table/`.
@@ -39,7 +39,6 @@ player-agent table unless the DM explicitly puts or links them under `table/`.
 - Source of truth:
   - Postgres for turns, messages, rolls, characters, hard state, and runtime.
   - Markdown for campaign files.
-  - FalkorDB for graph mirrors of authored lore/notes.
 
 ## Viewer Surfaces
 
@@ -53,8 +52,8 @@ player-agent table unless the DM explicitly puts or links them under `table/`.
 - **Messages:** message bus rows.
 - **File browser / DM notes / lore:** inspection surfaces for human viewers,
   not evidence that a player agent saw the file.
-- **Graph summaries:** coherence/debug surfaces, not table state unless a table
-  file links or summarizes the relevant entity.
+- **Lore/debug summaries:** coherence/debug surfaces, not table state unless a
+  table file links or summarizes the relevant entry.
 
 ## Deployment Notes
 

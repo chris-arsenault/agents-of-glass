@@ -77,7 +77,7 @@ def campaign_pull_note(
         destination,
         body,
         state=state,
-        graph=False,
+        entity=False,
         search=False,
     )
     queue_event(state, role.actor, f"campaign pull-note: {source}")

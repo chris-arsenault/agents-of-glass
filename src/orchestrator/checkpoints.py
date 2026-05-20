@@ -5,7 +5,6 @@ They capture every persistence surface that can affect agent context:
 
 - campaign filesystem prose/projections
 - Postgres campaign rows, including search chunks and embeddings
-- FalkorDB campaign graph nodes and edges
 
 The live campaign workspace remains the path agents read. Checkpoint archives
 live under campaigns/.checkpoints/ so discarded/restored state is not projected
@@ -284,9 +283,6 @@ def create_checkpoint(
         postgres = export_postgres(config, campaign_id)
         _write_json(tmp_path / "postgres.json", postgres)
 
-        graph = export_falkor(config, campaign_id)
-        _write_json(tmp_path / "falkor.json", graph)
-
         manifest = {
             "checkpoint_id": checkpoint_id,
             "campaign_id": campaign_id,
@@ -295,14 +291,12 @@ def create_checkpoint(
             "paths": {
                 "filesystem": "filesystem",
                 "postgres": "postgres.json",
-                "falkor": "falkor.json",
             },
             "counts": {
                 "postgres": {
                     table: len(rows)
                     for table, rows in postgres.get("tables", {}).items()
                 },
-                "falkor": graph.get("counts", {}),
             },
         }
         _write_json(tmp_path / "manifest.json", manifest)
@@ -357,13 +351,10 @@ def restore_checkpoint(
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     fs_snapshot = checkpoint_path / manifest["paths"]["filesystem"]
     postgres_snapshot = checkpoint_path / manifest["paths"]["postgres"]
-    falkor_snapshot = checkpoint_path / manifest["paths"]["falkor"]
     if not fs_snapshot.exists():
         raise FileNotFoundError(f"checkpoint filesystem snapshot missing: {fs_snapshot}")
     if not postgres_snapshot.exists():
         raise FileNotFoundError(f"checkpoint postgres snapshot missing: {postgres_snapshot}")
-    if not falkor_snapshot.exists():
-        raise FileNotFoundError(f"checkpoint falkor snapshot missing: {falkor_snapshot}")
 
     restore_id = _checkpoint_id(f"restore-{checkpoint_id}")
     discarded_root = root / "_discarded" / restore_id
@@ -375,15 +366,12 @@ def restore_checkpoint(
         shutil.copytree(current_dir, discarded_root / "filesystem", symlinks=True)
     try:
         _write_json(discarded_root / "postgres.json", export_postgres(config, campaign_id))
-        _write_json(discarded_root / "falkor.json", export_falkor(config, campaign_id))
     except Exception:
         # Do not mutate if we cannot archive all live persistence surfaces.
         raise
 
     postgres = json.loads(postgres_snapshot.read_text(encoding="utf-8"))
-    falkor = json.loads(falkor_snapshot.read_text(encoding="utf-8"))
     restore_postgres(config, campaign_id, postgres)
-    restore_falkor(config, campaign_id, falkor)
 
     live_archive = discarded_root / "live-workspace-before-restore"
     if current_dir.exists():
@@ -496,48 +484,6 @@ def restore_postgres(
                     restored[table] = len(rows)
             conn.commit()
         return restored
-    finally:
-        if previous is None:
-            os.environ.pop("GLASS_CONFIG", None)
-        else:
-            os.environ["GLASS_CONFIG"] = previous
-
-
-def export_falkor(config: AogConfig, campaign_id: str) -> dict[str, Any]:
-    from cli import graph as _graph
-    from cli.config import load_config as _load_glass_config
-
-    previous = os.environ.get("GLASS_CONFIG")
-    os.environ["GLASS_CONFIG"] = config_env_value(config)
-    try:
-        falkor_config = _graph.load_falkor_config(_load_glass_config())
-        if not _graph.is_available(falkor_config):
-            raise RuntimeError(f"FalkorDB is not reachable at {falkor_config.describe()}")
-        with _graph.connect(falkor_config) as g:
-            return _graph.export_campaign_graph(g, campaign_id)
-    finally:
-        if previous is None:
-            os.environ.pop("GLASS_CONFIG", None)
-        else:
-            os.environ["GLASS_CONFIG"] = previous
-
-
-def restore_falkor(
-    config: AogConfig,
-    campaign_id: str,
-    snapshot: dict[str, Any],
-) -> dict[str, int]:
-    from cli import graph as _graph
-    from cli.config import load_config as _load_glass_config
-
-    previous = os.environ.get("GLASS_CONFIG")
-    os.environ["GLASS_CONFIG"] = config_env_value(config)
-    try:
-        falkor_config = _graph.load_falkor_config(_load_glass_config())
-        if not _graph.is_available(falkor_config):
-            raise RuntimeError(f"FalkorDB is not reachable at {falkor_config.describe()}")
-        with _graph.connect(falkor_config) as g:
-            return _graph.import_campaign_graph(g, campaign_id, snapshot)
     finally:
         if previous is None:
             os.environ.pop("GLASS_CONFIG", None)

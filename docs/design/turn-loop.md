@@ -68,10 +68,8 @@ While they write it, they may call `glass` tools:
 - `glass summary show` / `write` / `append` — authored continuity summaries at campaign, arc/act, and scene level
 - `glass sync apply [path-or-directory ...]` — commit projected markdown edits
   from role-authorized document surfaces in one mutation
-- `glass entity upsert` (DM only)
 - `glass mode start` / `mode end` (DM only)
-- `glass entity neighborhood` / `relations` / `between` / `edges` /
-  `stance` / `glass thread beat` — read-only coherence lookups
+- `glass thread beat` — read-only or DM-advanced thread lookup
 - `glass search text` / `semantic` — bounded recall over indexed turns and
   markdown
 - `glass msg <type> <recipient> <body>` — send a typed message ([`messaging.md`](messaging.md))
@@ -203,7 +201,7 @@ the DM turn. Do not add a handoff solely to request a re-roll.
 
 Inside their invocation, the agent runs Claude's normal tool loop. They can:
 
-- Look up lore (`glass entity neighborhood`, file reads against the lore repo's player-facing content)
+- Look up lore (`glass search`, `glass turns find`, and file reads against player-facing content)
 - Check their own notes (read their journal directory)
 - Roll dice (`glass roll`)
 - Update state (`glass character set-hp`, `glass note write`, etc.)

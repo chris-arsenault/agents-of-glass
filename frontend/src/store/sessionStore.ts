@@ -21,7 +21,6 @@ import type {
   EventRecord,
   FileContent,
   FileEntry,
-  GraphSnapshot,
   LiveCursors,
   MessageRecord,
   RollRecord,
@@ -47,13 +46,6 @@ const emptyDmSurface: DmSurfacePayload = {
   beats: [],
   files: [],
 };
-const emptyGraph: GraphSnapshot = {
-  available: false,
-  target: "",
-  entities: [],
-  edges: [],
-  entity_types: [],
-};
 const initialCursors: LiveCursors = {
   turn: null,
   messages: null,
@@ -77,7 +69,6 @@ interface SessionStore {
   clocks: ClockRecord[];
   sceneTrackers: SceneTrackerRecord[];
   tarot: TarotRecord[];
-  graph: GraphSnapshot;
   table: TablePayload;
   dmSurface: DmSurfacePayload;
   cursors: LiveCursors;
@@ -116,7 +107,6 @@ type CampaignDataState = Pick<
   | "clocks"
   | "sceneTrackers"
   | "tarot"
-  | "graph"
   | "table"
   | "dmSurface"
   | "cursors"
@@ -139,7 +129,6 @@ function emptyCampaignData(): CampaignDataState {
     clocks: [],
     sceneTrackers: [],
     tarot: [],
-    graph: emptyGraph,
     table: emptyTable,
     dmSurface: emptyDmSurface,
     cursors: { ...initialCursors },
@@ -168,7 +157,6 @@ async function fetchCampaignSnapshot(
     clocks: summary.clocks,
     sceneTrackers: summary.scene_trackers,
     tarot: summary.tarot,
-    graph: summary.graph,
     table: table.table,
     dmSurface: summary.dm_surface ?? emptyDmSurface,
     turns: live.turns,
@@ -206,7 +194,6 @@ export const useSessionStore = create<SessionStore>((set, get) => {
     clocks: [],
     sceneTrackers: [],
     tarot: [],
-    graph: emptyGraph,
     table: emptyTable,
     dmSurface: emptyDmSurface,
     cursors: initialCursors,
@@ -315,7 +302,6 @@ export const useSessionStore = create<SessionStore>((set, get) => {
           clocks: live.clocks ?? summary.clocks,
           sceneTrackers: live.scene_trackers ?? summary.scene_trackers,
           tarot: live.tarot ?? summary.tarot,
-          graph: summary.graph,
           table: table.table,
           dmSurface: live.dm_surface ?? summary.dm_surface ?? emptyDmSurface,
           turns: mergeTurns(state.turns, live.turns),

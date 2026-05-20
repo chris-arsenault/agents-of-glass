@@ -1,10 +1,9 @@
 """Shared persistence facades for CLI mutations.
 
 Durable markdown is the agent-readable surface, but a successful mutation may
-also need to update Postgres search chunks, the runtime entity cache, and the
-FalkorDB graph mirror. Keeping those side effects behind one facade prevents
-command implementations from updating only the filesystem and forgetting the
-other persistence layers.
+also need to update Postgres search chunks and the runtime entity cache. Keeping
+those side effects behind one facade prevents command implementations from
+updating only the filesystem and forgetting the other persistence layers.
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ class MarkdownPersistenceResult:
     bytes: int
     search: dict[str, Any]
     entity: dict[str, Any] | None
-    graph: dict[str, Any] | None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -37,7 +35,6 @@ class MarkdownPersistenceResult:
             "bytes": self.bytes,
             "search": self.search,
             "entity": self.entity,
-            "graph": self.graph,
         }
 
 
@@ -53,7 +50,7 @@ class CampaignPersistence:
         text: str,
         *,
         state: dict[str, Any],
-        graph: bool | str = "auto",
+        entity: bool | str = "auto",
         search: bool = True,
     ) -> MarkdownPersistenceResult:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -61,7 +58,7 @@ class CampaignPersistence:
         return self.register_markdown(
             destination,
             state=state,
-            graph=graph,
+            entity=entity,
             search=search,
         )
 
@@ -70,16 +67,14 @@ class CampaignPersistence:
         path: Path,
         *,
         state: dict[str, Any],
-        graph: bool | str = "auto",
+        entity: bool | str = "auto",
         search: bool = True,
     ) -> MarkdownPersistenceResult:
         text = path.read_text(encoding="utf-8")
         entity_record: dict[str, Any] | None = None
-        graph_status: dict[str, Any] | None = None
 
-        if graph is True or (graph == "auto" and self._is_entity_markdown(path, text)):
+        if entity is True or (entity == "auto" and self._is_entity_markdown(path, text)):
             entity_record = upsert_entity_from_path(self.paths, state, path)
-            graph_status = self._mirror_entity_to_graph(entity_record, path)
 
         search_status = self._index_markdown(path, text) if search else {"status": "skipped"}
         return MarkdownPersistenceResult(
@@ -87,15 +82,7 @@ class CampaignPersistence:
             bytes=len(text.encode("utf-8")),
             search=search_status,
             entity=entity_record,
-            graph=graph_status,
         )
-
-    def _mirror_entity_to_graph(
-        self, record: dict[str, Any], path: Path
-    ) -> dict[str, Any]:
-        from .commands.entity import _mirror_entity_to_graph
-
-        return _mirror_entity_to_graph(record, path, self.campaign_id)
 
     def _index_markdown(self, path: Path, text: str) -> dict[str, Any]:
         if not _db.postgres_configured(load_config()):

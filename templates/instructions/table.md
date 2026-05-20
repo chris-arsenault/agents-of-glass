@@ -51,9 +51,9 @@ glass table snapshot --label "<reason>"
 
 ## Boundary
 
-Only `table/` is the active table. DM notes, graph entities, hooks, NPC files,
-lore, messages, and human-visible UI panels are separate surfaces unless the
-DM puts their visible content into `table/`.
+Only `table/` is the active table. DM notes, hooks, NPC files, lore, messages,
+and human-visible UI panels are separate surfaces unless the DM puts their
+visible content into `table/`.
 
 ## CLI Encoding Opportunities
 

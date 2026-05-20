@@ -9,7 +9,7 @@ The core architecture is:
 - A Python orchestrator owns turn order, mode state, context packaging, and transcript append.
 - Agents are fresh `claude -p` subprocesses each turn.
 - `glass` is the only state mutation surface.
-- Markdown holds prose, FalkorDB mirrors canonical narrative entities, and Postgres holds hard state plus query metadata.
+- Markdown holds prose, and Postgres holds hard state plus query metadata.
 - The guiding rule is: codify dice, numbers, IDs, inventory, mode/turn metadata, and event timing; leave most play in prose.
 
 The design is coherent. The strongest idea is the separation between agent prose and orchestrator/CLI structure. That fits the research goal well.
@@ -18,7 +18,7 @@ The design is coherent. The strongest idea is the separation between agent prose
 
 ### 1. Turn Commit / Failure Atomicity
 
-The largest missing design is what happens when a turn partially succeeds. Agents can call `glass` during a turn, mutating Postgres, the graph, or audit logs, and only afterward does the orchestrator append the prose transcript. If the agent times out, crashes, emits malformed prose, or the orchestrator dies between a roll and transcript append, the system can get state changes with no transcript record, or a transcript with missing canonical events.
+The largest missing design is what happens when a turn partially succeeds. Agents can call `glass` during a turn, mutating Postgres, search indexes, or audit logs, and only afterward does the orchestrator append the prose transcript. If the agent times out, crashes, emits malformed prose, or the orchestrator dies between a roll and transcript append, the system can get state changes with no transcript record, or a transcript with missing canonical events.
 
 For this project, that is not a small implementation detail. The transcript is the corpus, and every mutation is supposed to be captured inline. The design needs a turn-scoped commit protocol before build starts: reserved `turn_id`, staged tool events, explicit commit on transcript append, and a system-authored failure turn if the agent fails.
 
@@ -44,9 +44,9 @@ The docs rely on per-subcommand permissions enforced by an environment variable,
 
 Because DM-only secrets, private messages, and player separation are part of the fiction engine, this deserves real design. Use per-turn capability tokens, OS users, containers, or a local daemon that authenticates orchestrator-spawned processes. If v1 assumes Claude cannot run arbitrary shell, state that explicitly.
 
-### 4. Canonicalization / Graph Write Lifecycle Is Too Vague
+### 4. Canonicalization / Lore Lifecycle Is Too Vague
 
-The repo says the graph mirrors markdown, the DM ratifies player proposals, and canonical notes become graph entities. But the lifecycle is not yet designed deeply enough for a core artifact.
+The repo says the DM ratifies player proposals and canonical notes become durable lore. But the lifecycle is not yet designed deeply enough for a core artifact.
 
 The design needs the minimum contract for:
 
@@ -55,9 +55,9 @@ The design needs the minimum contract for:
 - note revision history
 - when transcript facts become canonical
 - how player proposals are accepted, rejected, or partially ratified
-- how graph upsert failures are surfaced in the transcript or audit trail
+- how persistence and indexing failures are surfaced in the transcript or audit trail
 
-The graph is one of the project's success criteria, so this cannot be entirely deferred to "we'll see after a session."
+Canonical lore is one of the project's success criteria, so this cannot be entirely deferred to "we'll see after a session."
 
 ### 5. Prompt-Injection From Corpus Content Is Not Addressed
 
@@ -85,4 +85,4 @@ Without that, later comparisons across sessions will be muddy: it will be hard t
 
 I would not redesign the concept. The main architecture is sound for the stated experiment.
 
-The build should not start by deepening lore, modes, or prose rules. Start by locking the runtime invariants: turn artifact contract, turn-scoped commit/failure handling, stronger `glass` authorization, and the minimal canonical note/graph lifecycle. Those are the places where an otherwise good design can lose its corpus.
+The build should not start by deepening lore, modes, or prose rules. Start by locking the runtime invariants: turn artifact contract, turn-scoped commit/failure handling, stronger `glass` authorization, and the minimal canonical note/lore lifecycle. Those are the places where an otherwise good design can lose its corpus.

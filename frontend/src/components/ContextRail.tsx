@@ -1,7 +1,6 @@
 import {
   BookOpen,
   ChevronRight,
-  Compass,
   Drama,
   FileText,
   Gauge,
@@ -39,7 +38,6 @@ export function ContextRail({ onJumpTurn }: ContextRailProps = {}) {
   const dmSurface = useSessionStore((state) => state.dmSurface);
   const table = useSessionStore((state) => state.table);
   const tarot = useSessionStore((state) => state.tarot);
-  const graph = useSessionStore((state) => state.graph);
   const loadFile = useSessionStore((state) => state.loadFile);
   const selectedFile = useSessionStore((state) => state.selectedFile);
   const isFileLoading = useSessionStore((state) => state.isFileLoading);
@@ -69,19 +67,6 @@ export function ContextRail({ onJumpTurn }: ContextRailProps = {}) {
 
   const beats = dmSurface.beats.slice(-3).reverse();
   const dmTarot = tarot.filter((t) => t.active && t.actor === "dm").slice(0, 1);
-  const lorePins = useMemo(
-    () =>
-      graph.entities
-        .filter((entity) => {
-          const type = entity.type?.toLowerCase() ?? "";
-          return ["hook", "scene-play", "secret", "hidden-knowledge"].includes(
-            type,
-          );
-        })
-        .slice(0, 4),
-    [graph.entities],
-  );
-
   const characterByPlayer = useMemo(() => {
     const map = new Map<string, CharacterRecord>();
     for (const c of characters) {
@@ -229,23 +214,6 @@ export function ContextRail({ onJumpTurn }: ContextRailProps = {}) {
               />
             ))}
           </Section>
-
-          {lorePins.length > 0 && (
-            <Section count={lorePins.length} icon={Compass} label="Lore Pins">
-              {lorePins.map((entity) => (
-                <PinCard
-                  kind={entity.type ?? "entity"}
-                  key={entity.uid ?? entity.id ?? entity.title}
-                  onOpen={
-                    entity.file_path ? () => open(entity.file_path!) : undefined
-                  }
-                  sub={entity.file_path ?? entity.status}
-                  title={entity.title ?? entity.type ?? "Entity"}
-                  icon={BookOpen}
-                />
-              ))}
-            </Section>
-          )}
 
           <Section count={playerIds.length} icon={Users} label="Players">
             {playerIds.map((playerId) => (

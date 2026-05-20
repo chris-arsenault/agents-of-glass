@@ -66,7 +66,7 @@ schema_version 5:
 | `mode_stack` | list[dict] | stack frames: `{mode, scene_id, started_at, started_by}` |
 | `pending_events` | list[dict] | queued event records awaiting flush |
 | `note_intake` | list[dict] | unratified player drafts |
-| `entities`, `threads` | dict | graph caches |
+| `entities`, `threads` | dict | local metadata / DM thread tracker caches |
 | `turns` | list[dict] | turn records (duplicates DB rows) |
 | `next_speakers` | list[dict] | handoff queue |
 | `action_order` | dict\|None | initiative cursor |
@@ -88,8 +88,8 @@ These fields fall into rough categories:
 3. **Per-turn ephemeral** (`active_turn_*`, `closeout_*`)
 4. **Queues and caches** (`pending_events`, `note_intake`, `next_speakers`,
    `action_order`, `scene_trackers`, `scene_closing_turns`)
-5. **Stale duplicates of DB data** (`turns` — already in the `turns`
-   table; `entities`, `threads` — already in FalkorDB)
+5. **Stale duplicates of DB or derived data** (`turns` — already in the
+   `turns` table; `entities`, `threads` — local metadata/tracker caches)
 
 ### The load/save/commit lifecycle
 
@@ -508,7 +508,6 @@ need to convert to accessor calls.
 ## What is explicitly out of scope for this doc
 
 - Changing the audit log format
-- Migrating FalkorDB graph access patterns
 - Changing the workspace filesystem layout
 - Changing the orchestrator's per-agent process model
 

@@ -97,13 +97,6 @@ from ..yaml_io import (
 _campaign_workspace = resolve_active_campaign_workspace
 
 
-def _mirror_entity_to_graph(
-    record: "dict[str, Any]", path: "Path", campaign_id_override: "str | None"
-) -> "dict[str, Any]":
-    from .entity import _mirror_entity_to_graph as _impl
-    return _impl(record, path, campaign_id_override)
-
-
 @click.group()
 def lore() -> None:
     """Lore curation: import / list / search."""
@@ -161,7 +154,7 @@ def lore_import(ctx: click.Context, source_path: str, alias: str | None) -> None
         campaign_id=workspace.campaign_id,
         campaign_root=workspace.root,
     )
-    persisted = persistence.register_markdown(dest, state=state, graph=True)
+    persisted = persistence.register_markdown(dest, state=state, entity=True)
 
     result = {
         "campaign_id": workspace.campaign_id,
@@ -252,10 +245,9 @@ def lore_new(
 ) -> None:
     """Scaffold a new lore entry under campaigns/<id>/shared/lore/.
 
-    Creates a file with valid frontmatter, ready for the DM to fill in. Does
-    NOT upsert to the graph — the DM edits the body, then runs `glass lore
-    upsert <path>` once the entry is real. Run with empty body, fill in
-    afterward.
+    Creates a file with valid frontmatter, ready for the DM to fill in. The
+    entry is registered in local entity/search state immediately; edit the body,
+    then run `glass lore upsert <path>` once the entry is real.
 
     Example:
       glass lore new npc patrol-leader-verra --title "Patrol Leader Verra" \\
@@ -300,7 +292,7 @@ def lore_new(
         campaign_id=workspace.campaign_id,
         campaign_root=workspace.root,
     )
-    persisted = persistence.register_markdown(dest, state=state, graph=True)
+    persisted = persistence.register_markdown(dest, state=state, entity=True)
 
     result = {
         "campaign_id": workspace.campaign_id,
@@ -311,7 +303,7 @@ def lore_new(
         "persistence": persisted.to_dict(),
         "next": [
             f"edit {dest} to fill in the body",
-            f"glass lore upsert {dest.relative_to(workspace.root)} to register in the graph",
+            f"glass lore upsert {dest.relative_to(workspace.root)} to refresh local entity/search state",
         ],
     }
     commit(
@@ -357,7 +349,7 @@ def _default_category_for(entity_type: str) -> str:
 @click.argument("path_text")
 @click.pass_context
 def lore_upsert(ctx: click.Context, path_text: str) -> None:
-    """Register an authored lore entry in the FalkorDB graph.
+    """Register an authored lore entry in local entity/search state.
 
     Use this after writing a lore file (either with `glass lore new` then
     your editor, or directly with the agent's Write tool). The path can be
@@ -390,7 +382,7 @@ def lore_upsert(ctx: click.Context, path_text: str) -> None:
         campaign_id=campaign_id,
         campaign_root=active_campaign_root(),
     )
-    persisted = persistence.register_markdown(raw, state=state, graph=True)
+    persisted = persistence.register_markdown(raw, state=state, entity=True)
     result = persisted.to_dict()
     commit(paths, state, ctx, "lore.upsert", command_params(path=path_text), result)
 
@@ -479,7 +471,7 @@ def lore_promote(
         campaign_id=campaign_id,
         campaign_root=workspace.root,
     )
-    persisted = persistence.register_markdown(destination, state=state, graph=True)
+    persisted = persistence.register_markdown(destination, state=state, entity=True)
     queue_event(
         state,
         "dm",

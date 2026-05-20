@@ -62,7 +62,7 @@ The DM's role prompt instructs them to do two things on every turn — not enfor
 1. **Player response and active scene upkeep.** Respond to what just happened. Narrate NPCs, environment, the consequences of player actions. Advance the current beat. The thing a real GM does at the table.
 2. **Mid- and long-term planning.** Look ahead. The party is heading toward the Keel — flesh out the harbormaster NPC who's currently a stub. The plot wants a complication two scenes from now — sketch it. The thread's beat-3 is approaching — write the seed.
 
-Both happen during the DM's turn. The first lands in the transcript as prose. The second lands in projected paths such as `dm/workspace/`, `dm/notes/`, `shared/lore/`, `arcs/`, and `table/`, then is committed with `glass sync apply` or graph/lore commands as appropriate.
+Both happen during the DM's turn. The first lands in the transcript as prose. The second lands in projected paths such as `dm/workspace/`, `dm/notes/`, `shared/lore/`, `arcs/`, and `table/`, then is committed with `glass sync apply` or lore commands as appropriate.
 
 This is how the DM stays ahead of the players. Without it, the world ends one scene past the present and the DM is reactive; with it, the DM is preparing material faster than the players can consume it. Real GMs do this between sessions; our DM does it inside each turn because we don't have between-sessions.
 
@@ -101,12 +101,12 @@ Code session is reused. Durable continuity still comes from:
 
 - The transcript window (recent turns)
 - The agent's private notes (which they wrote in earlier invocations)
-- The graph (canonical state)
+- Campaign files and indexed search
 - The character sheet (for players)
 
 The durable state surfaces remain the source of truth. Claude Code session
 history is optional short-term actor continuity, not canonical campaign state.
-An agent should still be re-invokable from the files, database, and graph.
+An agent should still be re-invokable from the files and database.
 
 ## Per-Agent State
 
@@ -114,11 +114,11 @@ The full file layout — what each role can read, what each role can write, wher
 
 - **Player private:** `persona.md` (who they are), `character.md` (their PC, cached from Postgres), `notes/` (personal encyclopedia, journal-shaped subset), `journal/` (free-form dated reflection), `drafts/` (encyclopedia-shaped lore intended for DM proposal), and messages addressed specifically to them via `glass msg`. **Visible to the DM** — the DM can see what every player is writing.
 - **DM-only:** `persona.md` (who Mara is), `notes/` (encyclopedia of NPCs, monsters, locales, threads, philosophy — much larger than any player's), `journal/`, `workspace/` (in-progress drafts), `secret/` (DM-only truth), `intake/` (player-drafted lore awaiting ratification).
-- **Shared (campaign-wide):** campaign lore (encyclopedia-shaped, DM-canonized), quest log (DM-writable, all-readable), party knowledge (party-writable, all-readable), instruction surfaces, public table, scene framing, transcript. The public table is specifically `table/**` in the player-agent projection, not every DM note or graph entity a human viewer can inspect.
+- **Shared (campaign-wide):** campaign lore (encyclopedia-shaped, DM-canonized), quest log (DM-writable, all-readable), party knowledge (party-writable, all-readable), instruction surfaces, public table, scene framing, transcript. The public table is specifically `table/**` in the player-agent projection, not every DM note or lore file a human viewer can inspect.
 
 **Lore is encyclopedia-shaped, not notes-shaped.** When a player or the DM is writing material that should become canonical (an NPC the party met, a locale they discovered, an event they caused), they write it as an encyclopedia entry — same shape as the world bible (`../the-glass-frontier-lore/`). When they're writing for themselves (theories, character thoughts, planning sketches), they write journal-style. The two don't blur; the shape signals the intent.
 
-Players draft lore in their `drafts/` directory and use `glass note` to push to the DM's intake. The DM canonizes (entry moves to the campaign's `shared/lore/`, graph upserted) or rejects.
+Players draft lore in their `drafts/` directory and use `glass note` to push to the DM's intake. The DM canonizes (entry moves to the campaign's `shared/lore/` and is indexed) or rejects.
 
 The orchestrator spawns each agent in a stable per-actor projection of the campaign
 workspace. Actors can edit writable document surfaces in that projection and
@@ -127,7 +127,7 @@ operator-owned and is mutated through Glass. See
 [`context-packages.md`](context-packages.md) for the file structure and the
 isolation mechanism.
 
-The `glass` CLI is the only path to state mutation. Nobody writes directly to FalkorDB or Postgres.
+The `glass` CLI is the only path to state mutation. Nobody writes directly to Postgres.
 
 ## Tool Allowlists
 
@@ -145,9 +145,6 @@ Roughly (refined in [`architecture.md`](architecture.md) and [`messaging.md`](me
 | `glass summary show` | yes | yes |
 | `glass summary append scene` | yes | yes; active scene only, capped |
 | `glass summary write` | yes | no |
-| `glass entity neighborhood` / `relations` / `between` / `edges` / `stance` / `find` / `similar` | yes | yes |
-| `glass entity claim` | yes | yes |
-| `glass entity upsert` / `link` / `unlink` / `query` / `ratify-claim` | yes | no |
 | `glass search text` / `semantic` | yes | yes |
 | `glass search reindex` | yes | no |
 | `glass sync apply` | yes (DM document surfaces) | yes (own document surfaces) |

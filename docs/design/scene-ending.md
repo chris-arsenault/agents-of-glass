@@ -116,7 +116,7 @@ Same shape, different scale. Sessions need an **arc declaration** at start:
 
 > "This session will advance thread `reconnection` from beat 3 to beat 4 OR finish at beat 3 with a memorable scene."
 
-Once that beat is advanced (or definitively unreachable), the session enters wrap pressure. Session has a max-scenes cap. **Wrap is itself a mode** — DM produces a session summary, persists graph deltas, the loop ends.
+Once that beat is advanced (or definitively unreachable), the session enters wrap pressure. Session has a max-scenes cap. **Wrap is itself a mode** — DM produces a session summary, persists durable state and lore updates, the loop ends.
 
 ---
 

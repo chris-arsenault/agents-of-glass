@@ -112,7 +112,7 @@ def table_write(
         campaign_id=campaign_id,
         campaign_root=active_campaign_root(),
     )
-    persisted = persistence.register_markdown(path, state=state, graph=False)
+    persisted = persistence.register_markdown(path, state=state, entity=False)
     queue_event(state, role.actor, f"table write {display_path(path)}")
     result = {
         "path": display_path(path),
@@ -165,7 +165,7 @@ def table_append(
         campaign_id=campaign_id,
         campaign_root=active_campaign_root(),
     )
-    persisted = persistence.register_markdown(path, state=state, graph=False)
+    persisted = persistence.register_markdown(path, state=state, entity=False)
     queue_event(state, role.actor, f"table append {display_path(path)}")
     result = {
         "path": display_path(path),
@@ -242,7 +242,7 @@ def table_use(ctx: click.Context, source_path: str, table_path: str | None) -> N
         campaign_id=campaign_id,
         campaign_root=campaign_root,
     )
-    persisted = persistence.register_markdown(destination, state=state, graph=False)
+    persisted = persistence.register_markdown(destination, state=state, entity=False)
     queue_event(
         state,
         role.actor,

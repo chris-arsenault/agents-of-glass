@@ -65,7 +65,7 @@ class TurnResult:
 
 _GLASS_COMMAND_LINE_RE = re.compile(
     r"^\s*>?\s*glass\s+"
-    r"(roll|character|clock|summary|entity|search|tarot|lore|note|arc|"
+    r"(roll|character|clock|summary|search|tarot|lore|note|arc|"
     r"scene|table|mode|turn|thread|msg|turns|sync)\b"
 )
 _SCENE_PLAY_MODES = {"scene-play", "action"}

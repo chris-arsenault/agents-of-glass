@@ -321,7 +321,6 @@ def _run_campaign_lifecycle(
 
     _ensure_operator_groups_active()
     _ensure_db_migrated(cli)
-    _ensure_falkor_reachable(cli)
 
     if campaign_id is None:
         campaign_id = cli.store.latest_campaign()
@@ -1345,27 +1344,6 @@ def _ensure_db_migrated(cli: CliState) -> None:
             os.environ["GLASS_CONFIG"] = previous_config
 
 
-def _ensure_falkor_reachable(cli: CliState) -> None:
-    from cli import graph as _glass_graph
-    from cli.config import load_config as _load_glass_config
-
-    previous_config = os.environ.get("GLASS_CONFIG")
-    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
-    try:
-        toml_data = _load_glass_config()
-        falkor_config = _glass_graph.load_falkor_config(toml_data)
-        if not _glass_graph.is_available(falkor_config):
-            raise click.ClickException(
-                f"FalkorDB graph is required and is not reachable at "
-                f"{falkor_config.describe()}."
-            )
-    finally:
-        if previous_config is None:
-            os.environ.pop("GLASS_CONFIG", None)
-        else:
-            os.environ["GLASS_CONFIG"] = previous_config
-
-
 def _api_url(value: str | None) -> str:
     from cli.api_grants import DEFAULT_API_URL
 
@@ -1469,7 +1447,7 @@ def campaign_show(cli: CliState, campaign_id: str | None, as_json: bool) -> None
 @click.option("--label", default=None, help="Human-readable checkpoint label.")
 @click.pass_obj
 def campaign_checkpoint(cli: CliState, campaign_id: str, label: str | None) -> None:
-    """Snapshot filesystem, Postgres, search vectors, and FalkorDB graph."""
+    """Snapshot filesystem, Postgres, and search vectors."""
     checkpoint = _checkpoint_or_raise(cli, campaign_id, label=label)
     click.echo(f"checkpoint: {checkpoint['checkpoint_id']}")
     click.echo(f"path: {checkpoint['path']}")
@@ -1570,7 +1548,6 @@ def campaign_prepare_turn(
         skip_player_persona=skip_player_persona,
     )
     _ensure_db_migrated(cli)
-    _ensure_falkor_reachable(cli)
     state = cli.store.load(campaign_id)
     package = cli.orchestrator.prepare_turn(state)
     click.echo(f"prepared {package.turn_id}")
@@ -1721,9 +1698,9 @@ def campaign_run(
               help="Only delete runtime state/cache (runtime DB rows, stale JSON state, "
                    "transcript export, audit.jsonl, scene-framing.md, per-agent turns/). "
                    "Keeps the campaign workspace, DM/player content, arcs, lore, "
-                   "characters/messages/rolls, and graph nodes.")
+                   "and characters/messages/rolls.")
 @click.option("--keep-workspace", is_flag=True,
-              help="Drop DB rows + graph nodes but leave the filesystem campaign "
+              help="Drop DB rows but leave the filesystem campaign "
                    "workspace intact. For when you want to wipe persistence but "
                    "keep authored content for re-import.")
 @click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
@@ -1735,12 +1712,11 @@ def campaign_clean(
     keep_workspace: bool,
     yes: bool,
 ) -> None:
-    """Remove a campaign: filesystem + Postgres rows + FalkorDB graph.
+    """Remove a campaign: filesystem + Postgres rows.
 
-    Default: drop EVERYTHING (workspace dir, DB rows for the campaign,
-    graph entities for the campaign). Use --state-only to wipe just the
-    runtime state files (no DB/graph touch). Use --keep-workspace to
-    drop DB+graph but keep the filesystem.
+    Default: drop EVERYTHING (workspace dir and DB rows for the campaign).
+    Use --state-only to wipe just the runtime state files (no DB touch).
+    Use --keep-workspace to drop DB rows but keep the filesystem.
     """
     if state_only and keep_workspace:
         raise click.ClickException("--state-only and --keep-workspace are mutually exclusive")
@@ -1753,14 +1729,14 @@ def campaign_clean(
     if state_only:
         if not yes and not click.confirm(
             f"Clear runtime state for campaign {campaign_id!r}? "
-            "(workspace, DM/player content, arcs, lore, non-runtime DB rows, graph all remain)"
+            "(workspace, DM/player content, arcs, lore, and non-runtime DB rows all remain)"
         ):
             raise click.Abort()
         cli.store.clear_state(campaign_id)
         click.echo(f"cleared runtime state for {campaign_id}")
         return
 
-    actions = ["DB rows", "graph nodes"]
+    actions = ["DB rows"]
     if not keep_workspace:
         actions.append("filesystem workspace")
     if not yes and not click.confirm(
@@ -1782,26 +1758,7 @@ def campaign_clean(
     except Exception as exc:
         click.secho(f"  db cleanup failed: {exc}", fg="yellow")
 
-    # 2. FalkorDB
-    try:
-        from cli import graph as _glass_graph
-        from cli.config import load_config as _load_glass_config
-
-        toml_data = _load_glass_config()
-        falkor_config = _glass_graph.load_falkor_config(toml_data)
-        if _glass_graph.is_available(falkor_config):
-            with _glass_graph.connect(falkor_config) as g:
-                deleted_graph = _glass_graph.delete_campaign_graph(g, campaign_id)
-            click.echo(f"  graph: {deleted_graph}")
-        else:
-            click.secho(
-                f"  graph: skipped (FalkorDB not reachable at {falkor_config.describe()})",
-                fg="yellow",
-            )
-    except Exception as exc:
-        click.secho(f"  graph cleanup failed: {exc}", fg="yellow")
-
-    # 3. Filesystem
+    # 2. Filesystem
     if keep_workspace:
         click.echo("  workspace: kept (--keep-workspace)")
     elif workspace_exists:
@@ -1879,7 +1836,6 @@ def _reconcile_campaign(
 ) -> dict[str, object]:
     from . import permissions as _permissions
     from cli import db as _glass_db
-    from cli import graph as _glass_graph
     from cli.config import load_config as _load_glass_config
 
     campaign_dir = cli.config.campaigns_dir / campaign_id
@@ -1939,8 +1895,6 @@ def _reconcile_campaign(
                     encoding="utf-8",
                 )
                 repaired.append("transcript.md")
-        falkor_config = _glass_graph.load_falkor_config(toml_data)
-        check("falkordb.reachable", _glass_graph.is_available(falkor_config), falkor_config.describe())
     finally:
         if previous_config is None:
             os.environ.pop("GLASS_CONFIG", None)

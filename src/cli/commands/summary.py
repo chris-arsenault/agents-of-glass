@@ -154,7 +154,7 @@ def _write_summary(
         campaign_id=campaign_id,
         campaign_root=active_campaign_root(),
     )
-    persisted = persistence.register_markdown(path, state=state, graph=False)
+    persisted = persistence.register_markdown(path, state=state, entity=False)
     resolved_level = "arc" if level == "act" else level
     queue_event(state, role.actor, f"{action} {resolved_level} {display_path(path)}")
     result = {

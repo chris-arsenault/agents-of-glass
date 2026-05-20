@@ -41,7 +41,7 @@ documents. Use workspace-relative paths exactly as they appear in `TURN_START`.
 6. Run `glass sync apply` with no path arguments only after all intended
    writable markdown edits are ready.
 7. Use dedicated commands instead of sync for hard state: `glass character`,
-   `glass scene`, `glass clock`, `glass entity`, `glass roll`, `glass table`,
+   `glass scene`, `glass clock`, `glass roll`, `glass table`,
    `glass lore`, and `glass note`.
 8. Read back command-created files or command output when verification is
    needed.

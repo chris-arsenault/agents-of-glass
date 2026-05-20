@@ -227,7 +227,6 @@ class GlassApiProxyTests(unittest.TestCase):
             validate_grant(campaigns, token, ["search", "text", "duke"])
             validate_grant(campaigns, token, ["tarot", "current"])
             validate_grant(campaigns, token, ["tarot", "list"])
-            validate_grant(campaigns, token, ["entity", "relations", "duke"])
             validate_grant(
                 campaigns,
                 token,
@@ -243,18 +242,10 @@ class GlassApiProxyTests(unittest.TestCase):
                 ],
             )
             validate_grant(campaigns, token, ["sync", "apply", "--from", "scratch/sync.json"])
-            validate_grant(
-                campaigns,
-                token,
-                ["entity", "claim", "duke", "ATTITUDE_TOWARD", "party", "--summary", "heard it"],
-            )
-
             with self.assertRaises(GlassError):
                 validate_grant(campaigns, token, ["db", "init"])
             with self.assertRaises(GlassError):
                 validate_grant(campaigns, token, ["tarot", "draw", "tev"])
-            with self.assertRaises(GlassError):
-                validate_grant(campaigns, token, ["entity", "query", "MATCH (n) RETURN n"])
 
     def test_standalone_client_proxies_to_local_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -269,11 +260,6 @@ host = "192.168.66.3"
 port = 5432
 database = "agents_of_glass"
 user = "agents_of_glass_app"
-
-[falkordb]
-host = "192.168.66.3"
-port = 16379
-graph = "agents_of_glass"
 
 [paths]
 content = "{root / "templates"}"
@@ -337,11 +323,6 @@ host = "192.168.66.3"
 port = 5432
 database = "agents_of_glass"
 user = "agents_of_glass_app"
-
-[falkordb]
-host = "192.168.66.3"
-port = 16379
-graph = "agents_of_glass"
 
 [paths]
 content = "{root / "templates"}"

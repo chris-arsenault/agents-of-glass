@@ -277,7 +277,7 @@ def note_ratify(
         campaign_id=campaign_id,
         campaign_root=workspace_root,
     )
-    persisted = persistence.register_markdown(destination, state=state, graph=True)
+    persisted = persistence.register_markdown(destination, state=state, entity=True)
     result = {"intake": item, **persisted.to_dict()}
     commit(
         paths,

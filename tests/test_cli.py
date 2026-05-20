@@ -58,11 +58,6 @@ port = 5432
 database = "agents_of_glass"
 user = "agents_of_glass_app"
 
-[falkordb]
-host = "192.168.66.3"
-port = 16379
-graph = "agents_of_glass"
-
 [paths]
 templates = "{templates}"
 campaigns = "{campaigns}"
@@ -3020,13 +3015,7 @@ Recipients are `dm`, `party`, or a player id.
                 provider="test",
                 dimensions=768,
             )
-            with (
-                patch("cli.embeddings.embed_text", return_value=fake_embedding),
-                patch(
-                    "cli.commands.entity._mirror_entity_to_graph",
-                    return_value={"status": "mocked"},
-                ),
-            ):
+            with patch("cli.embeddings.embed_text", return_value=fake_embedding):
                 used = invoke_ok(
                     runner,
                     [
@@ -4034,7 +4023,6 @@ Recipients are `dm`, `party`, or a player id.
 
             with (
                 patch("orchestrator.main._ensure_operator_groups_active"),
-                patch("orchestrator.main._ensure_falkor_reachable"),
                 patch("orchestrator.main._ensure_glass_api_for_run"),
                 patch("orchestrator.main._checkpoint_or_raise", return_value={"checkpoint_id": "test"}),
                 patch("orchestrator.permissions.apply_campaign_permissions"),

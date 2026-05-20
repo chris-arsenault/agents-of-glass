@@ -57,9 +57,6 @@ or an explicit "no change" in `glass done --state`.
    `glass roll` already applied. Roll-induced momentum is automatic; do not
    duplicate it.
 
-   3d. **Graph.** Use `glass entity claim`, `link`, `unlink`, or
-   `ratify-claim` for graph changes the scene introduced.
-
 4. **Update authored continuity.**
    - `glass summary write scene <scene-id> --arc <arc-id> --body "<scene summary>"`
    - `glass summary append arc <arc-id> --body "<arc-relevant result>"` when

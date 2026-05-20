@@ -182,7 +182,7 @@ Each campaign is **self-contained**: clone or move `campaigns/<id>/` and you hav
 aog campaign run <id>                # create if needed, then advance from durable phase/mode state
 aog campaign show [<id>]             # show phase, active arc, active scene
 aog campaign list
-aog campaign checkpoint <id> [--label <text>] # snapshot filesystem, Postgres, FalkorDB
+aog campaign checkpoint <id> [--label <text>] # snapshot filesystem and Postgres
 aog campaign checkpoints <id>        # list checkpoints
 aog campaign restore <id> <checkpoint-id>     # restore all persistence surfaces
 aog campaign reconcile <id> [--repair]        # validate/refresh projections
@@ -205,8 +205,7 @@ Every phase and every scene is resumable mid-flight. State persists after every 
 - If an agent invocation fails (claude error, timeout, malformed output): the orchestrator stops. Scene-level state in `arcs/<arc>/scenes/<scene>/` reflects the last fully-committed turn. Campaign-level state is unchanged.
 - Operator inspects, fixes, runs `aog campaign run [<id>]`. The command reads durable phase/mode state and resumes the correct phase or active scene.
 - For structural failure: restore to an operator checkpoint. Checkpoints include
-  the campaign filesystem, Postgres runtime/search/vector rows, and FalkorDB
-  graph nodes/edges.
+  the campaign filesystem and Postgres runtime/search/vector rows.
 
 Phase transitions are **explicit, not automatic**. The DM declares planning complete. The DM ratifies the last character. Scenes end when the DM calls `glass scene end`. This is so a half-finished phase or scene doesn't accidentally advance because of a stray turn.
 
@@ -225,8 +224,7 @@ The DM-only working documents (`foundation.md`, `plan.md`, `prep.md`) hold the f
 The human web viewer can inspect DM-only working documents through debug/file
 surfaces. That does not make those documents player-agent visible. If viewers
 want to know what was on the player agents' table, they should look at
-`campaigns/<id>/table/**` and its scene archives, not at graph entities or DM
-notes.
+`campaigns/<id>/table/**` and its scene archives, not at DM notes.
 
 ## What's Not Decided
 

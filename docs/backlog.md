@@ -45,9 +45,9 @@ Do next:
 
 ### State Projection Hardening
 
-Campaign checkpointing and restore now snapshot the filesystem, Postgres
-runtime/search/vector rows, and FalkorDB graph nodes/edges. Keep this item open
-only for defects discovered during real recovery work.
+Campaign checkpointing and restore now snapshot the filesystem and Postgres
+runtime/search/vector rows. Keep this item open only for defects discovered
+during real recovery work.
 
 Do next:
 
@@ -81,7 +81,7 @@ Default debugging checklist:
   `claude-debug.log`; the debug log records dispatch/failure but not full Bash
   command text.
 - Compare `glass <command>` output, canonical filesystem paths, projected cwd
-  paths, Postgres runtime rows, Falkor graph rows, and `audit.jsonl`.
+  paths, Postgres runtime rows, search rows, and `audit.jsonl`.
 - Treat "agent wrote absolute canonical path" as evidence that the projection
   lacked a valid mutation/readback loop, not primarily as an instruction
   compliance issue.
@@ -101,9 +101,9 @@ Do next:
   cwd without falling back to absolute canonical paths.
 - Design a `glass sync` / `glass commit`-style surface only if it preserves the
   mutation choke point: copy intended cwd changes or scratch drafts into durable
-  markdown, update Postgres, graph, text search, vector search, and audit in one
-  operation. Do not make agents manually coordinate separate filesystem, graph,
-  and DB commands.
+  markdown, update Postgres, text search, vector search, and audit in one
+  operation. Do not make agents manually coordinate separate filesystem and DB
+  commands.
 - Decide the supported write workflow for scaffolded files. Either commands
   like `glass arc create` should accept `--plan-from` / `--context-from`, or
   `glass note write arcs/<slug>/plan.md --from scratch/plan.md` should be the
@@ -118,21 +118,19 @@ Spawned agents, including the DM as `aog-mara`, run as isolated Unix users.
 They author files in the workspace and commit document edits through
 `glass sync apply`; hard state continues to go through dedicated `glass`
 commands. Continue auditing bootstrap runs for direct canonical writes or
-missing persistence side effects, especially around graph updates and lore
-imports.
+missing persistence side effects, especially around lore imports and search
+indexing.
 - Require all durable DM mutations to go through one Glass command/API surface;
   agents should not have to run separate commands to write markdown, update
-  Postgres, upsert graph entities/edges, refresh text/semantic indexes, and
-  append audit records.
+  Postgres, refresh text/semantic indexes, and append audit records.
 - Replace split write flows such as "write note, then lore upsert" with unified
   commands whose semantics are explicit: one invocation commits the prose,
-  metadata, graph projection, search/vector projection, and audit entry
-  together.
+  metadata, search/vector projection, and audit entry together.
 - Audit every mutating Glass path consistently; investigate why imported lore
-  and graph rows can appear without corresponding audit entries, and make graph
-  projection a default part of durable lore/note writes where applicable.
+  can appear without corresponding audit entries, and make indexing a default
+  part of durable lore/note writes where applicable.
 - Add a post-turn integrity check that compares canonical file changes,
-  Postgres mutations, graph mutations, and audit records; fail or flag any
+  Postgres mutations, search index updates, and audit records; fail or flag any
   durable mutation that bypassed Glass.
 - Add a scratch-promotion check for bootstrap/planning turns: important
   `scratch/*.md` drafts should either be imported into durable state,
@@ -247,7 +245,7 @@ active table.
 - The site may expose more than the transcript, including DM notes and lore, if
   the operator wants that inspection surface.
 - The **Active Table** remains special: it displays only the player-agent table
-  construct, `campaigns/<id>/table/**`. Do not fill it from graph rows, DM
+  construct, `campaigns/<id>/table/**`. Do not fill it from search rows, DM
   notes, hooks, NPC files, messages, rolls, or transcript text.
 - Per-campaign URLs (`/campaigns/<id>`); listing is opt-in.
 

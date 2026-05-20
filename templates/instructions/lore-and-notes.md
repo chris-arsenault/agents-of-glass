@@ -6,8 +6,8 @@ authority: binding
 
 # Lore and Notes Instructions
 
-Use the narrowest durable surface. Use `glass` commands when lore or entity
-state needs registration.
+Use the narrowest durable surface. Use `glass` commands when lore or local
+metadata needs registration.
 
 ## DM Sequence
 
@@ -50,13 +50,6 @@ glass lore upsert shared/lore/<type>/<slug>.md
 glass sync apply dm/notes/<category>/<slug>.md
 glass sync apply dm/workspace/<name>.md
 glass sync apply dm/secret/<name>.md
-```
-
-7. For graph relationships, use entity commands:
-
-```bash
-glass entity claim <a> <REL> <b> --summary "<what is claimed>"
-glass entity link <a> <REL> <b> --prop summary="<durable relation>"
 ```
 
 ## Player Sequence

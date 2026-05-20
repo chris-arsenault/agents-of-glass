@@ -2,9 +2,15 @@ import type { AppConfig } from "./types";
 
 declare global {
   interface Window {
-    __APP_CONFIG__?: Partial<AppConfig>;
+    __APP_CONFIG__?: RuntimeConfig;
   }
 }
+
+type RuntimeConfig = {
+  apiBaseUrl?: string;
+  pollIntervalMs?: number | string;
+  playerOrder?: string[] | string;
+};
 
 const envPlayerOrder = import.meta.env.VITE_PLAYER_ORDER?.split(",")
   .map((value: string) => value.trim())
@@ -31,7 +37,34 @@ export function getConfig(): AppConfig {
   const runtime = window.__APP_CONFIG__ ?? {};
   return {
     apiBaseUrl: runtime.apiBaseUrl ?? defaults.apiBaseUrl,
-    pollIntervalMs: runtime.pollIntervalMs ?? defaults.pollIntervalMs,
-    playerOrder: runtime.playerOrder ?? defaults.playerOrder,
+    pollIntervalMs: parsePollInterval(runtime.pollIntervalMs),
+    playerOrder: parsePlayerOrder(runtime.playerOrder),
   };
+}
+
+function parsePollInterval(value: RuntimeConfig["pollIntervalMs"]): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0
+      ? parsed
+      : defaults.pollIntervalMs;
+  }
+  return defaults.pollIntervalMs;
+}
+
+function parsePlayerOrder(value: RuntimeConfig["playerOrder"]): string[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return parsed.length ? parsed : defaults.playerOrder;
+  }
+  return defaults.playerOrder;
 }

@@ -1,7 +1,11 @@
 project: agents-of-glass
 prefix: agents-of-glass
 stack:
+  - rust
   - python
   - typescript
   - terraform
 migrations: migrations
+rust_artifacts:
+  lambdas:
+    - viewer-api

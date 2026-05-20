@@ -70,8 +70,7 @@ Postgres owns tarot because it is ordered, turn-scoped runtime state. The
 canonical table is `tarot_influences`.
 
 Markdown does not project tarot yet. The phrase corpus is code/data and is not
-state. The graph database is not involved because tarot is not an entity
-relationship.
+state. Tarot is not an entity relationship.
 
 ## CLI Surface
 

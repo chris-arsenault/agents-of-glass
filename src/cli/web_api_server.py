@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 from . import db
-from . import graph as graph_db
 from . import workspace as workspace_db
 from .config import get_paths, load_config
 from .errors import GlassError, agent_instruction
@@ -263,7 +262,6 @@ def _campaign_summary_payload(campaign_id: str) -> dict[str, Any]:
         "clocks": [],
         "scene_trackers": [],
         "tarot": [],
-        "graph": _graph_payload(campaign_id),
         "dm_surface": _campaign_dm_surface_payload(campaign_id),
     }
     try:
@@ -1139,71 +1137,6 @@ def _parse_created_id_cursor(cursor: str) -> tuple[str, str]:
             )
         )
     return parts[0], parts[1]
-
-
-def _graph_payload(campaign_id: str) -> dict[str, Any]:
-    config = graph_db.load_falkor_config(load_config())
-    payload: dict[str, Any] = {
-        "available": False,
-        "target": config.describe(),
-        "entities": [],
-        "edges": [],
-        "entity_types": [],
-    }
-    try:
-        with graph_db.connect(config) as g:
-            g.query("RETURN 1")
-            payload["available"] = True
-            payload["entities"] = graph_db.find_entities(
-                g,
-                campaign_id=campaign_id,
-                limit=50,
-            )
-            payload["edges"] = _graph_edges(g, campaign_id, limit=100)
-            payload["entity_types"] = _graph_entity_types(g, campaign_id)
-    except Exception as exc:
-        payload["error"] = str(exc)
-    return payload
-
-
-def _graph_edges(g: Any, campaign_id: str, *, limit: int) -> list[dict[str, Any]]:
-    result = g.query(
-        """
-        MATCH (a:Entity {campaign_id: $campaign})-[r]->(b:Entity {campaign_id: $campaign})
-        RETURN type(r), a.id, a.title, b.id, b.title
-        ORDER BY a.title, b.title
-        LIMIT $limit
-        """,
-        {"campaign": campaign_id, "limit": limit},
-    )
-    return [
-        {
-            "type": str(row[0]),
-            "source": row[1],
-            "source_title": row[2],
-            "target": row[3],
-            "target_title": row[4],
-        }
-        for row in result.result_set
-    ]
-
-
-def _graph_entity_types(g: Any, campaign_id: str) -> list[dict[str, Any]]:
-    result = g.query(
-        """
-        MATCH (e:Entity {campaign_id: $campaign})
-        RETURN e.type, count(e)
-        ORDER BY count(e) DESC, e.type
-        """,
-        {"campaign": campaign_id},
-    )
-    return [
-        {
-            "type": row[0] or "entity",
-            "count": int(row[1]),
-        }
-        for row in result.result_set
-    ]
 
 
 def _campaign_table_payload(campaign_root: Path) -> dict[str, Any]:

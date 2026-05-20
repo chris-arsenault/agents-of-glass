@@ -42,7 +42,7 @@ Source of truth: `ContextBuilder._turn_command_surface()` in
   dispatches to the hidden `glass msg send`.
 - This is a command-path audit, not an option/argument audit.
 
-**Distinct static leaf commands: 124.**
+**Distinct static leaf commands: 110.**
 
 The static CLI is intentionally larger than the agent-facing command surface.
 The facade commands are:
@@ -70,7 +70,6 @@ static catalog.
 | `clock` | 6 |
 | `db` | 2 |
 | `done` | 1 |
-| `entity` | 14 |
 | `find` | 1 |
 | `lore` | 6 |
 | `mode` | 3 |
@@ -163,23 +162,6 @@ static catalog.
 ### `done` (1)
 
 1. `glass done`
-
-### `entity` (14)
-
-1. `glass entity between`
-2. `glass entity claim`
-3. `glass entity edges`
-4. `glass entity find`
-5. `glass entity link`
-6. `glass entity neighborhood`
-7. `glass entity query`
-8. `glass entity ratify-claim`
-9. `glass entity relations`
-10. `glass entity similar`
-11. `glass entity stance`
-12. `glass entity stats`
-13. `glass entity unlink`
-14. `glass entity upsert`
 
 ### `find` (1)
 
