@@ -744,6 +744,8 @@ class GlassCliTests(unittest.TestCase):
                         "inventory_add": [
                             {
                                 "id": "route-seal",
+                                "name": "Route Seal",
+                                "descriptor": "a forged dock pass",
                                 "qty": 1,
                                 "effect_tags": "passes casual review",
                             }
@@ -751,6 +753,7 @@ class GlassCliTests(unittest.TestCase):
                         "signature_moves": [
                             {
                                 "name": "Quiet Door",
+                                "descriptor": "her old lockpick trick",
                                 "look": "A hand on the latch.",
                                 "use": "Entering quietly.",
                                 "tell": "Wax on the thumb.",
@@ -768,8 +771,56 @@ class GlassCliTests(unittest.TestCase):
         self.assertTrue(update["mirror"])
         self.assertEqual(update["set"], {"bio": "Keeps doors open."})
         self.assertEqual(update["inventory_add"][0]["effect_tags"], ["passes casual review"])
+        self.assertEqual(update["inventory_add"][0]["name"], "Route Seal")
+        self.assertEqual(update["inventory_add"][0]["descriptor"], "a forged dock pass")
         self.assertEqual(update["signature_moves"][0]["name"], "Quiet Door")
         self.assertIn("A hand on the latch.", update["signature_moves"][0]["body"])
+        self.assertIn(
+            "her old lockpick trick", update["signature_moves"][0]["body"]
+        )
+
+    def test_bulk_update_inventory_rejects_missing_descriptor(self) -> None:
+        with self.assertRaises(GlassError) as ctx:
+            _normalize_bulk_update_payload(
+                {
+                    "characters": [
+                        {
+                            "character_id": "vel",
+                            "inventory_add": [
+                                {
+                                    "id": "route-seal",
+                                    "name": "Route Seal",
+                                    "qty": 1,
+                                }
+                            ],
+                        }
+                    ],
+                },
+                mirror_override=None,
+            )
+        self.assertIn("descriptor", str(ctx.exception))
+
+    def test_bulk_update_signature_rejects_missing_descriptor(self) -> None:
+        with self.assertRaises(GlassError) as ctx:
+            _normalize_bulk_update_payload(
+                {
+                    "characters": [
+                        {
+                            "character_id": "vel",
+                            "signature_moves": [
+                                {
+                                    "name": "Quiet Door",
+                                    "look": "A hand on the latch.",
+                                    "use": "Entering quietly.",
+                                    "tell": "Wax on the thumb.",
+                                }
+                            ],
+                        }
+                    ],
+                },
+                mirror_override=None,
+            )
+        self.assertIn("descriptor", str(ctx.exception))
 
     def test_assert_valid_item_id_rejects_status_suffixes(self) -> None:
         for bad in (

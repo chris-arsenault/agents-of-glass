@@ -230,6 +230,7 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         xp,
         level,
         skill_xp,
+        skill_meta,
         created_at,
         updated_at,
     ) = row
@@ -265,6 +266,7 @@ def _row_to_character(row: tuple[Any, ...]) -> dict[str, Any]:
         "xp": int(xp),
         "level": int(level),
         "skill_xp": dict(skill_xp or {}),
+        "skill_meta": dict(skill_meta or {}),
         "created_at": _iso(created_at),
         "updated_at": _iso(updated_at),
     }
@@ -276,7 +278,7 @@ _CHARACTER_COLUMNS = (
     "table_presence, non_work_want, opening_social_action, life_prompt_answers, "
     "pull_utilization_note, attributes, skills, "
     "momentum_current, momentum_floor, momentum_ceiling, "
-    "hp_current, hp_max, inventory, tags, xp, level, skill_xp, "
+    "hp_current, hp_max, inventory, tags, xp, level, skill_xp, skill_meta, "
     "created_at, updated_at"
 )
 
@@ -1150,6 +1152,7 @@ def character_update_fields(
         "pull_utilization_note",
         "attributes",
         "skills",
+        "skill_meta",
         "tags",
     }
     unknown = sorted(set(fields) - allowed)
@@ -1164,7 +1167,7 @@ def character_update_fields(
     set_parts: list[str] = []
     values: list[Any] = []
     for name, value in fields.items():
-        if name in {"goals", "life_prompt_answers", "attributes", "skills"}:
+        if name in {"goals", "life_prompt_answers", "attributes", "skills", "skill_meta"}:
             value = json.dumps(value)
             set_parts.append(f"{name} = %s::jsonb")
         else:
@@ -1447,11 +1450,16 @@ def character_declare_skill(
     character_id: str,
     skill: str,
     starting_tier: str = "fool",
+    prose_name: str | None = None,
+    descriptor: str | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Declare a skill at `starting_tier` if the cap allows.
 
     Returns (character, was_newly_added). If the skill is already declared,
     the existing record is returned unchanged and `was_newly_added` is False.
+
+    `prose_name` and `descriptor` populate the parallel `skill_meta` jsonb
+    column. When omitted, an existing meta entry is preserved.
 
     Raises:
       LookupError: character not found.
@@ -1466,7 +1474,7 @@ def character_declare_skill(
     added = False
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT skills, level FROM characters "
+            "SELECT skills, skill_meta, level FROM characters "
             "WHERE campaign_id = %s AND character_id = %s FOR UPDATE",
             (campaign_id, character_id),
         )
@@ -1474,23 +1482,55 @@ def character_declare_skill(
         if row is None:
             raise LookupError(character_id)
         skills = dict(row[0] or {})
-        level = int(row[1])
+        skill_meta = dict(row[1] or {})
+        level = int(row[2])
         if skill_key not in skills:
             cap = skill_slot_cap(level)
             if len(skills) >= cap:
                 raise SkillSlotCapFull(level=level, cap=cap, used=len(skills))
             skills[skill_key] = starting_tier
-            cur.execute(
-                "UPDATE characters SET skills = %s::jsonb "
-                "WHERE campaign_id = %s AND character_id = %s",
-                (json.dumps(skills), campaign_id, character_id),
-            )
             added = True
+        existing_meta = dict(skill_meta.get(skill_key) or {})
+        if prose_name is not None:
+            existing_meta["name"] = prose_name.strip()
+        if descriptor is not None:
+            existing_meta["descriptor"] = descriptor.strip()
+        if existing_meta:
+            skill_meta[skill_key] = existing_meta
+        if added or prose_name is not None or descriptor is not None:
+            cur.execute(
+                "UPDATE characters SET skills = %s::jsonb, "
+                "skill_meta = %s::jsonb "
+                "WHERE campaign_id = %s AND character_id = %s",
+                (json.dumps(skills), json.dumps(skill_meta), campaign_id, character_id),
+            )
     conn.commit()
     refreshed = character_get(conn, campaign_id, character_id)
     if refreshed is None:
         raise LookupError(character_id)
     return refreshed, added
+
+
+def character_set_skill_meta(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    skill_meta: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Replace the entire skill_meta map. Used by bulk-update paths."""
+    with conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE characters SET skill_meta = %s::jsonb "
+            f"WHERE campaign_id = %s AND character_id = %s "
+            f"RETURNING {_CHARACTER_COLUMNS}",
+            (json.dumps(skill_meta), campaign_id, character_id),
+        )
+        row = cur.fetchone()
+    if row is None:
+        raise LookupError(character_id)
+    conn.commit()
+    return _row_to_character(row)
 
 
 def character_set_inventory(

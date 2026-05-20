@@ -620,6 +620,19 @@ def character_signature_status(ctx: click.Context, character_id: str) -> None:
 @character.command("signature-add")
 @click.argument("character_id")
 @click.argument("name")
+@click.option(
+    "--descriptor",
+    required=True,
+    help=(
+        "Required. Generic noun phrase reached for in ordinary turn prose. "
+        "The positional `<name>` is the prose name (used only when the "
+        "character names the move aloud); the descriptor is what narration "
+        "should reach for instead. Example: positional name "
+        "'Ride The Line Down', --descriptor 'the fall-line ride'. "
+        "Example: positional name 'Quiet Door', "
+        "--descriptor 'her old lockpick trick'."
+    ),
+)
 @click.option("--body", default="", help="Freeform markdown body for the move.")
 @click.option(
     "--from",
@@ -635,6 +648,7 @@ def character_signature_add(
     ctx: click.Context,
     character_id: str,
     name: str,
+    descriptor: str,
     body: str,
     source_path: Path | None,
     look: str,
@@ -653,6 +667,7 @@ def character_signature_add(
     role = assert_character_writable(character)
 
     name = _require_nonempty(name, "name")
+    descriptor = _require_nonempty(descriptor, "--descriptor")
     path = _signature_moves_path(paths, campaign_id, character)
     existing_body = path.read_text(encoding="utf-8") if path.exists() else ""
     move_names = _signature_move_names(existing_body)
@@ -687,6 +702,7 @@ def character_signature_add(
         look=look,
         usual_use=usual_use,
         tell=tell,
+        descriptor=descriptor,
     )
     updated = _append_signature_move(existing_body, character, name, move_body)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -716,9 +732,35 @@ def character_signature_add(
 @character.command("skill-declare")
 @click.argument("character_id")
 @click.argument("skill")
+@click.option(
+    "--name",
+    "prose_name",
+    required=True,
+    help=(
+        "Required. Prose name of the skill, used only when the character "
+        "names the craft aloud. Example for the slug "
+        "`read-parallel-resonance-bands`: --name 'Read Parallel "
+        "Resonance Bands'. Example for `talk-down-crowds`: "
+        "--name 'Talk Down Crowds'."
+    ),
+)
+@click.option(
+    "--descriptor",
+    required=True,
+    help=(
+        "Required. Generic verb or short phrase reached for in ordinary "
+        "turn prose. Example for `read-parallel-resonance-bands`: "
+        "--descriptor 'reading the bands'. Example for "
+        "`talk-down-crowds`: --descriptor 'talking the crowd down'."
+    ),
+)
 @click.pass_context
 def character_skill_declare(
-    ctx: click.Context, character_id: str, skill: str
+    ctx: click.Context,
+    character_id: str,
+    skill: str,
+    prose_name: str,
+    descriptor: str,
 ) -> None:
     """Declare a new skill at `fool` tier if the character has a free slot.
 
@@ -733,10 +775,12 @@ def character_skill_declare(
     if not skill_name:
         raise GlassError(
             agent_instruction(
-                "skill name is required",
-                "Pass a non-empty skill name as the second positional argument.",
+                "skill slug is required",
+                "Pass a non-empty skill slug as the second positional argument.",
             )
         )
+    prose_name = _require_nonempty(prose_name, "--name")
+    descriptor = _require_nonempty(descriptor, "--descriptor")
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -752,6 +796,8 @@ def character_skill_declare(
                 campaign_id=campaign_id,
                 character_id=character_id,
                 skill=skill_name,
+                prose_name=prose_name,
+                descriptor=descriptor,
             )
         except _db.SkillSlotCapFull as exc:
             raise GlassError(
@@ -781,6 +827,8 @@ def character_skill_declare(
     result = {
         "character_id": character_id,
         "skill": skill_name,
+        "name": prose_name,
+        "descriptor": descriptor,
         "starting_tier": "fool",
         "level": updated["level"],
         "slots_used": used,
@@ -793,7 +841,12 @@ def character_skill_declare(
         state,
         ctx,
         "character.skill-declare",
-        command_params(character_id=character_id, skill=skill_name),
+        command_params(
+            character_id=character_id,
+            skill=skill_name,
+            name=prose_name,
+            descriptor=descriptor,
+        ),
         result,
     )
 
@@ -1150,6 +1203,26 @@ def character_set_momentum(ctx: click.Context, character_id: str, value: int) ->
 @click.argument("item_id")
 @click.option("--qty", type=int, default=1)
 @click.option(
+    "--name",
+    "prose_name",
+    required=True,
+    help=(
+        "Required. Prose name of the item, used only when the character "
+        "names it aloud. Example for the slug `mirror-baton`: "
+        "--name 'Mirror Baton'."
+    ),
+)
+@click.option(
+    "--descriptor",
+    required=True,
+    help=(
+        "Required. Generic noun reached for in ordinary turn prose. "
+        "Example for the slug `mirror-baton`: --descriptor 'baton'. "
+        "Example for the slug `forged-route-seal`: "
+        "--descriptor 'a forged dock pass'."
+    ),
+)
+@click.option(
     "--effect-tag",
     "effect_tags",
     multiple=True,
@@ -1161,6 +1234,8 @@ def character_inventory_add(
     character_id: str,
     item_id: str,
     qty: int,
+    prose_name: str,
+    descriptor: str,
     effect_tags: tuple[str, ...],
 ) -> None:
     if qty <= 0:
@@ -1172,6 +1247,8 @@ def character_inventory_add(
         )
     assert_valid_item_id(item_id)
     normalized_effect_tags = _normalize_effect_tags(effect_tags)
+    prose_name = _require_nonempty(prose_name, "--name")
+    descriptor = _require_nonempty(descriptor, "--descriptor")
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -1192,8 +1269,16 @@ def character_inventory_add(
                     item.get("effect_tags"),
                     normalized_effect_tags,
                 )
+            if prose_name:
+                item["name"] = prose_name
+            if descriptor:
+                item["descriptor"] = descriptor
         else:
             entry: dict[str, Any] = {"id": item_id, "qty": qty}
+            if prose_name:
+                entry["name"] = prose_name
+            if descriptor:
+                entry["descriptor"] = descriptor
             if normalized_effect_tags:
                 entry["effect_tags"] = normalized_effect_tags
             inventory.append(entry)
@@ -1217,6 +1302,8 @@ def character_inventory_add(
         "qty_before": before,
         "delta": qty,
         "qty_after": after,
+        "name": prose_name,
+        "descriptor": descriptor,
         "effect_tags": normalized_effect_tags,
         "inventory": updated["inventory"],
         "mirror": mirror_result,
@@ -1230,6 +1317,8 @@ def character_inventory_add(
             character_id=character_id,
             item_id=item_id,
             qty=qty,
+            name=prose_name,
+            descriptor=descriptor,
             effect_tags=normalized_effect_tags,
         ),
         result,
@@ -1879,10 +1968,12 @@ def _normalize_bulk_update_payload(
             "inventory_add": _normalize_inventory_items(
                 inventory_add_value,
                 "inventory_add",
+                require_labels=True,
             ),
             "inventory_rm": _normalize_inventory_items(
                 inventory_rm_value,
                 "inventory_rm",
+                require_labels=False,
             ),
             "signature_moves": _normalize_signature_move_updates(signature_value),
             "mirror": mirror,
@@ -1941,12 +2032,31 @@ def _optional_int(value: Any, field_name: str) -> int | None:
     return value
 
 
-def _normalize_inventory_items(value: Any, field_name: str) -> list[dict[str, Any]]:
+def _normalize_inventory_items(
+    value: Any,
+    field_name: str,
+    *,
+    require_labels: bool = True,
+) -> list[dict[str, Any]]:
+    """Normalize a list of inventory item dicts.
+
+    Each item must carry a slug `id`, a prose `name`, and a generic
+    `descriptor` (used by ordinary turn prose). Set `require_labels=False`
+    for removal flows where only `id`/`qty` matter.
+
+    Example payload entry:
+
+        {"id": "mirror-baton", "name": "Mirror Baton",
+         "descriptor": "baton", "qty": 1,
+         "effect_tags": ["weapon:strike"]}
+    """
     if value is None:
         return []
     raw_items = value if isinstance(value, list) else [value]
     items: list[dict[str, Any]] = []
     for index, raw_item in enumerate(raw_items, start=1):
+        prose_name = ""
+        descriptor = ""
         if isinstance(raw_item, str):
             item_id = raw_item.strip()
             qty = 1
@@ -1964,11 +2074,16 @@ def _normalize_inventory_items(value: Any, field_name: str) -> list[dict[str, An
             effect_tags = _normalize_effect_tags(
                 tuple(_string_list(raw_item.get("effect_tags") or raw_item.get("effect_tag")))
             )
+            prose_name = str(raw_item.get("name") or "").strip()
+            descriptor = str(raw_item.get("descriptor") or "").strip()
         else:
             raise GlassError(
                 agent_instruction(
                     f"{field_name} item #{index} must be a string or object",
-                    "Use a plain item id string, or an object like `{\"id\": \"item-slug\", \"qty\": 1, \"effect_tags\": [\"usable\"]}`.",
+                    "Use an object like "
+                    "`{\"id\": \"mirror-baton\", \"name\": \"Mirror Baton\", "
+                    "\"descriptor\": \"baton\", \"qty\": 1, "
+                    "\"effect_tags\": [\"weapon:strike\"]}`.",
                 )
             )
         if not item_id:
@@ -1986,11 +2101,51 @@ def _normalize_inventory_items(value: Any, field_name: str) -> list[dict[str, An
                 )
             )
         assert_valid_item_id(item_id)
-        items.append({"id": item_id, "qty": qty, "effect_tags": effect_tags})
+        if require_labels and not prose_name:
+            raise GlassError(
+                agent_instruction(
+                    f"{field_name} item #{index} ({item_id}) is missing `name`",
+                    "Every item must have a prose `name` for the moment a "
+                    "character names it aloud. Example: "
+                    "`\"name\": \"Mirror Baton\"`.",
+                )
+            )
+        if require_labels and not descriptor:
+            raise GlassError(
+                agent_instruction(
+                    f"{field_name} item #{index} ({item_id}) is missing `descriptor`",
+                    "Every item must have a generic `descriptor` reached for "
+                    "in ordinary turn prose. Example for `mirror-baton`: "
+                    "`\"descriptor\": \"baton\"`. Example for "
+                    "`forged-route-seal`: `\"descriptor\": \"a forged dock "
+                    "pass\"`.",
+                )
+            )
+        entry: dict[str, Any] = {"id": item_id, "qty": qty, "effect_tags": effect_tags}
+        if prose_name:
+            entry["name"] = prose_name
+        if descriptor:
+            entry["descriptor"] = descriptor
+        items.append(entry)
     return items
 
 
 def _normalize_signature_move_updates(value: Any) -> list[dict[str, str]]:
+    """Normalize signature-move dicts. Each move must carry `name` (the
+    prose name spoken aloud), `descriptor` (the generic noun phrase reached
+    for in ordinary turn prose), and either a freeform `body` or the
+    structured `look`/`use`/`tell` trio.
+
+    Example payload entry:
+
+        {"name": "Ride The Line Down",
+         "descriptor": "the fall-line ride",
+         "look": "Mox plants her feet on the fall line and lets the wreck "
+                 "carry her into its own backstop.",
+         "use": "When a beam is going to come down anyway and someone is "
+                "in the fall pocket.",
+         "tell": "One chance to read the line right."}
+    """
     if value is None:
         return []
     raw_moves = value if isinstance(value, list) else [value]
@@ -2000,10 +2155,26 @@ def _normalize_signature_move_updates(value: Any) -> list[dict[str, str]]:
             raise GlassError(
                 agent_instruction(
                     f"signature move #{index} must be an object",
-                    "Use an object with `name` and either `body` or the structured `look`, `use`, and `tell` fields.",
+                    "Use an object with `name`, `descriptor`, and either "
+                    "`body` or the structured `look`, `use`, and `tell` fields.",
                 )
             )
         name = _require_nonempty(str(raw_move.get("name") or ""), "signature move name")
+        descriptor = str(raw_move.get("descriptor") or "").strip()
+        if not descriptor:
+            raise GlassError(
+                agent_instruction(
+                    f"signature move {name!r} is missing `descriptor`",
+                    "Every signature move must have a generic `descriptor` "
+                    "phrase reached for in ordinary turn prose. The `name` "
+                    "is the prose name (used only when a character names "
+                    "the move aloud). Example: "
+                    "`\"name\": \"Ride The Line Down\", "
+                    "\"descriptor\": \"the fall-line ride\"`. Example: "
+                    "`\"name\": \"Quiet Door\", "
+                    "\"descriptor\": \"her old lockpick trick\"`.",
+                )
+            )
         body = _signature_move_body(
             body=str(raw_move.get("body") or ""),
             source_path=None,
@@ -2015,6 +2186,7 @@ def _normalize_signature_move_updates(value: Any) -> list[dict[str, str]]:
                 or raw_move.get("tells_costs")
                 or ""
             ),
+            descriptor=descriptor,
         )
         moves.append({"name": name, "body": body})
     return moves
@@ -2048,6 +2220,7 @@ def _normalize_character_set_fields(
         "pull_utilization_note",
         "attributes",
         "skills",
+        "skill_meta",
         "tags",
     }
     for raw_name, value in raw_fields.items():
@@ -2102,9 +2275,22 @@ def _normalize_character_set_fields(
             merged.update(_normalize_attribute_map(value))
             fields[name] = merged
         elif name == "skills":
-            merged = dict(existing.get("skills") or {})
-            merged.update(_normalize_skill_map(value))
-            fields[name] = merged
+            skills_only, meta_extracted = _normalize_skill_map(value)
+            merged_skills = dict(existing.get("skills") or {})
+            merged_skills.update(skills_only)
+            fields[name] = merged_skills
+            if meta_extracted:
+                merged_meta = dict(existing.get("skill_meta") or {})
+                if "skill_meta" in fields:
+                    merged_meta.update(fields["skill_meta"])
+                merged_meta.update(meta_extracted)
+                fields["skill_meta"] = merged_meta
+        elif name == "skill_meta":
+            merged_meta = dict(existing.get("skill_meta") or {})
+            if "skill_meta" in fields:
+                merged_meta.update(fields["skill_meta"])
+            merged_meta.update(_normalize_skill_meta_map(value))
+            fields["skill_meta"] = merged_meta
         elif name == "tags":
             fields[name] = _string_list(value)
     return fields
@@ -2134,25 +2320,83 @@ def _normalize_attribute_map(value: Any) -> dict[str, str]:
     return normalized
 
 
-def _normalize_skill_map(value: Any) -> dict[str, str]:
+def _normalize_skill_map(
+    value: Any,
+) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    """Normalize a skills map.
+
+    Every entry must be a dict with `tier`, `name` (prose name spoken aloud),
+    and `descriptor` (generic verb phrase reached for in ordinary turn
+    prose). The simple `{slug: tier}` shape is still accepted for legacy
+    payloads that only adjust an existing skill's tier without adding a new
+    one; in that case the existing `skill_meta` entry is preserved.
+
+    Example:
+
+        {"read-parallel-resonance-bands": {
+            "tier": "artisan",
+            "name": "Read Parallel Resonance Bands",
+            "descriptor": "reading the bands"
+        },
+         "talk-down-crowds": {
+            "tier": "apprentice",
+            "name": "Talk Down Crowds",
+            "descriptor": "talking the crowd down"
+        }}
+
+    Returns `(skills, skill_meta)`.
+    """
     if not isinstance(value, dict):
         raise GlassError(
             agent_instruction(
                 "`skills` must be an object",
-                "Use a map like `{\"salvage\": \"apprentice\"}`.",
+                "Use a map like "
+                "`{\"read-parallel-resonance-bands\": "
+                "{\"tier\": \"artisan\", "
+                "\"name\": \"Read Parallel Resonance Bands\", "
+                "\"descriptor\": \"reading the bands\"}}`.",
             )
         )
-    normalized: dict[str, str] = {}
-    for name, tier in value.items():
-        skill = str(name).strip()
+    skills: dict[str, str] = {}
+    meta: dict[str, dict[str, str]] = {}
+    for raw_name, raw_value in value.items():
+        skill = str(raw_name).strip()
         if not skill:
             raise GlassError(
                 agent_instruction(
-                    "skill names must be non-empty",
-                    "Use a real skill name as the object key.",
+                    "skill slugs must be non-empty",
+                    "Use a real skill slug as the object key.",
                 )
             )
-        tier_name = str(tier).strip()
+        if isinstance(raw_value, dict):
+            tier_name = str(raw_value.get("tier") or "").strip()
+            prose_name = str(raw_value.get("name") or "").strip()
+            descriptor = str(raw_value.get("descriptor") or "").strip()
+            if not prose_name:
+                raise GlassError(
+                    agent_instruction(
+                        f"skill {skill!r} is missing `name`",
+                        "Every skill must have a prose `name` for the moment "
+                        "a character names the craft aloud. Example: "
+                        "`\"name\": \"Read Parallel Resonance Bands\"`.",
+                    )
+                )
+            if not descriptor:
+                raise GlassError(
+                    agent_instruction(
+                        f"skill {skill!r} is missing `descriptor`",
+                        "Every skill must have a generic `descriptor` "
+                        "phrase reached for in ordinary turn prose. Example "
+                        "for `read-parallel-resonance-bands`: "
+                        "`\"descriptor\": \"reading the bands\"`. Example "
+                        "for `talk-down-crowds`: "
+                        "`\"descriptor\": \"talking the crowd down\"`.",
+                    )
+                )
+        else:
+            tier_name = str(raw_value).strip()
+            prose_name = ""
+            descriptor = ""
         if tier_name not in SKILL_TIERS:
             raise GlassError(
                 agent_instruction(
@@ -2160,7 +2404,46 @@ def _normalize_skill_map(value: Any) -> dict[str, str]:
                     f"Use one of: {', '.join(sorted(SKILL_TIERS))}.",
                 )
             )
-        normalized[skill] = tier_name
+        skills[skill] = tier_name
+        if prose_name or descriptor:
+            entry: dict[str, str] = {}
+            if prose_name:
+                entry["name"] = prose_name
+            if descriptor:
+                entry["descriptor"] = descriptor
+            meta[skill] = entry
+    return skills, meta
+
+
+def _normalize_skill_meta_map(value: Any) -> dict[str, dict[str, str]]:
+    if not isinstance(value, dict):
+        raise GlassError(
+            agent_instruction(
+                "`skill_meta` must be an object",
+                "Use `{\"slug\": {\"name\": ..., \"descriptor\": ...}}`.",
+            )
+        )
+    normalized: dict[str, dict[str, str]] = {}
+    for raw_name, raw_value in value.items():
+        slug = str(raw_name).strip()
+        if not slug:
+            continue
+        if not isinstance(raw_value, dict):
+            raise GlassError(
+                agent_instruction(
+                    f"`skill_meta.{slug}` must be an object",
+                    "Use `{\"name\": ..., \"descriptor\": ...}`.",
+                )
+            )
+        prose_name = str(raw_value.get("name") or "").strip()
+        descriptor = str(raw_value.get("descriptor") or "").strip()
+        entry: dict[str, str] = {}
+        if prose_name:
+            entry["name"] = prose_name
+        if descriptor:
+            entry["descriptor"] = descriptor
+        if entry:
+            normalized[slug] = entry
     return normalized
 
 
@@ -2251,7 +2534,9 @@ def _signature_move_body(
     look: str,
     usual_use: str,
     tell: str,
+    descriptor: str = "",
 ) -> str:
+    descriptor = (descriptor or "").strip()
     if body.strip() and source_path is not None:
         raise GlassError(
             agent_instruction(
@@ -2277,20 +2562,34 @@ def _signature_move_body(
                     "Write the move text first, or use `--look`, `--use`, and `--tell` to build one.",
                 )
             )
-        return cleaned
+        return _prepend_descriptor(cleaned, descriptor)
     if body.strip():
-        return body.strip()
+        return _prepend_descriptor(body.strip(), descriptor)
 
     look = _require_nonempty(look, "--look")
     usual_use = _require_nonempty(usual_use, "--use")
     tell = _require_nonempty(tell, "--tell")
-    return "\n".join(
+    bullets: list[str] = []
+    if descriptor:
+        bullets.append(
+            f"- **Descriptor (prefer in prose):** {descriptor}"
+        )
+    bullets.extend(
         [
             f"- **Look:** {look}",
             f"- **Usual use:** {usual_use}",
             f"- **Tells/costs:** {tell}",
         ]
     )
+    return "\n".join(bullets)
+
+
+def _prepend_descriptor(existing_body: str, descriptor: str) -> str:
+    if not descriptor:
+        return existing_body
+    if "**Descriptor" in existing_body:
+        return existing_body
+    return f"- **Descriptor (prefer in prose):** {descriptor}\n{existing_body}"
 
 
 def _append_signature_move(
@@ -2391,14 +2690,24 @@ def _inventory_add(inventory: list[dict[str, Any]], item: dict[str, Any]) -> dic
     item_id = item["id"]
     qty = int(item["qty"])
     effect_tags = list(item.get("effect_tags") or [])
+    prose_name = str(item.get("name") or "").strip()
+    descriptor = str(item.get("descriptor") or "").strip()
     entry = next((existing for existing in inventory if existing.get("id") == item_id), None)
     before = int(entry["qty"]) if entry else 0
     if entry:
         entry["qty"] = before + qty
         if effect_tags:
             entry["effect_tags"] = _merge_effect_tags(entry.get("effect_tags"), effect_tags)
+        if prose_name:
+            entry["name"] = prose_name
+        if descriptor:
+            entry["descriptor"] = descriptor
     else:
         entry = {"id": item_id, "qty": qty}
+        if prose_name:
+            entry["name"] = prose_name
+        if descriptor:
+            entry["descriptor"] = descriptor
         if effect_tags:
             entry["effect_tags"] = effect_tags
         inventory.append(entry)
@@ -2408,6 +2717,8 @@ def _inventory_add(inventory: list[dict[str, Any]], item: dict[str, Any]) -> dic
         "qty_before": before,
         "delta": qty,
         "qty_after": after,
+        "name": prose_name,
+        "descriptor": descriptor,
         "effect_tags": effect_tags,
     }
 

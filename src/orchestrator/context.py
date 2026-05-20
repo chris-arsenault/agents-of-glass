@@ -355,6 +355,10 @@ class ContextBuilder:
             if housekeeping_turn or rapid_turn or scene_transition_turn
             else self._creative_influence_section(state, agent)
         )
+        operator_org_direction_section = self._operator_org_direction_section(
+            state,
+            agent,
+        )
         previous_orgs_section = self._previous_campaign_organizations_section(
             state,
             agent,
@@ -528,6 +532,7 @@ class ContextBuilder:
             "## Context boundary\n\n"
             f"{context_boundary}"
             f"{session_context_section}"
+            f"{operator_org_direction_section}"
             f"{previous_orgs_section}"
             "## Authoring Surface\n\n"
             "Read and edit the workspace-relative files named in this turn. "
@@ -1349,17 +1354,51 @@ class ContextBuilder:
                 "system addressability.\n\n"
                 "**Self-test before posting prose:** if a sentence only makes "
                 "sense to someone with the table artifact files open, rewrite "
-                "it. Codified handles may appear when they are already natural "
-                "in-world speech (character names, place names, established "
-                "slang the table uses out loud) or when the surrounding "
-                "sentence makes the physical event clear without the handle. "
-                "They may not be the spine of a sentence.\n\n"
+                "it. Codified handles may appear only as ordinary proper "
+                "names, like character and place names, or when the "
+                "surrounding sentence makes the physical event clear without "
+                "the handle. They may not be the spine of a sentence.\n\n"
                 "**Word-ceiling pressure rewards naming over describing.** "
                 "Naming a thing is shorter than describing it; under the "
                 "300-800 word target, the cheapest compression is to drop "
                 "back into codified handles. Resist that. If you are over "
                 "budget, cut a beat, do not compress an event into its "
                 "label.\n\n"
+                "**Items, skills, and signature moves carry three labels.** "
+                "Every item, skill, and signature move on a character sheet "
+                "has a **slug** (CLI handle), a **prose name** (used only "
+                "when a character names the thing aloud), and a **generic "
+                "descriptor** (used in ordinary narration). When you author "
+                "new items or table artifacts, supply all three. When you "
+                "narrate, reach for the descriptor by default. Example: "
+                "slug `mirror-baton`, name `Mirror Baton`, descriptor "
+                "`baton`. In prose, write \"she swung the baton,\" not \"she "
+                "swung Mirror Baton\" or \"she swung the mirror-baton.\" Use "
+                "the prose name only when the character literally names the "
+                "thing aloud; use the slug only when quoting CLI output.\n\n"
+                "**Do not narrate the roll.** Roll outcomes (`breakthrough`, "
+                "`advance`, `stall`, `regress`, `collapse`), risk tiers "
+                "(`controlled`, `standard`, `risky`, `desperate`), momentum "
+                "values (`momentum hits three`), skill tiers (`artisan`, "
+                "`virtuoso`), and die math (`d10 shows 8, plus 1, plus 2`) "
+                "are mechanical bookkeeping. They belong in the closeout "
+                "block, never in prose, and never in a character's "
+                "dialogue. Narrate the event the roll produced. Examples of "
+                "the failure and the rewrite:\n\n"
+                "- **Wrong:** \"Risky throw, finesse and weighted line: 6 "
+                "against 7. The dice leave him one count short, because of "
+                "course they do.\"\n"
+                "- **Right:** \"He tries to throw the line, but his aim is a "
+                "hair off in the tense moment; the hook misses Nimeh's "
+                "wrist and bites under the kettle cart instead.\"\n\n"
+                "- **Wrong:** \"Momentum hits three, so he takes the clean "
+                "extra too.\"\n"
+                "- **Right:** \"The follow-through carries him an extra half "
+                "step into the right angle.\"\n\n"
+                "- **Wrong:** \"Artisan line work and superior hands only "
+                "drag it to four against seven.\"\n"
+                "- **Right:** \"Skill and steady hands cannot quite save "
+                "the throw.\"\n\n"
             )
         if agent.role == "player" and normalized in _ACTIVE_PLAY_MODES:
             return (
@@ -1385,16 +1424,53 @@ class ContextBuilder:
                 "parse.\n\n"
                 "**Self-test before posting prose:** if a sentence only makes "
                 "sense to someone who has the table files open, rewrite it. "
-                "Codified handles may appear when they are already natural "
-                "in-world speech or when the surrounding sentence makes the "
-                "physical event clear without them. They may not be the spine "
-                "of a sentence.\n\n"
-                "**Specialist character voices translate.** If your character "
-                "has a craft idiom — bioacoustic vocabulary, auctioneer "
-                "cadence, glasswright's ear — a specialist *narrating their "
-                "own work* translates as they go. One pointed term per beat, "
-                "with the physical action visible around it. Not stacks of "
-                "trade-noun compounds.\n\n"
+                "Codified handles may appear only as ordinary proper names, "
+                "like character and place names, or when the surrounding "
+                "sentence makes the physical event clear without them. They "
+                "may not be the spine of a sentence.\n\n"
+                "**No specialist lingo in turn prose.** Do not use craft "
+                "idiom, trade vocabulary, invented compounds, or prior-turn "
+                "jargon as a voice feature. Write the visible physical event "
+                "in common English. If a sentence depends on specialist "
+                "vocabulary to make sense, rewrite it.\n\n"
+                "**Items, skills, and signature moves carry three labels.** "
+                "Every item on your inventory, every skill on your sheet, "
+                "and every signature move has a **slug** (CLI handle), a "
+                "**prose name** (used only when your character names the "
+                "thing aloud), and a **generic descriptor** (used in "
+                "ordinary narration). Reach for the descriptor by default. "
+                "Example: slug `mirror-baton`, name `Mirror Baton`, "
+                "descriptor `baton`. Your prose should read \"she swung the "
+                "baton,\" not \"she swung Mirror Baton\" or \"she swung the "
+                "mirror-baton.\" Use the prose name only when your "
+                "character literally names the thing aloud; use the slug "
+                "only when quoting CLI output. The same rule applies to "
+                "skills (descriptor `reading the bands`, not the skill "
+                "slug) and signature moves (descriptor `the fall-line "
+                "ride`, not the move name).\n\n"
+                "**Do not narrate the roll.** Roll outcomes "
+                "(`breakthrough`, `advance`, `stall`, `regress`, "
+                "`collapse`), risk tiers (`controlled`, `standard`, "
+                "`risky`, `desperate`), momentum values (`momentum hits "
+                "three`), skill tiers (`artisan`, `virtuoso`), and die math "
+                "(`d10 shows 8, plus 1, plus 2`) are mechanical "
+                "bookkeeping. They belong in the closeout block, never in "
+                "prose, and never in your character's dialogue. Narrate "
+                "the event the roll produced. Examples:\n\n"
+                "- **Wrong:** \"Risky throw, finesse and weighted line: 6 "
+                "against 7. The dice leave him one count short, because of "
+                "course they do.\"\n"
+                "- **Right:** \"He tries to throw the line, but his aim is "
+                "a hair off in the tense moment; the hook misses her wrist "
+                "and bites under the cart instead.\"\n\n"
+                "- **Wrong:** \"Momentum hits three, so he takes the clean "
+                "extra too.\"\n"
+                "- **Right:** \"The follow-through carries him an extra "
+                "half step into the right angle.\"\n\n"
+                "- **Wrong:** \"Artisan line work and superior hands only "
+                "drag it to four against seven.\"\n"
+                "- **Right:** \"Skill and steady hands cannot quite save "
+                "the throw.\"\n\n"
             )
         return ""
 
@@ -1572,6 +1648,52 @@ class ContextBuilder:
             )
         lines.append("")
         return "\n".join(lines) + "\n"
+
+    def _operator_org_direction_section(
+        self,
+        state: SessionState,
+        agent: Agent,
+    ) -> str:
+        """Surface an operator-supplied seed phrase on a fresh campaign.
+
+        Read from `dm/notes/operator-org-direction.md` if present. Only
+        emitted for the DM during organization-bootstrap mode. The operator
+        writes this file via `aog campaign run --org-direction "<phrase>"`.
+        """
+        if agent.role != "dm" or state.active_mode.mode != "organization-bootstrap":
+            return ""
+
+        direction_path = (
+            self.config.campaigns_dir
+            / state.campaign
+            / "dm"
+            / "notes"
+            / "operator-org-direction.md"
+        )
+        try:
+            body = direction_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+        if not body:
+            return ""
+
+        # The body already has its own H1 and frontmatter; we surface it
+        # in TURN_START as a quoted section with a load-bearing heading so
+        # Mara reads it as input rather than as background.
+        return (
+            "## Operator Direction\n\n"
+            "The operator passed `--org-direction` when starting this "
+            "campaign. The full note is at "
+            f"`dm/notes/operator-org-direction.md`. Treat the direction "
+            "below as starting input for this organization-bootstrap "
+            "turn — a shape, theme, or seed phrase the organization "
+            "should echo. You retain authorial control: refine and "
+            "ground it in concrete specifics so the result is not "
+            "generic. The previous-campaign-organization-check below "
+            "still applies; do not reuse another campaign's "
+            "organization to honor this hint.\n\n"
+            f"{body}\n\n"
+        )
 
     def _previous_campaign_organizations_section(
         self,

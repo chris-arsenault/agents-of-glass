@@ -109,6 +109,17 @@ live, and `glass done` succeeds.
      reason from: `glass table write <meaningful-slug>.md --body "<markdown>"`.
    - Bring existing durable lore onto the table with
      `glass table use shared/lore/<path>.md --as <meaningful-slug>.md`.
+   - **Every named visible thing in the scene carries three labels.** The
+     filename slug (`fairbreak-job-kit.md`) is a CLI handle. The artifact
+     body should open with both the prose name (`Fairbreak Job Kit`, only
+     used when a character names it aloud) and a **generic descriptor**
+     (`the rescue kit`, `a rope-and-bell satchel`) for ordinary narration.
+     Author every artifact this way: name the thing on the first line, give
+     the descriptor in the second sentence. When players narrate, they
+     reach for the descriptor. Do not seed table artifacts whose only
+     name is a proper-noun compound (e.g. "Spool Nine," "Backbite
+     Damper") without a plain descriptor (e.g. "the rescue winch," "the
+     dampener clamp") in the same artifact.
 
 7. **Create trackers and clocks before play starts.**
    - Use `glass scene tracker set <id> --max <n>` for scene-local visible

@@ -42,7 +42,16 @@ the character branch.
    messages, or `players/<id>/secrets/` edits. Commit authored markdown with
    `glass sync apply`.
 8. Write concise public prose to the `TURN.md` path from TURN_START: movement,
-   action, roll result or visible consequence, and the new immediate position.
+   action, visible consequence, and the new immediate position. Narrate the
+   *event*, not the roll. Risk tiers (`risky`, `desperate`), outcome labels
+   (`breakthrough`, `stall`, `regress`, `collapse`), skill tiers (`artisan`,
+   `superior`), momentum values, and die math do not appear in prose or in a
+   character's dialogue — they are bookkeeping and live in the closeout block.
+   Write "his aim is a hair off in the tense moment" not "risky throw,
+   finesse: 6 against 7." When you refer to an item, skill, or signature
+   move in prose, reach for the **generic descriptor** on the character
+   sheet (e.g. `baton`, `reading the bands`, `the fall-line ride`), not the
+   prose name or the slug.
 9. Run `glass done`. In action scenes, include `--position`,
    `--pressure`, and the formal `--turn-type`. `pass` is valid only for a
    short visible yield and also requires `--state "no state change"` plus

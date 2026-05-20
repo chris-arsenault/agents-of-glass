@@ -40,6 +40,12 @@ def write_public_character_mirror(
     }
 
 
+def _humanize_slug(slug: str) -> str:
+    """Fallback prose name when no explicit name has been authored yet."""
+    cleaned = slug.replace("-", " ").replace("_", " ").strip()
+    return " ".join(word.capitalize() for word in cleaned.split()) if cleaned else slug
+
+
 def render_public_character_mirror(character: dict[str, Any]) -> str:
     lines = [
         "---",
@@ -96,14 +102,42 @@ def render_public_character_mirror(character: dict[str, Any]) -> str:
     lines.extend(["", "## Attributes", ""])
     for attribute in ATTRIBUTES:
         lines.append(f"- **{attribute}:** {character['attributes'].get(attribute, 'standard')}")
-    lines.extend(["", "## Skills", ""])
-    for skill, tier in sorted(character.get("skills", {}).items()):
-        lines.append(f"- **{skill}:** {tier}")
-    lines.extend(["", "## Inventory", ""])
+    lines.extend([
+        "",
+        "## Skills",
+        "",
+        "_Prefer the **generic descriptor** in turn prose. The prose name is "
+        "for the moment a character names the skill aloud; the slug is a CLI "
+        "handle._",
+        "",
+    ])
+    skill_meta = dict(character.get("skill_meta") or {})
+    for slug, tier in sorted(character.get("skills", {}).items()):
+        meta = dict(skill_meta.get(slug) or {})
+        prose_name = str(meta.get("name") or "").strip() or _humanize_slug(slug)
+        descriptor = str(meta.get("descriptor") or "").strip() or "—"
+        lines.append(
+            f"- **{prose_name}** (tier: {tier}; descriptor: *{descriptor}*; "
+            f"slug: `{slug}`)"
+        )
+    lines.extend([
+        "",
+        "## Inventory",
+        "",
+        "_Prefer the **generic descriptor** in turn prose. Reach for the "
+        "prose name only when a character literally names the item aloud._",
+        "",
+    ])
     inventory = list(character.get("inventory") or [])
     if inventory:
         for item in inventory:
-            item_line = f"- **{item.get('id', 'item')}:** x{int(item.get('qty', 1))}"
+            slug = str(item.get("id") or "item")
+            prose_name = str(item.get("name") or "").strip() or _humanize_slug(slug)
+            descriptor = str(item.get("descriptor") or "").strip() or "—"
+            item_line = (
+                f"- **{prose_name}** (qty {int(item.get('qty', 1))}; "
+                f"descriptor: *{descriptor}*; slug: `{slug}`)"
+            )
             effect_tags = item.get("effect_tags")
             if isinstance(effect_tags, list) and effect_tags:
                 item_line += " — " + "; ".join(str(tag) for tag in effect_tags)

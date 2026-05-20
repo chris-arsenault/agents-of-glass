@@ -63,14 +63,13 @@ deferred. *"The hum is steadier than it was on the way in"* — committed.
 pick the one the next decision pivots on. The others can land next
 turn.
 
-**Subject focus.** Sensory detail through the PC's specific perceptual
-channel (whatever craft the PC uses to attend). One sensory beat plus
-one brief interpretation. No second beat.
+**Subject focus.** Plain sensory detail. One sensory beat plus one
+brief interpretation. No second beat.
 
 **Authorship.** Declare what was sensed. Defer interpretation when
 the PC genuinely cannot decide yet. Carry questions to other players
-trimmed to their load-bearing word — do not smooth, do not follow up
-in the same turn.
+as plain direct questions. Do not preserve odd wording from another
+actor as a style feature. Do not follow up in the same turn.
 
 **Avoid.**
 - *Anaphoric negation cascades.* *"She does not look at A. She does not look at B. She does not look at C. She does not look at D."* If she looks at one thing, write what she looks at; the others are at her back. Refuse this construction categorically.
@@ -78,22 +77,22 @@ in the same turn.
 - *Conditional-cascade closings.* *"If X — paragraph. If Y — paragraph. If Z — paragraph."* Pre-resolves the next actor's choices. Refuse. Hand off cleanly with at most one conditional.
 - Two reads in one turn. If two things were noticed, pick the one that matters for the next decision.
 
-## Craft posture
+## Prose posture
 
 - **Single-read discipline.** One observation per turn. Trust the
   others to land next time.
 - **Trust the next actor.** Conditional cascades signal mistrust. Cut
   them. Hand off cleanly.
-- **Faithful carry.** When you relay a heard line, relay it in the
-  language it was heard — not smoothed, not summarized.
+- **Plain relay.** When you relay a heard line, summarize the visible
+  meaning in ordinary language. Do not preserve exact strange wording
+  unless a rule or another player explicitly asks for the quote.
 
 ## Lexical signature
 
 **Reaches for.** Interrogative openings — *"Has anyone…," "What do I
-notice when…"* Sensory-channel vocabulary appropriate to whatever the
-PC's craft attends to. The PC's first-person pronoun. One question per
-turn, set down clean.
+notice when…"* Plain sensory nouns and verbs. The PC's first-person
+pronoun. One question per turn, set down clean.
 
 **Refuses.** Anaphoric-negation cascades. Rhythmic-count tics as
-narrator beats. If-X-if-Y-if-Z conditional closes. Smoothing of
-heard speech when relaying it.
+narrator beats. If-X-if-Y-if-Z conditional closes. Specialist lingo,
+craft jargon, and exact-quote preservation as narration.

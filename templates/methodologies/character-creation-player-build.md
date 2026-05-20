@@ -80,11 +80,24 @@ applies_to_modes: [character-creation]
      people would call them at level 20 when they are a mythic figure in the
      campaign world. Do not use a job title like recorder, clerk, examiner,
      witness, handler, or liaison as the archetype.
-   - Skill names must be present-tense action verb phrases: `break sealed
+   - Skill slugs must be present-tense action verb phrases: `break sealed
      doors`, `read fault bands`, `cut fouled lines`, `talk down crowds`, `pilot
      bad approaches`, `bind wounds under fire`.
 14. Add exactly 3 starting inventory items and one signature move with
    `glass character bulk-update --json '<payload>'`; set `"mirror": true`.
+   - Every item, every skill, and the signature move must carry three labels:
+     a **slug** (CLI handle: `mirror-baton`, `read-parallel-resonance-bands`,
+     `ride-the-line-down`), a **prose name** (used only when the character
+     names the thing aloud: `Mirror Baton`, `Read Parallel Resonance Bands`,
+     `Ride The Line Down`), and a **generic descriptor** (used in ordinary
+     turn prose: `baton`, `reading the bands`, `the fall-line ride`). For
+     items, pass `"name"` and `"descriptor"` alongside `"id"` in the
+     `inventory_add` payload. For skills, pass them as a richer skill entry:
+     `{"read-parallel-resonance-bands": {"tier": "artisan", "name": "Read
+     Parallel Resonance Bands", "descriptor": "reading the bands"}}`. For
+     signature moves, pass `"descriptor"` alongside `"name"`. Author the
+     descriptor as the ordinary English word a stranger would use; the
+     descriptor will be the agent's reach in narration.
    - One inventory item must be a weapon or combat implement the character can
      use when an action scene turns dangerous. Mark it with an effect tag
      beginning `weapon:`.

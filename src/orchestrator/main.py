@@ -313,6 +313,7 @@ def _run_campaign_lifecycle(
     review_stop_budget: int | None,
     skip_character_creation: bool,
     dry_run: bool,
+    org_direction: str | None = None,
 ) -> None:
     """Create or continue a campaign from durable phase/mode state."""
 
@@ -351,6 +352,12 @@ def _run_campaign_lifecycle(
             raise click.ClickException(str(exc))
     click.echo(f"      workspace: {space.campaign_dir}")
     click.echo("      state:     Postgres runtime row")
+
+    if org_direction:
+        _write_operator_org_direction(
+            campaign_dir=space.campaign_dir,
+            direction=org_direction,
+        )
 
     # Phase 2: organization bootstrap
     cm_state = _run_bootstrap_phase(
@@ -1001,6 +1008,65 @@ def _require_bootstrap_mode_ended(
     )
 
 
+_OPERATOR_ORG_DIRECTION_RELATIVE = Path("dm") / "notes" / "operator-org-direction.md"
+
+
+def _write_operator_org_direction(
+    *,
+    campaign_dir: Path,
+    direction: str,
+) -> None:
+    """Persist the operator's `--org-direction` hint for Mara's bootstrap turn.
+
+    Only writes when the campaign is fresh (organization bootstrap has not
+    yet produced `shared/lore/organization.md`). On a non-fresh campaign,
+    prints a warning and skips the write — Mara has already chosen the
+    organization, and a late hint would not change it.
+    """
+    direction_text = direction.strip()
+    if not direction_text:
+        return
+
+    organization_public = campaign_dir / "shared" / "lore" / "organization.md"
+    try:
+        existing_org = organization_public.read_text(encoding="utf-8").strip()
+    except OSError:
+        existing_org = ""
+
+    if existing_org:
+        click.secho(
+            "      --org-direction ignored: organization bootstrap is already "
+            "complete for this campaign.",
+            fg="yellow",
+        )
+        return
+
+    target = campaign_dir / _OPERATOR_ORG_DIRECTION_RELATIVE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    body = (
+        "---\n"
+        "title: Operator Organization Direction\n"
+        "type: operator-direction\n"
+        "status: dm-private\n"
+        "---\n\n"
+        "# Operator Organization Direction\n\n"
+        "The operator passed `--org-direction` when starting this campaign. "
+        "Treat it as starting input for the organization bootstrap turn — a "
+        "shape, theme, or seed phrase the operator wants the organization to "
+        "echo. You retain authorial control: refine, sharpen, and ground it "
+        "in concrete specifics so the organization is not generic. The "
+        "previous-campaign-organization-check still applies; do not reuse "
+        "another campaign's organization to honor this hint.\n\n"
+        "## Direction\n\n"
+        f"> {direction_text}\n"
+    )
+    target.write_text(body, encoding="utf-8")
+    click.secho(
+        f"      operator direction written: {target}",
+        fg="cyan",
+    )
+
+
 def _validate_organization_bootstrap_complete(
     cli: CliState,
     campaign_id: str,
@@ -1594,6 +1660,19 @@ def campaign_prepare_turn(
         "Use 0 for no pacing delay."
     ),
 )
+@click.option(
+    "--org-direction",
+    "org_direction",
+    type=str,
+    default=None,
+    help=(
+        "Operator hint for Mara on a fresh campaign — a short seed phrase, "
+        "shape, or theme she should echo when authoring the organization. "
+        "Ignored when organization bootstrap is already complete. "
+        "Example: --org-direction 'echo conclave bounty hunters'. "
+        "Example: --org-direction 'salvage crew with a forensic streak'."
+    ),
+)
 @click.option("--dry-run", is_flag=True, help="Synthetic turns without Claude.")
 @click.pass_obj
 def campaign_run(
@@ -1610,6 +1689,7 @@ def campaign_run(
     skip_player_persona: bool | None,
     use_session_id: bool | None,
     turn_minimum_seconds: int | None,
+    org_direction: str | None,
     dry_run: bool,
 ) -> None:
     """Create or continue a campaign from its durable phase/mode state."""
@@ -1631,6 +1711,7 @@ def campaign_run(
         review_stop_budget=None if no_review_stops else skip_review_stops,
         skip_character_creation=skip_character_creation,
         dry_run=dry_run,
+        org_direction=org_direction,
     )
 
 

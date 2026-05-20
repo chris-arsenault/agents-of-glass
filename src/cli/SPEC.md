@@ -103,6 +103,81 @@ fictional effect but does not create a mechanical object.
 
 ### Characters
 
+Items, skills, and signature moves each carry three labels: a **slug**
+(CLI handle), a **prose name** (used only when a character names the
+thing aloud), and a **generic descriptor** (used in ordinary turn
+prose). The CLI requires all three on every authoring flow; turn
+prose should reach for the descriptor by default.
+
+Worked examples:
+
+| Surface | Slug | Prose name | Descriptor (prose default) |
+|---|---|---|---|
+| Item | `mirror-baton` | `Mirror Baton` | `baton` |
+| Item | `forged-route-seal` | `Forged Route Seal` | `a forged dock pass` |
+| Skill | `read-parallel-resonance-bands` | `Read Parallel Resonance Bands` | `reading the bands` |
+| Skill | `talk-down-crowds` | `Talk Down Crowds` | `talking the crowd down` |
+| Move | `ride-the-line-down` | `Ride The Line Down` | `the fall-line ride` |
+| Move | `quiet-door` | `Quiet Door` | `her old lockpick trick` |
+
+Concrete CLI invocations:
+
+```bash
+glass character inventory-add vel forged-route-seal \
+  --name 'Forged Route Seal' \
+  --descriptor 'a forged dock pass' \
+  --effect-tag 'passes casual inspection'
+
+glass character skill-declare doruth read-parallel-resonance-bands \
+  --name 'Read Parallel Resonance Bands' \
+  --descriptor 'reading the bands'
+
+glass character signature-add mox 'Ride The Line Down' \
+  --descriptor 'the fall-line ride' \
+  --look 'Mox plants her feet on the fall line and rides the wreck down.' \
+  --use 'When a beam is going to come down and someone is in the fall pocket.' \
+  --tell 'One chance to read the line right.'
+```
+
+In `glass character bulk-update --from update.json`, the same three
+labels must appear in the payload:
+
+```json
+{
+  "characters": [{
+    "character_id": "vel",
+    "inventory_add": [
+      {
+        "id": "forged-route-seal",
+        "name": "Forged Route Seal",
+        "descriptor": "a forged dock pass",
+        "qty": 1,
+        "effect_tags": ["passes casual inspection"]
+      }
+    ],
+    "set": {
+      "skills": {
+        "read-parallel-resonance-bands": {
+          "tier": "artisan",
+          "name": "Read Parallel Resonance Bands",
+          "descriptor": "reading the bands"
+        }
+      }
+    },
+    "signature_moves": [
+      {
+        "name": "Ride The Line Down",
+        "descriptor": "the fall-line ride",
+        "look": "Mox plants her feet on the fall line.",
+        "use": "When a beam is going to come down anyway.",
+        "tell": "One chance to read the line right."
+      }
+    ],
+    "mirror": true
+  }]
+}
+```
+
 ```
 glass character new <id> --player <player-id> \
   --primary-drive <drive> --positive-trait <text> \
@@ -115,10 +190,11 @@ glass character bulk-get <id>... [--all] [--no-signatures]
 glass character bulk-update --from update.json          # set fields, inventory, signatures, mirror, hp/momentum
 glass character set-hp <id> <delta>                     # DM, or own
 glass character set-momentum <id> <value>               # DM, or own
-glass character inventory-add <id> <item-id> [--qty N] [--effect-tag TEXT ...]
+glass character inventory-add <id> <item-id> [--qty N] [--name TEXT] [--descriptor TEXT] [--effect-tag TEXT ...]
 glass character inventory-rm <id> <item-id> [--qty N]
+glass character skill-declare <id> <skill-slug> [--name TEXT] [--descriptor TEXT]
 glass character signature-status <id>
-glass character signature-add <id> <name> [--body TEXT | --from PATH]
+glass character signature-add <id> <name> [--descriptor TEXT] [--body TEXT | --from PATH] [--look TEXT --use TEXT --tell TEXT]
 glass character consequence-add <id> <label> [--severity minor|serious|critical]
 glass character consequence-list <id> [--all]
 glass character consequence-resolve <id> <consequence-id> [--note TEXT]

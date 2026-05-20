@@ -41,7 +41,16 @@ sequence is binding for every DM turn after action order exists.
    add one more twist solely to extend the action scene. Do not reroll
    initiative after action order exists unless intentionally restarting the
    order.
-8. Write concise public prose to the `TURN.md` path from TURN_START.
+8. Write concise public prose to the `TURN.md` path from TURN_START. Narrate
+   the *event*, not the roll. Risk tiers (`risky`, `desperate`), outcome
+   labels (`breakthrough`, `stall`, `regress`, `collapse`), skill tiers
+   (`artisan`, `superior`), momentum values, and die math do not appear in
+   prose or in NPC dialogue — they are bookkeeping and live in the closeout
+   block. Write "the cutter's saw bites once before the bell flattens the
+   sound" not "risky desperate cut on standard difficulty: 4 against 7." When
+   you refer to an item, NPC, place, or move in prose, reach for the
+   **generic descriptor** (e.g. `baton`, `the rescue winch`, `the old
+   captain`), not the prose name or the slug.
 9. Run `glass done`. Include position and pressure changes when they
    changed, or none/unchanged when they did not.
 
