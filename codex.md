@@ -33,6 +33,7 @@ Four principles govern every decision. **Read these first:**
 
 ## Working in this repo
 
+- Branch discipline: default to `main`. Do not create, switch to, continue work on, or commit to a non-main branch unless the operator explicitly instructs you to use that non-main branch for the current task.
 - Don't create new top-level directories without asking the operator.
 - Don't add new design docs unless explicitly designing — prefer updating existing ones.
 - Don't write tests for the orchestrator loop or for agent behavior; CLI-only tests against real data stores. See [`docs/design/architecture.md`](docs/design/architecture.md#testing-strategy).
