@@ -22,7 +22,7 @@ design work, not for runtime play agents.
 
 - Put the active instruction frame first. OpenAI's guide emphasizes putting
   instructions at the beginning and being specific about context, outcome,
-  format, and style. For Agents of Glass, that means `TURN_START.md` should
+  format, and style. For Agents of Glass, that means the injected prompt should
   begin by naming who the agent is acting as and what turn it is taking, before
   inventorying references.
 - Role prompts are useful for tone and behavior. Anthropic's guidance says
@@ -52,7 +52,7 @@ design work, not for runtime play agents.
 
 ## Implications For Agents Of Glass
 
-- `TURN_START.md` should open with embodied identity:
+- The injected prompt should open with embodied identity:
   "You are Mara, the DM..." or "You are Tev, a player..."
 - Persona and character files should be introduced as the active identity's
   contents, not as detached artifacts.

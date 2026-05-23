@@ -11,6 +11,7 @@ ACTIVE_PLAY_TURN_KINDS = {"active-play", "active-play-dm"}
 BEAT_WARNING_AGE = 8
 BEAT_MAX_AGE = 10
 BEAT_MAX_ACTIVE = 3
+BEAT_FAILURE_LIMIT = 2
 
 
 def beat_check_required_for_turn(turn_context: dict[str, Any] | None) -> bool:
@@ -79,7 +80,7 @@ def _clock_warnings(
     if not active_objective:
         if role_kind == "player":
             return [
-                "No objective clock is active; end with `--next dm` if the scene needs a party objective before continuing."
+                'No objective clock is active; use `next_speaker="dm"` in `glass_done(...)` if the scene needs a party objective before continuing.'
             ]
         return [
             "This scene has no active objective clock; players may read the scene as threat-only. Add or reveal a party-objective clock when the party has a goal to push."
@@ -103,6 +104,20 @@ def beat_status_note(age: int) -> str | None:
     return None
 
 
+def beat_failure_note(failure_ticks: int) -> str | None:
+    if failure_ticks >= BEAT_FAILURE_LIMIT:
+        return (
+            "closed by repeated failed rolls; the DM should offer a fresh route "
+            "toward the scene goal."
+        )
+    if failure_ticks > 0:
+        return (
+            f"failed-roll pressure {failure_ticks}/{BEAT_FAILURE_LIMIT}; another "
+            "failed roll against this beat closes it to DM reframe."
+        )
+    return None
+
+
 def scene_close_note(completed_beats: int) -> str | None:
     if completed_beats >= 8:
         return (
@@ -119,6 +134,47 @@ def scene_close_note(completed_beats: int) -> str | None:
     return None
 
 
+def scene_landing_guidance(
+    *,
+    completed_beats: int,
+    active_beat_count: int,
+    visible_clocks: list[dict[str, Any]],
+) -> str | None:
+    near_objective = any(_objective_clock_near_resolution(clock) for clock in visible_clocks)
+    if completed_beats >= 8 and active_beat_count <= 0:
+        return (
+            "Scene landing guidance: substantial material has resolved and no active "
+            "beat remains. Close or transition the scene, or deliberately open a "
+            "new scene question; do not add another local-procedure beat by default."
+        )
+    if completed_beats >= 8 or near_objective:
+        return (
+            "Scene landing guidance: this scene is in landing range. Resolve the "
+            "current beat or hand control to the DM for close/transition; do not "
+            "drill into another local procedure unless the scene question changes."
+        )
+    if completed_beats >= 6:
+        return (
+            "Scene landing guidance: this scene is entering landing range. Keep "
+            "progress broad by resolving active beats and moving clocks; avoid "
+            "adding another diagnostic layer."
+        )
+    return None
+
+
+def _objective_clock_near_resolution(clock: dict[str, Any]) -> bool:
+    if str(clock.get("polarity") or "objective") != "objective":
+        return False
+    max_value = int(clock.get("max", 0) or 0)
+    if max_value <= 0:
+        return False
+    value = int(clock.get("value", 0) or 0)
+    direction = str(clock.get("direction") or "progress")
+    if direction == "countdown":
+        return value <= 1 or value / max_value <= 0.25
+    return value >= max_value - 1 or value / max_value >= 0.75
+
+
 def _beat_warnings(
     *,
     active_beat_count: int,
@@ -132,7 +188,9 @@ def _beat_warnings(
             ]
         if role_kind == "player":
             return [
-                "No active beat is live; end with `--next dm` so the DM can restore the scene board instead of forcing another player into empty procedure."
+                "No active beat is live; finish this turn with the visible outcome. "
+                'If no DM handoff is already queued, use `next_speaker="dm"` in '
+                "`glass_done(...)` so the DM can restore the scene board."
             ]
         return [
             "No active beat is live; if the scene continues, restore 2-3 active beats across distinct problem lanes before handing back to players."
@@ -184,13 +242,16 @@ def scene_contract_snapshot(
             isinstance(clock, dict) and clock.get("visibility") == "public"
         )
         age = int(beat.get("non_pass_turns", 0) or 0)
+        failure_ticks = int(beat.get("failure_ticks", 0) or 0)
         active_beats.append(
             {
                 **beat,
                 "age_text": f"{age}/{BEAT_MAX_AGE}",
+                "failure_text": f"{failure_ticks}/{BEAT_FAILURE_LIMIT}",
                 "clock_label": clock.get("label") if clock_visible and clock else None,
                 "clock_visible": bool(clock_visible),
                 "status_note": beat_status_note(age),
+                "failure_note": beat_failure_note(failure_ticks),
             }
         )
 
@@ -207,15 +268,32 @@ def scene_contract_snapshot(
             clock_visible = role_kind != "player" or (
                 isinstance(clock, dict) and clock.get("visibility") == "public"
             )
+            failure_ticks = int(beat.get("failure_ticks", 0) or 0)
             recent_beats.append(
                 {
                     **beat,
+                    "failure_text": f"{failure_ticks}/{BEAT_FAILURE_LIMIT}",
+                    "failure_note": beat_failure_note(failure_ticks),
                     "clock_label": clock.get("label") if clock_visible and clock else None,
                 }
             )
 
     completed_beats = sum(1 for beat in all_beats if beat.get("status") == "closed")
     hidden_clock_count = max(len(active_clocks) - len(visible_clocks), 0)
+    landing_guidance = scene_landing_guidance(
+        completed_beats=completed_beats,
+        active_beat_count=len(active_beats),
+        visible_clocks=visible_clocks,
+    )
+    beat_warnings = _beat_warnings(
+        active_beat_count=len(active_beats),
+        completed_beats=completed_beats,
+        role_kind=role_kind,
+    )
+    for beat in active_beats:
+        failure_note = str(beat.get("failure_note") or "").strip()
+        if failure_note:
+            beat_warnings.append(f"Beat `{beat.get('beat_id')}` {failure_note}")
     return {
         "scene_id": scene_id,
         "active_clock_count": len(active_clocks),
@@ -230,11 +308,7 @@ def scene_contract_snapshot(
         ),
         "active_beat_count": len(active_beats),
         "active_beats": active_beats,
-        "beat_warnings": _beat_warnings(
-            active_beat_count=len(active_beats),
-            completed_beats=completed_beats,
-            role_kind=role_kind,
-        ),
+        "beat_warnings": beat_warnings,
         "recent_beats": recent_beats,
         "completed_beats": completed_beats,
         "warning_beats": [
@@ -244,6 +318,7 @@ def scene_contract_snapshot(
             beat for beat in active_beats if int(beat.get("non_pass_turns", 0) or 0) >= BEAT_MAX_AGE
         ],
         "scene_note": scene_close_note(completed_beats),
+        "landing_guidance": landing_guidance,
     }
 
 

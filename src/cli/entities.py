@@ -79,7 +79,7 @@ def upsert_entity_from_path(paths: Paths, state: dict[str, Any], path: Path) -> 
         raise GlassError(
             agent_instruction(
                 f"entity source does not exist: {display_path(path)}",
-                "Pass an existing markdown lore/entity file, usually under `shared/lore/` or an arc/scene document.",
+                "Pass an existing maintenance-only markdown entity file. Agent turns should use graph facts and DB-backed lore instead.",
             )
         )
     text = path.read_text(encoding="utf-8")

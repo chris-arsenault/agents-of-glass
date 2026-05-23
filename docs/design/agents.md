@@ -47,7 +47,7 @@ This split has real consequences:
 
 - **Two voices per agent.** The agent writes both. They sound different — Tev cracks jokes about dice, Karrith doesn't know what dice are.
 - **Character creation is a player choice.** During worldbuilding mode, the player agents pick what kind of character they want to play *as that player would.* Tev tends toward mechanical builds. Sumi tends toward complicated ones.
-- **Character sheets are separate files.** Players each have a person file (`agents/players/tev.md`); their PCs each have a character file (`characters/karrith.md`). The character files are owned by the orchestrator and updated through the `glass` CLI; the people files are mostly stable.
+- **Character state is separate from table persona.** Players each have durable persona reference, while their PCs live in character records updated through the `glass` CLI. The player voice and the character voice are distinct, but neither is maintained by file edits during an agent turn.
 
 ## The DM Is Also A Person
 
@@ -62,72 +62,58 @@ The DM's role prompt instructs them to do two things on every turn — not enfor
 1. **Player response and active scene upkeep.** Respond to what just happened. Narrate NPCs, environment, the consequences of player actions. Advance the current beat. The thing a real GM does at the table.
 2. **Mid- and long-term planning.** Look ahead. The party is heading toward the Keel — flesh out the harbormaster NPC who's currently a stub. The plot wants a complication two scenes from now — sketch it. The thread's beat-3 is approaching — write the seed.
 
-Both happen during the DM's turn. The first lands in the transcript as prose. The second lands in projected paths such as `dm/workspace/`, `dm/notes/`, `shared/lore/`, `arcs/`, and `table/`, then is committed with `glass sync apply` or lore commands as appropriate.
+Both happen during the DM's turn. The first lands in the public turn feed as prose through `glass turn append --body`. The second lands in neutral facts or hard state through `glass` commands. If a future agent must rely on it, Mara records it with `glass fact set` or `glass done --fact`; she does not maintain a parallel file surface during the turn.
 
 This is how the DM stays ahead of the players. Without it, the world ends one scene past the present and the DM is reactive; with it, the DM is preparing material faster than the players can consume it. Real GMs do this between sessions; our DM does it inside each turn because we don't have between-sessions.
 
-The role prompt makes this explicit. The DM's `TURN_START.md` reminds them. The expected discipline is light — not every turn needs heavy planning — but planning never being zero is the point.
+The injected prompt makes this explicit. The expected discipline is light - not every turn needs heavy planning - but planning never being zero is the point.
 
 ## Invocation
 
 Each person is invoked as a separate `claude -p` subprocess per turn. The
-orchestrator gives each actor a stable projection cwd and tracks one Claude
-Code session id per actor. By default that id is only recorded; if
-`[claude].use_session_id` is enabled, the orchestrator starts the first
-attached invocation with `--session-id` and resumes later attached invocations
-with `--resume <actor-session-id>`.
-For one operator invocation, `aog campaign run --use-session-id` or
-`aog campaign run --no-use-session-id` overrides the TOML value.
-When that flag is enabled, generated `TURN_START.md` includes a required
-startup check telling the actor to inspect the current workspace, table,
-summaries, methodology, and messages before acting, and to treat current Glass
-state as authoritative over remembered Claude Code session context.
-The orchestrator builds:
+orchestrator may track one Claude Code session id per actor, but remembered
+provider context is never canonical. Current state comes from the injected
+prompt and `glass`.
+
+The orchestrator builds one injected prompt:
 
 ```
 [ROLE]              <- the person's prompt (their identity)
 [MODE FRAMING]      <- what mode we're in, what's the budget, what's expected
-[CONTEXT WINDOW]    <- recent transcript turns
-[PRIVATE STATE]     <- their notes file path, their character sheet (if player)
+[CONTEXT WINDOW]    <- neutral facts, recent committed turns, messages, hard state
+[PRIVATE STATE]     <- role-authorized facts and character state
 [CURRENT PROMPT]    <- "it's your turn"
 [TOOL ALLOWLIST]    <- which glass subcommands they can call
 ```
 
-The agent's tool loop runs until it has finished writing its turn (prose) and exits. The orchestrator captures the prose plus the audit log of any `glass` calls the agent made, wraps both in a per-turn header, and moves on. Agents do not emit structured delta blocks — see [`turn-loop.md`](turn-loop.md) for the prose-first principle.
+The agent's tool loop runs until it has closed with `glass done` and submitted public prose with `glass turn append --body`. The orchestrator verifies the committed turn row and moves on. Agents do not emit structured delta blocks - see [`turn-loop.md`](turn-loop.md) for the prose-first principle.
 
-**Agents do not share context with each other.** With `use_session_id = false`,
-each invocation starts fresh. With it enabled, only that actor's own Claude
-Code session is reused. Durable continuity still comes from:
+**Agents do not share canonical context with each other.** Provider session
+history may help an actor sound continuous, but durable continuity comes from:
 
-- The transcript window (recent turns)
-- The agent's private notes (which they wrote in earlier invocations)
-- Campaign files and indexed search
-- The character sheet (for players)
+- the fact graph
+- Postgres hard state and turn rows
+- bounded CLI recall over committed prose
+- character records for players
 
-The durable state surfaces remain the source of truth. Claude Code session
-history is optional short-term actor continuity, not canonical campaign state.
-An agent should still be re-invokable from the files and database.
+Claude Code session history is optional short-term actor continuity, not
+canonical campaign state. An agent should still be re-invokable from the prompt
+and `glass` command output.
 
 ## Per-Agent State
 
-The full file layout — what each role can read, what each role can write, where the campaign-shared content lives — is in [`context-packages.md`](context-packages.md). Quick summary of the player vs DM split:
+The runtime state layout is in [`context-packages.md`](context-packages.md). Quick summary of the player vs DM split:
 
-- **Player private:** `persona.md` (who they are), `character.md` (their PC, cached from Postgres), `notes/` (personal encyclopedia, journal-shaped subset), `journal/` (free-form dated reflection), `drafts/` (encyclopedia-shaped lore intended for DM proposal), and messages addressed specifically to them via `glass msg`. **Visible to the DM** — the DM can see what every player is writing.
-- **DM-only:** `persona.md` (who Mara is), `notes/` (encyclopedia of NPCs, monsters, locales, threads, philosophy — much larger than any player's), `journal/`, `workspace/` (in-progress drafts), `secret/` (DM-only truth), `intake/` (player-drafted lore awaiting ratification).
-- **Shared (campaign-wide):** campaign lore (encyclopedia-shaped, DM-canonized), quest log (DM-writable, all-readable), party knowledge (party-writable, all-readable), instruction surfaces, public table, scene framing, transcript. The public table is specifically `table/**` in the player-agent projection, not every DM note or lore file a human viewer can inspect.
+- **Player-private visibility:** character state, player-addressed messages, and any role-authorized facts exposed by `glass`.
+- **DM visibility:** DM-authorized facts, messages, scene/mode control state, and the hard-state surfaces needed to adjudicate play.
+- **Shared visibility:** committed public turns, public facts, public hard state, and the reference instructions/methodologies/rules.
 
-**Lore is encyclopedia-shaped, not notes-shaped.** When a player or the DM is writing material that should become canonical (an NPC the party met, a locale they discovered, an event they caused), they write it as an encyclopedia entry — same shape as the world bible (`../the-glass-frontier-lore/`). When they're writing for themselves (theories, character thoughts, planning sketches), they write journal-style. The two don't blur; the shape signals the intent.
+Operator-curated lore can still be encyclopedia-shaped outside live turns, but
+agents do not author lore files as part of the runtime contract. If a piece of
+lore matters to the next turn, encode the neutral fact through `glass`.
 
-Players draft lore in their `drafts/` directory and use `glass note` to push to the DM's intake. The DM canonizes (entry moves to the campaign's `shared/lore/` and is indexed) or rejects.
-
-The orchestrator spawns each agent in a stable per-actor projection of the campaign
-workspace. Actors can edit writable document surfaces in that projection and
-commit them through `glass sync apply`; the canonical campaign tree stays
-operator-owned and is mutated through Glass. See
-[`context-packages.md`](context-packages.md) for the file structure and the
-isolation mechanism.
-
-The `glass` CLI is the only path to state mutation. Nobody writes directly to Postgres.
+The `glass` CLI is the only path to state mutation. Nobody writes directly to
+Postgres, FalkorDB, local APIs, or campaign files during agent turns.
 
 ## Tool Allowlists
 
@@ -140,23 +126,23 @@ Roughly (refined in [`architecture.md`](architecture.md) and [`messaging.md`](me
 | `glass character get` | yes | own + party-public |
 | `glass character set-hp` | yes | own only |
 | `glass character set-momentum` | yes | own only |
-| `glass character consequence-*` | yes | read public; own/public read only |
+| `glass character consequence-*` | yes | add/resolve own public; read public |
 | `glass clock *` | yes | read public clocks |
-| `glass summary show` | yes | yes |
-| `glass summary append scene` | yes | yes; active scene only, capped |
-| `glass summary write` | yes | no |
+| `glass fact pack` | yes | yes |
+| `glass fact set` / `glass done --fact` | yes | yes, within allowed scope |
 | `glass search text` / `semantic` | yes | yes |
 | `glass search reindex` | yes | no |
-| `glass sync apply` | yes (DM document surfaces) | yes (own document surfaces) |
-| `glass note propose` | no | yes |
-| `glass note ratify` | yes | no |
 | `glass mode start` / `mode end` | yes | no |
 | `glass thread beat` | yes (read+advance) | yes (read) |
 | `glass msg <type> <recipient> <body>` | yes | yes |
 | `glass msg read` | yes (all) | yes (own inbox) |
 | `glass turns find` / `feed` | yes | yes |
+| `glass done` | yes | yes |
+| `glass turn append --body` | yes | yes |
 
-The DM is the only agent that mutates canonical narrative state. Players act on their own characters, write their journals, send messages, and propose notes.
+The DM has broader authority over scene and world state. Players act on their
+own characters, send messages, and record scoped facts when their turn creates
+durable continuity.
 
 ## Person File Shape
 

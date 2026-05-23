@@ -89,9 +89,11 @@ and narrow; later slots can be broader and more scene-defining.
 
 ## Clocks and Trackers
 
-Scene trackers are short-term numeric state for the current scene. Durable
-clocks are cross-scene pressure.
+Scene clocks are short-term visible progress, threat, or timer state for the
+current scene. Durable clocks are cross-scene pressure.
 
-At least one action-scene tracker should usually be public so players know what
-ending the scene means. Hidden trackers are valid for secret danger or
-opposition.
+At least one active scene clock should usually be public so players know what
+ending the scene means. Hidden clocks are valid for secret danger or opposition.
+
+Scene trackers are separate roll-mediated pressure targets. A public tracker is
+what `glass_scene_pressure(...)` reduces after a character action succeeds.

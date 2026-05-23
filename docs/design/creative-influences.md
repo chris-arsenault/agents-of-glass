@@ -24,7 +24,7 @@ They do not grant permissions, impose mechanics, or override the fiction.
 
 ## Verse Phrase
 
-Each TURN_START in actual play includes a short phrase pulled from a small
+Each injected prompt in actual play includes a short phrase pulled from a small
 public-domain literary corpus: KJV Bible, Shakespeare, Legge-era Chinese
 classics, and other public-domain sources.
 
@@ -50,7 +50,7 @@ attention, risk appetite, or interpretation at the margins.
 
 Tarot is the longer-running creative influence. The default draw lasts 25
 global agent turns, which is about five turns for one actor in the normal
-five-actor rotation. TURN_START renders it as a compact instruction, for
+five-actor rotation. The injected prompt renders it as a compact instruction, for
 example:
 
 ```markdown

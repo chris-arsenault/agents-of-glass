@@ -5,17 +5,13 @@ store; `state.json` is not a supported runtime cache. Layout under
 campaigns/<id>/:
 
   state.json          — stale legacy path only; removed on runtime saves
-  transcript.md       — derived public transcript export
+  transcript.md       — legacy derived public transcript export
   audit.jsonl         — append-only command audit log
   scene-framing.md    — current scene framing (rewritten on scene start)
-  table/              — current player-agent-visible short-term table state
-  dm/turns/<NNNN>/    — DM's per-turn artifacts (TURN_START.md, TURN.md, closeout, stdout, stderr)
-  players/<id>/turns/<NNNN>/ — that player's per-turn artifacts
+  table/              — legacy table display; facts are agent continuity
 
-There is no `session` concept. The campaign id is the only identifier;
-the campaign workspace is the runtime root. There is no central
-`turns/<NNNN>/` directory — turn artifacts always live inside the
-specific agent's directory under the campaign workspace.
+There is no `session` concept. The campaign id is the only identifier.
+Agent turns receive injected prompts and stdout prose markers, not turn files.
 
 Schema (v5):
 
@@ -40,8 +36,6 @@ from __future__ import annotations
 
 import json
 import os
-import hashlib
-import shutil
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -78,41 +72,6 @@ def transcript_path(paths: Paths, campaign_id: str) -> Path:
 
 def scene_framing_path(paths: Paths, campaign_id: str) -> Path:
     return campaign_runtime_dir(paths, campaign_id) / "scene-framing.md"
-
-
-def agent_turns_dir(
-    paths: Paths,
-    campaign_id: str,
-    *,
-    role_kind: str,
-    agent_id: str,
-) -> Path:
-    """Directory containing this agent's per-turn artifact subdirectories.
-
-    DM    -> campaigns/<id>/dm/turns/
-    player -> campaigns/<id>/players/<player>/turns/
-    """
-    root = campaign_runtime_dir(paths, campaign_id)
-    if role_kind == "dm":
-        return root / "dm" / "turns"
-    return root / "players" / agent_id / "turns"
-
-
-def agent_turn_dir(
-    paths: Paths,
-    campaign_id: str,
-    *,
-    role_kind: str,
-    agent_id: str,
-    turn_number: int,
-) -> Path:
-    """A specific per-turn artifact directory.
-
-    Contains TURN_START.md, TURN.md, turn-closeout.json, stdout, and stderr.
-    """
-    return agent_turns_dir(
-        paths, campaign_id, role_kind=role_kind, agent_id=agent_id
-    ) / f"{turn_number:04d}"
 
 
 # --- state load / save / shape ---
@@ -270,7 +229,7 @@ def update_state_fields(
     """Write selected runtime-state fields directly to Postgres.
 
     When a caller already holds a state dict, keep it in sync so subsequent
-    result rendering and audit/projection code sees the same values.
+    result rendering and audit code sees the same values.
     """
     if state is not None:
         state.update(fields)
@@ -363,7 +322,7 @@ def _update_state_fields_in_postgres(campaign_id: str, fields: dict[str, Any]) -
 def append_audit(
     paths: Paths,
     state: dict[str, Any],
-    ctx: click.Context,
+    ctx: click.Context | str,
     event: str,
     params: dict[str, Any],
     result: dict[str, Any],
@@ -376,7 +335,7 @@ def append_audit(
         "campaign": campaign_id,
         "role": role.raw or "operator",
         "actor": role.actor,
-        "command": ctx.command_path,
+        "command": ctx.command_path if isinstance(ctx, click.Context) else str(ctx),
         "event": event,
         "params": make_jsonable(params),
         "result": make_jsonable(result),
@@ -390,13 +349,14 @@ def append_audit(
 def commit(
     paths: Paths,
     state: dict[str, Any],
-    ctx: click.Context,
+    ctx: click.Context | str,
     event: str,
     params: dict[str, Any],
     result: dict[str, Any],
     *,
     save: bool = True,
     state_fields: Iterable[str] | None = None,
+    emit_output: bool = True,
 ) -> None:
     if save:
         if state_fields is None:
@@ -415,8 +375,8 @@ def commit(
             {field: state.get(field) for field in state_fields},
         )
     append_audit(paths, state, ctx, event, params, result)
-    _refresh_projection_committed_paths(paths, state, result)
-    emit(result)
+    if emit_output:
+        emit(result)
 
 
 def queue_event(state: dict[str, Any], actor: str, summary: str) -> dict[str, Any]:
@@ -475,7 +435,7 @@ _DEFAULT_EVENT_STATE_FIELDS: dict[str, tuple[str, ...]] = {
     "beat.convert": ("pending_events",),
     "msg.send": (),
     "msg.read": (),
-    "roll": ("pending_events",),
+    "roll": ("pending_events", "next_speakers"),
     "arc.create": ("arcs", "active_arc", "pending_events"),
     "arc.activate": ("arcs", "active_arc", "pending_events"),
     "arc.close": ("closed_arcs", "active_arc", "pending_events"),
@@ -564,141 +524,6 @@ def inline_event_lines(events: list[dict[str, Any]]) -> list[str]:
 def current_mode_record(state: dict[str, Any]) -> dict[str, Any] | None:
     stack = state.get("mode_stack", [])
     return stack[-1] if stack else None
-
-
-def _refresh_projection_committed_paths(
-    paths: Paths,
-    state: dict[str, Any],
-    result: dict[str, Any],
-) -> None:
-    """Mirror committed canonical files back into a projected cwd.
-
-    Agent-facing `glass` commands run in the actor projection but mutate the
-    canonical campaign tree. When a command result names committed files, keep
-    those paths in the projection and manifest aligned so the post-turn sync
-    checker does not report files that were already committed.
-    """
-
-    projection_root = Path.cwd().resolve()
-    manifest_path = projection_root / ".glass-projection-manifest.json"
-    if not manifest_path.exists() or paths.campaigns is None:
-        return
-
-    campaign_id = str(state.get("campaign") or "")
-    if not campaign_id:
-        return
-    campaign_root = campaign_runtime_dir(paths, campaign_id).resolve()
-    if projection_root == campaign_root:
-        return
-
-    rels = _committed_result_paths(result, campaign_root=campaign_root, campaign_id=campaign_id)
-    if not rels:
-        return
-
-    manifest = _load_projection_manifest_for_commit(manifest_path)
-    changed = False
-    for rel in sorted(rels):
-        source = campaign_root / rel
-        target = projection_root / rel
-        if not source.exists() or not source.is_file():
-            continue
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
-            os.chmod(target, 0o660)
-        except OSError:
-            pass
-        else:
-            manifest[str(rel)] = _hash_file_for_commit(source)
-            changed = True
-    if changed:
-        _write_projection_manifest_for_commit(manifest_path, manifest)
-
-
-def _committed_result_paths(
-    value: Any,
-    *,
-    campaign_root: Path,
-    campaign_id: str,
-) -> set[Path]:
-    paths: set[Path] = set()
-
-    def visit(item: Any) -> None:
-        if isinstance(item, dict):
-            for key, child in item.items():
-                if key == "path" and isinstance(child, str):
-                    rel = _result_path_to_campaign_rel(
-                        child,
-                        campaign_root=campaign_root,
-                        campaign_id=campaign_id,
-                    )
-                    if rel is not None:
-                        paths.add(rel)
-                else:
-                    visit(child)
-        elif isinstance(item, list):
-            for child in item:
-                visit(child)
-
-    visit(value)
-    return paths
-
-
-def _result_path_to_campaign_rel(
-    text: str,
-    *,
-    campaign_root: Path,
-    campaign_id: str,
-) -> Path | None:
-    if not text:
-        return None
-    raw = Path(text)
-    try:
-        if raw.is_absolute():
-            return raw.resolve().relative_to(campaign_root)
-        if len(raw.parts) >= 2 and raw.parts[0] == "campaigns" and raw.parts[1] == campaign_id:
-            return Path(*raw.parts[2:])
-    except ValueError:
-        return None
-    return None
-
-
-def _load_projection_manifest_for_commit(path: Path) -> dict[str, str]:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    if not isinstance(raw, dict):
-        return {}
-    files = raw.get("files", raw)
-    if not isinstance(files, dict):
-        return {}
-    return {str(key): str(value) for key, value in files.items() if isinstance(value, str)}
-
-
-def _write_projection_manifest_for_commit(path: Path, manifest: dict[str, str]) -> None:
-    try:
-        os.chmod(path, 0o660)
-    except OSError:
-        pass
-    try:
-        path.write_text(
-            json.dumps({"files": manifest}, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-    except OSError:
-        # The durable command has already succeeded. Projection manifest refresh
-        # is a same-turn convenience; failing it must not make `glass` report a
-        # failed mutation to the agent.
-        return
-
-
-def _hash_file_for_commit(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
 
 
 def state_summary(state: dict[str, Any]) -> dict[str, Any]:

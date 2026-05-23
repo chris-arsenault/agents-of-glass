@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # aog-permset — root-privileged helper used by the orchestrator to set
-# ownership and modes on a stable per-actor CWD.
+# ownership and modes on operator-owned campaign workspaces.
 #
 # Installed by scripts/provision-agents.sh to /usr/local/bin/aog-permset.
 # Invoked via sudo by the orchestrator (sudoers entry permits NOPASSWD).
 #
 # Subcommands:
 #   campaign <campaign-dir>         legacy no-op; campaigns stay operator-owned
-#   projection <projection-root> <actor-user>
-#                                   make projection actor-owned
 #   clean-workspace <campaign-dir>  rm -rf the campaign workspace (root)
 #
 # All paths are validated to be under expected roots before any chown/chmod
@@ -29,7 +27,6 @@ OPERATOR_GROUP="$(id -gn "$OPERATOR")"
 usage() {
     cat <<EOF
 Usage: $0 campaign <campaign-dir>
-       $0 projection <projection-root> <actor-user>
        $0 clean-workspace <campaign-dir>
 EOF
     exit 1
@@ -67,41 +64,9 @@ cmd_campaign() {
     [[ -z "$campaign_dir" ]] && usage
     assert_path_safe "$campaign_dir"
 
-    # Campaign trees are deliberately operator-owned. Agents only see copied
-    # projections and mutate durable state through Glass.
+    # Campaign trees are deliberately operator-owned. Agents mutate durable
+    # state through Glass.
     return 0
-}
-
-cmd_projection() {
-    local projection_root="${1:-}"
-    local actor_user="${2:-}"
-    [[ -z "$projection_root" || -z "$actor_user" ]] && usage
-    assert_path_safe "$projection_root"
-    assert_agent_user "$actor_user"
-
-    case "$projection_root" in
-        */.glass-cwd/*/*) ;;
-        *) echo "aog-permset: projection path must be under '/.glass-cwd/<campaign>/'; got $projection_root" >&2; exit 1 ;;
-    esac
-
-    local campaign_projection_dir
-    campaign_projection_dir="$(dirname "$projection_root")"
-    local glass_cwd_dir
-    glass_cwd_dir="$(dirname "$campaign_projection_dir")"
-
-    chown "$OPERATOR:$SHARED_GROUP" "$glass_cwd_dir" "$campaign_projection_dir"
-    chmod 0710 "$glass_cwd_dir" "$campaign_projection_dir"
-
-    chown -R "$actor_user:$OPERATOR_GROUP" "$projection_root"
-
-    # Some filesystems clear setgid during chown. Restore the mode classes
-    # projection.py established: owner-writable dirs/files are actor working
-    # surfaces; non-owner-writable paths are read-only to the actor but still
-    # writable by the operator group so the Glass API can refresh projections.
-    find "$projection_root" -type d -perm -0200 -exec chmod 2770 {} +
-    find "$projection_root" -type f -perm -0200 -exec chmod 0660 {} +
-    find "$projection_root" -type d ! -perm -0200 -exec chmod 0570 {} +
-    find "$projection_root" -type f ! -perm -0200 -exec chmod 0460 {} +
 }
 
 cmd_clean_workspace() {
@@ -124,7 +89,6 @@ cmd_clean_workspace() {
 
 case "${1:-}" in
     campaign)         shift; cmd_campaign "$@" ;;
-    projection)       shift; cmd_projection "$@" ;;
     clean-workspace)  shift; cmd_clean_workspace "$@" ;;
     *)                usage ;;
 esac

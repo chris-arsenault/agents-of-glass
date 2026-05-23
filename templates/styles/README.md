@@ -112,15 +112,10 @@ narrative_style: sumi-calibrated-witness
 ---
 ```
 
-The orchestrator's `projection.assigned_style_id()` reads this at
-projection time. Each agent's per-turn projection contains exactly one
-style file: their own. Cross-contamination of style files is exactly
-what produced the test-7 house-style problem; the projection layer
-enforces strict per-owner visibility.
-
-TURN_START carries a one-sentence pointer to the assigned style file.
-The agent reads the style file from their workspace once, like any
-other persona-shape doc; TURN_START stays a thin shell.
+Style files are durable prose craft references. They are not campaign state,
+and they are not a place to store character facts, tics, relationships, scene
+truth, or continuity. If a future prompt references a style, the style only
+affects presentation at the margins.
 
 ## File shape (five sections)
 
@@ -135,7 +130,7 @@ these sections:
 
 We removed two earlier sections:
 
-- *Designed against* — operator meta-commentary that leaked the names of other styles into private projections and bloated the file.
+- *Designed against* — operator meta-commentary that leaked the names of other styles into private prompts and bloated the file.
 - *Benchmark sample* — quoted sample sentences bias the agent toward exact reproduction when framed as instructions. The axis positions and the lexical signature carry the spec without the bias.
 
 ## Anti-slop reflex coverage
@@ -205,7 +200,7 @@ When authoring or revising styles:
   styles both refuse the same attractor as primary, one of them should
   pick a different primary.
 - **No style should reference another style by name** or describe
-  another agent's voice. The projection layer enforces per-owner
+  another agent's voice. The prompt layer enforces per-owner
   privacy; the file content should not leak around it.
 
 ## Maintenance

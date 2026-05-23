@@ -307,11 +307,23 @@ ATTRIBUTE_TIER_LADDER = ["rudimentary", "standard", "advanced", "superior"]
 # (2 apprentice + 1 artisan), plus one additional slot per character level.
 # Level 1 -> 4 slots; level 2 -> 5; level N -> 3 + N.
 STARTING_SKILL_SLOTS = 3
+SIGNATURE_MOVE_UNLOCK_LEVELS = (1, 3, 5, 7, 9)
 
 
 def skill_slot_cap(level: int) -> int:
     """Total declared-skill slots available at the given character level."""
     return STARTING_SKILL_SLOTS + int(level)
+
+
+def signature_move_slots(level: int) -> int:
+    return sum(1 for unlock in SIGNATURE_MOVE_UNLOCK_LEVELS if int(level) >= unlock)
+
+
+def next_signature_move_unlock(level: int) -> int | None:
+    for unlock in SIGNATURE_MOVE_UNLOCK_LEVELS:
+        if int(level) < unlock:
+            return unlock
+    return None
 
 
 def earned_skill_tier(xp: int) -> str:
@@ -1076,6 +1088,7 @@ def character_create(
     attributes: dict[str, str],
     skills: dict[str, str],
     hp_max: int,
+    inventory: list[dict[str, Any]],
     tags: list[str],
 ) -> dict[str, Any]:
     with conn.cursor() as cur:
@@ -1086,13 +1099,13 @@ def character_create(
                 culture, organization_role, pronouns, bio, goals, primary_drive,
                 positive_trait, table_presence, non_work_want,
                 opening_social_action, life_prompt_answers, pull_utilization_note,
-                attributes, skills, hp_current, hp_max, tags
+                attributes, skills, hp_current, hp_max, inventory, tags
             ) VALUES (
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
-                %s, %s, %s
+                %s, %s, %s, %s
             )
             RETURNING {_CHARACTER_COLUMNS}
             """,
@@ -1119,6 +1132,7 @@ def character_create(
                 json.dumps(skills),
                 hp_max,
                 hp_max,
+                json.dumps(inventory),
                 tags,
             ),
         )
@@ -1552,6 +1566,126 @@ def character_set_inventory(
         raise LookupError(character_id)
     conn.commit()
     return _row_to_character(row)
+
+
+# --- signature moves ---
+
+
+_SIGNATURE_MOVE_COLUMNS = (
+    "id, campaign_id, character_id, name, descriptor, body, visibility, "
+    "created_by, created_at, updated_at"
+)
+
+
+def _row_to_signature_move(row: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        move_id,
+        campaign_id,
+        character_id,
+        name,
+        descriptor,
+        body,
+        visibility,
+        created_by,
+        created_at,
+        updated_at,
+    ) = row
+    return {
+        "id": str(move_id),
+        "campaign_id": campaign_id,
+        "character_id": character_id,
+        "name": name,
+        "descriptor": descriptor,
+        "body": body,
+        "visibility": visibility,
+        "created_by": created_by,
+        "created_at": _iso(created_at),
+        "updated_at": _iso(updated_at),
+    }
+
+
+def character_signature_moves_list(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str | None = None,
+    visibility: str | None = "public",
+) -> list[dict[str, Any]]:
+    where = ["campaign_id = %s"]
+    params: list[Any] = [campaign_id]
+    if character_id is not None:
+        where.append("character_id = %s")
+        params.append(character_id)
+    if visibility is not None:
+        where.append("visibility = %s")
+        params.append(visibility)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_SIGNATURE_MOVE_COLUMNS}
+            FROM signature_moves
+            WHERE {' AND '.join(where)}
+            ORDER BY character_id, created_at, name
+            """,
+            params,
+        )
+        return [_row_to_signature_move(row) for row in cur.fetchall()]
+
+
+def character_signature_move_add(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    character_id: str,
+    name: str,
+    descriptor: str,
+    body: str,
+    actor: str,
+    visibility: str = "public",
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT level FROM characters "
+            "WHERE campaign_id = %s AND character_id = %s FOR UPDATE",
+            (campaign_id, character_id),
+        )
+        character_row = cur.fetchone()
+        if character_row is None:
+            raise LookupError(character_id)
+        level = int(character_row[0])
+        slots = signature_move_slots(level)
+        cur.execute(
+            "SELECT name FROM signature_moves "
+            "WHERE campaign_id = %s AND character_id = %s "
+            "ORDER BY created_at, name",
+            (campaign_id, character_id),
+        )
+        existing_names = [str(row[0]) for row in cur.fetchall()]
+        if name.casefold() in {existing.casefold() for existing in existing_names}:
+            raise ValueError("signature_move_exists")
+        if len(existing_names) >= slots:
+            raise ValueError("signature_move_slots_full")
+        cur.execute(
+            f"""
+            INSERT INTO signature_moves (
+                campaign_id, character_id, name, descriptor, body, visibility,
+                created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING {_SIGNATURE_MOVE_COLUMNS}
+            """,
+            (
+                campaign_id,
+                character_id,
+                name,
+                descriptor,
+                body,
+                visibility,
+                actor,
+            ),
+        )
+        row = cur.fetchone()
+    conn.commit()
+    return _row_to_signature_move(row)
 
 
 # --- character consequences ---
@@ -3623,8 +3757,9 @@ def scene_clock_drop_scene(
 
 _SCENE_BEAT_COLUMNS = (
     "campaign_id, scene_id, beat_id, clock_id, label, question, status, "
-    "non_pass_turns, created_by, created_turn_id, closed_by, closed_turn_id, "
-    "outcome, converted_to_clock_id, created_at, updated_at, closed_at"
+    "non_pass_turns, failure_ticks, created_by, created_turn_id, closed_by, "
+    "closed_turn_id, outcome, converted_to_clock_id, created_at, updated_at, "
+    "closed_at"
 )
 
 
@@ -3638,6 +3773,7 @@ def _row_to_scene_beat(row: tuple[Any, ...]) -> dict[str, Any]:
         question,
         status,
         non_pass_turns,
+        failure_ticks,
         created_by,
         created_turn_id,
         closed_by,
@@ -3657,6 +3793,7 @@ def _row_to_scene_beat(row: tuple[Any, ...]) -> dict[str, Any]:
         "question": question,
         "status": status,
         "non_pass_turns": int(non_pass_turns),
+        "failure_ticks": int(failure_ticks),
         "created_by": created_by,
         "created_turn_id": created_turn_id,
         "closed_by": closed_by,
@@ -3822,6 +3959,75 @@ def scene_beat_close(
     return _row_to_scene_beat(row)
 
 
+def scene_beat_failure_tick(
+    conn: "psycopg.Connection[Any]",
+    *,
+    campaign_id: str,
+    scene_id: str,
+    beat_id: str,
+    actor: str,
+    turn_id: str | None,
+    limit: int,
+    outcome: str,
+) -> dict[str, Any]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT failure_ticks
+            FROM scene_beats
+            WHERE campaign_id = %s AND scene_id = %s AND beat_id = %s
+              AND status = 'active'
+            FOR UPDATE
+            """,
+            (campaign_id, scene_id, beat_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise LookupError(beat_id)
+        before = int(row[0])
+        after = before + 1
+        closes = after >= limit
+        if closes:
+            cur.execute(
+                f"""
+                UPDATE scene_beats
+                SET failure_ticks = %s,
+                    status = 'closed',
+                    closed_by = %s,
+                    closed_turn_id = %s,
+                    outcome = %s,
+                    converted_to_clock_id = NULL,
+                    closed_at = now(),
+                    updated_at = now()
+                WHERE campaign_id = %s AND scene_id = %s AND beat_id = %s
+                  AND status = 'active'
+                RETURNING {_SCENE_BEAT_COLUMNS}
+                """,
+                (after, actor, turn_id, outcome, campaign_id, scene_id, beat_id),
+            )
+        else:
+            cur.execute(
+                f"""
+                UPDATE scene_beats
+                SET failure_ticks = %s,
+                    updated_at = now()
+                WHERE campaign_id = %s AND scene_id = %s AND beat_id = %s
+                  AND status = 'active'
+                RETURNING {_SCENE_BEAT_COLUMNS}
+                """,
+                (after, campaign_id, scene_id, beat_id),
+            )
+        updated = cur.fetchone()
+    conn.commit()
+    return {
+        "beat": _row_to_scene_beat(updated),
+        "before": before,
+        "after": after,
+        "limit": limit,
+        "closed": closes,
+    }
+
+
 def scene_beat_convert(
     conn: "psycopg.Connection[Any]",
     *,
@@ -3959,7 +4165,13 @@ def delete_campaign_data(
         ):
             cur.execute(f"DELETE FROM {table} WHERE campaign_id = %s", (campaign_id,))
             deleted[table] = cur.rowcount
-        for table in ("rolls", "xp_awards", "level_ups", "character_consequences"):
+        for table in (
+            "rolls",
+            "xp_awards",
+            "level_ups",
+            "character_consequences",
+            "signature_moves",
+        ):
             cur.execute(f"DELETE FROM {table} WHERE campaign_id = %s", (campaign_id,))
             deleted[table] = cur.rowcount
         cur.execute("DELETE FROM messages WHERE campaign_id = %s", (campaign_id,))

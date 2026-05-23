@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,16 +10,14 @@ from click.testing import CliRunner
 
 from cli import db as _db
 from cli.commands.character import (
-    _append_signature_move,
     _inventory_add,
     _normalize_bulk_update_payload,
     _normalize_goals,
     _normalize_life_prompt_answers,
-    _render_public_character_mirror,
     _require_pull_utilization_note,
-    _signature_move_names,
     _signature_move_slots,
     _validate_starting_skill_budget,
+    character_agent_view,
 )
 from cli.config import Paths
 from cli.config import get_paths, load_config
@@ -33,8 +32,9 @@ from cli.local_env import load_repo_env
 from cli.embeddings import EmbeddingBatch
 from cli.main import main
 from cli.messages import load_message_types
-from cli.scene_beats import scene_close_note
+from cli.scene_beats import scene_close_note, scene_landing_guidance
 from cli.state import load_state, update_state_fields
+from cli.commands.turn import _turn_fact_importance_report
 from cli.validation import assert_valid_item_id, momentum_narrative_effect
 from orchestrator.campaign import CampaignManager, PHASE_ORGANIZATION_BOOTSTRAP
 from orchestrator.config import load_config as load_aog_config
@@ -159,7 +159,7 @@ def create_test_character(
             "--life-prompt",
             "what they collect=They keep bent route tags sorted by harbor color.",
             "--pull-utilization",
-            "Source: municipal ferry dispatch boards; Thesis: Vel turns public-route timing into hospitality, jokes, and urgent care, so every choice treats people as passengers to be welcomed rather than cases to process; Used in: archetype, drive, trait, table presence, non-work want, opening social action, item, skill, signature move, failure mode, voice.",
+            "Source: municipal ferry dispatch boards; Thesis: Vel turns public-route timing into hospitality, jokes, and urgent care, so every choice treats people as passengers to be welcomed rather than cases to process.",
             "--skill",
             "spar reading=artisan",
             "--skill",
@@ -260,11 +260,9 @@ def append_bookkeeping_dm_turn(
         ],
         dm_env,
     )
-    turn_file = tmp_path / f"turn-{turn_number:04d}.md"
-    turn_file.write_text(body, encoding="utf-8")
     invoke_ok(
         runner,
-        ["turn", "append", str(turn_file), "--speaker", "dm"],
+        ["turn", "append", "--body", body, "--speaker", "dm"],
         dm_env,
     )
     turns = runtime_state(env)["turns"]
@@ -324,7 +322,11 @@ def orchestrated_bookkeeping_dm_turn(
         ],
         dm_env,
     )
-    package.turn_prose_path.write_text(body, encoding="utf-8")
+    invoke_ok(
+        runner,
+        ["turn", "append", "--body", body, "--speaker", agent.id],
+        dm_env,
+    )
     return TurnResult(
         turn_id=package.turn_id,
         agent=agent,
@@ -338,8 +340,6 @@ def orchestrated_bookkeeping_dm_turn(
             "rolls": "none",
             "next": "default",
         },
-        turn_prose_path=package.turn_prose_path,
-        turn_closeout_path=package.turn_closeout_path,
         duration_seconds=0.0,
         queued_speaker_entry=queued_entry,
         action_order_entry=action_entry,
@@ -348,11 +348,7 @@ def orchestrated_bookkeeping_dm_turn(
 
 def _pass_rate(modifier: int, *, momentum: int, risk: str = "standard") -> float:
     target = RISK_THRESHOLDS[risk]
-    passes = sum(
-        1
-        for die in range(1, CHECK_DIE_SIDES + 1)
-        if die + modifier >= target
-    )
+    passes = sum(1 for die in range(1, CHECK_DIE_SIDES + 1) if die + modifier >= target)
     return passes / CHECK_DIE_SIDES
 
 
@@ -405,17 +401,13 @@ class GlassCliTests(unittest.TestCase):
                 manager.create(campaign_id)
             state = manager.advance_phase(campaign_id, PHASE_ORGANIZATION_BOOTSTRAP)
 
-            saved = runtime_state(
-                {**env, "GLASS_CAMPAIGN_ID": campaign_id}
-            )
+            saved = runtime_state({**env, "GLASS_CAMPAIGN_ID": campaign_id})
             self.assertEqual(state["phase"], PHASE_ORGANIZATION_BOOTSTRAP)
             self.assertEqual(saved["phase"], PHASE_ORGANIZATION_BOOTSTRAP)
             self.assertEqual(saved["phase_history"][-1]["phase"], PHASE_ORGANIZATION_BOOTSTRAP)
 
     def test_standard_roll_probabilities_ignore_momentum(self) -> None:
-        trained_standard = (
-            SKILL_TIERS["apprentice"] + ATTRIBUTE_TIERS["standard"]
-        )
+        trained_standard = SKILL_TIERS["apprentice"] + ATTRIBUTE_TIERS["standard"]
 
         self.assertEqual(_failure_rate(trained_standard, momentum=0), 0.50)
         self.assertEqual(_failure_rate(trained_standard, momentum=3), 0.50)
@@ -458,6 +450,8 @@ class GlassCliTests(unittest.TestCase):
             self.assertIn("total: 2", rolled.output)
             self.assertIn("outcome: collapse", rolled.output)
             self.assertIn("momentum_applied_to_total: false", rolled.output)
+            self.assertIn("instructions:", rolled.output)
+            self.assertIn("This failed outcome needs a visible cost", rolled.output)
 
     def test_roll_improvised_skill_only_saves_with_flag(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -482,16 +476,14 @@ class GlassCliTests(unittest.TestCase):
                         "vel",
                     ],
                     player_env,
-            )
+                )
             self.assertIn('skill: "climb anchor chain"', improvised.output)
             self.assertIn("skill_tier: fool", improvised.output)
             self.assertIn("skill_declared: false", improvised.output)
             self.assertIn("skill_saved: false", improvised.output)
             self.assertIn("skill_xp_eligible: false", improvised.output)
             self.assertIn("skill_xp_before: null", improvised.output)
-            sheet_after_improvised = invoke_ok(
-                runner, ["character", "get", "vel"], player_env
-            )
+            sheet_after_improvised = invoke_ok(runner, ["character", "get", "vel"], player_env)
             self.assertNotIn("climb anchor chain", sheet_after_improvised.output)
 
             with patch("cli.commands.roll.random.SystemRandom") as rng_factory:
@@ -515,9 +507,7 @@ class GlassCliTests(unittest.TestCase):
             self.assertIn("skill_xp_eligible: true", saved.output)
             self.assertIn("skill_xp_before: 0", saved.output)
             self.assertIn("skill_xp_after: 2", saved.output)
-            sheet_after_saved = invoke_ok(
-                runner, ["character", "get", "vel"], player_env
-            )
+            sheet_after_saved = invoke_ok(runner, ["character", "get", "vel"], player_env)
             self.assertIn("climb anchor chain: fool", sheet_after_saved.output)
 
     def test_momentum_narrative_effect_thresholds(self) -> None:
@@ -542,11 +532,60 @@ class GlassCliTests(unittest.TestCase):
             "still belongs here.",
         )
 
+    def test_scene_landing_guidance_starts_before_hard_closure(self) -> None:
+        self.assertIsNone(
+            scene_landing_guidance(
+                completed_beats=5,
+                active_beat_count=2,
+                visible_clocks=[{"polarity": "objective", "value": 1, "max": 8}],
+            )
+        )
+        self.assertIn(
+            "entering landing range",
+            scene_landing_guidance(
+                completed_beats=6,
+                active_beat_count=2,
+                visible_clocks=[{"polarity": "objective", "value": 1, "max": 8}],
+            ),
+        )
+
+    def test_turn_fact_importance_report_flags_only_low_minor_facts(self) -> None:
+        report = _turn_fact_importance_report(
+            [
+                {
+                    "event": "state.update",
+                    "result": {
+                        "facts": {
+                            "facts": [
+                                {"subject_id": "tev", "importance": "low"},
+                                {"subject_id": "sumi", "salience": "minor"},
+                            ]
+                        }
+                    },
+                }
+            ]
+        )
+
+        self.assertEqual(report["count"], 2)
+        self.assertEqual(report["low_or_minor_count"], 2)
+        self.assertTrue(report["only_low_or_minor"])
+        self.assertIn(
+            "in landing range",
+            scene_landing_guidance(
+                completed_beats=2,
+                active_beat_count=1,
+                visible_clocks=[{"polarity": "objective", "value": 3, "max": 4}],
+            ),
+        )
+
     def test_character_goal_validation_requires_two_or_three_goals(self) -> None:
-        self.assertEqual(_normalize_goals(("Find Rin.", "Pay the debt.")), [
-            "Find Rin.",
-            "Pay the debt.",
-        ])
+        self.assertEqual(
+            _normalize_goals(("Find Rin.", "Pay the debt.")),
+            [
+                "Find Rin.",
+                "Pay the debt.",
+            ],
+        )
         with self.assertRaises(GlassError):
             _normalize_goals(("Only one.",))
         with self.assertRaises(GlassError):
@@ -564,21 +603,69 @@ class GlassCliTests(unittest.TestCase):
         with self.assertRaises(GlassError):
             _normalize_life_prompt_answers(("what they do when bored=They pace.",))
 
-    def test_character_pull_utilization_requires_identity_surfaces(self) -> None:
+    def test_character_pull_utilization_requires_source_and_thesis(self) -> None:
         note = (
             "Source: municipal ferry dispatch boards; Thesis: Vel turns public-route "
             "timing into hospitality, jokes, and urgent care, so every choice treats "
-            "people as passengers to be welcomed rather than cases to process; Used "
-            "in: archetype, drive, trait, table presence, non-work want, opening "
-            "social action, item, skill, signature move, failure mode, voice."
+            "people as passengers to be welcomed rather than cases to process."
         )
 
         self.assertEqual(_require_pull_utilization_note(note, "--pull-utilization"), note)
         with self.assertRaises(GlassError):
             _require_pull_utilization_note(
-                "Source: municipal ferry dispatch boards; used in route skills.",
+                "Municipal ferry dispatch boards shape route skills.",
                 "--pull-utilization",
             )
+        with self.assertRaises(GlassError):
+            _require_pull_utilization_note(
+                note + " Used in: archetype, drive, trait, item, skill, and voice.",
+                "--pull-utilization",
+            )
+
+    def test_character_agent_view_exposes_profile_only_to_owner(self) -> None:
+        character = {
+            "character_id": "tev-hero",
+            "player_id": "tev",
+            "name": "Tev",
+            "species": "human",
+            "culture": "Sithari",
+            "archetype": "Route guard",
+            "organization_role": "door guard",
+            "pronouns": "he/him",
+            "bio": "Keeps doors clear.",
+            "goals": ["Get home."],
+            "primary_drive": "care/protection",
+            "positive_trait": "Makes route jokes when people are cold.",
+            "table_presence": "Keeps a route slate on the table.",
+            "non_work_want": "Wants one quiet dinner.",
+            "opening_social_action": "Hands Sumi a dry cord.",
+            "life_prompt_answers": [{"prompt": "praised", "answer": "redirects credit"}],
+            "pull_utilization_note": "Source: ferry boards; Thesis: routes become care.",
+            "attributes": {"focus": "advanced"},
+            "skills": {"route reading": "artisan"},
+            "skill_meta": {},
+            "hp": {"current": 10, "max": 10},
+            "momentum": {"current": 0, "floor": 0, "ceiling": 6},
+            "inventory": [],
+            "signature_moves": [],
+            "tags": [],
+            "xp": 0,
+            "level": 1,
+        }
+
+        owner = character_agent_view(
+            character,
+            role=type("Role", (), {"kind": "player", "actor": "tev"})(),
+        )
+        other = character_agent_view(
+            character,
+            role=type("Role", (), {"kind": "player", "actor": "sumi"})(),
+        )
+
+        self.assertIn("profile", owner)
+        self.assertEqual(owner["profile"]["table_presence"], "Keeps a route slate on the table.")
+        self.assertNotIn("profile", other)
+        self.assertNotIn("table_presence", other)
 
     def test_starting_skill_budget_requires_two_apprentice_one_artisan(self) -> None:
         _validate_starting_skill_budget(
@@ -607,70 +694,15 @@ class GlassCliTests(unittest.TestCase):
             )
 
     def test_character_public_mirror_has_consistent_canonical_fields(self) -> None:
-        body = _render_public_character_mirror(
-            {
-                "character_id": "vel",
-                "player_id": "tev",
-                "name": "Vel Arannis",
-                "species": "human",
-                "culture": "Sithari",
-                "archetype": "route contact",
-                "organization_role": "witness handler",
-                "pronouns": "",
-                "bio": "Keeps doors open for people who cannot be seen asking.",
-                "goals": ["Get Mara safe passage.", "Pay down the route debt."],
-                "primary_drive": "care/protection",
-                "positive_trait": "Laughs at bad dock jokes and keeps a scorecard.",
-                "table_presence": "Runs the galley joke scoreboard between jobs.",
-                "non_work_want": "Wants a birthday dinner where nobody discusses routes.",
-                "opening_social_action": "Hands Mara coffee and asks which joke gets retired.",
-                "life_prompt_answers": [
-                    {
-                        "prompt": "what they do when praised",
-                        "answer": "They redirect credit to the nearest apprentice.",
-                    },
-                    {
-                        "prompt": "what they collect",
-                        "answer": "They keep bent route tags sorted by harbor color.",
-                    },
-                ],
-                "pull_utilization_note": (
-                    "Source: municipal ferry dispatch boards; Thesis: Vel turns route "
-                    "timing into hospitality and urgent care; Used in: archetype, "
-                    "drive, trait, table presence, non-work want, opening social "
-                    "action, item, skill, signature move, failure mode, voice."
-                ),
-                "attributes": {"vitality": "standard", "finesse": "advanced"},
-                "skills": {"quiet entry": "artisan"},
-                "inventory": [
-                    {
-                        "id": "forged-route-seal",
-                        "qty": 1,
-                        "effect_tags": ["passes casual inspection"],
-                    }
-                ],
-                "tags": ["human", "sithari"],
-                "hp": {"current": 10, "max": 10},
-                "momentum": {"current": 0, "floor": -2, "ceiling": 3},
-                "xp": 0,
-                "level": 1,
-            }
+        from cli.character_display import write_public_character_mirror
+
+        result = write_public_character_mirror(
+            Paths(content=Path("."), campaigns=Path("campaigns")),
+            "c1",
+            {"character_id": "vel", "player_id": "tev"},
         )
 
-        self.assertIn("type: character-display", body)
-        self.assertIn("**Species:** human", body)
-        self.assertIn("**Culture:** Sithari", body)
-        self.assertIn("**Organization role:** witness handler", body)
-        self.assertIn("**Pronouns:** unspecified", body)
-        self.assertIn("**Primary drive:** care/protection", body)
-        self.assertIn("**Positive trait:** Laughs at bad dock jokes", body)
-        self.assertIn("**Table presence:** Runs the galley joke scoreboard", body)
-        self.assertIn("**Non-work want:** Wants a birthday dinner", body)
-        self.assertIn("**Opening social action:** Hands Mara coffee", body)
-        self.assertIn("## Life Prompt Answers", body)
-        self.assertIn("## Non-Adjacent Pull Utilization", body)
-        self.assertIn("- Get Mara safe passage.", body)
-        self.assertIn("forged-route-seal", body)
+        self.assertEqual(result["status"], "retired")
 
     def test_signature_move_slots_progress_by_level(self) -> None:
         self.assertEqual(_signature_move_slots(1), 1)
@@ -680,53 +712,66 @@ class GlassCliTests(unittest.TestCase):
         self.assertEqual(_signature_move_slots(9), 5)
         self.assertEqual(_signature_move_slots(10), 5)
 
+    def test_signature_moves_are_postgres_character_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env)
+
+            added = invoke_ok(
+                runner,
+                [
+                    "character",
+                    "signature-add",
+                    "vel",
+                    "Quiet Door",
+                    "--descriptor",
+                    "her old lockpick trick",
+                    "--look",
+                    "A hand on the latch.",
+                    "--use",
+                    "Entering quietly.",
+                    "--tell",
+                    "Wax on the thumb.",
+                ],
+                {**env, "GLASS_ROLE": "player:tev"},
+            )
+            self.assertIn("Quiet Door", added.output)
+            self.assertFalse(
+                (tmp_path / "campaigns" / "c1" / "players" / "tev" / "signature-moves.md").exists()
+            )
+
+            status = invoke_ok(
+                runner,
+                ["character", "signature-status", "vel"],
+                {**env, "GLASS_ROLE": "player:tev"},
+            )
+            self.assertIn("used: 1", status.output)
+            self.assertIn("her old lockpick trick", status.output)
+
+            bulk = invoke_ok(
+                runner,
+                ["character", "bulk-get", "--all"],
+                {**env, "GLASS_ROLE": "player:sumi"},
+            )
+            self.assertIn("signature_moves:", bulk.output)
+            self.assertIn("Quiet Door", bulk.output)
+
+            check = invoke_ok(
+                runner,
+                ["check", "--no-mark"],
+                {**env, "GLASS_ROLE": "player:sumi"},
+            )
+            self.assertIn("characters:", check.output)
+            self.assertIn("Quiet Door", check.output)
+
     def test_skill_slot_cap_grows_with_level(self) -> None:
         self.assertEqual(_db.skill_slot_cap(1), 4)
         self.assertEqual(_db.skill_slot_cap(2), 5)
         self.assertEqual(_db.skill_slot_cap(5), 8)
         self.assertEqual(_db.skill_slot_cap(10), 13)
-
-    def test_signature_move_parser_ignores_template_placeholder(self) -> None:
-        body = """
-# Signature Moves
-
-## Moves
-
-### Move name
-
-- **Look:** Placeholder.
-
-### Crackling Punch
-
-- **Look:** Sparks down the wrist.
-""".strip()
-
-        self.assertEqual(_signature_move_names(body), ["Crackling Punch"])
-
-    def test_signature_move_append_replaces_placeholder(self) -> None:
-        body = """
-# Signature Moves
-
-## Moves
-
-### Move name
-
-- **Look:** Placeholder.
-- **Usual use:** Placeholder.
-""".strip()
-
-        updated = _append_signature_move(
-            body,
-            {"name": "Vel Arannis"},
-            "Quiet Door",
-            "- **Look:** The latch clicks under a breath.\n"
-            "- **Usual use:** Entering places where asking would fail.\n"
-            "- **Tells/costs:** Leaves wax dust on the thumb.",
-        )
-
-        self.assertNotIn("### Move name", updated)
-        self.assertIn("### Quiet Door", updated)
-        self.assertIn("wax dust", updated)
 
     def test_character_bulk_update_payload_normalizes_batched_mutations(self) -> None:
         updates = _normalize_bulk_update_payload(
@@ -770,9 +815,7 @@ class GlassCliTests(unittest.TestCase):
         self.assertEqual(update["inventory_add"][0]["descriptor"], "a forged dock pass")
         self.assertEqual(update["signature_moves"][0]["name"], "Quiet Door")
         self.assertIn("A hand on the latch.", update["signature_moves"][0]["body"])
-        self.assertIn(
-            "her old lockpick trick", update["signature_moves"][0]["body"]
-        )
+        self.assertIn("her old lockpick trick", update["signature_moves"][0]["body"])
 
     def test_bulk_update_inventory_rejects_missing_descriptor(self) -> None:
         with self.assertRaises(GlassError) as ctx:
@@ -891,7 +934,26 @@ class GlassCliTests(unittest.TestCase):
             self.assertNotEqual(duplicate_drive.exit_code, 0)
             self.assertIn("primary drive already claimed", duplicate_drive.output)
 
-    def test_character_mutations_refresh_public_mirror(self) -> None:
+    def test_character_primary_drive_accepts_free_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+
+            create_test_character(
+                runner,
+                env,
+                player="kit",
+                character_id="kit-hero",
+                name="Kit Marn",
+                primary_drive="devotion",
+            )
+
+            result = invoke_ok(runner, ["character", "get", "kit-hero"], env)
+            self.assertIn("primary_drive: devotion", result.output)
+
+    def test_character_mutations_return_hard_state_without_public_mirror(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             runner = CliRunner()
@@ -900,21 +962,16 @@ class GlassCliTests(unittest.TestCase):
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
             create_test_character(runner, env, player="tev", character_id="vel")
 
-            invoke_ok(runner, ["character", "award-xp", "vel", "2"], dm_env)
+            awarded = invoke_ok(runner, ["character", "award-xp", "vel", "2"], dm_env)
+            self.assertIn("status: retired", awarded.output)
             mirror_path = (
-                tmp_path
-                / "campaigns"
-                / "c1"
-                / "players"
-                / "tev"
-                / "public"
-                / "character.md"
+                tmp_path / "campaigns" / "c1" / "players" / "tev" / "public" / "character.md"
             )
-            self.assertIn("**Level:** 1 (2 XP)", mirror_path.read_text(encoding="utf-8"))
+            self.assertFalse(mirror_path.exists())
 
             with patch("cli.commands.roll.random.SystemRandom") as system_random:
                 system_random.return_value.randint.side_effect = [10]
-                invoke_ok(
+                rolled = invoke_ok(
                     runner,
                     [
                         "roll",
@@ -928,9 +985,12 @@ class GlassCliTests(unittest.TestCase):
                     {**env, "GLASS_ROLE": "player:tev"},
                 )
 
-            mirror = mirror_path.read_text(encoding="utf-8")
-            self.assertIn("**Level:** 1 (2 XP)", mirror)
-            self.assertIn("**Momentum:** 2 (-2 to 3)", mirror)
+            self.assertIn("status: retired", rolled.output)
+            character = invoke_ok(runner, ["character", "get", "vel"], dm_env)
+            self.assertIn("xp: 2", character.output)
+            self.assertIn("momentum:", character.output)
+            self.assertIn("current: 2", character.output)
+            self.assertFalse(mirror_path.exists())
 
     def test_character_mirror_does_not_queue_turn_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1018,6 +1078,28 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(rows[0]["recipient"], "sumi")
             self.assertEqual(rows[0]["sender"], "tev")
 
+    def test_messages_accept_free_text_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+
+            sent = invoke_ok(
+                runner,
+                ["msg", "blocker", "dm", "Signature", "move", "is", "blocked."],
+                {**env, "GLASS_ROLE": "player:tev"},
+            )
+            self.assertIn("type: blocker", sent.output)
+
+            read = invoke_ok(
+                runner,
+                ["msg", "read", "--type", "blocker", "--no-mark"],
+                {**env, "GLASS_ROLE": "dm"},
+            )
+            self.assertIn("count: 1", read.output)
+            self.assertIn("Signature move is blocked.", read.output)
+
     def test_character_branch_message_reads_render_character_ids(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1069,48 +1151,52 @@ Recipients are `dm`, `party`, or a player id.
             ended = invoke_ok(runner, ["mode", "end"], {**env, "GLASS_ROLE": "dm"})
             self.assertIn("ended:", ended.output)
 
-    def test_character_creation_mode_end_requires_relationship_files(self) -> None:
+    def test_character_creation_mode_end_requires_relationship_facts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             runner = CliRunner()
             env = make_env(tmp_path)
             dm_env = {**env, "GLASS_ROLE": "dm"}
-            campaign_root = tmp_path / "campaigns" / "c1"
-            for player_id in ("kit", "renno", "sumi", "tev"):
-                (campaign_root / "players" / player_id / "public").mkdir(
-                    parents=True
-                )
 
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            for player_id, drive in (
+                ("kit", "ambition"),
+                ("renno", "duty"),
+                ("sumi", "curiosity"),
+                ("tev", "care/protection"),
+            ):
+                create_test_character(
+                    runner,
+                    env,
+                    player=player_id,
+                    character_id=f"{player_id}-hero",
+                    primary_drive=drive,
+                )
             invoke_ok(
                 runner,
                 ["mode", "start", "character-creation", "character-creation"],
                 dm_env,
             )
 
-            blocked = runner.invoke(main, ["mode", "end"], env=dm_env)
+            with patch("cli.commands.mode.fact_pack", return_value={"facts": []}):
+                blocked = runner.invoke(main, ["mode", "end"], env=dm_env)
 
             self.assertNotEqual(blocked.exit_code, 0)
             self.assertIn("relationship round is incomplete", blocked.output)
-            self.assertIn(
-                "kit: missing players/kit/public/relationships.md",
-                blocked.output,
-            )
+            self.assertIn("kit: missing relationship fact for kit-hero", blocked.output)
             self.assertEqual(
                 runtime_state(env)["mode_stack"][-1]["mode"],
                 "character-creation",
             )
 
-            for player_id in ("kit", "renno", "sumi", "tev"):
-                (
-                    campaign_root
-                    / "players"
-                    / player_id
-                    / "public"
-                    / "relationships.md"
-                ).write_text(f"# {player_id} relationships\n", encoding="utf-8")
-
-            ended = invoke_ok(runner, ["mode", "end"], dm_env)
+            facts = {
+                "facts": [
+                    {"subject_id": f"{player_id}-hero", "predicate": "relationship"}
+                    for player_id in ("kit", "renno", "sumi", "tev")
+                ]
+            }
+            with patch("cli.commands.mode.fact_pack", return_value=facts):
+                ended = invoke_ok(runner, ["mode", "end"], dm_env)
             self.assertIn("ended:", ended.output)
 
     def test_player_note_write_targets_campaign_not_templates(self) -> None:
@@ -1127,13 +1213,9 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertIn("players/tev/journal/field-note.md", result.output)
             campaign_note = (
-                tmp_path / "campaigns" / "c1" / "players" / "tev"
-                / "journal" / "field-note.md"
+                tmp_path / "campaigns" / "c1" / "players" / "tev" / "journal" / "field-note.md"
             )
-            template_note = (
-                tmp_path / "templates" / "players" / "tev"
-                / "journal" / "field-note.md"
-            )
+            template_note = tmp_path / "templates" / "players" / "tev" / "journal" / "field-note.md"
             self.assertEqual(campaign_note.read_text(encoding="utf-8"), "Observed.")
             self.assertFalse(template_note.exists())
 
@@ -1199,6 +1281,21 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(
                 runner,
                 [
+                    "beat",
+                    "start",
+                    "second-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the second call",
+                    "--question",
+                    "What else is live in the opening pressure?",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
                     "turn",
                     "begin",
                     "--turn-id",
@@ -1218,9 +1315,6 @@ Recipients are `dm`, `party`, or a player id.
                 ],
                 env,
             )
-            turn_file = tmp_path / "turn.md"
-            turn_file.write_text("Mara frames the scene.", encoding="utf-8")
-            end_file = tmp_path / "turn-closeout.json"
             invoke_ok(runner, ["beat", "check"], dm_env)
             invoke_ok(runner, ["turn", "audit"], dm_env)
             ended = invoke_ok(
@@ -1237,20 +1331,19 @@ Recipients are `dm`, `party`, or a player id.
                     "--next",
                     "default",
                 ],
-                {**dm_env, "AOG_TURN_CLOSEOUT": str(end_file)},
+                dm_env,
             )
-            self.assertIn("summary: \"Mara frames the opening choice.\"", ended.output)
+            self.assertIn('summary: "Mara frames the opening choice."', ended.output)
             self.assertIn("valid: true", ended.output)
-            self.assertTrue(end_file.exists())
 
             appended = invoke_ok(
                 runner,
-                ["turn", "append", str(turn_file), "--speaker", "dm"],
+                ["turn", "append", "--body", "Mara frames the scene.", "--speaker", "dm"],
                 dm_env,
             )
             self.assertIn("turn_id: 1", appended.output)
-            self.assertIn("turn_summary: \"Mara frames the opening choice.\"", appended.output)
-            self.assertIn("transcript_export_path:", appended.output)
+            self.assertIn('turn_summary: "Mara frames the opening choice."', appended.output)
+            self.assertIn("transcript_export_path: null", appended.output)
 
             found = invoke_ok(runner, ["turns", "find", "--limit", "1"], dm_env)
             self.assertIn("Mara frames the scene.", found.output)
@@ -1265,12 +1358,6 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("event_type: turn.committed", feed.output)
             self.assertIn('prose: "Mara frames the scene."', feed.output)
             self.assertIn('summary: "Mara frames the opening choice."', feed.output)
-
-            transcript = (tmp_path / "campaigns" / "c1" / "transcript.md").read_text(
-                encoding="utf-8"
-            )
-            self.assertIn("## Turn 1 - dm (dm) - scene-play, opening", transcript)
-            self.assertIn("Mara frames the scene.", transcript)
 
     def test_turn_end_reports_invalid_player_turn_type_advisory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1359,7 +1446,7 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertIn("valid: false", invalid.output)
             self.assertIn("problems:", invalid.output)
-            self.assertIn("`--turn-type` is required", invalid.output)
+            self.assertIn("`turn_type` is required", invalid.output)
 
             valid = invoke_ok(
                 runner,
@@ -1466,7 +1553,7 @@ Recipients are `dm`, `party`, or a player id.
                 player_env,
             )
             self.assertIn("valid: false", ended.output)
-            self.assertIn("run `glass turn audit` before `glass turn end`", ended.output)
+            self.assertIn("call `glass_check()` before `glass_done(...)`", ended.output)
 
     def test_turn_audit_reports_and_clears_soft_and_hard_requirements(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1537,7 +1624,7 @@ Recipients are `dm`, `party`, or a player id.
 
             first_audit = invoke_ok(runner, ["turn", "audit"], player_env)
             self.assertIn("ready_for_turn_end: false", first_audit.output)
-            self.assertIn("You MUST still run glass beat check.", first_audit.output)
+            self.assertIn("You MUST still call glass_check().", first_audit.output)
             self.assertIn(
                 "You sent 0 messages this turn; consider sending something.",
                 first_audit.output,
@@ -1554,14 +1641,20 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(runner, ["beat", "check"], player_env)
             invoke_ok(
                 runner,
-                ["msg", "send", "banter", "dm", "Tev asks Mara to hold the next reveal for one beat."],
+                [
+                    "msg",
+                    "send",
+                    "banter",
+                    "dm",
+                    "Tev asks Mara to hold the next reveal for one beat.",
+                ],
                 player_env,
             )
             second_audit = invoke_ok(runner, ["turn", "audit"], player_env)
             self.assertIn("ready_for_turn_end: true", second_audit.output)
             self.assertIn("soft_considerations: []", second_audit.output)
             self.assertIn("hard_requirements: []", second_audit.output)
-            self.assertNotIn("You MUST still run glass beat check.", second_audit.output)
+            self.assertNotIn("You MUST still call glass_check().", second_audit.output)
             self.assertNotIn(
                 "You sent 0 messages this turn; consider sending something.",
                 second_audit.output,
@@ -1727,7 +1820,7 @@ Recipients are `dm`, `party`, or a player id.
 
             first_audit = invoke_ok(runner, ["turn", "audit"], dm_env)
             self.assertIn("ready_for_turn_end: false", first_audit.output)
-            self.assertIn("You MUST still run glass beat check.", first_audit.output)
+            self.assertIn("You MUST still call glass_check().", first_audit.output)
             self.assertIn("This active scene has 0 scene clocks.", first_audit.output)
             self.assertIn("This active scene has 0 active beats.", first_audit.output)
 
@@ -1746,7 +1839,7 @@ Recipients are `dm`, `party`, or a player id.
                 dm_env,
             )
             self.assertIn("valid: false", invalid.output)
-            self.assertIn("You MUST still run glass beat check.", invalid.output)
+            self.assertIn("You MUST still call glass_check().", invalid.output)
             self.assertIn(
                 "the active scene has 0 scene clocks; the DM must declare one before active play can continue.",
                 invalid.output,
@@ -1791,7 +1884,8 @@ Recipients are `dm`, `party`, or a player id.
                 ],
                 dm_env,
             )
-            invoke_ok(runner, ["beat", "check"], dm_env)
+            checked = invoke_ok(runner, ["check"], dm_env)
+            self.assertIn("beat_check_marked: true", checked.output)
             second_audit = invoke_ok(runner, ["turn", "audit"], dm_env)
             self.assertIn("ready_for_turn_end: true", second_audit.output)
             self.assertIn("hard_requirements: []", second_audit.output)
@@ -1898,7 +1992,7 @@ Recipients are `dm`, `party`, or a player id.
             self.assertNotIn("This active scene has 0 active beats.", audit.output)
             self.assertIn("This scene has 0 active scene clocks.", audit.output)
             self.assertIn("This scene has 0 active beats.", audit.output)
-            self.assertIn("end with `--next dm`", audit.output)
+            self.assertIn("let the DM restore 2-3 active beats", audit.output)
 
             ended = invoke_ok(
                 runner,
@@ -1919,6 +2013,90 @@ Recipients are `dm`, `party`, or a player id.
                 player_env,
             )
             self.assertIn("valid: true", ended.output)
+
+    def test_scene_clock_declare_refuses_scene_prep_setup_scene(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(runner, arc_create_args("first-arc"), dm_env)
+            invoke_ok(runner, ["mode", "start", "scene-prep", "opening-setup"], dm_env)
+            invoke_ok(
+                runner,
+                ["scene", "create", "opening", "--type", "rescue", "--arc", "first-arc"],
+                dm_env,
+            )
+
+            bad = runner.invoke(
+                main,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Get the crew across the threshold.",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                env=dm_env,
+            )
+
+            self.assertNotEqual(bad.exit_code, 0)
+            self.assertIn("requires the target scene to be the active play mode", bad.output)
+            self.assertIn("glass_mode_start", bad.output)
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
+            try:
+                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                    setup_clock = _db.scene_clock_get(
+                        conn,
+                        campaign_id="c1",
+                        scene_id="opening-setup",
+                        clock_id="opening-contract",
+                    )
+                    target_clock = _db.scene_clock_get(
+                        conn,
+                        campaign_id="c1",
+                        scene_id="opening",
+                        clock_id="opening-contract",
+                    )
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+            self.assertIsNone(setup_clock)
+            self.assertIsNone(target_clock)
+
+            invoke_ok(runner, ["mode", "end"], dm_env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            good = invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Get the crew across the threshold.",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                ],
+                dm_env,
+            )
+            self.assertIn("scene_id: opening", good.output)
 
     def test_scene_clock_polarity_groups_and_direct_tick(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1974,6 +2152,66 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("before: 0", ticked.output)
             self.assertIn("after: 2", ticked.output)
             self.assertIn("delta: 2", ticked.output)
+
+    def test_scene_pressure_roll_reduces_public_scene_tracker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "tracker",
+                    "set",
+                    "reach-lower-ledge",
+                    "--label",
+                    "Reach the lower ledge",
+                    "--value",
+                    "6",
+                    "--max",
+                    "6",
+                ],
+                dm_env,
+            )
+            checked = invoke_ok(runner, ["check"], player_env)
+            self.assertIn("scene_trackers:", checked.output)
+            self.assertIn("tracker_id: reach-lower-ledge", checked.output)
+
+            with patch("cli.commands.scene.random.SystemRandom") as rng_factory:
+                rng_factory.return_value.randint.side_effect = [5, 6]
+                pressured = invoke_ok(
+                    runner,
+                    [
+                        "scene",
+                        "pressure",
+                        "reach-lower-ledge",
+                        "spar reading",
+                        "ingenuity",
+                        "--risk",
+                        "standard",
+                        "--character",
+                        "vel",
+                        "--impact",
+                        "d6",
+                        "--note",
+                        "Vel gets below the first safe bracket.",
+                    ],
+                    player_env,
+                )
+
+            self.assertIn("outcome: advance", pressured.output)
+            self.assertIn("reduction: 2", pressured.output)
+            self.assertIn("before: 6", pressured.output)
+            self.assertIn("after: 4", pressured.output)
+            trackers = invoke_ok(runner, ["scene", "tracker", "list"], player_env)
+            self.assertIn("tracker_id: reach-lower-ledge", trackers.output)
+            self.assertIn("value: 4", trackers.output)
 
     def test_failed_roll_requires_visible_consequence_at_closeout(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2103,6 +2341,7 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("valid: false", state_only.output)
             self.assertIn("roll needs a visible consequence", state_only.output)
 
+            invoke_ok(runner, ["character", "set-hp", "vel", "-1"], player_env)
             valid = invoke_ok(
                 runner,
                 [
@@ -2110,9 +2349,9 @@ Recipients are `dm`, `party`, or a player id.
                     "--summary",
                     "Vel tests the spar and loses footing.",
                     "--state",
-                    "no state change",
+                    "Vel loses 1 HP and is hanging below the gangway.",
                     "--pressure",
-                    "Spar snapped; Vel hanging below gangway, -1 hp deferred to next beat.",
+                    "Spar snapped; Vel hanging below gangway.",
                     "--rolls",
                     "spar reading collapse",
                     "--turn-type",
@@ -2121,6 +2360,329 @@ Recipients are `dm`, `party`, or a player id.
                 player_env,
             )
             self.assertIn("valid: true", valid.output)
+
+    def test_failed_rolls_tick_beat_failure_and_second_failure_hands_to_dm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env)
+            invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-contract",
+                    "--label",
+                    "Open the scene",
+                    "--goal",
+                    "Land the first live player decision.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
+                    "--polarity",
+                    "objective",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "beat",
+                    "start",
+                    "first-decision",
+                    "--clock",
+                    "opening-contract",
+                    "--label",
+                    "Make the first call",
+                    "--question",
+                    "What does Tev do with the opening pressure?",
+                ],
+                dm_env,
+            )
+
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0001",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--character",
+                    "vel",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["check"], player_env)
+            with patch("cli.commands.roll.random.SystemRandom") as rng_factory:
+                rng_factory.return_value.randint.side_effect = [1]
+                first = invoke_ok(
+                    runner,
+                    [
+                        "roll",
+                        "spar reading",
+                        "ingenuity",
+                        "--risk",
+                        "desperate",
+                        "--character",
+                        "vel",
+                        "--target",
+                        "first-decision",
+                    ],
+                    player_env,
+                )
+            self.assertIn("outcome: collapse", first.output)
+            self.assertIn("beat_failure:", first.output)
+            self.assertIn("after: 1", first.output)
+            self.assertIn("status: ticked", first.output)
+            self.assertIn("instructions:", first.output)
+            self.assertIn("Do not retry it from a different angle", first.output)
+
+            invoke_ok(
+                runner,
+                [
+                    "done",
+                    "--summary",
+                    "Vel tests the opening route and it gives back badly.",
+                    "--state",
+                    "first-decision failed-roll pressure is 1/2",
+                    "--pressure",
+                    "first-decision failed-roll pressure is 1/2",
+                    "--rolls",
+                    "spar reading collapse",
+                    "--turn-type",
+                    "act",
+                ],
+                player_env,
+            )
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "append",
+                    "--body",
+                    "Vel tests the opening route and it gives back badly.",
+                    "--speaker",
+                    "tev",
+                ],
+                player_env,
+            )
+
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "begin",
+                    "--turn-id",
+                    "c1-t0002",
+                    "--actor",
+                    "tev",
+                    "--role",
+                    "player",
+                    "--mode",
+                    "scene-play",
+                    "--scene",
+                    "opening",
+                    "--character",
+                    "vel",
+                    "--kind",
+                    "active-play",
+                    "--turn-type-required",
+                    "--disallow-player-scene-close",
+                ],
+                env,
+            )
+            invoke_ok(runner, ["check"], player_env)
+            with patch("cli.commands.roll.random.SystemRandom") as rng_factory:
+                rng_factory.return_value.randint.side_effect = [1]
+                second = invoke_ok(
+                    runner,
+                    [
+                        "roll",
+                        "spar reading",
+                        "ingenuity",
+                        "--risk",
+                        "desperate",
+                        "--character",
+                        "vel",
+                        "--target",
+                        "first-decision",
+                    ],
+                    player_env,
+                )
+            self.assertIn("outcome: collapse", second.output)
+            self.assertIn("after: 2", second.output)
+            self.assertIn("status: closed", second.output)
+            self.assertIn("source: beat.failure-limit", second.output)
+            self.assertIn("the beat is closed and the DM is queued", second.output)
+
+            previous = os.environ.get("GLASS_CONFIG")
+            os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
+            try:
+                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                    beat = _db.scene_beat_get(
+                        conn,
+                        campaign_id="c1",
+                        scene_id="opening",
+                        beat_id="first-decision",
+                    )
+                state = load_state(get_paths(), "c1")
+            finally:
+                if previous is None:
+                    os.environ.pop("GLASS_CONFIG", None)
+                else:
+                    os.environ["GLASS_CONFIG"] = previous
+
+            self.assertEqual(beat["failure_ticks"], 2)
+            self.assertEqual(beat["status"], "closed")
+            self.assertEqual(state["next_speakers"][0]["agent"], "dm")
+            self.assertEqual(state["next_speakers"][0]["source"], "beat.failure-limit")
+
+    def test_player_can_add_and_resolve_own_public_consequence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            player_env = {**env, "GLASS_ROLE": "player:tev"}
+            other_player_env = {**env, "GLASS_ROLE": "player:sumi"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            create_test_character(runner, env)
+            create_test_character(
+                runner,
+                env,
+                player="sumi",
+                character_id="sumi-pc",
+                name="Sumi PC",
+                primary_drive="curiosity",
+            )
+
+            added = invoke_ok(
+                runner,
+                [
+                    "character",
+                    "consequence-add",
+                    "vel",
+                    "Scalded glove-hand",
+                    "--description",
+                    "Steam flashed through Vel's glove during the rescue.",
+                    "--severity",
+                    "minor",
+                    "--scope",
+                    "scene",
+                ],
+                player_env,
+            )
+            self.assertIn("Scalded glove-hand", added.output)
+            consequence_id = re.search(r"consequence_id: (\S+)", added.output)
+            self.assertIsNotNone(consequence_id)
+
+            hidden = runner.invoke(
+                main,
+                ["character", "consequence-add", "vel", "Hidden hurt", "--hidden"],
+                env=player_env,
+            )
+            self.assertNotEqual(hidden.exit_code, 0)
+            self.assertIn("players may add only public consequences", hidden.output)
+
+            denied = runner.invoke(
+                main,
+                ["character", "consequence-add", "vel", "Not mine"],
+                env=other_player_env,
+            )
+            self.assertNotEqual(denied.exit_code, 0)
+            self.assertIn("players may mutate only their own character", denied.output)
+
+            resolved = invoke_ok(
+                runner,
+                [
+                    "character",
+                    "consequence-resolve",
+                    "vel",
+                    consequence_id.group(1),
+                    "--note",
+                    "Treated during cleanup.",
+                ],
+                player_env,
+            )
+            self.assertIn("status: resolved", resolved.output)
+
+    def test_character_creation_texture_fields_are_free_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+
+            created = invoke_ok(
+                runner,
+                [
+                    "character",
+                    "new",
+                    "short-text-pc",
+                    "--player",
+                    "tev",
+                    "--name",
+                    "Short Text",
+                    "--species",
+                    "human",
+                    "--culture",
+                    "dock",
+                    "--archetype",
+                    "runner",
+                    "--org-role",
+                    "scout",
+                    "--bio",
+                    "Runs messages between crews.",
+                    "--goal",
+                    "Map the smoke road.",
+                    "--goal",
+                    "Keep the crew paid.",
+                    "--primary-drive",
+                    "duty",
+                    "--positive-trait",
+                    "Laughs loudly.",
+                    "--table-presence",
+                    "Draws maps.",
+                    "--non-work-want",
+                    "Wants soup.",
+                    "--opening-social-action",
+                    "Offers coffee.",
+                    "--life-prompt",
+                    "what they collect=Buttons.",
+                    "--life-prompt",
+                    "what praise does=Shrugs.",
+                    "--pull-utilization",
+                    "Source: hand-drawn quay maps; Thesis: Short Text turns small route marks into visible crew care.",
+                    "--skill",
+                    "route running=artisan",
+                    "--skill",
+                    "map reading=apprentice",
+                    "--skill",
+                    "coffee timing=apprentice",
+                ],
+                {**env, "GLASS_ROLE": "player:tev"},
+            )
+            self.assertIn("character_id: short-text-pc", created.output)
 
     def test_turn_audit_pushes_pass_guidance_after_many_completed_beats(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2210,8 +2772,8 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("ready_for_turn_end: true", audit.output)
             self.assertIn("This scene already has 9 completed beats.", audit.output)
             self.assertIn("closed beats and 0 scene clock movements", audit.output)
-            self.assertIn("`--turn-type pass`", audit.output)
-            self.assertIn("`--next dm`", audit.output)
+            self.assertIn('`turn_type=\\"pass\\"`', audit.output)
+            self.assertIn('`next_speaker=\\"dm\\"`', audit.output)
 
     def test_beat_check_allows_recovery_after_last_beat_already_resolved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2413,8 +2975,6 @@ Recipients are `dm`, `party`, or a player id.
                 dm_env,
             )
 
-            pass_turn = tmp_path / "pass-turn.md"
-            pass_turn.write_text("Tev yields the floor for a moment.", encoding="utf-8")
             invoke_ok(
                 runner,
                 [
@@ -2455,7 +3015,18 @@ Recipients are `dm`, `party`, or a player id.
                 ],
                 player_env,
             )
-            invoke_ok(runner, ["turn", "append", str(pass_turn), "--speaker", "tev"], player_env)
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "append",
+                    "--body",
+                    "Tev yields the floor for a moment.",
+                    "--speaker",
+                    "tev",
+                ],
+                player_env,
+            )
 
             previous = os.environ.get("GLASS_CONFIG")
             os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
@@ -2474,8 +3045,6 @@ Recipients are `dm`, `party`, or a player id.
                 else:
                     os.environ["GLASS_CONFIG"] = previous
 
-            action_turn = tmp_path / "action-turn.md"
-            action_turn.write_text("Mara forces the question back onto the table.", encoding="utf-8")
             invoke_ok(
                 runner,
                 [
@@ -2514,7 +3083,18 @@ Recipients are `dm`, `party`, or a player id.
                 ],
                 dm_env,
             )
-            invoke_ok(runner, ["turn", "append", str(action_turn), "--speaker", "dm"], dm_env)
+            invoke_ok(
+                runner,
+                [
+                    "turn",
+                    "append",
+                    "--body",
+                    "Mara forces the question back onto the table.",
+                    "--speaker",
+                    "dm",
+                ],
+                dm_env,
+            )
 
             previous = os.environ.get("GLASS_CONFIG")
             os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
@@ -2533,80 +3113,19 @@ Recipients are `dm`, `party`, or a player id.
                 else:
                     os.environ["GLASS_CONFIG"] = previous
 
-    def test_sync_apply_commits_projected_paths_and_directories(self) -> None:
-        fake_embedding = EmbeddingBatch(
-            vectors=[[1.0] + [0.0] * 767],
-            model="test-embedding",
-            provider="test",
-            dimensions=768,
-        )
+    def test_sync_command_is_not_registered(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             runner = CliRunner()
             env = make_env(tmp_path)
-            dm_env = {**env, "GLASS_ROLE": "dm"}
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
-            invoke_ok(runner, arc_create_args("opening"), dm_env)
-            with runner.isolated_filesystem(temp_dir=tmp_path):
-                (Path("dm") / "workspace").mkdir(parents=True)
-                (Path("dm") / "workspace" / "sync-note.md").write_text(
-                    "DM note from projected workspace.\n",
-                    encoding="utf-8",
-                )
-                (Path("table")).mkdir()
-                (Path("table") / "visible-artifact.md").write_text(
-                    "Visible table update.\n",
-                    encoding="utf-8",
-                )
-                (Path("arcs") / "opening").mkdir(parents=True)
-                (Path("arcs") / "opening" / "plan.md").write_text(
-                    "Projected arc plan.\n",
-                    encoding="utf-8",
-                )
-                Path("summary.md").write_text(
-                    "Campaign summary update.\n",
-                    encoding="utf-8",
-                )
-                with patch("cli.embeddings.embed_text", return_value=fake_embedding):
-                    result = invoke_ok(
-                        runner,
-                        [
-                            "sync",
-                            "apply",
-                            "dm/workspace/sync-note.md",
-                            "table",
-                            "arcs/opening",
-                            "summary.md",
-                        ],
-                        dm_env,
-                    )
 
-            self.assertIn("count: 4", result.output)
-            root = tmp_path / "campaigns" / "c1"
-            self.assertEqual(
-                (root / "dm" / "workspace" / "sync-note.md").read_text(encoding="utf-8"),
-                "DM note from projected workspace.\n",
-            )
-            self.assertEqual(
-                (root / "table" / "visible-artifact.md").read_text(encoding="utf-8"),
-                "Visible table update.\n",
-            )
-            self.assertEqual(
-                (root / "arcs" / "opening" / "plan.md").read_text(encoding="utf-8"),
-                "Projected arc plan.\n",
-            )
-            self.assertEqual(
-                (root / "summary.md").read_text(encoding="utf-8"),
-                "Campaign summary update.\n",
-            )
-            indexed = invoke_ok(
-                runner,
-                ["search", "text", "Visible table update", "--type", "markdown"],
-                dm_env,
-            )
-            self.assertIn("table/visible-artifact.md", indexed.output)
+            result = runner.invoke(main, ["sync", "apply"], env=env)
 
-    def test_table_write_refreshes_projected_manifest_path(self) -> None:
+            self.assertNotEqual(result.exit_code, 0)
+            self.assertIn("No such command 'sync'", result.output)
+
+    def test_table_write_does_not_touch_projection_manifest(self) -> None:
         fake_embedding = EmbeddingBatch(
             vectors=[[1.0] + [0.0] * 767],
             model="test-embedding",
@@ -2645,15 +3164,18 @@ Recipients are `dm`, `party`, or a player id.
 
                 self.assertEqual(
                     (Path("table") / "visible-artifact.md").read_text(encoding="utf-8"),
+                    "stale projected edit\n",
+                )
+                self.assertEqual(
+                    (tmp_path / "campaigns" / "c1" / "table" / "visible-artifact.md").read_text(
+                        encoding="utf-8"
+                    ),
                     "canonical table\n",
                 )
                 manifest = json.loads(
                     Path(".glass-projection-manifest.json").read_text(encoding="utf-8")
                 )
-                self.assertNotEqual(
-                    manifest["files"]["table/visible-artifact.md"],
-                    "old-hash",
-                )
+                self.assertEqual(manifest["files"]["table/visible-artifact.md"], "old-hash")
 
     def test_semantic_search_ranks_by_embeddings(self) -> None:
         def fake_embed_text(text: str, *, kind: str, config=None) -> EmbeddingBatch:
@@ -2674,11 +3196,6 @@ Recipients are `dm`, `party`, or a player id.
             dm_env = {**env, "GLASS_ROLE": "dm"}
             invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
             invoke_ok(runner, ["mode", "start", "scene-play", "opening"], dm_env)
-            castle_turn = tmp_path / "castle.md"
-            castle_turn.write_text("The castle gate opens for the party.", encoding="utf-8")
-            river_turn = tmp_path / "river.md"
-            river_turn.write_text("The river barge slips into fog.", encoding="utf-8")
-
             with patch("cli.embeddings.embed_text", side_effect=fake_embed_text):
                 invoke_ok(
                     runner,
@@ -2755,7 +3272,14 @@ Recipients are `dm`, `party`, or a player id.
                 )
                 invoke_ok(
                     runner,
-                    ["turn", "append", str(castle_turn), "--speaker", "dm"],
+                    [
+                        "turn",
+                        "append",
+                        "--body",
+                        "The castle gate opens for the party.",
+                        "--speaker",
+                        "dm",
+                    ],
                     dm_env,
                 )
                 invoke_ok(
@@ -2798,7 +3322,14 @@ Recipients are `dm`, `party`, or a player id.
                 )
                 invoke_ok(
                     runner,
-                    ["turn", "append", str(river_turn), "--speaker", "dm"],
+                    [
+                        "turn",
+                        "append",
+                        "--body",
+                        "The river barge slips into fog.",
+                        "--speaker",
+                        "dm",
+                    ],
                     dm_env,
                 )
                 result = invoke_ok(
@@ -3006,47 +3537,32 @@ Recipients are `dm`, `party`, or a player id.
             self.assertNotEqual(retired.exit_code, 0)
             self.assertIn("table/index.md is retired", retired.output)
 
-            lore_source = root / "shared" / "lore" / "ships" / "splitfork.md"
-            lore_source.parent.mkdir(parents=True)
-            lore_source.write_text("# The Splitfork\n\nVisible ship lore.\n", encoding="utf-8")
-            fake_embedding = EmbeddingBatch(
-                vectors=[[1.0] + [0.0] * 767],
-                model="test-embedding",
-                provider="test",
-                dimensions=768,
-            )
-            with patch("cli.embeddings.embed_text", return_value=fake_embedding):
-                used = invoke_ok(
-                    runner,
-                    [
-                        "table",
-                        "use",
-                        "shared/lore/ships/splitfork.md",
-                        "--as",
-                        "splitfork.md",
-                    ],
-                    dm_env,
-                )
-                self.assertIn("table/splitfork.md", used.output)
-                promoted = invoke_ok(
+            with patch(
+                "cli.commands.lore.lore_store.upsert_lore_entry",
+                return_value={
+                    "target": "falkordb://test/agents_of_glass",
+                    "id": "splitfork",
+                    "namespace": "c1",
+                    "title": "The Splitfork",
+                },
+            ):
+                lore_put = invoke_ok(
                     runner,
                     [
                         "lore",
-                        "promote",
-                        "table/splitfork.md",
-                        "--to",
-                        "ships/splitfork-copy.md",
+                        "put",
+                        "splitfork",
+                        "--title",
+                        "The Splitfork",
+                        "--scope",
+                        "campaign",
+                        "--body",
+                        "Visible ship lore.",
                     ],
                     dm_env,
                 )
-            self.assertIn("shared/lore/ships/splitfork-copy.md", promoted.output)
-            self.assertEqual(
-                (root / "table" / "splitfork.md").read_text(encoding="utf-8"),
-                "# The Splitfork\n\nVisible ship lore.\n",
-            )
-            self.assertTrue(
-                (root / "shared" / "lore" / "ships" / "splitfork-copy.md").exists()
-            )
+            self.assertIn("namespace: c1", lore_put.output)
+            self.assertFalse((root / "shared" / "lore" / "ships").exists())
 
             invoke_ok(runner, ["mode", "start", "action", "duke-gate"], dm_env)
             invoke_ok(
@@ -3084,8 +3600,6 @@ Recipients are `dm`, `party`, or a player id.
                 ],
                 dm_env,
             )
-            turn_file = tmp_path / "scene-turn.md"
-            turn_file.write_text("Mara points to the castle gate.", encoding="utf-8")
             invoke_ok(
                 runner,
                 [
@@ -3126,13 +3640,16 @@ Recipients are `dm`, `party`, or a player id.
             )
             invoke_ok(
                 runner,
-                ["turn", "append", str(turn_file), "--speaker", "dm"],
+                [
+                    "turn",
+                    "append",
+                    "--body",
+                    "Mara points to the castle gate.",
+                    "--speaker",
+                    "dm",
+                ],
                 dm_env,
             )
-            scene_transcript = (
-                root / "arcs" / "first-arc" / "scenes" / "duke-gate" / "transcript.md"
-            ).read_text(encoding="utf-8")
-            self.assertIn("Mara points to the castle gate.", scene_transcript)
 
             tracker = invoke_ok(
                 runner,
@@ -3201,8 +3718,14 @@ Recipients are `dm`, `party`, or a player id.
             )
             self.assertIn("level: scene", appended.output)
             summary = (
-                tmp_path / "campaigns" / "c1" / "arcs" / "first-arc"
-                / "scenes" / "opening" / "summary.md"
+                tmp_path
+                / "campaigns"
+                / "c1"
+                / "arcs"
+                / "first-arc"
+                / "scenes"
+                / "opening"
+                / "summary.md"
             ).read_text(encoding="utf-8")
             self.assertIn("Tev asks Inka", summary)
 
@@ -3293,9 +3816,9 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("The party commits to the warrant.", quest_log)
             self.assertIn("The warrant changes hands.", quest_log)
             self.assertNotIn("\\n", quest_log)
-            summary = (
-                root / "arcs" / "first-arc" / "scenes" / "opening" / "summary.md"
-            ).read_text(encoding="utf-8")
+            summary = (root / "arcs" / "first-arc" / "scenes" / "opening" / "summary.md").read_text(
+                encoding="utf-8"
+            )
             self.assertIn("The scene closes.", summary)
             self.assertIn("## Outcomes", summary)
             self.assertIn("The warrant is now the party's chosen burden.", summary)
@@ -3343,16 +3866,13 @@ Recipients are `dm`, `party`, or a player id.
                 dm_env,
             )
             self.assertIn("closed_arc: first-arc", closed.output)
-            arc_summary = (
-                root / "arcs" / "first-arc" / "summary.md"
-            ).read_text(encoding="utf-8")
+            arc_summary = (root / "arcs" / "first-arc" / "summary.md").read_text(encoding="utf-8")
             self.assertIn("The opening act closes around the warrant.", arc_summary)
             self.assertIn("## Outcomes", arc_summary)
             self.assertIn(
                 "The warrant enters party history as a public commitment.",
                 arc_summary,
             )
-
 
     def test_scene_end_refuses_without_clock_disposition(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3371,11 +3891,20 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(
                 runner,
                 [
-                    "scene", "clock", "declare", "cinder-cascade",
-                    "--label", "Cinder cascade",
-                    "--goal", "Reach the docks before dampers hold.",
-                    "--value", "0", "--max", "4",
-                    "--direction", "progress",
+                    "scene",
+                    "clock",
+                    "declare",
+                    "cinder-cascade",
+                    "--label",
+                    "Cinder cascade",
+                    "--goal",
+                    "Reach the docks before dampers hold.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
                 ],
                 dm_env,
             )
@@ -3383,9 +3912,12 @@ Recipients are `dm`, `party`, or a player id.
             no_disposition = runner.invoke(
                 main,
                 [
-                    "scene", "end",
-                    "--summary", "Scene closes with cascade pressure unresolved.",
-                    "--outcome", "Dampers held this round.",
+                    "scene",
+                    "end",
+                    "--summary",
+                    "Scene closes with cascade pressure unresolved.",
+                    "--outcome",
+                    "Dampers held this round.",
                 ],
                 env=dm_env,
             )
@@ -3396,11 +3928,16 @@ Recipients are `dm`, `party`, or a player id.
             wrong_clock = runner.invoke(
                 main,
                 [
-                    "scene", "end",
-                    "--summary", "Scene closes with cascade pressure unresolved.",
-                    "--outcome", "Dampers held this round.",
-                    "--carry-clock", "cinder-cascade=Pressure follows the party to the docks.",
-                    "--retire-clock", "nonexistent-clock=just because",
+                    "scene",
+                    "end",
+                    "--summary",
+                    "Scene closes with cascade pressure unresolved.",
+                    "--outcome",
+                    "Dampers held this round.",
+                    "--carry-clock",
+                    "cinder-cascade=Pressure follows the party to the docks.",
+                    "--retire-clock",
+                    "nonexistent-clock=just because",
                 ],
                 env=dm_env,
             )
@@ -3411,18 +3948,28 @@ Recipients are `dm`, `party`, or a player id.
             ended = invoke_ok(
                 runner,
                 [
-                    "scene", "end",
-                    "--summary", "Scene closes with cascade pressure unresolved.",
-                    "--outcome", "Dampers held this round.",
-                    "--carry-clock", "cinder-cascade=Pressure follows the party to the docks.",
+                    "scene",
+                    "end",
+                    "--summary",
+                    "Scene closes with cascade pressure unresolved.",
+                    "--outcome",
+                    "Dampers held this round.",
+                    "--carry-clock",
+                    "cinder-cascade=Pressure follows the party to the docks.",
                 ],
                 dm_env,
             )
             self.assertIn("ended_scene: opening", ended.output)
             self.assertIn("disposition: carried", ended.output)
             summary = (
-                tmp_path / "campaigns" / "c1" / "arcs" / "first-arc"
-                / "scenes" / "opening" / "summary.md"
+                tmp_path
+                / "campaigns"
+                / "c1"
+                / "arcs"
+                / "first-arc"
+                / "scenes"
+                / "opening"
+                / "summary.md"
             ).read_text(encoding="utf-8")
             self.assertIn("Scene Clock Dispositions", summary)
             self.assertIn("Cinder cascade", summary)
@@ -3445,22 +3992,36 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(
                 runner,
                 [
-                    "scene", "clock", "declare", "cinder-cascade",
-                    "--label", "Cinder cascade",
-                    "--goal", "Reach the docks before dampers hold.",
-                    "--value", "0", "--max", "4",
-                    "--direction", "progress",
+                    "scene",
+                    "clock",
+                    "declare",
+                    "cinder-cascade",
+                    "--label",
+                    "Cinder cascade",
+                    "--goal",
+                    "Reach the docks before dampers hold.",
+                    "--value",
+                    "0",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
                 ],
                 dm_env,
             )
             overlap = runner.invoke(
                 main,
                 [
-                    "scene", "end",
-                    "--summary", "Scene closes.",
-                    "--outcome", "Cascade unresolved.",
-                    "--carry-clock", "cinder-cascade=carries on",
-                    "--retire-clock", "cinder-cascade=actually obsolete",
+                    "scene",
+                    "end",
+                    "--summary",
+                    "Scene closes.",
+                    "--outcome",
+                    "Cascade unresolved.",
+                    "--carry-clock",
+                    "cinder-cascade=carries on",
+                    "--retire-clock",
+                    "cinder-cascade=actually obsolete",
                 ],
                 env=dm_env,
             )
@@ -3524,12 +4085,18 @@ Recipients are `dm`, `party`, or a player id.
             transition = invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "second",
+                    "scene",
+                    "transition",
+                    "second",
                     "--new",
-                    "--type", "scene-play",
-                    "--arc", "first-arc",
-                    "--summary", "The opening resolved.",
-                    "--outcome", "Door is open.",
+                    "--type",
+                    "scene-play",
+                    "--arc",
+                    "first-arc",
+                    "--summary",
+                    "The opening resolved.",
+                    "--outcome",
+                    "Door is open.",
                 ],
                 dm_env,
             )
@@ -3557,12 +4124,18 @@ Recipients are `dm`, `party`, or a player id.
             duplicate = runner.invoke(
                 main,
                 [
-                    "scene", "transition", "opening",
+                    "scene",
+                    "transition",
+                    "opening",
                     "--new",
-                    "--type", "scene-play",
-                    "--arc", "first-arc",
-                    "--summary", "x",
-                    "--outcome", "x",
+                    "--type",
+                    "scene-play",
+                    "--arc",
+                    "first-arc",
+                    "--summary",
+                    "x",
+                    "--outcome",
+                    "x",
                 ],
                 env=dm_env,
             )
@@ -3586,11 +4159,16 @@ Recipients are `dm`, `party`, or a player id.
             nested = invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "interrupt-fight",
+                    "scene",
+                    "transition",
+                    "interrupt-fight",
                     "--nested",
-                    "--type", "action",
-                    "--arc", "first-arc",
-                    "--new-mode", "action",
+                    "--type",
+                    "action",
+                    "--arc",
+                    "first-arc",
+                    "--new-mode",
+                    "action",
                 ],
                 dm_env,
             )
@@ -3618,18 +4196,9 @@ Recipients are `dm`, `party`, or a player id.
                 ["opening", "prep-next"],
             )
             summaries = [event["summary"] for event in state["pending_events"]]
-            self.assertTrue(
-                any("arc create: first-arc" in item for item in summaries)
-            )
-            self.assertTrue(
-                any("scene create: opening" in item for item in summaries)
-            )
-            self.assertTrue(
-                any(
-                    "mode start scene-prep @ prep-next" in item
-                    for item in summaries
-                )
-            )
+            self.assertTrue(any("arc create: first-arc" in item for item in summaries))
+            self.assertTrue(any("scene create: opening" in item for item in summaries))
+            self.assertTrue(any("mode start scene-prep @ prep-next" in item for item in summaries))
 
     def test_scene_transition_return_restores_parent_scene_without_whole_state_save(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3642,21 +4211,30 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "interrupt-fight",
+                    "scene",
+                    "transition",
+                    "interrupt-fight",
                     "--nested",
-                    "--type", "action",
-                    "--arc", "first-arc",
-                    "--new-mode", "action",
+                    "--type",
+                    "action",
+                    "--arc",
+                    "first-arc",
+                    "--new-mode",
+                    "action",
                 ],
                 dm_env,
             )
             returned = invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "opening",
+                    "scene",
+                    "transition",
+                    "opening",
                     "--return",
-                    "--summary", "The interruption is resolved.",
-                    "--outcome", "The fight is contained.",
+                    "--summary",
+                    "The interruption is resolved.",
+                    "--outcome",
+                    "The fight is contained.",
                 ],
                 dm_env,
             )
@@ -3668,9 +4246,7 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(len(state["mode_stack"]), 1)
             self.assertEqual(state["mode_stack"][0]["mode"], "scene-play")
             self.assertEqual(state["mode_stack"][0]["scene_id"], "opening")
-            self.assertFalse(
-                (tmp_path / "campaigns" / "c1" / "arcs" / "None").exists()
-            )
+            self.assertFalse((tmp_path / "campaigns" / "c1" / "arcs" / "None").exists())
 
     def test_cross_arc_scene_transition_attributes_followup_turn_to_new_arc(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3684,12 +4260,18 @@ Recipients are `dm`, `party`, or a player id.
             transition = invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "distant-door",
+                    "scene",
+                    "transition",
+                    "distant-door",
                     "--new",
-                    "--type", "scene-play",
-                    "--arc", "second-arc",
-                    "--summary", "The first arc gives way.",
-                    "--outcome", "The crew crosses into the second arc.",
+                    "--type",
+                    "scene-play",
+                    "--arc",
+                    "second-arc",
+                    "--summary",
+                    "The first arc gives way.",
+                    "--outcome",
+                    "The crew crosses into the second arc.",
                 ],
                 dm_env,
             )
@@ -3711,9 +4293,7 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(state["active_scene_arc"], "second-arc")
             self.assertEqual(turn["scene_id"], "distant-door")
             self.assertEqual(turn["arc_id"], "second-arc")
-            self.assertFalse(
-                (tmp_path / "campaigns" / "c1" / "arcs" / "None").exists()
-            )
+            self.assertFalse((tmp_path / "campaigns" / "c1" / "arcs" / "None").exists())
 
     def test_orchestrator_play_loop_runs_across_scene_transition(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3731,21 +4311,33 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(
                 runner,
                 [
-                    "scene", "clock", "declare", "opening-pressure",
-                    "--label", "Opening pressure",
-                    "--goal", "Find the clean crossing.",
-                    "--max", "4",
-                    "--direction", "progress",
+                    "scene",
+                    "clock",
+                    "declare",
+                    "opening-pressure",
+                    "--label",
+                    "Opening pressure",
+                    "--goal",
+                    "Find the clean crossing.",
+                    "--max",
+                    "4",
+                    "--direction",
+                    "progress",
                 ],
                 dm_env,
             )
             invoke_ok(
                 runner,
                 [
-                    "beat", "start", "opening-beat",
-                    "--clock", "opening-pressure",
-                    "--label", "Crossing question",
-                    "--question", "Who controls the clean crossing?",
+                    "beat",
+                    "start",
+                    "opening-beat",
+                    "--clock",
+                    "opening-pressure",
+                    "--label",
+                    "Crossing question",
+                    "--question",
+                    "Who controls the clean crossing?",
                 ],
                 dm_env,
             )
@@ -3788,13 +4380,20 @@ Recipients are `dm`, `party`, or a player id.
                 transition = invoke_ok(
                     runner,
                     [
-                        "scene", "transition", "distant-door",
+                        "scene",
+                        "transition",
+                        "distant-door",
                         "--new",
-                        "--type", "scene-play",
-                        "--arc", "second-arc",
-                        "--summary", "The opening route resolves.",
-                        "--outcome", "The crew reaches the distant door.",
-                        "--retire-clock", "opening-pressure=The crossing is resolved.",
+                        "--type",
+                        "scene-play",
+                        "--arc",
+                        "second-arc",
+                        "--summary",
+                        "The opening route resolves.",
+                        "--outcome",
+                        "The crew reaches the distant door.",
+                        "--retire-clock",
+                        "opening-pressure=The crossing is resolved.",
                     ],
                     dm_env,
                 )
@@ -3802,21 +4401,33 @@ Recipients are `dm`, `party`, or a player id.
                 invoke_ok(
                     runner,
                     [
-                        "scene", "clock", "declare", "distant-pressure",
-                        "--label", "Distant pressure",
-                        "--goal", "Open the distant door.",
-                        "--max", "4",
-                        "--direction", "progress",
+                        "scene",
+                        "clock",
+                        "declare",
+                        "distant-pressure",
+                        "--label",
+                        "Distant pressure",
+                        "--goal",
+                        "Open the distant door.",
+                        "--max",
+                        "4",
+                        "--direction",
+                        "progress",
                     ],
                     dm_env,
                 )
                 invoke_ok(
                     runner,
                     [
-                        "beat", "start", "distant-beat",
-                        "--clock", "distant-pressure",
-                        "--label", "Door question",
-                        "--question", "What does the door demand?",
+                        "beat",
+                        "start",
+                        "distant-beat",
+                        "--clock",
+                        "distant-pressure",
+                        "--label",
+                        "Door question",
+                        "--question",
+                        "What does the door demand?",
                     ],
                     dm_env,
                 )
@@ -3838,7 +4449,7 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(state["turns"][1]["arc_id"], "second-arc")
             self.assertFalse(scripted_turns)
 
-    def test_campaign_run_mocked_agents_start_scene_prep_after_bootstrap(self) -> None:
+    def test_campaign_run_mocked_agents_use_fact_system_through_scene_play(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             campaign_id = "mocked-lifecycle"
@@ -3853,6 +4464,8 @@ Recipients are `dm`, `party`, or a player id.
                 "renno": "duty",
                 "kit": "ambition",
             }
+            fact_store: dict[tuple[str, str, str, str, str | None], dict] = {}
+            fact_counter = 0
 
             def agent_env(stream_env: dict[str, str], role: str | None = None) -> dict[str, str]:
                 patched = dict(stream_env)
@@ -3866,35 +4479,179 @@ Recipients are `dm`, `party`, or a player id.
             def glass(stream_env: dict[str, str], args: list[str], role: str | None = None) -> None:
                 invoke_ok(runner, args, agent_env(stream_env, role))
 
-            def close_turn(stream_env: dict[str, str], summary: str) -> None:
-                glass(stream_env, ["turn", "audit"])
+            def glass_output(
+                stream_env: dict[str, str],
+                args: list[str],
+                role: str | None = None,
+            ) -> str:
+                return invoke_ok(runner, args, agent_env(stream_env, role)).output
+
+            def store_fact(
+                *,
+                campaign_id: str,
+                spec,
+                actor: str | None = None,
+                turn_id: str | None = None,
+                mode: str | None = None,
+                scene_id: str | None = None,
+            ) -> dict:
+                nonlocal fact_counter
+                fact_counter += 1
+                scope_id = spec.scope_id or scene_id or "campaign"
+                fact_id = ".".join(
+                    part
+                    for part in (scope_id, spec.subject_id, spec.predicate, spec.object_id)
+                    if part
+                )
+                row = {
+                    "id": fact_id,
+                    "uid": f"{campaign_id}:fact:{fact_id}",
+                    "campaign_id": campaign_id,
+                    "scope_id": scope_id,
+                    "subject_id": spec.subject_id,
+                    "predicate": spec.predicate,
+                    "object_id": spec.object_id,
+                    "text": spec.text,
+                    "source_turn_id": turn_id,
+                    "actor": actor,
+                    "mode": mode,
+                    "scene_id": scene_id,
+                    "visibility": spec.visibility,
+                    "importance": spec.salience,
+                    "salience": spec.salience,
+                    "salience_rank": {"high": 3, "medium": 2, "normal": 2, "low": 1, "minor": 0}.get(spec.salience, 2),
+                    "audience": getattr(spec, "audience", "continuity"),
+                    "updated_at": f"{fact_counter:04d}",
+                }
+                fact_store[
+                    (
+                        campaign_id,
+                        scope_id,
+                        spec.subject_id,
+                        spec.predicate,
+                        spec.object_id,
+                    )
+                ] = row
+                return {key: value for key, value in row.items() if key != "campaign_id"}
+
+            def fake_set_fact(
+                *,
+                campaign_id: str,
+                spec,
+                actor: str | None = None,
+                turn_id: str | None = None,
+                mode: str | None = None,
+                scene_id: str | None = None,
+            ) -> dict:
+                return {
+                    "target": "in-memory-fact-store",
+                    **store_fact(
+                        campaign_id=campaign_id,
+                        spec=spec,
+                        actor=actor,
+                        turn_id=turn_id,
+                        mode=mode,
+                        scene_id=scene_id,
+                    ),
+                }
+
+            def fake_set_fact_specs(
+                *,
+                campaign_id: str,
+                specs: list,
+                actor: str | None = None,
+                turn_id: str | None = None,
+                mode: str | None = None,
+                scene_id: str | None = None,
+                require_available: bool = True,
+            ) -> dict:
+                stored = [
+                    store_fact(
+                        campaign_id=campaign_id,
+                        spec=spec,
+                        actor=actor,
+                        turn_id=turn_id,
+                        mode=mode,
+                        scene_id=scene_id,
+                    )
+                    for spec in specs
+                ]
+                return {
+                    "status": "stored" if stored else "skipped",
+                    "target": "in-memory-fact-store",
+                    "facts": stored,
+                    "count": len(stored),
+                }
+
+            def fake_fact_pack(
+                *,
+                campaign_id: str,
+                scene_id: str | None = None,
+                actor: str | None = None,
+                visibility: str = "public",
+                audience: str = "continuity",
+                limit: int = 80,
+            ) -> dict:
+                scopes = ["campaign", "party", "organization"]
+                if scene_id:
+                    scopes.extend([scene_id, f"scene.{scene_id}"])
+                if actor:
+                    scopes.extend([actor, f"character.{actor}", f"player.{actor}"])
+                visible_scopes = set(scopes)
+                visible_levels = ["public", "dm"] if visibility == "dm" else [visibility]
+                rows = [
+                    row
+                    for row in fact_store.values()
+                    if row["campaign_id"] == campaign_id
+                    and row["visibility"] in visible_levels
+                    and (audience == "all" or row.get("audience", "continuity") == audience)
+                    and (
+                        row["scope_id"] in visible_scopes
+                        or row["scene_id"] == scene_id
+                        or row["actor"] == actor
+                    )
+                ]
+                rows.sort(
+                    key=lambda row: (
+                        str(row["scope_id"]),
+                        -int(row["salience_rank"]),
+                        str(row["updated_at"]),
+                    )
+                )
+                selected = rows[:limit]
+                return {
+                    "status": "ok",
+                    "target": "in-memory-fact-store",
+                    "audience": audience,
+                    "facts": selected,
+                    "count": len(selected),
+                }
+
+            def close_turn(
+                stream_env: dict[str, str],
+                summary: str,
+                *facts: str,
+                turn_type: str | None = None,
+            ) -> None:
+                args = [
+                    "done",
+                    "--summary",
+                    summary,
+                    "--state",
+                    "no state change",
+                    "--rolls",
+                    "none",
+                    "--next",
+                    "default",
+                ]
+                for fact in facts:
+                    glass(stream_env, ["fact", "set", "--audience", "continuity", fact])
+                if turn_type is not None:
+                    args.extend(["--turn-type", turn_type])
+                glass(stream_env, args)
                 glass(
                     stream_env,
-                    [
-                        "turn",
-                        "end",
-                        "--summary",
-                        summary,
-                        "--state",
-                        "no state change",
-                        "--rolls",
-                        "none",
-                        "--next",
-                        "default",
-                    ],
-                )
-                Path(stream_env["AOG_TURN_PROSE"]).write_text(summary + "\n", encoding="utf-8")
-
-            def write_player_public_files(player_id: str) -> None:
-                public = campaign_root / "players" / player_id / "public"
-                public.mkdir(parents=True, exist_ok=True)
-                (public / "intro.md").write_text(
-                    f"{player_id} arrives with a concrete table-facing want.\n",
-                    encoding="utf-8",
-                )
-                (public / "relationships.md").write_text(
-                    f"{player_id} has a clear tie to every other crew member.\n",
-                    encoding="utf-8",
+                    ["turn", "append", "--body", summary],
                 )
 
             def fake_stream(_command, **kwargs):
@@ -3905,77 +4662,206 @@ Recipients are `dm`, `party`, or a player id.
                 actor = str(state["active_turn_actor"])
 
                 if mode == "intermission":
-                    raise AssertionError("campaign lifecycle entered intermission before scene prep")
+                    raise AssertionError(
+                        "campaign lifecycle entered intermission before scene prep"
+                    )
 
                 if mode == "organization-bootstrap":
-                    (campaign_root / "shared" / "lore").mkdir(parents=True, exist_ok=True)
-                    (campaign_root / "dm" / "notes").mkdir(parents=True, exist_ok=True)
-                    (campaign_root / "table").mkdir(parents=True, exist_ok=True)
-                    (campaign_root / "shared" / "lore" / "organization.md").write_text(
-                        "The Bellweather Compact moves people through blocked civic routes.\n",
-                        encoding="utf-8",
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "organization.identity = The Bellweather Compact moves people through blocked civic routes.",
+                        ],
+                        "dm",
                     )
-                    (campaign_root / "dm" / "notes" / "organization.md").write_text(
-                        "Private pressure: the Compact owes favors to a hidden dispatcher.\n",
-                        encoding="utf-8",
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "organization.dangerous-work = The crew opens routes that local authorities have blocked.",
+                        ],
+                        "dm",
                     )
-                    (campaign_root / "table" / "scene.md").write_text(
-                        "Character creation opens around the Compact's route table.\n",
-                        encoding="utf-8",
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "organization.character-brief = The party needs field witnesses who can move people under pressure.",
+                        ],
+                        "dm",
                     )
                     glass(stream_env, ["mode", "end"], "dm")
-                    close_turn(stream_env, "Mara establishes the party organization.")
+                    close_turn(
+                        stream_env,
+                        "Mara establishes the party organization.",
+                        "campaign.pull = The opening pull is a blocked public route with a private dispatcher behind it.",
+                    )
                     return "", "", 0, False
 
                 if mode == "character-creation":
+                    pack = glass_output(
+                        stream_env,
+                        ["fact", "pack", "--audience", "continuity", "--format", "markdown"],
+                        role,
+                    )
+                    self.assertIn("organization.identity", pack)
                     if role.startswith("player:"):
                         player = role.split(":", 1)[1]
+                        character_id = f"{player}-hero"
+                        relationship_targets = {
+                            "tev": "sumi-hero",
+                            "sumi": "renno-hero",
+                            "renno": "kit-hero",
+                            "kit": "tev-hero",
+                        }
                         create_test_character(
                             runner,
                             agent_env(stream_env),
                             player=player,
-                            character_id=f"{player}-hero",
+                            character_id=character_id,
                             name=f"{player.title()} Example",
                             primary_drive=drives[player],
                         )
-                        write_player_public_files(player)
-                        close_turn(stream_env, f"{player} creates a character.")
+                        glass(
+                            stream_env,
+                            [
+                                "fact",
+                                "set",
+                                "--audience",
+                                "continuity",
+                                f"{character_id}.identity = {player.title()} Example is a field witness for the Compact.",
+                            ],
+                            role,
+                        )
+                        glass(
+                            stream_env,
+                            [
+                                "fact",
+                                "set",
+                                "--audience",
+                                "continuity",
+                                f"{character_id}.relationship -> {relationship_targets[player]} = {player.title()} Example has one clear operational tie to another crew member.",
+                            ],
+                            role,
+                        )
+                        close_turn(
+                            stream_env,
+                            f"{player} creates a character.",
+                            f"{character_id}.status = {player.title()} Example is ready for opening play.",
+                        )
                         return "", "", 0, False
                     self.assertEqual(actor, "dm")
+                    pack = glass_output(
+                        stream_env,
+                        ["fact", "pack", "--audience", "continuity", "--format", "markdown"],
+                        "dm",
+                    )
                     for player in players:
-                        write_player_public_files(player)
+                        self.assertIn(f"{player}-hero.relationship", pack)
                     glass(stream_env, ["mode", "end"], "dm")
-                    close_turn(stream_env, "Mara ratifies the finished crew.")
+                    close_turn(
+                        stream_env,
+                        "Mara ratifies the finished crew.",
+                        "party.status = The four submitted characters are ratified for campaign planning.",
+                    )
                     return "", "", 0, False
 
                 if mode == "campaign-planning":
-                    (campaign_root / "dm").mkdir(parents=True, exist_ok=True)
-                    (campaign_root / "shared").mkdir(parents=True, exist_ok=True)
-                    (campaign_root / "dm" / "foundation.md").write_text(
-                        "The campaign opens with a civic route nobody can safely name.\n",
-                        encoding="utf-8",
+                    pack = glass_output(
+                        stream_env,
+                        ["fact", "pack", "--audience", "continuity", "--format", "markdown"],
+                        "dm",
                     )
-                    (campaign_root / "context.md").write_text(
-                        "Opening context: the Compact has one clean lead and one debt.\n",
-                        encoding="utf-8",
+                    self.assertIn("campaign.pull", pack)
+                    self.assertIn("party.status", pack)
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "campaign.opening = The campaign opens with a civic route nobody can safely name.",
+                        ],
+                        "dm",
                     )
-                    (campaign_root / "shared" / "campaign-framing.md").write_text(
-                        "The first arc asks who controls public passage.\n",
-                        encoding="utf-8",
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "arc.focus = The first arc asks who controls public passage.",
+                        ],
+                        "dm",
                     )
                     glass(stream_env, arc_create_args("first-arc"), "dm")
                     glass(stream_env, ["mode", "end"], "dm")
-                    close_turn(stream_env, "Mara plans the opening arc.")
+                    close_turn(
+                        stream_env,
+                        "Mara plans the opening arc.",
+                        "first-arc.status = First arc is ready for scene prep.",
+                    )
                     return "", "", 0, False
 
                 if mode == "scene-prep":
+                    pack = glass_output(
+                        stream_env,
+                        ["fact", "pack", "--audience", "continuity", "--format", "markdown"],
+                        "dm",
+                    )
+                    self.assertIn("campaign.opening", pack)
                     glass(
                         stream_env,
                         ["scene", "create", "opening", "--type", "social", "--arc", "first-arc"],
                         "dm",
                     )
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "--scope",
+                            "opening",
+                            "scene.objective = Secure the first clean route.",
+                        ],
+                        "dm",
+                    )
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "--scope",
+                            "opening",
+                            "route-table.descriptor = The route table shows one lead and one debt.",
+                        ],
+                        "dm",
+                    )
                     glass(stream_env, ["mode", "end"], "dm")
                     glass(stream_env, ["mode", "start", "scene-play", "opening"], "dm")
+                    pack = glass_output(
+                        stream_env,
+                        ["fact", "pack", "--audience", "continuity", "--format", "markdown"],
+                        "dm",
+                    )
+                    self.assertIn("scene.objective", pack)
+                    self.assertIn("route-table.descriptor", pack)
                     glass(
                         stream_env,
                         [
@@ -4010,12 +4896,41 @@ Recipients are `dm`, `party`, or a player id.
                         "dm",
                     )
                     glass(stream_env, ["beat", "check"], "dm")
-                    close_turn(stream_env, "Mara stages the opening scene.")
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "--scope",
+                            "opening",
+                            "opening-pressure.status = Opening pressure clock exists and is attached to the route question.",
+                        ],
+                        "dm",
+                    )
+                    close_turn(
+                        stream_env,
+                        "Mara stages the opening scene.",
+                        "scene-prep.status = Opening scene is staged for scene play.",
+                    )
                     return "", "", 0, False
 
                 if mode == "scene-play":
+                    pack = glass_output(
+                        stream_env,
+                        ["fact", "pack", "--audience", "continuity", "--format", "markdown"],
+                        role,
+                    )
+                    self.assertIn("scene.objective", pack)
+                    self.assertIn("opening-pressure.status", pack)
                     glass(stream_env, ["beat", "check"], role)
-                    close_turn(stream_env, f"{actor} plays the opening scene.")
+                    close_turn(
+                        stream_env,
+                        f"{actor} plays the opening scene.",
+                        "opening-pressure.status = The active scene-play turn keeps the route question live.",
+                        turn_type="act",
+                    )
                     return "", "", 0, False
 
                 close_turn(stream_env, f"{actor} completes {mode}.")
@@ -4024,8 +4939,18 @@ Recipients are `dm`, `party`, or a player id.
             with (
                 patch("orchestrator.main._ensure_operator_groups_active"),
                 patch("orchestrator.main._ensure_glass_api_for_run"),
-                patch("orchestrator.main._checkpoint_or_raise", return_value={"checkpoint_id": "test"}),
+                patch("orchestrator.main._ensure_fact_graph_available"),
+                patch(
+                    "orchestrator.main._checkpoint_or_raise", return_value={"checkpoint_id": "test"}
+                ),
                 patch("orchestrator.permissions.apply_campaign_permissions"),
+                patch("cli.commands.fact.set_fact", side_effect=fake_set_fact),
+                patch("cli.facts.set_fact_specs", side_effect=fake_set_fact_specs),
+                patch("cli.facts.fact_pack", side_effect=fake_fact_pack),
+                patch("cli.commands.fact.fact_pack", side_effect=fake_fact_pack),
+                patch("cli.commands.mode.fact_pack", side_effect=fake_fact_pack),
+                patch("cli.commands.facade.fact_pack", side_effect=fake_fact_pack),
+                patch("orchestrator.context.fact_pack", side_effect=fake_fact_pack),
                 patch("orchestrator.runner.ensure_background_server", return_value="http://api"),
                 patch("orchestrator.runner.mint_grant", return_value="grant"),
                 patch("orchestrator.runner._resolve_provider_executable", return_value="/bin/true"),
@@ -4046,7 +4971,7 @@ Recipients are `dm`, `party`, or a player id.
                         "--max-planning-turns",
                         "1",
                         "--max-turns",
-                        "1",
+                        "2",
                         "--no-review-stops",
                         "--turn-minimum-seconds",
                         "0",
@@ -4063,6 +4988,52 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(state["mode_stack"][-1]["scene_id"], "opening")
             self.assertNotIn("intermission", [turn["mode"] for turn in state["turns"]])
             self.assertIn("scene-prep", [turn["mode"] for turn in state["turns"]])
+            fact_texts = {row["text"] for row in fact_store.values()}
+            self.assertIn(
+                "The campaign opens with a civic route nobody can safely name.",
+                fact_texts,
+            )
+            self.assertIn("Secure the first clean route.", fact_texts)
+            self.assertIn(
+                "The active scene-play turn keeps the route question live.",
+                fact_texts,
+            )
+            fact_keys = {
+                (row["scope_id"], row["subject_id"], row["predicate"], row["object_id"])
+                for row in fact_store.values()
+            }
+            self.assertIn(("campaign", "organization", "identity", None), fact_keys)
+            self.assertIn(("campaign", "campaign", "pull", None), fact_keys)
+            self.assertIn(("campaign", "party", "status", None), fact_keys)
+            self.assertIn(("campaign", "first-arc", "status", None), fact_keys)
+            self.assertIn(("opening", "scene", "objective", None), fact_keys)
+            self.assertIn(("opening", "opening-pressure", "status", None), fact_keys)
+            for player in players:
+                self.assertTrue(
+                    any(
+                        row["subject_id"] == f"{player}-hero" and row["predicate"] == "relationship"
+                        for row in fact_store.values()
+                    ),
+                    f"missing relationship fact for {player}",
+                )
+            legacy_continuity_files = [
+                campaign_root / "shared" / "lore" / "organization.md",
+                campaign_root / "dm" / "notes" / "organization.md",
+                campaign_root / "dm" / "foundation.md",
+                campaign_root / "context.md",
+                campaign_root / "shared" / "campaign-framing.md",
+            ]
+            for player in players:
+                legacy_continuity_files.extend(
+                    [
+                        campaign_root / "players" / player / "public" / "intro.md",
+                        campaign_root / "players" / player / "public" / "relationships.md",
+                    ]
+                )
+            self.assertEqual(
+                [path for path in legacy_continuity_files if path.exists()],
+                [],
+            )
 
     def test_scene_transition_new_close_parent_keeps_new_scene_active(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4081,11 +5052,16 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "interrupt-fight",
+                    "scene",
+                    "transition",
+                    "interrupt-fight",
                     "--nested",
-                    "--type", "action",
-                    "--arc", "first-arc",
-                    "--new-mode", "scene-play",
+                    "--type",
+                    "action",
+                    "--arc",
+                    "first-arc",
+                    "--new-mode",
+                    "scene-play",
                 ],
                 dm_env,
             )
@@ -4093,14 +5069,21 @@ Recipients are `dm`, `party`, or a player id.
             transition = invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "third",
+                    "scene",
+                    "transition",
+                    "third",
                     "--new",
                     "--close-parent",
-                    "--type", "scene-play",
-                    "--arc", "first-arc",
-                    "--summary", "The interruption resolves.",
-                    "--outcome", "The room clears.",
-                    "--parent-outcome", "The opening scene is also settled.",
+                    "--type",
+                    "scene-play",
+                    "--arc",
+                    "first-arc",
+                    "--summary",
+                    "The interruption resolves.",
+                    "--outcome",
+                    "The room clears.",
+                    "--parent-outcome",
+                    "The opening scene is also settled.",
                 ],
                 dm_env,
             )
@@ -4125,25 +5108,37 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "interrupt-fight",
+                    "scene",
+                    "transition",
+                    "interrupt-fight",
                     "--nested",
-                    "--type", "action",
-                    "--arc", "first-arc",
-                    "--new-mode", "scene-play",
+                    "--type",
+                    "action",
+                    "--arc",
+                    "first-arc",
+                    "--new-mode",
+                    "scene-play",
                 ],
                 dm_env,
             )
             invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "third",
+                    "scene",
+                    "transition",
+                    "third",
                     "--new",
                     "--close-parent",
-                    "--type", "scene-play",
-                    "--arc", "first-arc",
-                    "--summary", "The interruption resolves.",
-                    "--outcome", "The room clears.",
-                    "--parent-outcome", "The opening scene is also settled.",
+                    "--type",
+                    "scene-play",
+                    "--arc",
+                    "first-arc",
+                    "--summary",
+                    "The interruption resolves.",
+                    "--outcome",
+                    "The room clears.",
+                    "--parent-outcome",
+                    "The opening scene is also settled.",
                 ],
                 dm_env,
             )
@@ -4165,9 +5160,7 @@ Recipients are `dm`, `party`, or a player id.
             self.assertEqual(turn["arc_id"], "first-arc")
             self.assertEqual(len(state["mode_stack"]), 1)
             self.assertEqual(state["mode_stack"][-1]["scene_id"], "third")
-            self.assertFalse(
-                (tmp_path / "campaigns" / "c1" / "arcs" / "None").exists()
-            )
+            self.assertFalse((tmp_path / "campaigns" / "c1" / "arcs" / "None").exists())
 
     def test_scene_transition_new_refuses_with_parent_on_stack(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -4186,23 +5179,34 @@ Recipients are `dm`, `party`, or a player id.
             invoke_ok(
                 runner,
                 [
-                    "scene", "transition", "interrupt-fight",
+                    "scene",
+                    "transition",
+                    "interrupt-fight",
                     "--nested",
-                    "--type", "action",
-                    "--arc", "first-arc",
-                    "--new-mode", "action",
+                    "--type",
+                    "action",
+                    "--arc",
+                    "first-arc",
+                    "--new-mode",
+                    "action",
                 ],
                 dm_env,
             )
             bad = runner.invoke(
                 main,
                 [
-                    "scene", "transition", "third",
+                    "scene",
+                    "transition",
+                    "third",
                     "--new",
-                    "--type", "scene-play",
-                    "--arc", "first-arc",
-                    "--summary", "x",
-                    "--outcome", "x",
+                    "--type",
+                    "scene-play",
+                    "--arc",
+                    "first-arc",
+                    "--summary",
+                    "x",
+                    "--outcome",
+                    "x",
                 ],
                 env=dm_env,
             )

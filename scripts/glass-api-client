@@ -8,13 +8,11 @@ database credentials.
 
 from __future__ import annotations
 
-import getpass
 import json
 import os
 import sys
 import urllib.error
 import urllib.request
-from pathlib import Path
 
 
 DEFAULT_TIMEOUT_SECONDS = 600
@@ -74,31 +72,7 @@ def _api_credentials() -> tuple[str | None, str | None]:
     grant = os.environ.get("GLASS_API_GRANT")
     if api_url and grant:
         return api_url, grant
-
-    for path in _candidate_credential_files():
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            continue
-        except (OSError, json.JSONDecodeError):
-            continue
-        file_url = payload.get("api_url")
-        file_grant = payload.get("grant")
-        if isinstance(file_url, str) and isinstance(file_grant, str):
-            return file_url, file_grant
     return None, None
-
-
-def _candidate_credential_files() -> list[Path]:
-    configured = os.environ.get("GLASS_API_GRANT_FILE")
-    paths: list[Path] = [Path(configured)] if configured else []
-    try:
-        user = getpass.getuser()
-    except Exception:
-        user = ""
-    if user:
-        paths.append(Path("/tmp/agents-of-glass/glass-api") / f"{user}.json")
-    return paths
 
 
 if __name__ == "__main__":

@@ -27,7 +27,7 @@ _server_url: str | None = None
 DEFAULT_WEB_API_URL = "http://127.0.0.1:26002"
 _READABLE_FILE_SUFFIXES = {".jsonl", ".md", ".txt"}
 _EXCLUDED_FILE_NAMES = {".glass-grants.json"}
-_EXCLUDED_PATH_PARTS = {".git", ".glass-cwd", "__pycache__"}
+_EXCLUDED_PATH_PARTS = {".git", "__pycache__"}
 _MAX_FILE_BYTES = 512_000
 _CURSOR_SEPARATOR = "::"
 _FILE_SECTION_TERMS = {
@@ -1297,7 +1297,7 @@ def _safe_campaign_path(campaign_root: Path, raw_path: str) -> Path:
         raise GlassError(
             agent_instruction(
                 "campaign file path must be relative",
-                "Use a path relative to the campaign root, such as `table/scene.md` or `shared/lore/<kind>/<slug>.md`.",
+                "Use a path relative to the campaign root only for read-only viewer/archive file endpoints.",
             )
         )
     root = campaign_root.resolve()

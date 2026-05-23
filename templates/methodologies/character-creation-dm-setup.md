@@ -1,23 +1,13 @@
----
-title: Character Creation DM Setup
-status: authored
-audience: dm
-applies_to_modes: [character-creation]
----
-
 # Character Creation DM Setup
 
-Use this only when the organization bootstrap did not already put a usable
-character-creation brief on the table, or when Mara needs to refresh that brief
-before player build turns.
+Goal: make the organization constraints and missing character requirements clear.
 
-1. Verify `shared/lore/organization.md` and `table/scene.md` exist. Treat
-   `context.md` and `shared/campaign-framing.md` as optional at this stage.
-2. Read [`how-to/narration-craft-dm.md`](../how-to/narration-craft-dm.md).
-3. Put the character creation brief on the table with
-   `glass table write scene.md --body "<who the organization is, what roles it needs, and what kinds of people fit>"`.
-4. Run `glass lore list`.
-5. Write `TURN.md` with the player-facing creation brief.
-6. Run `glass done --summary "character creation brief is ready" --state "organization brief refreshed on the table" --rolls none --next default`.
+1. Call `glass_check()`.
+2. Use `glass_character_bulk_get(all_characters=True)` and `glass_fact_pack(audience="continuity", output_format="markdown")`.
+3. Identify which players still need sheets or required fields.
+4. Use messages for specific missing choices.
+5. Add or repair neutral setup facts with `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<character-id>", "predicate": "<predicate>", "text": "<neutral setup fact>"}])`.
+6. Close with `glass_done(..., scene_status="active")`.
+7. Submit a short public setup note with `glass_turn_append(body="...")`.
 
-Do not run `glass mode end`.
+Do not write character-creation files.

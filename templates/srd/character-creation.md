@@ -8,15 +8,17 @@ authority: rules
 
 ## Species
 
-Pick one species from `shared/lore/species/`. Species effects are narrative,
-not numerical. There is no orc strength bonus or gnome attunement bonus.
+Pick one species from injected reference lore or `glass_lore_search "species"`.
+Species effects are narrative, not numerical. There is no orc strength bonus or
+gnome attunement bonus.
 
-Read the species page and play its texture.
+Use the reference texture, then commit only the chosen character facts.
 
 ## Culture
 
 Culture is independent of species. Names follow culture, not species. Use
-`shared/lore/cultures/` and the naming conventions.
+injected reference lore or `glass_lore_search "culture"` for naming
+conventions.
 
 ## Archetype And Organization Role
 

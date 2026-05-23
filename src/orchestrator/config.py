@@ -79,11 +79,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         # When enabled, pass that id to `claude -p --session-id ...`.
         "use_session_id": False,
         # 60 minutes per turn. The DM in campaign-planning mode reads the
-        # methodology, persona, world bible, does web search for the
-        # anti-sameness pulls, and writes 8+ files per invocation. Tight
-        # caps cut the agent off mid-thought and produce timeout failures
-        # rather than transcripts. Override in agents-of-glass.toml if
-        # you observe a different cadence.
+        # methodology, injected facts/reference lore, and any configured
+        # anti-sameness pulls. Tight caps cut the agent off mid-thought and
+        # produce timeout failures rather than transcripts. Override in
+        # agents-of-glass.toml if you observe a different cadence.
         "turn_timeout_seconds": 3600,
     },
     "caps": {

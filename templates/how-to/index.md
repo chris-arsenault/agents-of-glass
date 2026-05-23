@@ -14,7 +14,7 @@ instructions have mechanical tool behavior.
 
 - [`action-narration.md`](action-narration.md) — narrating rolls and pressure.
 - [`action-scene-reference.md`](action-scene-reference.md) — optional action
-  scene patterns, trackers, pressure, and outcome authority.
+  scene patterns, scene clocks, character consequences, and outcome authority.
 - [`archetypes-and-tone.md`](archetypes-and-tone.md) — class-like archetype
   examples, organization role examples, and tone guidance.
 - [`narration-craft-dm.md`](narration-craft-dm.md) — DM prose craft, named

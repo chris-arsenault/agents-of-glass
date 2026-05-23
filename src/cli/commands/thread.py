@@ -101,12 +101,21 @@ def thread() -> None:
 @thread.command("current")
 @click.pass_context
 def thread_current(ctx: click.Context) -> None:
+    emit(current_thread_service(command_path=ctx))
+
+
+def current_thread_service(
+    *,
+    command_path: click.Context | str = "glass_thread_current",
+) -> dict[str, Any]:
+    """Read DM scaffolding threads."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     result = {"threads": state.get("threads", {})}
-    append_audit(paths, state, ctx, "thread.current", {}, result)
-    emit(result)
+    append_audit(paths, state, command_path, "thread.current", {}, result)
+    return result
 
 
 @thread.command("beat")
@@ -143,6 +152,23 @@ def thread_beat(ctx: click.Context, thread_id: str) -> None:
 @click.option("--note", default="")
 @click.pass_context
 def thread_advance(ctx: click.Context, thread_id: str, note: str) -> None:
+    advance_thread_service(
+        command_path=ctx,
+        emit_output=True,
+        thread_id=thread_id,
+        note=note,
+    )
+
+
+def advance_thread_service(
+    *,
+    command_path: click.Context | str = "glass_thread_advance",
+    emit_output: bool = False,
+    thread_id: str,
+    note: str = "",
+) -> dict[str, Any]:
+    """Advance a DM scaffolding thread."""
+
     require_dm()
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -159,11 +185,13 @@ def thread_advance(ctx: click.Context, thread_id: str, note: str) -> None:
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "thread.advance",
         command_params(thread_id=thread_id, note=note),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 class MessageGroup(click.Group):

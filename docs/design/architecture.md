@@ -1,289 +1,167 @@
 # Architecture
 
-The system's structural shape: components, data stores, agents, how they exchange state. For the deeper "why," see [`../principles/`](../principles/). The authoritative store boundaries are in [`persistence.md`](persistence.md).
+The system's structural shape: components, data stores, agents, and how they
+exchange state. The short version is strict: agents interact with the campaign
+only through the `glass` CLI.
 
 ## Components At A Glance
 
-```
-       Orchestrator (Python)
-         |
-         | spawns claude -p ... per turn
-         |
-   +-----+-----+-----+-----+-----+
-   |     |     |     |     |     |
-  Mara  Tev  Sumi  Renno  Kit
-  (DM)
-   |     |     |     |     |
-   +--+--+--+--+--+--+--+--+
-      |
-      | calls
-      v
-   glass CLI  (single tool surface)
-      |
-      +----> Markdown files  (prose: lore, notes, derived exports)
-      +----> Postgres        (runtime state, public turns, hard stats, search)
+```text
+      Orchestrator (Python)
+        |
+        | builds one injected prompt and spawns a provider turn
+        v
+  Mara / Tev / Sumi / Renno / Kit
+        |
+        | calls only
+        v
+     glass CLI
+        |
+        +--> FalkorDB fact graph  (neutral continuity facts)
+        +--> Postgres             (turns, events, characters, rolls, messages)
+        +--> operator files       (templates, exports, durable reference)
 ```
 
-The orchestrator is dumb. The CLI is the only path to state. The agents have agency *within their turns*.
+The orchestrator owns turn order and process control. The CLI is the only live
+state interface. The agents have agency inside their turns, but they do not get
+an alternate file, API, database, or stdout state path.
 
-## Two Data Surfaces
+## Agent Runtime Contract
 
-### 1. Markdown — the readable surface
+There is one agent runtime path:
 
-All prose lives in markdown, in three layers:
+1. The orchestrator builds an injected prompt containing identity, mode, scene,
+   selected methodology, allowed commands, current facts, hard-state cues,
+   messages, and the output contract.
+2. The orchestrator stages the turn with `glass turn begin`.
+3. The provider process starts with `cwd = templates/`, which is read-only
+   durable reference for methodology, rules, examples, and style.
+4. The agent reads current state through `glass check`, `glass fact pack`, and
+   other commands explicitly named in the prompt or methodology.
+5. The agent mutates durable state only through `glass` commands.
+6. The agent records neutral continuity with `glass fact set` or
+   `glass done --fact`.
+7. The agent closes with `glass done`.
+8. The agent submits public prose with `glass turn append --body`.
+9. The orchestrator verifies the committed turn row and advances from that
+   durable boundary.
 
-- **World bible** — `../the-glass-frontier-lore/`. Read-only. The full pre-existing canon. **DM-only** — players never see it directly, and it is *not* bulk-copied into the campaign (that would poison every agent's context with detail that doesn't matter to *this* campaign). The DM consults it as reference, and explicitly imports relevant entries into the campaign via `glass lore import`. See [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md#curate-dont-copy).
-- **Campaign lore** — `campaigns/<id>/shared/lore/`. Writable. The curated subset of world-bible entries (imported during campaign planning, 8-15 to start; more on demand during play) plus campaign-emergent entries: NPCs the party has met, locations they've discovered, events they've caused, faction reputations they've earned. **Encyclopedia-shaped, not notes-shaped** — same frontmatter + prose + sections pattern as the world bible. Players see this. Players also draft new entries into their `drafts/`; the DM ratifies (canonize) or rejects via `glass note`. Ratified entries land here and are indexed for recall.
-- **Player-facing context** — three levels: `campaigns/<id>/context.md`, `arcs/<arc>/context.md`, `arcs/<arc>/scenes/<scene>/context.md`. Each authored by the DM, projected into player CWDs as `campaign-context.md`, `arc-context.md`, `scene-context.md`. See [`game-start.md`](game-start.md) and [`context-packages.md`](context-packages.md).
-- **Instruction surfaces** — `instructions/`, `methodologies/`, `srd/`,
-  and `how-to/`. These are copied from templates into each campaign so runtime
-  agents have local binding tool instructions, workflows, public rules, and
-  optional examples. See [`instruction-surface.md`](instruction-surface.md).
-- **Public table** — `campaigns/<id>/table/`. The immediate shared state that
-  player agents can see in their projected CWD: `scene.md`, optional
-  `handouts/`, plus named table-root markdown artifacts the DM creates for
-  visible lore in play. There is no authored `table/index.md`. Reset on scene
-  create, archived on scene end. The table is not a generated query, DM-note mirror,
-  or "everything visible in the web UI"; see [`table.md`](table.md).
-- **Personal notes** — agent-private. Player journals (free-form, may have subdirectories) and the DM workspace (planning drafts, in-progress NPCs). **Journal-shaped, not encyclopedia-shaped.** For thinking; not the canonical record.
+The local Glass API grant exists only so the `glass` process can proxy commands
+from an isolated provider process. Agents are not instructed to call that API,
+do not receive a grant file, and do not treat HTTP as an interaction mode.
 
-Plus derived transcript exports for human review and git history. The public turn corpus itself is structured Postgres rows (see [`../principles/transcripts-as-corpus.md`](../principles/transcripts-as-corpus.md)).
+## What Agents Cannot Do
 
-Markdown is human-diffable, version-controllable, and the natural medium for narrative content.
+During an orchestrated turn, agents do not:
 
-### Viewer Visibility Is Not Player-Agent Visibility
+- create, edit, or delete campaign files
+- create scratch files
+- maintain player or DM working directories
+- write public prose to files
+- commit markdown syncs
+- write SQL or query databases directly
+- call local API endpoints directly
+- use provider stdout as public prose or state
 
-The web UI is allowed to be an operator/audience inspection surface for the
-whole campaign. It may show DM notes, lore, messages, and raw
-campaign files. That broad viewer access must not be used to decide what the
-player agents could see.
+The only exception is ordinary CLI command output: `glass` returns YAML or text
+on stdout so the agent can read the command result. That stdout is not a state
+channel by itself.
 
-Player-agent visibility is defined by the per-turn projected CWD and the
-role-authorized `glass` commands. The UI's Active Table panel is a specialized
-view of that model: it renders only `campaigns/<id>/table/**`, because that is
-the shared board projected into every player turn.
+## Data Stores
 
-### 2. Postgres — the hard-state and queryable-corpus surface
+### FalkorDB Fact Graph
 
-Anything that needs crisp ground-truth, plus the orchestrator-supplied metadata that makes the corpus queryable:
+The fact graph is the agent-readable continuity layer. It stores neutral facts
+such as organization definition, scene objectives, visible world state,
+character relationships, current commitments, and other durable statements that
+future agents must rely on without inheriting narrative phrasing.
 
-- Character sheets (attributes, skills, archetype, current momentum)
-- Inventory (per character)
-- HP and status conditions
-- Character consequences (lasting injuries, capture, obligations, other persistent effects)
-- Durable clocks (campaign / arc / thread / faction / NPC pressure)
-- Dice events (every roll, with context)
-- Mode/runtime state (mode stack, speaker queue, turn counter, closing countdown)
-- Campaign runtime metadata
-- **Per-turn metadata** (turn id, campaign, arc, scene, mode/scene-type, speaker, role, character, turn number, timestamp) — orchestrator-supplied, not agent-supplied. See [`context-packages.md`](context-packages.md).
-- **Turn prose** split from metadata in structured `turns` rows. `transcript.md` is a derived markdown export/cache, not the canonical communication surface.
-- **Messages** (the `glass msg` bus — sender, recipient, type, body, read state). See [`messaging.md`](messaging.md).
-- **Tarot influences** for actual-play creative nudges. See
-  [`creative-influences.md`](creative-influences.md).
+Agents read it with:
 
-The Postgres schema is small. Don't push lore/notes into it as "description" columns — durable authored world prose lives in markdown. Turn prose is different: it is the public corpus and viewer feed, so it is stored in Postgres with structured metadata and also exported to markdown for git/human inspection.
+```bash
+glass fact pack --format markdown
+glass fact pack --format yaml
+```
 
-Postgres is on the LAN.
+Agents write it with:
+
+```bash
+glass fact set [--scope <scope>] "subject.predicate = value"
+glass done --fact "subject.predicate = value"
+```
+
+### Postgres
+
+Postgres owns hard and queryable state:
+
+- turn rows and public prose
+- events and audit records
+- character sheets, HP, momentum, inventory, skills, and consequences
+- rolls, scene pressure tracker movement, and scene clock movement
+- messages and read checkpoints
+- runtime state such as mode, active arc, active scene, queues, and turn number
+- search chunks and embeddings
+
+Agents never connect to Postgres directly. They use purpose-built `glass`
+commands.
+
+### Operator Files
+
+Markdown and other files remain useful for operator inspection, durable
+reference, exports, and authored material outside live agent turns:
+
+- `templates/` contains read-only instructions, methodologies, SRD, how-to
+  guidance, style references, and baseline personas.
+- `campaigns/<id>/` may contain operator/debug files, exports, and curated
+  prose reference.
+- transcript markdown exports are generated readability artifacts; the durable
+  public corpus is Postgres `turns`.
+
+Files are not the live agent state transport.
 
 ## The Orchestrator
 
-A Python process. Its job is small:
+The orchestrator:
 
-1. Hold the campaign + scene state machine (which phase, which arc, which scene, which mode, which budgets, whose turn).
-2. Build the next agent's per-turn `TURN_START.md` under `dm/turns/` or `players/<id>/turns/`, then refresh that actor's visible campaign projection in `.glass-cwd/`.
-3. Spawn `claude -p --dangerously-skip-permissions` in the projection. All tools are available; the role-specific state grant is enforced by the local `glass` API/CLI boundary.
-4. Wait for the subprocess to exit.
-5. Commit the agent's prose through `glass turn append`, which inserts a structured `turns` row and writes a derived markdown transcript export.
-6. Update Postgres-backed runtime state. Decide next speaker. Loop.
+1. selects the next agent
+2. builds the injected prompt
+3. stages the turn
+4. starts the provider with the `glass` command environment
+5. waits for provider exit
+6. verifies `glass done` and `glass turn append --body`
+7. advances runtime state from the last committed boundary
 
-The orchestrator does **not**:
-
-- Write to Postgres directly (only via the `glass` CLI, same as the agents).
-- Make narrative decisions.
-- Override agent output.
-
-### Resumability
-
-The orchestrator is **resumable**, not one-shot. Runtime state lives in Postgres (campaign row, mode stack, current turn number, next-speaker queue, last-spoken agent), and the structured turn corpus lives in Postgres. If the process dies or is ctrl-C'd mid-scene, restarting picks up where it left off — the previous turn either committed or didn't via the `glass turn append` boundary, and the orchestrator advances from the last consistent state.
-
-For v1, when an agent fails (timeout, claude error, malformed output), the orchestrator stops and waits for the operator. No automatic retries, no automatic recovery. The operator inspects, fixes, resumes — or clears state and starts over.
-
-### Operator CLI (separate from `glass`)
-
-`glass` is the in-play tool surface for agents and the orchestrator. The operator (the human running this) needs a different surface: create a campaign, list campaigns, tail a running scene, clear scene/arc/campaign state, restart from a known point. This is the `aog` CLI and is not exposed to agents.
-
-For v1: foreground stdout monitoring is enough. The operator runs the orchestrator in the foreground, watches turns scroll by, ctrl-C's to interrupt. Real logging and a richer ops CLI are post-MVP.
-
-### Audit log
-
-Every `glass` call (including the orchestrator's own internal calls) writes to a per-scene audit log — JSON lines, `arcs/<arc>/scenes/<scene>/audit.jsonl`. This is the operational record (timestamps, command, args, return, errors) and is distinct from the transcript (the corpus). Useful for debugging, replay, and post-hoc analysis. The orchestrator inlines a subset of these (rolls, HP changes) into the transcript at the right turn boundary; the full audit lives in the JSONL.
-
-This separation is deliberate. The orchestrator is straightforward to reason about; the agents are swappable; the CLI is the only state-mutation choke point.
+The orchestrator does not make narrative decisions, parse prose for hidden
+schemas, or accept file artifacts as turn output.
 
 ## The `glass` CLI
 
-A single binary (Python, distributed via the project's venv). All state mutations go through it. Both the orchestrator and the agents call it.
+`glass` is the contract. It provides:
 
-Surface (subject to refinement in [`turn-loop.md`](turn-loop.md), [`mechanics.md`](mechanics.md), [`messaging.md`](messaging.md)):
+- fact graph reads and writes: `glass fact pack`, `glass fact set`
+- turn boundaries: `glass turn begin`, `glass done`, `glass turn append --body`
+- combined status: `glass check`
+- character state: `glass character ...`
+- mechanics: `glass roll`, `glass scene pressure`, scene trackers, scene clocks, durable clocks, HP, and consequences
+- messages: `glass msg ...`
+- past-turn recall: `glass turns find`, `glass turns feed`, `glass find`
+- operator/debug commands outside the agent allowlist
 
-```
-glass arc create <slug>               # DM only — scaffold an arc dir
-glass arc activate <slug>             # DM only — set active arc
-glass arc current | list
-glass scene create <slug> --type <label>  # DM only — scaffold a scene dir
-glass scene current | list | end
-glass scene tracker set|tick|list         # DM clocks/progress trackers
-glass scene pressure                      # roll-mediated reduction of scene targets
-glass clock set|tick|list|show|resolve    # durable cross-scene clocks
-glass table show|write|append|use|snapshot
-glass mode push <mode> | pop | current    # nested modes within a scene
-glass turn initiative                     # DM only — roll/persist action-scene order
-glass turn handoff <agent>                # one-off next-speaker override
-glass roll <skill> <attribute> --risk <level> [--character <id>]
-glass character bulk-get|bulk-update
-glass character new|get|set-hp|set-momentum|inventory-add|inventory-rm
-glass character signature-status|signature-add
-glass character consequence-add|consequence-list|consequence-resolve
-glass note propose <file.md>          # player → DM intake
-glass note ratify <id>                # DM accepts proposal
-glass sync apply [path-or-directory ...]   # commit projected markdown edits
-glass search text|semantic <query>
-glass tarot current|list|draw
-glass thread current | beat <id>
-glass turn append <markdown>          # orchestrator typically calls this
-glass msg <type> <recipient> <body>   # see messaging.md
-glass turns find [--text ...]
-glass summary show|write|append
-```
+Role permissions are enforced per command by environment and grant checks. The
+injected prompt also lists the expected command subset for the current turn, but
+the CLI is the implementation boundary.
 
-Permissions are per-subcommand, enforced by an environment variable the orchestrator sets when it spawns each agent (e.g. `GLASS_ROLE=player_tev`). The CLI checks the role and rejects calls outside the allowlist.
+## Viewer Boundary
 
-## The Agents
+The web UI is an observer surface. It may display campaign files, facts, turns,
+messages, clocks, and debug records. That does not make those surfaces agent
+context. Agent visibility is only:
 
-Five `claude -p` invocations, one per person at the table. Each is given:
-
-- Their **role prompt** (who they are — see [`agents.md`](agents.md))
-- Their **context window** (recent transcript, current mode framing, their own notes, relevant lore excerpts)
-- Their **tool allowlist** (which `glass` subcommands they can call)
-
-Agents return when they've produced `TURN.md` and completed `glass turn end`.
-They can call tools as much as they want during the turn — look up lore, check
-their notes, roll dice, write a journal entry — but the turn ends only after
-public prose and the compact closeout exist.
-
-See [`agents.md`](agents.md) for the people, [`turn-loop.md`](turn-loop.md) for the turn shape.
-
-Because each invocation starts cold, actor transitions are a major cost. The
-system deliberately keeps resolution inside the current actor's turn when that
-actor has authority to resolve it. This is why the DM rolls DM-side PC checks
-directly instead of handing to a player just to request dice. See
-[`../principles/minimize-actor-transitions.md`](../principles/minimize-actor-transitions.md).
-
-## Data Flow Per Turn
-
-1. Orchestrator decides whose turn it is (mode-dependent — see [`modes.md`](modes.md)).
-2. Orchestrator writes the agent's per-turn `TURN_START.md` into that agent's canonical numbered campaign turn directory, then refreshes an actor-owned projected workspace containing only files that actor may see.
-3. Orchestrator exposes the active turn inside that projection at `turns/` and spawns `claude -p "Read turns/TURN_START.md and take your turn."` with CWD set to the projection and a role-scoped `glass` grant.
-4. Agent runs its own tool loop. May call `glass roll`, `glass search text`, `glass character set-hp`, `glass msg`, etc. — each call is logged to the audit trail.
-5. Agent writes public prose to `TURN.md`, records compact closeout with `glass turn end`, and exits.
-6. Orchestrator calls `glass turn append` with `TURN.md` and the closeout JSON. The CLI writes the structured turn row to Postgres and refreshes the markdown transcript export.
-7. Orchestrator evaluates mode-end conditions (deferred — see [`scene-ending.md`](scene-ending.md)); per-turn files remain available for debugging.
-8. Loop.
-
-Note: agents do not emit structured delta blocks. Whose turn is next, what mode is active, what the player intended — none of that is YAML the agent ships. The orchestrator already knows the speaker and mode from its own state; the DM reads the player's prose to understand intent. See [`turn-loop.md`](turn-loop.md) for the full prose-first principle, and [`../principles/codify-only-what-drifts.md`](../principles/codify-only-what-drifts.md) for the rule.
-
-## Process Isolation
-
-Each agent runs as a separate `claude -p` subprocess inside a stable per-actor
-projection (`cwd = .glass-cwd/<campaign>/<agent>/`). The projection is refreshed
-for each turn and is
-campaign-shaped: paths such as `table/scene.md`,
-`players/tev/public/intro.md`, and `shared/lore/` keep the same relative
-location they have in `campaigns/<id>/`, but only files visible to that actor
-are copied in.
-
-**The model:**
-
-- The orchestrator/operator runs as the operator user (`dev` in local development).
-- Spawned agent processes run as dedicated Unix users: `aog-mara` for the DM, plus `aog-tev`, `aog-sumi`, `aog-renno`, and `aog-kit` for players.
-- A shared group `aog-agents` contains all agents. Each actor also has a primary group matching their Unix user. Projection roots are owned by the actor and grouped to the operator's primary group, so the spawned actor can work in the projection while the operator/API can inspect and refresh it without depending on refreshed supplementary groups.
-- Canonical campaign workspace files stay operator-owned. Agents do not get direct filesystem authority over `campaigns/<id>/`; durable mutation goes through Glass commands and the local Glass API.
-- Per-turn artifacts live under the spawning agent's canonical campaign directory (`dm/turns/<NNNN>/` or `players/<id>/turns/<NNNN>/`). The actor projection exposes only the active turn at stable unnumbered `turns/` paths.
-- Each projection root is owned by the spawned actor (`aog-mara`, `aog-tev`, etc.). Read-only projection material is read-only to the actor but writable by the operator group so the API can refresh same-turn canonical changes; role-authorized document surfaces plus the current projected turn dir are writable to the actor. The current turn dir must pass a create/edit/delete probe as that actor before Claude starts. Persistent mutations go through `glass`: document edits are committed with `glass sync apply`, while hard state uses purpose-built CLI commands. The local API uses the projection as cwd but writes to the canonical campaign root.
-- Agent invocations spawn via `sudo -u aog-<actor>` (NOPASSWD per a sudoers entry installed at provisioning time).
-
-**Operator setup (run once):**
-
-```
-sudo bash scripts/provision-agents.sh
-```
-
-This creates the Unix users + groups, adds the operator (`SUDO_USER`) to all relevant groups, installs `/usr/local/bin/aog-permset` (the privileged helper that the orchestrator calls via sudo to chown/chmod actor-owned projections), grants `aog-agents` read access to the sibling Glass Frontier lore repository when present, and writes a sudoers rule at `/etc/sudoers.d/agents-of-glass`.
-
-The required agent users are `aog-mara`, `aog-tev`, `aog-sumi`, `aog-renno`, and `aog-kit`. If any are missing, Unix isolation is not considered provisioned.
-
-## What Lives Where (Quick Reference)
-
-| Concern | Store |
-|---------|-------|
-| Lore prose | Markdown (read-only from lore repo) |
-| Public turn corpus | Postgres `turns` table + campaign/scene markdown exports |
-| Search index | Postgres `search_chunks` |
-| Event log | Postgres `events` + turn event summaries |
-| DM canonical NPCs | Markdown |
-| Player private journal | Markdown (per-agent dir) |
-| Character sheet | Postgres + cached markdown summary |
-| Current HP, momentum | Postgres |
-| Inventory | Postgres |
-| Dice events | Postgres (audit) + turn event summaries |
-| Tarot influences | Postgres `tarot_influences` |
-| Beat advancement | Postgres events + turn event summaries |
-| Mode transitions | Postgres runtime state + event summaries |
-| Scene trackers / initiative | Postgres |
-
-## Configuration
-
-A single `agents-of-glass.toml` at the repo root holds non-secret config:
-Postgres URL, model selection, hard caps, orchestrator pacing, debug flags,
-paths to lore-repo, templates dir, and campaigns dir.
-
-Secrets (API keys, database passwords) are injected by the operator's secrets-management solution at the environment level — not stored in the TOML, not committed.
+- what the injected prompt includes
+- what an authorized `glass` command returns
 
 ## Testing Strategy
 
-For v1: **CLI-only tests.** We test `glass` subcommands against the real data stores — they're cheap to spin up and the CLI is the contract. We do *not* write tests for the orchestrator loop or for agent behavior; LLM nondeterminism makes those tests fragile, and the corpus itself is our integration signal.
-
-When the build hits a place where a test would protect future iteration, write one — at the CLI level. Don't write end-to-end orchestrator tests with mocked agents; the design isn't stable enough to make them durable, and the burn rate isn't low enough to make them cheap.
-
-## Repo Layout (Anticipated)
-
-```
-agents-of-glass/
-  README.md
-  docs/
-    principles/
-    design/
-    research/
-  src/
-    glass/                # the CLI
-    orchestrator/         # the Python loop
-    schema/               # postgres schemas
-  templates/              # authored input — copied into campaigns/<id>/ on creation
-    dm/, players/, shared/, instructions/, methodologies/, srd/, how-to/
-  campaigns/<id>/         # per-campaign live state — see game-start.md and context-packages.md
-    context.md            # player-facing campaign-level
-    table/                # public short-term scene state
-    dm/, players/, shared/, instructions/, methodologies/, srd/, how-to/
-    arcs/<arc>/
-      context.md          # player-facing arc-level
-      plan.md             # DM-only
-      scenes/<scene>/
-        context.md        # player-facing scene-level
-        prep.md           # DM-only
-        transcript.md
-        audit.jsonl
-  modes/                  # one md file per mode (scene type)
-  pyproject.toml
-```
-
-The detailed campaign layout lives in [`game-start.md`](game-start.md) and [`context-packages.md`](context-packages.md). Final layout settles when the orchestrator and CLI exist.
+For v1, tests concentrate at the CLI boundary because the CLI is the contract.
+LLM behavior is evaluated through corpus review and real campaign runs, not by
+mocked end-to-end agent tests.

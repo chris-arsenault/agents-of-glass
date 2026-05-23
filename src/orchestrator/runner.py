@@ -7,10 +7,7 @@ from pathlib import Path
 from typing import Any
 import json
 import os
-import grp
-import pwd
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -24,12 +21,6 @@ from cli.api_server import ensure_background_server
 from .config import AogConfig, config_env_value, provider_for_actor
 from .context import ContextBuilder, ContextPackage
 from .glass_bridge import GlassBridgeError
-from . import permissions
-from .projection import (
-    copy_turn_artifacts_to_canonical,
-    unsynced_workspace_changes,
-    writable_probe_dirs,
-)
 from .state import (
     AGENTS_BY_ID,
     Agent,
@@ -56,8 +47,6 @@ class TurnResult:
     prose: str
     dry_run: bool
     turn_end: dict[str, Any] | None = None
-    turn_prose_path: Path | None = None
-    turn_closeout_path: Path | None = None
     duration_seconds: float | None = None
     queued_speaker_entry: dict[str, Any] | None = None
     action_order_entry: dict[str, Any] | None = None
@@ -528,6 +517,41 @@ class Orchestrator:
                 os.environ["GLASS_CONFIG"] = previous
         return _collect_turn_end(runtime_turn, expected_turn_id=expected_turn_id)
 
+    def _collect_committed_turn_from_postgres(
+        self,
+        campaign: str,
+        *,
+        expected_turn_id: str,
+    ) -> dict[str, Any]:
+        from cli import db as _glass_db
+        from cli.config import load_config as _load_glass_config
+
+        turn_number = _turn_number_from_turn_id(expected_turn_id)
+        previous = os.environ.get("GLASS_CONFIG")
+        os.environ["GLASS_CONFIG"] = config_env_value(self.config)
+        try:
+            toml_data = _load_glass_config()
+            if not _glass_db.postgres_configured(toml_data):
+                raise ValueError("Postgres runtime is required for public prose")
+            pg_config = _glass_db.load_pg_config(toml_data)
+            with _glass_db.connect(pg_config) as conn:
+                records = _glass_db.turn_list(
+                    conn,
+                    campaign_id=campaign,
+                    turn_id=turn_number,
+                    limit=1,
+                )
+        finally:
+            if previous is None:
+                os.environ.pop("GLASS_CONFIG", None)
+            else:
+                os.environ["GLASS_CONFIG"] = previous
+        if not records:
+            raise ValueError(
+                'missing public prose row; call `glass_turn_append(body="<public prose>")` after `glass_done(...)`'
+            )
+        return records[0]
+
     def run_loop(
         self,
         state: SessionState,
@@ -649,9 +673,8 @@ class Orchestrator:
         if dry_run:
             prose = (
                 f"_Dry run: prepared turn `{package.turn_id}` for {agent.display_name}. "
-                f"TURN_START at `{package.turn_start_path}`._"
+                "Prompt was injected directly; no turn files were written._"
             )
-            package.turn_prose_path.write_text(prose.rstrip() + "\n", encoding="utf-8")
             return TurnResult(
                 turn_id=package.turn_id,
                 agent=agent,
@@ -659,7 +682,6 @@ class Orchestrator:
                 spawn_cwd=package.spawn_cwd,
                 prose=prose,
                 dry_run=True,
-                turn_prose_path=package.turn_prose_path,
                 duration_seconds=0.0,
                 queued_speaker_entry=queued_entry,
                 action_order_entry=action_entry,
@@ -690,74 +712,6 @@ class Orchestrator:
                     "lines": command_lines,
                 },
             )
-        if not result.dry_run:
-            try:
-                unsynced_changes = unsynced_workspace_changes(
-                    result.spawn_cwd,
-                    result.agent,
-                )
-            except Exception as exc:
-                self._append_turn_warning(
-                    state,
-                    result,
-                    {
-                        "reason": "workspace_sync_check_failed",
-                        "message": "could not inspect projected workspace for unsynced edits",
-                        "error": repr(exc),
-                    },
-                )
-            else:
-                if unsynced_changes:
-                    self._append_turn_warning(
-                        state,
-                        result,
-                        {
-                            "reason": "workspace_has_unsynced_markdown",
-                            "message": (
-                                "projected workspace has markdown edits that were not "
-                                "committed with glass sync apply"
-                            ),
-                            "changes": unsynced_changes,
-                            "count": len(unsynced_changes),
-                        },
-                    )
-
-        if result.turn_prose_path is None:
-            raise TurnFailure(
-                "Turn result did not include a prose file.",
-                {
-                    "reason": "missing_turn_prose_path",
-                    "turn_id": result.turn_id,
-                    "speaker": result.agent.id,
-                    "turn_dir": str(result.turn_dir),
-                },
-            )
-
-        # The agent's TURN.md is what we commit. glass turn append owns the
-        # transcript header; we just hand it the markdown file.
-        append_args = [
-            "turn",
-            "append",
-            str(result.turn_prose_path),
-        ]
-        try:
-            self.store.glass.invoke(
-                append_args,
-                role=result.agent.glass_role,
-                campaign=state.campaign,
-            )
-        except GlassBridgeError as exc:
-            raise TurnFailure(
-                "glass turn append failed.",
-                {
-                    "reason": "glass_turn_append_failed",
-                    "turn_id": result.turn_id,
-                    "speaker": result.agent.id,
-                    "turn_dir": str(result.turn_dir),
-                    "glass_output": exc.result.output,
-                },
-            ) from exc
-
         self.store.append_audit(
             state.campaign,
             {
@@ -973,7 +927,7 @@ class Orchestrator:
                 f"System recovery notice: Mara's turn `{result.turn_id}` did not hand control to a playable mode.",
                 instruction,
                 "",
-                "On your next turn, make the missing handoff explicit and close with `glass done`.",
+                "On your next turn, make the missing handoff explicit and close with `glass_done(...)`.",
             ]
         ).strip()
         queued_entry = self._peek_next_speaker_entry(state.campaign)
@@ -1095,7 +1049,7 @@ class Orchestrator:
         fixes = _turn_end_fix_suggestions(problems)
         lines = [
             f"System recovery notice: your turn `{turn_id}` did not close cleanly.",
-            f"Review the reported problems, correct them, then rerun `glass done`.",
+            "Review the reported problems, correct them, then rerun `glass_done(...)`.",
             "",
             "Problems:",
         ]
@@ -1137,7 +1091,7 @@ class Orchestrator:
             [
                 "",
                 "On your next turn, do one of the following before handing back to players:",
-                "- If active play should continue, declare a scene clock or repair the existing one, keep 2-3 active beats live across distinct problem lanes, then run `glass check` and `glass done`.",
+                "- If active play should continue, declare a scene clock or repair the existing one, keep 2-3 active beats live across distinct problem lanes, then call `glass_check()` and `glass_done(...)`.",
                 "- If the scene is already done, close or transition the scene instead of continuing active play.",
             ]
         )
@@ -1166,7 +1120,7 @@ class Orchestrator:
             f"The scene has {completed_beats} completed beat(s). Do not hand this gap to another player by default.",
         ]
         if scene_note:
-            lines.append(f"`glass check` says: {scene_note}")
+            lines.append(f"`glass_check()` says: {scene_note}")
         if completed_beats > 8:
             lines.append(
                 "Strong closure nudge: this is enough resolved material. Prefer closing or transitioning unless a genuinely new scene question still belongs in this scene."
@@ -1178,8 +1132,8 @@ class Orchestrator:
         lines.extend(
             [
                 "",
-                "On your next turn, run `glass check`, then choose deliberately:",
-                "- If the scene has truly landed, close or transition it with the scene-transition workflow and `glass scene end`.",
+                "On your next turn, call `glass_check()`, then choose deliberately:",
+                "- If the scene has truly landed, close or transition it with the scene-transition workflow and `glass_scene_end(...)`.",
                 "- If play continues, restore 2-3 active beats across different problem lanes, keep the existing scene question alive, and hand back to the player cursor.",
             ]
         )
@@ -1201,8 +1155,8 @@ class Orchestrator:
                 "Do not hand this boundary to players yet.",
                 "",
                 "On your next turn, choose one course correction:",
-                "- If the campaign should continue in this arc, start `scene-prep` with `glass mode start scene-prep <scene-id>` and stage the next scene from there.",
-                "- If the next scene is already fully staged, start its actual play mode with `glass mode start <scene-play|action> <scene-id>`, create a scene clock and beat, run `glass check`, then close the turn.",
+                '- If the campaign should continue in this arc, start `scene-prep` with `glass_mode_start(mode_name="scene-prep", scene_id="<scene-id>")` and stage the next scene from there.',
+                '- If the next scene is already fully staged, start its actual play mode with `glass_mode_start(mode_name="scene-play|action", scene_id="<scene-id>")`, create a scene clock and beat, call `glass_check()`, then close the turn.',
                 "- If the arc is actually complete, close the active arc instead of leaving it open.",
                 "",
                 f"Previous mode was `{previous_mode}`; previous scene was `{previous_scene}`.",
@@ -1482,9 +1436,9 @@ class Orchestrator:
     def _tick_closing_countdown(self, campaign: str) -> None:
         """Decrement state["scene_closing_turns"] by 1 if set, after a turn.
 
-        The closing countdown is set by `glass scene closing-down --turns N`
+        The closing countdown is set by `glass_scene_closing_down(rounds=N)`
         as N+1 (so the DM's setting turn is the first decrement). When the
-        value reaches 0 the next TURN_START renders a "Final round" section;
+        value reaches 0 the next injected prompt renders a "Final round" section;
         below 0 indicates an overrun that the methodology flags as a hard
         backstop ("end the scene now even if it feels unfinished").
         """
@@ -1522,15 +1476,7 @@ class Orchestrator:
         queued_entry: dict[str, Any] | None,
         action_entry: dict[str, Any] | None,
     ) -> TurnResult:
-        # The prompt is intentionally short — the heavy lifting is in
-        # TURN_START.md, which the agent reads as its first action.
-        turn_start_ref = _agent_path(package.agent_turn_start_path, package.spawn_cwd)
-        turn_prose_ref = _agent_path(package.agent_turn_prose_path, package.spawn_cwd)
-        prompt = (
-            f"Read {turn_start_ref} and follow its instructions. "
-            f"Write your final public prose to {turn_prose_ref}, run "
-            "`glass done`, and exit."
-        )
+        prompt = package.prompt
         turn_kind = _active_turn_kind_for(
             state=state,
             agent=agent,
@@ -1554,11 +1500,6 @@ class Orchestrator:
             allow_player_scene_close=False,
         )
 
-        # Agents run in an actor-owned projection. `glass` uses the local API
-        # so file reads can come from the projection while mutations land in
-        # the canonical campaign tree.
-        target_user = permissions.player_user_for(agent.id)
-        _assert_actor_workspace_ready(package, target_user=target_user)
         provider = provider_for_actor(
             self.config,
             actor_id=agent.id,
@@ -1598,86 +1539,63 @@ class Orchestrator:
             glass_role=agent.glass_role,
             turn_id=package.turn_id,
             ttl_seconds=max(self.config.claude.turn_timeout_seconds + 600, 3600),
-            workspace_root=package.spawn_cwd,
-            workspace_reader_user=target_user,
-            turn_prose_path=package.agent_turn_prose_path,
-            turn_closeout_path=package.agent_turn_closeout_path,
         )
-        glass_api_grant_file: Path | None = None
-        if target_user is not None:
-            glass_api_grant_file = _write_player_glass_api_file(
-                target_user=target_user,
-                api_url=glass_api_url,
-                grant=glass_api_grant,
-                campaign_id=state.campaign,
-                turn_id=package.turn_id,
-            )
 
+        glass_config_value = config_env_value(self.config)
         actor_command: list[str] = []
-        claude_debug_path = package.agent_turn_dir / "claude-debug.log"
-        preserved_env = _provider_preserved_env(provider)
         if provider == "claude":
-            claude_debug_ref = _agent_path(claude_debug_path, package.spawn_cwd)
             actor_command.append(provider_executable)
             if self.config.claude.model:
                 actor_command.extend(["--model", self.config.claude.model])
             actor_command.extend(claude_session_args)
+            actor_command.extend(
+                _claude_mcp_args(
+                    glass_api_url=glass_api_url,
+                    glass_api_grant=glass_api_grant,
+                    glass_role=agent.glass_role,
+                    campaign_id=state.campaign,
+                    config_value=glass_config_value,
+                    turn_id=package.turn_id,
+                )
+            )
             actor_command.extend([
                 "-p",
                 prompt,
                 "--dangerously-skip-permissions",
-                "--debug-file",
-                claude_debug_ref,
             ])
         else:
             actor_command.extend(
                 [
                     provider_executable,
                     "exec",
+                    *_codex_mcp_args(
+                        glass_api_url=glass_api_url,
+                        glass_api_grant=glass_api_grant,
+                        glass_role=agent.glass_role,
+                        campaign_id=state.campaign,
+                        config_value=glass_config_value,
+                        turn_id=package.turn_id,
+                    ),
                     "--dangerously-bypass-approvals-and-sandbox",
                     prompt,
                 ]
             )
         command = actor_command
-        if target_user is not None:
-            runtime_path = _player_path(extra_dirs=[str(Path(provider_executable).parent)])
-            command = [
-                "sudo",
-                "-n",
-                f"--preserve-env={','.join(preserved_env)}",
-                "-u",
-                target_user,
-                "--",
-                "env",
-                f"PATH={runtime_path}",
-                "bash",
-                "-lc",
-                'umask 0007; exec "$@"',
-                "bash",
-                *actor_command,
-            ]
 
         env = os.environ.copy()
         env.update(
             {
                 "GLASS_ROLE": agent.glass_role,
                 "GLASS_CAMPAIGN_ID": state.campaign,
-                "GLASS_CONFIG": config_env_value(self.config),
+                "GLASS_CONFIG": glass_config_value,
                 "GLASS_TURN_ID": package.turn_id,
                 "GLASS_API_URL": glass_api_url,
                 "GLASS_API_GRANT": glass_api_grant,
-                "AOG_TURN_START": str(package.agent_turn_start_path),
-                "AOG_TURN_PROSE": str(package.agent_turn_prose_path),
-                "AOG_TURN_CLOSEOUT": str(package.agent_turn_closeout_path),
                 "AOG_AGENT_PROVIDER": provider,
             }
         )
         if package.player_surface:
             env["AOG_PLAYER_SURFACE"] = package.player_surface
-        if target_user is not None:
-            env["PATH"] = runtime_path
-            if glass_api_grant_file is not None:
-                env["GLASS_API_GRANT_FILE"] = str(glass_api_grant_file)
 
         prefix = f"[{agent.id}] "
         stderr_prefix = _stderr_prefix_for_provider(provider, prefix)
@@ -1689,26 +1607,11 @@ class Orchestrator:
             flush=True,
         )
 
-        debug_path = package.turn_dir / "agent-debug.json"
-        debug_payload = _agent_debug_payload(
-            state=state,
-            agent=agent,
-            package=package,
-            command=command,
-            env=env,
-            target_user=target_user,
-            preserved_env=preserved_env,
-            timeout_seconds=self.config.claude.turn_timeout_seconds,
-            phase="before_spawn",
-            provider=provider,
-            claude_debug_path=claude_debug_path,
-            claude_session=claude_session,
-            claude_session_enabled=(
-                provider == "claude" and self.config.claude.use_session_id
-            ),
-            claude_session_cli_mode=claude_session_cli_mode,
-        )
-        _write_json(debug_path, debug_payload)
+        debug_payload: dict[str, Any] = {
+            "phase": "before_spawn",
+            "provider": provider,
+            "command": command,
+        }
 
         turn_started = time.monotonic()
         try:
@@ -1721,17 +1624,9 @@ class Orchestrator:
                 stderr_prefix=stderr_prefix,
                 stream_stdout=stream_stdout,
                 stream_stderr=stream_stderr,
-                stdout_capture_path=package.turn_dir / "agent-stdout.txt",
-                stderr_capture_path=package.turn_dir / "agent-stderr.txt",
             )
         except FileNotFoundError as exc:
             duration_seconds = time.monotonic() - turn_started
-            debug_payload["phase"] = "spawn_failed"
-            debug_payload["exception"] = repr(exc)
-            debug_payload["resolved_executable"] = shutil.which(command[0])
-            debug_payload["duration_seconds"] = round(duration_seconds, 3)
-            debug_payload["paths_after"] = _turn_path_debug(package)
-            _write_json(debug_path, debug_payload)
             _print_turn_duration(
                 agent,
                 package,
@@ -1745,7 +1640,7 @@ class Orchestrator:
                     "turn_id": package.turn_id,
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
-                    "debug_path": str(debug_path),
+                    "debug_path": None,
                     "duration_seconds": round(duration_seconds, 3),
                 },
             ) from exc
@@ -1769,13 +1664,6 @@ class Orchestrator:
                 timed_out=timed_out,
             )
 
-        _normalize_actor_projection(package, target_user=target_user)
-        copy_turn_artifacts_to_canonical(
-            projection=package.projection,
-            canonical_turn_dir=package.turn_dir,
-            reader_user=target_user,
-        )
-        _write_process_capture(package.turn_dir, stdout_text, stderr_text)
         debug_payload.update(
             {
                 "phase": "after_subprocess",
@@ -1786,10 +1674,8 @@ class Orchestrator:
                 "stderr_bytes": len(stderr_text.encode("utf-8")),
                 "stdout_preview": _preview(stdout_text),
                 "stderr_preview": _preview(stderr_text),
-                "paths_after": _turn_path_debug(package),
             }
         )
-        _write_json(debug_path, debug_payload)
 
         if timed_out:
             raise TurnFailure(
@@ -1800,7 +1686,7 @@ class Orchestrator:
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
                     "timeout_seconds": self.config.claude.turn_timeout_seconds,
-                    "debug_path": str(debug_path),
+                    "debug_path": None,
                     "duration_seconds": round(duration_seconds, 3),
                     "stdout_bytes": debug_payload["stdout_bytes"],
                     "stderr_bytes": debug_payload["stderr_bytes"],
@@ -1816,7 +1702,7 @@ class Orchestrator:
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
                     "exit_code": returncode,
-                    "debug_path": str(debug_path),
+                    "debug_path": None,
                     "duration_seconds": round(duration_seconds, 3),
                     "stdout_bytes": debug_payload["stdout_bytes"],
                     "stderr_bytes": debug_payload["stderr_bytes"],
@@ -1824,49 +1710,68 @@ class Orchestrator:
                 },
             )
 
-        prose = _collect_prose(package.turn_prose_path, stdout_text)
-        if not prose:
-            output_debug = _turn_path_debug(package)
-            raise TurnFailure(
-                f"Turn {package.turn_id} produced no prose.",
-                {
-                    "reason": "empty_turn",
-                    "turn_id": package.turn_id,
-                    "speaker": agent.id,
-                    "turn_dir": str(package.turn_dir),
-                    "debug_path": str(debug_path),
-                    "exit_code": returncode,
-                    "duration_seconds": round(duration_seconds, 3),
-                    "stdout_bytes": debug_payload["stdout_bytes"],
-                    "stderr_bytes": debug_payload["stderr_bytes"],
-                    "stdout_preview": debug_payload["stdout_preview"],
-                    "stderr_preview": debug_payload["stderr_preview"],
-                    "turn_prose_path": str(package.turn_prose_path),
-                    "turn_paths": output_debug,
-                },
-            )
         try:
-            turn_end = self._collect_turn_end_from_postgres(
+            committed_turn = self._collect_committed_turn_from_postgres(
                 state.campaign,
                 expected_turn_id=package.turn_id,
             )
         except ValueError as exc:
             output_debug = _turn_path_debug(package)
+            try:
+                self._collect_turn_end_from_postgres(
+                    state.campaign,
+                    expected_turn_id=package.turn_id,
+                )
+            except ValueError as closeout_exc:
+                raise TurnFailure(
+                    f"Turn {package.turn_id} did not complete `glass_done(...)`.",
+                    {
+                        "reason": "invalid_turn_end",
+                        "turn_id": package.turn_id,
+                        "speaker": agent.id,
+                        "turn_dir": str(package.turn_dir),
+                        "debug_path": None,
+                        "exit_code": returncode,
+                        "duration_seconds": round(duration_seconds, 3),
+                        "error": str(closeout_exc),
+                        "turn_paths": output_debug,
+                    },
+                ) from closeout_exc
             raise TurnFailure(
-                f"Turn {package.turn_id} did not complete `glass done`.",
+                f"Turn {package.turn_id} did not submit public prose with `glass_turn_append(body=\"...\")`.",
                 {
-                    "reason": "invalid_turn_end",
+                    "reason": "missing_turn_append",
                     "turn_id": package.turn_id,
                     "speaker": agent.id,
                     "turn_dir": str(package.turn_dir),
-                    "debug_path": str(debug_path),
+                    "debug_path": None,
                     "exit_code": returncode,
                     "duration_seconds": round(duration_seconds, 3),
                     "error": str(exc),
-                    "turn_closeout_path": str(package.turn_closeout_path),
+                    "stdout_bytes": debug_payload["stdout_bytes"],
+                    "stderr_bytes": debug_payload["stderr_bytes"],
+                    "stdout_preview": debug_payload["stdout_preview"],
+                    "stderr_preview": debug_payload["stderr_preview"],
                     "turn_paths": output_debug,
                 },
             ) from exc
+        prose = str(committed_turn.get("prose") or "").strip()
+        if not prose:
+            output_debug = _turn_path_debug(package)
+            raise TurnFailure(
+                f"Turn {package.turn_id} submitted empty public prose.",
+                {
+                    "reason": "empty_turn_append",
+                    "turn_id": package.turn_id,
+                    "speaker": agent.id,
+                    "turn_dir": str(package.turn_dir),
+                    "debug_path": None,
+                    "exit_code": returncode,
+                    "duration_seconds": round(duration_seconds, 3),
+                    "turn_paths": output_debug,
+                },
+            )
+        turn_end = _turn_end_from_committed_turn(committed_turn)
         return TurnResult(
             turn_id=package.turn_id,
             agent=agent,
@@ -1875,8 +1780,6 @@ class Orchestrator:
             prose=prose,
             dry_run=False,
             turn_end=turn_end,
-            turn_prose_path=package.turn_prose_path,
-            turn_closeout_path=package.turn_closeout_path,
             duration_seconds=duration_seconds,
             queued_speaker_entry=queued_entry,
             action_order_entry=action_entry,
@@ -1925,22 +1828,14 @@ def _stream_subprocess(
     stderr_prefix: str,
     stream_stdout: bool = True,
     stream_stderr: bool = True,
-    stdout_capture_path: Path | None = None,
-    stderr_capture_path: Path | None = None,
 ) -> tuple[str, str, int, bool]:
     """Run a subprocess, streaming stdout/stderr to the operator's terminal
-    line-by-line (with a prefix per agent), while also capturing the full
-    text for audit. If capture paths are provided, tee output to those files
-    as lines arrive so the local API can expose in-progress process output.
-    Enforces a wall-clock timeout.
+    line-by-line (with a prefix per agent), while also capturing the full text
+    in memory for validation. No per-turn capture files are written. Enforces a
+    wall-clock timeout.
 
     Returns (stdout_text, stderr_text, returncode, timed_out).
     """
-    for capture_path in (stdout_capture_path, stderr_capture_path):
-        if capture_path is not None:
-            capture_path.parent.mkdir(parents=True, exist_ok=True)
-            capture_path.write_text("", encoding="utf-8")
-
     proc = subprocess.Popen(  # noqa: S603 — command is built deliberately above
         command,
         cwd=cwd,
@@ -1954,22 +1849,14 @@ def _stream_subprocess(
     stdout_chunks: list[str] = []
     stderr_chunks: list[str] = []
 
-    def pump(stream, sink, prefix, target_io, capture_path, should_stream):
-        capture_handle = None
+    def pump(stream, sink, prefix, target_io, should_stream):
         try:
-            if capture_path is not None:
-                capture_handle = capture_path.open("a", encoding="utf-8")
             for line in iter(stream.readline, ""):
                 sink.append(line)
-                if capture_handle is not None:
-                    capture_handle.write(line)
-                    capture_handle.flush()
                 if should_stream:
                     target_io.write(prefix + line)
                     target_io.flush()
         finally:
-            if capture_handle is not None:
-                capture_handle.close()
             stream.close()
 
     out_thread = threading.Thread(
@@ -1979,7 +1866,6 @@ def _stream_subprocess(
             stdout_chunks,
             stdout_prefix,
             sys.stdout,
-            stdout_capture_path,
             stream_stdout,
         ),
         daemon=True,
@@ -1991,7 +1877,6 @@ def _stream_subprocess(
             stderr_chunks,
             stderr_prefix,
             sys.stderr,
-            stderr_capture_path,
             stream_stderr,
         ),
         daemon=True,
@@ -2022,118 +1907,6 @@ def _stream_subprocess(
     )
 
 
-def _agent_debug_payload(
-    *,
-    state: SessionState,
-    agent: Agent,
-    package: ContextPackage,
-    command: list[str],
-    env: dict[str, str],
-    target_user: str | None,
-    preserved_env: list[str],
-    timeout_seconds: int,
-    phase: str,
-    provider: str,
-    claude_debug_path: Path,
-    claude_session: dict[str, Any],
-    claude_session_enabled: bool,
-    claude_session_cli_mode: str,
-) -> dict[str, Any]:
-    return {
-        "phase": phase,
-        "turn_id": package.turn_id,
-        "turn_number": package.turn_number,
-        "campaign": state.campaign,
-        "mode": state.active_mode.mode,
-        "scene_id": state.active_mode.scene_id,
-        "agent": {
-            "id": agent.id,
-            "role": agent.role,
-            "display_name": agent.display_name,
-            "glass_role": agent.glass_role,
-            "target_user": target_user,
-        },
-        "process": {
-            "provider": provider,
-            "cwd": str(package.spawn_cwd),
-            "timeout_seconds": timeout_seconds,
-            "command": command,
-            "resolved_executable": shutil.which(command[0]),
-            "resolved_provider": shutil.which(
-                _PROVIDER_EXECUTABLES.get(provider, provider),
-                path=env.get("PATH"),
-            ),
-            "resolved_claude": shutil.which("claude", path=env.get("PATH")),
-            "operator_uid": os.getuid(),
-            "operator_euid": os.geteuid(),
-            "target_home": _home_for_user(target_user) if target_user else None,
-            "claude_debug_path": str(claude_debug_path),
-        },
-        "claude_session": {
-            "enabled": claude_session_enabled,
-            "actor": claude_session.get("actor"),
-            "session_id": claude_session.get("session_id"),
-            "cwd": claude_session.get("cwd"),
-            "created_at": claude_session.get("created_at"),
-            "updated_at": claude_session.get("updated_at"),
-            "previous_session_id": claude_session.get("previous_session_id"),
-            "previous_cwd": claude_session.get("previous_cwd"),
-            "session_materialized_at": claude_session.get("session_materialized_at"),
-            "cli_mode": claude_session_cli_mode,
-        },
-        "env": _env_debug(env, preserved_env),
-        "paths_before": _turn_path_debug(package),
-    }
-
-
-def _env_debug(env: dict[str, str], preserved_env: list[str]) -> dict[str, Any]:
-    keys = sorted(
-        set(preserved_env)
-        | {
-            "HOME",
-            "PATH",
-            "USER",
-            "LOGNAME",
-            "SHELL",
-            "TERM",
-            "GLASS_ROLE",
-            "GLASS_CAMPAIGN_ID",
-            "GLASS_CONFIG",
-            "GLASS_TURN_ID",
-            "GLASS_API_URL",
-            "GLASS_API_GRANT",
-            "GLASS_API_GRANT_FILE",
-            "AOG_TURN_START",
-            "AOG_TURN_PROSE",
-            "AOG_TURN_CLOSEOUT",
-            "AOG_AGENT_PROVIDER",
-            "AOG_PLAYER_SURFACE",
-            "CODEX_HOME",
-            "OPENAI_API_KEY",
-            "OPENAI_BASE_URL",
-            "OPENAI_API_BASE",
-            "OPENAI_ORG_ID",
-            "OPENAI_PROJECT_ID",
-            "XDG_CONFIG_HOME",
-            "XDG_CACHE_HOME",
-            "XDG_STATE_HOME",
-        }
-    )
-    return {
-        "preserve_env": preserved_env,
-        "values": {key: _env_value_debug(key, env.get(key)) for key in keys},
-    }
-
-
-def _env_value_debug(key: str, value: str | None) -> str | None:
-    if value is None:
-        return None
-    secret_markers = ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "GRANT")
-    if any(marker in key.upper() for marker in secret_markers):
-        return "<set>" if value else "<empty>"
-    return value
-
-
 def _print_turn_duration(
     agent: Agent,
     package: ContextPackage,
@@ -2156,176 +1929,10 @@ def _format_duration(seconds: float) -> str:
     return f"{minutes}m {remaining:04.1f}s"
 
 
-def _assert_actor_workspace_ready(
-    package: ContextPackage,
-    *,
-    target_user: str | None,
-) -> None:
-    """Prove the actor can create/edit/delete files in writable surfaces."""
-
-    if target_user is not None:
-        _assert_actor_owns_path(package.spawn_cwd, target_user=target_user)
-        _assert_actor_owns_path(package.agent_turn_dir, target_user=target_user)
-
-    probe_dirs = [package.agent_turn_dir]
-    probe_dirs.extend(writable_probe_dirs(package.spawn_cwd, package.agent))
-    seen: set[Path] = set()
-    unique_probe_dirs: list[Path] = []
-    for probe_dir in probe_dirs:
-        resolved = probe_dir.resolve()
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        unique_probe_dirs.append(probe_dir)
-
-    probe_refs = [
-        _agent_path(probe_dir, package.spawn_cwd)
-        for probe_dir in unique_probe_dirs
-    ]
-    probe_name = ".aog-write-probe"
-    probe_files = [probe_dir / probe_name for probe_dir in unique_probe_dirs]
-    script = "\n".join(
-        ["set -eu"]
-        + [
-            "\n".join(
-                [
-                    f"probe_dir={shlex.quote(probe_ref)}",
-                    f"probe_file=\"$probe_dir/{probe_name}\"",
-                    'probe_tmp="$probe_file.tmp"',
-                    'rm -f "$probe_file" "$probe_tmp"',
-                    'printf "%s\\n" first > "$probe_file"',
-                    'printf "%s\\n" second > "$probe_tmp"',
-                    'mv "$probe_tmp" "$probe_file"',
-                    'test "$(cat "$probe_file")" = "second"',
-                    'chmod 700 "$probe_file"',
-                ]
-            )
-            for probe_ref in probe_refs
-        ]
-    )
-    command = ["bash", "-lc", script]
-    if target_user is not None:
-        command = ["sudo", "-n", "-u", target_user, "--", *command]
-
-    result = subprocess.run(
-        command,
-        cwd=package.spawn_cwd,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise TurnFailure(
-            "actor workspace write probe failed before spawn.",
-            {
-                "reason": "actor_workspace_write_probe_failed",
-                "turn_id": package.turn_id,
-                "target_user": target_user,
-                "spawn_cwd": str(package.spawn_cwd),
-                "turn_dir": str(package.agent_turn_dir),
-                "probe_dirs": [str(path) for path in unique_probe_dirs],
-                "command": command,
-                "exit_code": result.returncode,
-                "stdout": result.stdout[-2000:],
-                "stderr": result.stderr[-2000:],
-                "paths": _turn_path_debug(package),
-            },
-        )
-
-    _normalize_actor_projection(package, target_user=target_user)
-    unreadable: list[dict[str, str]] = []
-    for probe_file in probe_files:
-        try:
-            if probe_file.read_text(encoding="utf-8").strip() != "second":
-                unreadable.append({"path": str(probe_file), "error": "unexpected content"})
-        except OSError as exc:
-            unreadable.append({"path": str(probe_file), "error": repr(exc)})
-    for probe_file in probe_files:
-        try:
-            probe_file.unlink()
-        except OSError:
-            pass
-    if unreadable:
-        raise TurnFailure(
-            "operator could not read actor-created workspace probe files.",
-            {
-                "reason": "actor_workspace_operator_read_probe_failed",
-                "turn_id": package.turn_id,
-                "target_user": target_user,
-                "spawn_cwd": str(package.spawn_cwd),
-                "probe_files": unreadable,
-                "paths": _turn_path_debug(package),
-            },
-        )
-
-
-def _normalize_actor_projection(
-    package: ContextPackage,
-    *,
-    target_user: str | None,
-) -> None:
-    permissions.apply_projection_permissions(
-        package.spawn_cwd,
-        actor_user=target_user,
-    )
-
-
-def _assert_actor_owns_path(path: Path, *, target_user: str) -> None:
-    try:
-        expected_uid = pwd.getpwnam(target_user).pw_uid
-    except KeyError as exc:
-        raise TurnFailure(
-            "target Unix user is missing.",
-            {
-                "reason": "target_user_missing",
-                "target_user": target_user,
-                "path": str(path),
-            },
-        ) from exc
-    try:
-        st = path.stat()
-    except OSError as exc:
-        raise TurnFailure(
-            "actor-owned projection path is not statable by the operator.",
-            {
-                "reason": "actor_projection_stat_failed",
-                "target_user": target_user,
-                "path": str(path),
-                "error": repr(exc),
-            },
-        ) from exc
-    if st.st_uid != expected_uid:
-        raise TurnFailure(
-            "projection path is not owned by the spawned actor.",
-            {
-                "reason": "actor_projection_owner_mismatch",
-                "target_user": target_user,
-                "path": str(path),
-                "expected_uid": expected_uid,
-                "actual_uid": st.st_uid,
-                "actual_user": _name_for_uid(st.st_uid),
-                "mode": oct(st.st_mode & 0o7777),
-            },
-        )
-
-
 def _turn_path_debug(package: ContextPackage) -> dict[str, Any]:
     return {
         "spawn_cwd": _path_debug(package.spawn_cwd),
         "campaign_root": _path_debug(package.campaign_root),
-        "projection_turn_dir": _path_debug(package.agent_turn_dir),
-        "projection_turn_start_path": _path_debug(package.agent_turn_start_path),
-        "projection_turn_prose_path": _path_debug(package.agent_turn_prose_path),
-        "projection_turn_closeout_path": _path_debug(package.agent_turn_closeout_path),
-        "projection_claude_debug_path": _path_debug(
-            package.agent_turn_dir / "claude-debug.log"
-        ),
-        "turn_dir": _path_debug(package.turn_dir),
-        "turn_start_path": _path_debug(package.turn_start_path),
-        "turn_prose_path": _path_debug(package.turn_prose_path),
-        "turn_closeout_path": _path_debug(package.turn_closeout_path),
-        "agent_stdout_path": _path_debug(package.turn_dir / "agent-stdout.txt"),
-        "agent_stderr_path": _path_debug(package.turn_dir / "agent-stderr.txt"),
-        "claude_debug_path": _path_debug(package.turn_dir / "claude-debug.log"),
     }
 
 
@@ -2345,31 +1952,8 @@ def _path_debug(path: Path) -> dict[str, Any]:
         "size": st.st_size,
         "mode": oct(st.st_mode & 0o7777),
         "uid": st.st_uid,
-        "user": _name_for_uid(st.st_uid),
         "gid": st.st_gid,
-        "group": _name_for_gid(st.st_gid),
     }
-
-
-def _name_for_uid(uid: int) -> str | None:
-    try:
-        return pwd.getpwuid(uid).pw_name
-    except KeyError:
-        return None
-
-
-def _name_for_gid(gid: int) -> str | None:
-    try:
-        return grp.getgrgid(gid).gr_name
-    except KeyError:
-        return None
-
-
-def _home_for_user(user: str) -> str | None:
-    try:
-        return pwd.getpwnam(user).pw_dir
-    except KeyError:
-        return None
 
 
 def _resolve_provider_executable(provider: str) -> str:
@@ -2386,36 +1970,99 @@ def _resolve_provider_executable(provider: str) -> str:
     raise FileNotFoundError(binary)
 
 
-def _provider_preserved_env(provider: str) -> list[str]:
-    keys = [
-        "GLASS_ROLE",
-        "GLASS_CAMPAIGN_ID",
-        "GLASS_CONFIG",
-        "GLASS_TURN_ID",
-        "GLASS_API_URL",
-        "GLASS_API_GRANT",
-        "GLASS_API_GRANT_FILE",
-        "AOG_TURN_START",
-        "AOG_TURN_PROSE",
-        "AOG_TURN_CLOSEOUT",
-        "AOG_AGENT_PROVIDER",
-        "AOG_PLAYER_SURFACE",
+def _glass_mcp_command() -> tuple[str, list[str]]:
+    repo_venv_python = Path(__file__).resolve().parents[2] / ".venv" / "bin" / "python"
+    command = str(repo_venv_python) if repo_venv_python.exists() else sys.executable
+    return command, ["-m", "cli.mcp_server"]
+
+
+def _glass_mcp_env(
+    *,
+    glass_api_url: str,
+    glass_api_grant: str,
+    glass_role: str,
+    campaign_id: str,
+    config_value: str,
+    turn_id: str,
+) -> dict[str, str]:
+    return {
+        "GLASS_API_URL": glass_api_url,
+        "GLASS_API_GRANT": glass_api_grant,
+        "GLASS_ROLE": glass_role,
+        "GLASS_CAMPAIGN_ID": campaign_id,
+        "GLASS_CONFIG": config_value,
+        "GLASS_TURN_ID": turn_id,
+    }
+
+
+def _toml_inline_string_table(values: dict[str, str]) -> str:
+    fields = [f"{key}={json.dumps(value)}" for key, value in values.items()]
+    return "{" + ", ".join(fields) + "}"
+
+
+def _claude_mcp_args(
+    *,
+    glass_api_url: str,
+    glass_api_grant: str,
+    glass_role: str,
+    campaign_id: str,
+    config_value: str,
+    turn_id: str,
+) -> list[str]:
+    command, args = _glass_mcp_command()
+    config = {
+        "mcpServers": {
+            "glass": {
+                "command": command,
+                "args": args,
+                "env": _glass_mcp_env(
+                    glass_api_url=glass_api_url,
+                    glass_api_grant=glass_api_grant,
+                    glass_role=glass_role,
+                    campaign_id=campaign_id,
+                    config_value=config_value,
+                    turn_id=turn_id,
+                ),
+            }
+        }
+    }
+    return [
+        "--mcp-config",
+        json.dumps(config, separators=(",", ":")),
+        "--strict-mcp-config",
     ]
-    if provider == "codex":
-        keys.extend(
-            [
-                "CODEX_HOME",
-                "OPENAI_API_KEY",
-                "OPENAI_BASE_URL",
-                "OPENAI_API_BASE",
-                "OPENAI_ORG_ID",
-                "OPENAI_PROJECT_ID",
-                "XDG_CONFIG_HOME",
-                "XDG_CACHE_HOME",
-                "XDG_STATE_HOME",
-            ]
-        )
-    return [key for key in keys if key in os.environ or key.startswith(("GLASS_", "AOG_"))]
+
+
+def _codex_mcp_args(
+    *,
+    glass_api_url: str,
+    glass_api_grant: str,
+    glass_role: str,
+    campaign_id: str,
+    config_value: str,
+    turn_id: str,
+) -> list[str]:
+    command, args = _glass_mcp_command()
+    env = _glass_mcp_env(
+        glass_api_url=glass_api_url,
+        glass_api_grant=glass_api_grant,
+        glass_role=glass_role,
+        campaign_id=campaign_id,
+        config_value=config_value,
+        turn_id=turn_id,
+    )
+    return [
+        "-c",
+        (
+            "mcp_servers={glass={command="
+            + json.dumps(command)
+            + ", args="
+            + json.dumps(args)
+            + ", env="
+            + _toml_inline_string_table(env)
+            + "}}"
+        ),
+    ]
 
 
 def _stderr_prefix_for_provider(provider: str, prefix: str) -> str:
@@ -2450,68 +2097,6 @@ def _player_path(extra_dirs: list[str] | None = None) -> str:
         seen.add(part)
         unique.append(part)
     return ":".join(unique)
-
-
-def _write_player_glass_api_file(
-    *,
-    target_user: str,
-    api_url: str,
-    grant: str,
-    campaign_id: str,
-    turn_id: str,
-) -> Path:
-    runtime_dir = Path("/tmp/agents-of-glass/glass-api")
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    os.chmod(runtime_dir, 0o755)
-    target = runtime_dir / f"{target_user}.json"
-    tmp = runtime_dir / f".{target_user}.{os.getpid()}.tmp"
-    payload = {
-        "api_url": api_url,
-        "grant": grant,
-        "campaign_id": campaign_id,
-        "turn_id": turn_id,
-    }
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    try:
-        user_record = pwd.getpwnam(target_user)
-        group_name = _name_for_gid(user_record.pw_gid) or target_user
-        subprocess.run(
-            [
-                "sudo",
-                "-n",
-                "install",
-                "-o",
-                target_user,
-                "-g",
-                group_name,
-                "-m",
-                "0600",
-                str(tmp),
-                str(target),
-            ],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-    except (KeyError, subprocess.CalledProcessError, OSError) as exc:
-        raise TurnFailure(
-            "failed to install player glass API grant file.",
-            {
-                "reason": "glass_api_grant_file_failed",
-                "turn_id": turn_id,
-                "target_user": target_user,
-                "grant_file": str(target),
-                "error": repr(exc),
-            },
-        ) from exc
-    finally:
-        try:
-            tmp.unlink()
-        except FileNotFoundError:
-            pass
-    return target
 
 
 def _preview(text: str, *, limit: int = 2000) -> str:
@@ -2566,41 +2151,34 @@ def _turn_end_fix_suggestions(problems: list[str]) -> list[str]:
     fixes: list[str] = []
     seen: set[str] = set()
     for problem in problems:
-        if "--turn-type" in problem:
-            fix = "Rerun `glass done` with `--turn-type act|answer|support|pass`."
-        elif "run `glass turn audit` before `glass turn end`" in problem:
-            fix = "Run `glass done` after addressing any hard requirements it prints."
-        elif "You MUST still run glass beat check" in problem:
-            fix = "Run `glass check`, then rerun `glass done`."
+        if "--turn-type" in problem or "`turn_type" in problem:
+            fix = 'Rerun `glass_done(...)` with `turn_type="act|answer|support|pass"`.'
+        elif "run `glass turn audit` before `glass turn end`" in problem or "call `glass_check()` before" in problem:
+            fix = "Call `glass_done(...)` after addressing any hard requirements it prints."
+        elif "You MUST still run glass beat check" in problem or "You MUST still call glass_check()" in problem:
+            fix = "Call `glass_check()`, then rerun `glass_done(...)`."
         elif "0 scene clocks" in problem:
-            fix = "Have the DM declare a scene clock with `glass scene clock declare ...`."
+            fix = "Have the DM declare a scene clock with `glass_scene_clock_declare(...)`."
         elif "0 active beats" in problem:
-            fix = "Have the DM start a beat with `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`."
+            fix = "Have the DM start a beat with `glass_beat_start(beat_id=\"<beat-id>\", clock_id=\"<clock-id>\", label=\"...\", question=\"...\")`."
         elif "3-beat cap" in problem:
             fix = "Close or convert an active beat before continuing active play."
         elif "Resolve or convert it before another non-pass turn" in problem:
-            fix = "Resolve the beat with `glass beat close`, convert it with `glass beat convert`, or pass instead of taking another non-pass turn."
-        elif "requires exactly `--state \"no state change\"`" in problem:
-            fix = "Rerun with `--state \"no state change\"` and no other `--state` values."
-        elif "`pass` requires `--rolls none`" in problem:
-            fix = "Rerun with `--rolls none`."
-        elif "`--scene-status" in problem or "must keep `--scene-status active`" in problem:
-            fix = "Rerun with a valid `--scene-status`, usually `active`."
-        elif "`--next" in problem:
-            fix = "Rerun with `--next default|dm|tev|sumi|renno|kit`."
+            fix = "Resolve the beat with `glass_beat_close(...)`, convert it with `glass_beat_convert(...)`, or pass instead of taking another non-pass turn."
+        elif "requires exactly `--state \"no state change\"`" in problem or 'requires exactly `state=["no state change"]`' in problem:
+            fix = 'Rerun with `state=["no state change"]` and no other `state` values.'
+        elif "`pass` requires `--rolls none`" in problem or '`pass` requires `rolls="none"`' in problem:
+            fix = 'Rerun with `rolls="none"`.'
+        elif "`--scene-status" in problem or "`scene_status" in problem or "must keep `--scene-status active`" in problem:
+            fix = 'Rerun with a valid `scene_status`, usually `"active"`.'
+        elif "`--next" in problem or "`next_speaker" in problem:
+            fix = 'Rerun with `next_speaker="default|dm|tev|sumi|renno|kit"`.'
         else:
-            fix = "Rerun `glass done` after correcting the reported field."
+            fix = "Rerun `glass_done(...)` after correcting the reported field."
         if fix not in seen:
             fixes.append(fix)
             seen.add(fix)
     return fixes
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
 
 
 def _agent_path(path: Path, spawn_cwd: Path) -> str:
@@ -2610,15 +2188,6 @@ def _agent_path(path: Path, spawn_cwd: Path) -> str:
         return str(path)
 
 
-def _collect_prose(turn_prose_path: Path, stdout: str | None) -> str:
-    """Read the agent's committed public turn prose file."""
-    if turn_prose_path.exists():
-        text = turn_prose_path.read_text(encoding="utf-8").strip()
-        if text:
-            return text
-    return ""
-
-
 def _collect_turn_end(
     runtime_turn: dict[str, Any] | None,
     *,
@@ -2626,7 +2195,7 @@ def _collect_turn_end(
 ) -> dict[str, Any]:
     if not isinstance(runtime_turn, dict):
         raise ValueError(
-            "missing active turn closeout in Postgres; run `glass done` after writing public prose"
+            "missing active turn closeout in Postgres; call `glass_done(...)` before public prose"
         )
     turn_id = str(runtime_turn.get("turn_id") or "").strip()
     if turn_id != expected_turn_id:
@@ -2645,14 +2214,41 @@ def _collect_turn_end(
         raise ValueError("turn closeout metadata is missing a non-empty summary")
     state_changes = raw.get("state")
     if not isinstance(state_changes, list) or not any(str(item).strip() for item in state_changes):
-        raise ValueError("turn closeout metadata is missing --state closeout")
+        raise ValueError("turn closeout metadata is missing `state` closeout")
     rolls = str(raw.get("rolls") or "").strip()
     if not rolls:
-        raise ValueError("turn closeout metadata is missing --rolls closeout")
+        raise ValueError("turn closeout metadata is missing `rolls` closeout")
     next_speaker = str(raw.get("next") or "default")
     if next_speaker not in {"default", "dm", "tev", "sumi", "renno", "kit"}:
         raise ValueError(f"invalid turn closeout next speaker: {next_speaker}")
     return raw
+
+
+def _turn_number_from_turn_id(turn_id: str) -> int:
+    match = re.search(r"-t(?P<number>\d+)$", turn_id)
+    if not match:
+        raise ValueError(f"invalid turn id: {turn_id}")
+    return int(match.group("number"))
+
+
+def _turn_end_from_committed_turn(record: dict[str, Any]) -> dict[str, Any]:
+    raw = record.get("turn_end")
+    turn_end = dict(raw) if isinstance(raw, dict) else {}
+    if not turn_end:
+        turn_end = {
+            "summary": str(record.get("turn_summary") or ""),
+            "next": str(record.get("next_speaker") or "default"),
+            "scene_status": str(record.get("scene_status") or "active"),
+            "state": list(record.get("state_changes") or []),
+            "rolls": str(record.get("rolls") or ""),
+            "turn_type": record.get("turn_type"),
+            "open_questions": list(record.get("open_questions") or []),
+            "position": str(record.get("position") or ""),
+            "pressure": str(record.get("pressure") or ""),
+        }
+    turn_end.setdefault("valid", True)
+    turn_end.setdefault("problems", [])
+    return turn_end
 
 
 def _tool_transcript_lines(prose: str) -> list[str]:
@@ -2663,23 +2259,3 @@ def _tool_transcript_lines(prose: str) -> list[str]:
         if _GLASS_COMMAND_LINE_RE.match(stripped):
             matches.append(stripped)
     return matches
-
-
-def _write_process_capture(
-    turn_dir: Path,
-    stdout: str | bytes | None,
-    stderr: str | bytes | None,
-) -> None:
-    turn_dir.mkdir(parents=True, exist_ok=True)
-    _write_capture_file(turn_dir / "agent-stdout.txt", stdout)
-    _write_capture_file(turn_dir / "agent-stderr.txt", stderr)
-
-
-def _write_capture_file(path: Path, value: str | bytes | None) -> None:
-    if value is None:
-        text = ""
-    elif isinstance(value, bytes):
-        text = value.decode("utf-8", errors="replace")
-    else:
-        text = value
-    path.write_text(text, encoding="utf-8")

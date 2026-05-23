@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import click
 
 from .. import db as _db
-from .. import workspace as _workspace
-from ..campaign import active_campaign_id, pg_connection, resolve_active_campaign_workspace
+from ..campaign import active_campaign_id, pg_connection
 from ..config import get_paths
 from ..errors import GlassError, agent_instruction
 from ..ids import slugify
@@ -59,6 +56,37 @@ def clock_set(
     public: bool,
 ) -> None:
     """DM-only: create or replace a durable clock."""
+    set_clock_service(
+        command_path=ctx,
+        emit_output=True,
+        clock_id=clock_id,
+        scope=scope,
+        anchor_id=anchor_id,
+        label=label,
+        description=description,
+        value=value,
+        max_value=max_value,
+        direction=direction,
+        public=public,
+    )
+
+
+def set_clock_service(
+    *,
+    command_path: click.Context | str = "glass_clock_set",
+    emit_output: bool = False,
+    clock_id: str,
+    scope: str = "campaign",
+    anchor_id: str | None = None,
+    label: str | None = None,
+    description: str = "",
+    value: int = 0,
+    max_value: int,
+    direction: str = "fills",
+    public: bool = False,
+) -> dict:
+    """DM-only: create or replace a durable clock."""
+
     role = require_dm()
     if max_value <= 0:
         raise GlassError(
@@ -82,7 +110,6 @@ def clock_set(
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    workspace = resolve_active_campaign_workspace()
     with pg_connection() as conn:
         record = _db.clock_upsert(
             conn,
@@ -98,7 +125,6 @@ def clock_set(
             visibility=visibility,
             actor=role.actor,
         )
-        _write_public_clock_projections(conn, workspace)
 
     queue_event(
         state,
@@ -108,7 +134,7 @@ def clock_set(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "clock.set",
         command_params(
             clock_id=clock_key,
@@ -121,7 +147,9 @@ def clock_set(
             visibility=visibility,
         ),
         {"clock": record},
+        emit_output=emit_output,
     )
+    return {"clock": record}
 
 
 @clock.command("tick")
@@ -131,12 +159,30 @@ def clock_set(
 @click.pass_context
 def clock_tick(ctx: click.Context, clock_id: str, delta: int, note: str) -> None:
     """DM-only: advance or reduce a durable clock."""
+    tick_clock_service(
+        command_path=ctx,
+        emit_output=True,
+        clock_id=clock_id,
+        delta=delta,
+        note=note,
+    )
+
+
+def tick_clock_service(
+    *,
+    command_path: click.Context | str = "glass_clock_tick",
+    emit_output: bool = False,
+    clock_id: str,
+    delta: int = 1,
+    note: str = "",
+) -> dict:
+    """DM-only: advance or reduce a durable clock."""
+
     role = require_dm()
     clock_key = slugify(clock_id)
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    workspace = resolve_active_campaign_workspace()
     with pg_connection() as conn:
         try:
             record, before, after = _db.clock_tick(
@@ -155,7 +201,6 @@ def clock_tick(ctx: click.Context, clock_id: str, delta: int, note: str) -> None
                     "Create the clock first with `glass clock set <clock-id> --max <n>` if it should exist.",
                 )
             ) from None
-        _write_public_clock_projections(conn, workspace)
 
     sign = f"{delta:+d}"
     queue_event(
@@ -166,11 +211,13 @@ def clock_tick(ctx: click.Context, clock_id: str, delta: int, note: str) -> None
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "clock.tick",
         command_params(clock_id=clock_key, delta=delta, note=note),
         {"clock": record, "before": before, "after": after},
+        emit_output=emit_output,
     )
+    return {"clock": record, "before": before, "after": after}
 
 
 @clock.command("list")
@@ -187,6 +234,27 @@ def clock_list(
     include_archived: bool,
 ) -> None:
     """List durable clocks visible to the current role."""
+    emit(
+        list_clocks_service(
+            command_path=ctx,
+            scope=scope,
+            anchor_id=anchor_id,
+            public_only=public_only,
+            include_archived=include_archived,
+        )
+    )
+
+
+def list_clocks_service(
+    *,
+    command_path: click.Context | str = "glass_clock_list",
+    scope: str | None = None,
+    anchor_id: str | None = None,
+    public_only: bool = False,
+    include_archived: bool = False,
+) -> dict:
+    """List durable clocks visible to the current role."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -205,7 +273,7 @@ def clock_list(
     append_audit(
         paths,
         state,
-        ctx,
+        command_path,
         "clock.list",
         command_params(
             scope=scope,
@@ -215,7 +283,7 @@ def clock_list(
         ),
         result,
     )
-    emit(result)
+    return result
 
 
 @clock.command("show")
@@ -223,6 +291,16 @@ def clock_list(
 @click.pass_context
 def clock_show(ctx: click.Context, clock_id: str) -> None:
     """Show one durable clock."""
+    emit(show_clock_service(command_path=ctx, clock_id=clock_id))
+
+
+def show_clock_service(
+    *,
+    command_path: click.Context | str = "glass_clock_show",
+    clock_id: str,
+) -> dict:
+    """Show one durable clock."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -248,12 +326,12 @@ def clock_show(ctx: click.Context, clock_id: str) -> None:
     append_audit(
         paths,
         state,
-        ctx,
+        command_path,
         "clock.show",
         command_params(clock_id=clock_key),
         result,
     )
-    emit(result)
+    return result
 
 
 @clock.command("resolve")
@@ -262,7 +340,13 @@ def clock_show(ctx: click.Context, clock_id: str) -> None:
 @click.pass_context
 def clock_resolve(ctx: click.Context, clock_id: str, note: str) -> None:
     """DM-only: mark a durable clock resolved."""
-    _set_clock_status(ctx, clock_id, status="resolved", note=note)
+    set_clock_status_service(
+        command_path=ctx,
+        emit_output=True,
+        clock_id=clock_id,
+        status="resolved",
+        note=note,
+    )
 
 
 @clock.command("archive")
@@ -271,22 +355,28 @@ def clock_resolve(ctx: click.Context, clock_id: str, note: str) -> None:
 @click.pass_context
 def clock_archive(ctx: click.Context, clock_id: str, note: str) -> None:
     """DM-only: archive a durable clock so it no longer appears by default."""
-    _set_clock_status(ctx, clock_id, status="archived", note=note)
+    set_clock_status_service(
+        command_path=ctx,
+        emit_output=True,
+        clock_id=clock_id,
+        status="archived",
+        note=note,
+    )
 
 
-def _set_clock_status(
-    ctx: click.Context,
-    clock_id: str,
+def set_clock_status_service(
     *,
+    command_path: click.Context | str,
+    emit_output: bool = False,
+    clock_id: str,
     status: str,
     note: str,
-) -> None:
+) -> dict:
     role = require_dm()
     clock_key = slugify(clock_id)
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    workspace = resolve_active_campaign_workspace()
     with pg_connection() as conn:
         try:
             record = _db.clock_set_status(
@@ -304,91 +394,15 @@ def _set_clock_status(
                     "Use `glass clock list --all` to find the durable clock before resolving or archiving it.",
                 )
             ) from None
-        _write_public_clock_projections(conn, workspace)
 
     queue_event(state, role.actor, f"clock {status} {record['label']}")
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         f"clock.{status}",
         command_params(clock_id=clock_key, note=note),
         {"clock": record},
+        emit_output=emit_output,
     )
-
-
-def _write_public_clock_projections(
-    conn: Any, workspace: _workspace.CampaignWorkspace
-) -> None:
-    """Project public durable clocks to markdown.
-
-    Postgres remains canonical. These files are player-facing reference
-    surfaces so agents can inspect public pressure without asking the DM.
-    """
-    clocks = _db.clock_list(
-        conn,
-        campaign_id=workspace.campaign_id,
-        visibility="public",
-        include_archived=False,
-    )
-    shared_path = workspace.root / "shared" / "clocks.md"
-    shared_path.parent.mkdir(parents=True, exist_ok=True)
-    shared_path.write_text(_render_clock_markdown(clocks, "Public Clocks"), encoding="utf-8")
-
-    arc_groups: dict[str, list[dict[str, Any]]] = {}
-    for item in clocks:
-        if item["scope"] in {"arc", "act"} and item.get("anchor_id"):
-            arc_groups.setdefault(str(item["anchor_id"]), []).append(item)
-    if workspace.arcs_dir.exists():
-        for arc_dir in workspace.arcs_dir.iterdir():
-            if not arc_dir.is_dir():
-                continue
-            arc_clocks = arc_groups.get(arc_dir.name, [])
-            (arc_dir / "clocks.md").write_text(
-                _render_clock_markdown(arc_clocks, f"Public Clocks - {arc_dir.name}"),
-                encoding="utf-8",
-            )
-
-
-def _render_clock_markdown(clocks: list[dict[str, Any]], title: str) -> str:
-    active = [clock for clock in clocks if clock["status"] == "active"]
-    resolved = [clock for clock in clocks if clock["status"] == "resolved"]
-    lines = [
-        "---",
-        "generated_by: glass clock",
-        "---",
-        "",
-        f"# {title}",
-        "",
-        "Postgres is canonical. This file is a player-facing projection of public durable clocks.",
-        "",
-    ]
-    _append_clock_section(lines, "Active", active)
-    _append_clock_section(lines, "Resolved", resolved)
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def _append_clock_section(
-    lines: list[str],
-    title: str,
-    clocks: list[dict[str, Any]],
-) -> None:
-    lines.extend([f"## {title}", ""])
-    if not clocks:
-        lines.extend(["_None._", ""])
-        return
-    for clock in clocks:
-        scope = clock["scope"]
-        anchor = f":{clock['anchor_id']}" if clock.get("anchor_id") else ""
-        description = f" - {clock['description']}" if clock.get("description") else ""
-        resolution = (
-            f" Resolved: {clock['resolution_note']}"
-            if clock.get("resolution_note") and clock["status"] == "resolved"
-            else ""
-        )
-        lines.append(
-            f"- **{clock['label']}** (`{clock['clock_id']}`, {scope}{anchor}): "
-            f"{clock['value']}/{clock['max']} ({clock['direction']})"
-            f"{description}{resolution}"
-        )
-    lines.append("")
+    return {"clock": record}

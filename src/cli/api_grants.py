@@ -1,9 +1,12 @@
 """Opaque grants for the local glass API.
 
-The API runs with operator credentials and receives commands from player
+The API runs with operator credentials and receives commands from agent
 processes over localhost. Grants are the authorization boundary: each token is
 campaign-bound, turn-bound, role-bound, short-lived, and restricted to the CLI
-surface a player is allowed to use.
+surface an agent is allowed to use.
+
+Grants are self-contained signed tokens. They do not create per-agent files,
+workspace roots, prose paths, or closeout paths.
 """
 
 from __future__ import annotations
@@ -12,6 +15,9 @@ import json
 import os
 import secrets
 import time
+import base64
+import hashlib
+import hmac
 from pathlib import Path
 from typing import Any
 
@@ -20,33 +26,85 @@ from .errors import GlassError, agent_instruction
 
 DEFAULT_API_URL = "http://127.0.0.1:26001"
 
-_GRANT_FILE = ".glass-grants.json"
 _DEFAULT_TTL_SECONDS = 7200
 
 _PLAYER_ALLOWED: dict[str, set[str] | None] = {
     "check": None,
     "done": None,
+    "fact": {"pack", "set"},
     "find": None,
+    "lore": {"search", "read", "list"},
     "next": None,
     "beat": {"check", "start", "close", "convert"},
-    "character": None,
+    "character": {
+        "new",
+        "get",
+        "list",
+        "bulk-get",
+        "signature-add",
+        "signature-status",
+        "skill-declare",
+        "set-hp",
+        "award-xp",
+        "level-up",
+        "set-momentum",
+        "inventory-add",
+        "inventory-rm",
+        "consequence-add",
+        "consequence-list",
+        "consequence-resolve",
+    },
     "clock": {"list", "show"},
     "msg": None,
     "roll": None,
     "scene": {"clock", "tracker", "pressure"},
-    "table": {"current", "show"},
-    "note": {"write", "propose"},
     "search": {"text", "semantic"},
-    "turn": {"audit", "end", "handoff"},
+    "turn": {"append", "audit", "end", "handoff"},
     "turns": {"find", "feed"},
-    "summary": {"show", "append"},
-    "sync": {"apply"},
     "tarot": {"current", "list"},
-    "lore": {"list"},
+}
+_DM_ALLOWED: dict[str, set[str] | None] = {
+    "arc": None,
+    "beat": None,
+    "character": {
+        "new",
+        "get",
+        "list",
+        "bulk-get",
+        "bulk-update",
+        "signature-add",
+        "signature-status",
+        "skill-declare",
+        "set-hp",
+        "award-xp",
+        "level-up",
+        "set-momentum",
+        "inventory-add",
+        "inventory-rm",
+        "consequence-add",
+        "consequence-list",
+        "consequence-resolve",
+    },
+    "check": None,
+    "clock": None,
+    "done": None,
+    "fact": {"pack", "set"},
+    "find": None,
+    "lore": {"search", "read", "list"},
+    "mode": None,
+    "msg": None,
+    "next": None,
+    "quest": None,
+    "roll": None,
+    "scene": None,
+    "search": {"text", "semantic"},
+    "thread": None,
+    "turn": {"append", "audit", "end", "handoff"},
+    "turns": {"find", "feed"},
 }
 
 _HELP_ARGS = {"-h", "--help"}
-_ALWAYS_DENIED = {"api", "db"}
+_ALWAYS_DENIED = {"api", "campaign", "db", "sync", "table", "summary", "note"}
 
 
 def mint_grant(
@@ -58,20 +116,12 @@ def mint_grant(
     glass_role: str,
     turn_id: str,
     ttl_seconds: int = _DEFAULT_TTL_SECONDS,
-    workspace_root: Path | str | None = None,
-    workspace_reader_user: str | None = None,
-    turn_prose_path: Path | str | None = None,
-    turn_closeout_path: Path | str | None = None,
 ) -> str:
-    """Create and persist a short-lived API grant."""
+    """Create a short-lived signed API grant."""
 
-    token = secrets.token_urlsafe(32)
+    del campaigns_dir
     expires_at = int(time.time()) + ttl_seconds
-    path = grant_store_path(campaigns_dir, campaign_id)
-    data = _read_store(path)
-    grants = data.setdefault("grants", {})
-    _prune_expired(grants)
-    grants[token] = {
+    claim = {
         "campaign_id": campaign_id,
         "role": role,
         "actor": actor,
@@ -79,21 +129,18 @@ def mint_grant(
         "turn_id": turn_id,
         "expires_at": expires_at,
         "created_at": int(time.time()),
+        "nonce": secrets.token_urlsafe(16),
     }
-    if workspace_root is not None:
-        grants[token]["workspace_root"] = str(workspace_root)
-    if workspace_reader_user is not None:
-        grants[token]["workspace_reader_user"] = workspace_reader_user
-    if turn_prose_path is not None:
-        grants[token]["turn_prose_path"] = str(turn_prose_path)
-    if turn_closeout_path is not None:
-        grants[token]["turn_closeout_path"] = str(turn_closeout_path)
-    _write_store(path, data)
-    return token
+    body = _b64encode(
+        json.dumps(claim, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    signature = _sign(body)
+    return f"{body}.{signature}"
 
 
 def validate_grant(campaigns_dir: Path, token: str, args: list[str]) -> dict[str, Any]:
     """Return grant claims or raise GlassError."""
+    del campaigns_dir
 
     if not token:
         raise GlassError(
@@ -104,45 +151,61 @@ def validate_grant(campaigns_dir: Path, token: str, args: list[str]) -> dict[str
             )
         )
 
-    for path in _candidate_store_paths(campaigns_dir):
-        data = _read_store(path)
-        grants = data.get("grants", {})
-        claim = grants.get(token)
-        if not isinstance(claim, dict):
-            continue
-        if int(claim.get("expires_at", 0)) < int(time.time()):
-            raise GlassError(
-                agent_instruction(
-                    "expired glass API grant",
-                    "Stop using this stale turn environment and start a fresh orchestrated turn.",
-                )
+    claim = _decode_token(token)
+    if int(claim.get("expires_at", 0)) < int(time.time()):
+        raise GlassError(
+            agent_instruction(
+                "expired glass API grant",
+                "Stop using this stale turn environment and start a fresh orchestrated turn.",
             )
-        _assert_command_allowed(claim, args)
-        return claim
-
-    raise GlassError(
-        agent_instruction(
-            "invalid glass API grant",
-            "Use the API grant from the current orchestrated turn; do not reuse grants from older turns or other campaigns.",
         )
-    )
+    _assert_command_allowed(claim, args)
+    return claim
 
 
-def grant_store_path(campaigns_dir: Path, campaign_id: str) -> Path:
-    return campaigns_dir / campaign_id / _GRANT_FILE
-
-
-def _candidate_store_paths(campaigns_dir: Path) -> list[Path]:
-    if not campaigns_dir.exists():
-        return []
-    return [path / _GRANT_FILE for path in campaigns_dir.iterdir() if path.is_dir()]
+def _decode_token(token: str) -> dict[str, Any]:
+    try:
+        body, signature = token.rsplit(".", 1)
+    except ValueError as exc:
+        raise GlassError(
+            agent_instruction(
+                "invalid glass API grant",
+                "Use the API grant from the current orchestrated turn; do not reuse grants from older turns or other campaigns.",
+            )
+        ) from exc
+    expected = _sign(body)
+    if not hmac.compare_digest(signature, expected):
+        raise GlassError(
+            agent_instruction(
+                "invalid glass API grant signature",
+                "Use the API grant from the current orchestrated turn; do not reuse grants from older turns or other campaigns.",
+            )
+        )
+    try:
+        raw = json.loads(_b64decode(body).decode("utf-8"))
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise GlassError(
+            agent_instruction(
+                "invalid glass API grant payload",
+                "Use the API grant from the current orchestrated turn; do not edit or reconstruct grant tokens.",
+            )
+        ) from exc
+    if not isinstance(raw, dict):
+        raise GlassError(
+            agent_instruction(
+                "invalid glass API grant payload",
+                "Use the API grant from the current orchestrated turn; do not edit or reconstruct grant tokens.",
+            )
+        )
+    return raw
 
 
 def _assert_command_allowed(claim: dict[str, Any], args: list[str]) -> None:
+    if any(arg in _HELP_ARGS for arg in args):
+        return
+
     command = _first_command_token(args)
     if command is None:
-        return
-    if command in _HELP_ARGS:
         return
     if command in _ALWAYS_DENIED:
         raise GlassError(
@@ -154,17 +217,23 @@ def _assert_command_allowed(claim: dict[str, Any], args: list[str]) -> None:
         )
 
     role = str(claim.get("role", ""))
-    if role != "player":
+    if role == "player":
+        command_allowed = _PLAYER_ALLOWED
+        role_label = "player"
+    elif role == "dm":
+        command_allowed = _DM_ALLOWED
+        role_label = "dm"
+    else:
         return
 
-    allowed = _PLAYER_ALLOWED.get(command)
+    allowed = command_allowed.get(command)
     if allowed is None:
-        if command in _PLAYER_ALLOWED:
+        if command in command_allowed:
             return
         raise GlassError(
             agent_instruction(
-                f"player turns cannot run `glass {command}`",
-                "Use one of the player-facing commands allowed in TURN_START.",
+                f"{role_label} turns cannot run `glass {command}`",
+                "Use one of the agent-facing commands allowed in the injected prompt.",
                 "If the DM needs to act, close the turn with `glass done --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
             )
         )
@@ -174,8 +243,8 @@ def _assert_command_allowed(claim: dict[str, Any], args: list[str]) -> None:
         return
     raise GlassError(
         agent_instruction(
-            f"player turns cannot run `glass {command} {subcommand}`",
-            "Use an allowed player-facing subcommand.",
+            f"{role_label} turns cannot run `glass {command} {subcommand}`",
+            "Use an allowed agent-facing subcommand.",
             "If the DM needs this action, close the turn with `glass done --summary <summary> --state <state change or no state change> --rolls <rolls or none> --next dm`.",
         )
     )
@@ -191,32 +260,25 @@ def _first_command_token(args: list[str]) -> str | None:
     return None
 
 
-def _read_store(path: Path) -> dict[str, Any]:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {"grants": {}}
-    except json.JSONDecodeError as exc:
-        raise GlassError(
-            agent_instruction(
-                f"invalid glass API grant store: {path}",
-                "Start a fresh orchestrated turn or regenerate the campaign grant store.",
-                f"JSON parser detail: {exc}",
-            )
-        ) from exc
+def _sign(body: str) -> str:
+    return _b64encode(
+        hmac.new(_grant_secret(), body.encode("ascii"), hashlib.sha256).digest()
+    )
 
 
-def _write_store(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    tmp.replace(path)
-    os.chmod(path, 0o600)
+def _grant_secret() -> bytes:
+    configured = os.environ.get("GLASS_API_SECRET", "").strip()
+    if configured:
+        return configured.encode("utf-8")
+    config_path = os.environ.get("GLASS_CONFIG", "").strip()
+    seed = f"agents-of-glass-local-api:{config_path}:{os.getuid()}"
+    return hashlib.sha256(seed.encode("utf-8")).digest()
 
 
-def _prune_expired(grants: dict[str, Any]) -> None:
-    now = int(time.time())
-    for token, claim in list(grants.items()):
-        if not isinstance(claim, dict) or int(claim.get("expires_at", 0)) < now:
-            grants.pop(token, None)
+def _b64encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _b64decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)

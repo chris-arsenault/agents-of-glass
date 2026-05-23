@@ -1,33 +1,10 @@
----
-title: Rapid Response Character Methodology
-status: authored
-audience: players
-applies_to_modes: [scene-play, action]
----
+# Rapid Response Character
 
-# Rapid Response - Character Branch
+Goal: answer the specific rapid prompt from inside the character.
 
-A rapid-response turn is a short answer to one DM prompt. It is not a full
-player turn.
+1. Read the injected rapid prompt.
+2. Call `glass_check()` only if messages or state are needed to answer.
+3. Close with `glass_done(summary="<what changed or no state change>", state=["no state change"], rolls="none", scene_status="active", next_speaker="default")`.
+4. Submit a brief direct public response with `glass_turn_append(body="...")`.
 
-1. Read the prompt in TURN_START.
-2. Read only the current table, scene summary, or unread messages needed to
-   answer that prompt.
-3. Write a brief direct response to the `TURN.md` path from TURN_START: usually
-   one paragraph, one line, or one image.
-4. Run `glass done` using
-   `no state change`, `rolls none`, and `--next default`.
-
-Required closeout shape:
-
-```bash
-glass done \
-  --summary "<what changed or no state change>" \
-  --state "no state change" \
-  --rolls none \
-  --next default
-```
-
-## Done
-
-Your turn is done only when the response exists and `glass done` succeeds.
+Do not write files or broaden the prompt.

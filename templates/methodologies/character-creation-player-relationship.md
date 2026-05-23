@@ -1,22 +1,13 @@
----
-title: Character Creation Player Relationship
-status: authored
-audience: player
-applies_to_modes: [character-creation]
----
-
 # Character Creation Player Relationship
 
-1. Read every `players/*/public/intro.md`.
-2. Run `glass character bulk-get --all`.
-3. Run `glass check` to read unread messages.
-4. Write or update `players/<id>/public/relationships.md` with public
-   relationship commitments that create play surface with one or two other PCs.
-5. Use messages for proposals that need another player or the DM:
-   `glass msg banter <recipient> "<specific relationship proposal or question>"`.
-6. Commit with `glass sync apply players/<id>/public/relationships.md`.
-7. Write `TURN.md` with only the public relationship commitments.
-8. Run `glass done --summary "<relationship commitments updated>" --state "players/<id>/public/relationships.md updated" --rolls none --next default`.
+Goal: define concrete relationships between characters, not relationships between quirks.
 
-Do not alter hard character numbers on this turn unless the DM explicitly asked
-for a correction.
+1. Call `glass_check()`.
+2. Run `glass_character_bulk_get(all_characters=True)` and `glass_fact_pack(audience="continuity", output_format="markdown")`.
+3. For each relationship, name the other character, the concrete history or obligation, the current tension, and what it changes at the table.
+4. Record relationships with one `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<character>", "predicate": "relationship", "object_id": "<other>", "text": "<neutral commitment>"}])` call.
+5. Use messages for coordination when another player needs to accept or answer.
+6. Close with `glass_done(..., scene_status="active")`.
+7. Submit only public relationship commitments with `glass_turn_append(body="...")`.
+
+Do not write relationship markdown files. Do not make every relationship about character tics.

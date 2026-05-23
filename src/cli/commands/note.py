@@ -226,15 +226,14 @@ def require_intake(state: dict[str, Any], intake_id: str) -> dict[str, Any]:
 @note.command("ratify")
 @click.argument("intake_id")
 @click.option("--to", "target_path",
-              help="Target path relative to shared/lore/. Defaults to "
-                   "shared/lore/<original-filename>.")
+              help="Legacy operator target path. Agent turns must use facts/DB lore instead.")
 @click.pass_context
 def note_ratify(
     ctx: click.Context,
     intake_id: str,
     target_path: str | None,
 ) -> None:
-    """DM-only: ratify an intake (e.g. a public journal entry) into shared lore.
+    """Legacy DM-only intake ratification.
 
     propose/ratify is intended for public journal entries — text the player
     wants to publish to the party. Character sheets, intros, and relationships
@@ -242,50 +241,12 @@ def note_ratify(
     through this loop.
     """
     require_dm()
-    paths = get_paths()
-    campaign_id = active_campaign_id()
-    state = load_state(paths, campaign_id)
-    item = require_intake(state, intake_id)
-    if item["status"] != "pending":
-        raise GlassError(
-            agent_instruction(
-                f"intake {intake_id} is already {item['status']}",
-                "Do not ratify it again; choose a pending intake id.",
-            )
+    raise GlassError(
+        agent_instruction(
+            "note ratification into lore files is retired",
+            "Use `glass lore put` for DB-backed reference prose.",
+            'Use `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])` for durable campaign reality.',
         )
-    source = REPO_ROOT / item["intake_path"]
-    workspace_root = active_campaign_root()
-    lore_root = workspace_root / "shared" / "lore"
-
-    if target_path:
-        rel = clean_relative_path(target_path)
-        while rel.parts and rel.parts[0] in {"content", "shared", "lore"}:
-            rel = Path(*rel.parts[1:])
-        destination = lore_root / rel
-    else:
-        # Strip the "<intake_id>--<player_id>--" prefix off the intake filename.
-        original_name = source.name.split("--", 2)[-1]
-        destination = lore_root / original_name
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source, destination)
-    item["status"] = "ratified"
-    item["resolved_at"] = now_iso()
-    item["ratified_path"] = display_path(destination)
-    persistence = CampaignPersistence(
-        paths=paths,
-        campaign_id=campaign_id,
-        campaign_root=workspace_root,
-    )
-    persisted = persistence.register_markdown(destination, state=state, entity=True)
-    result = {"intake": item, **persisted.to_dict()}
-    commit(
-        paths,
-        state,
-        ctx,
-        "note.ratify",
-        command_params(intake_id=intake_id, target_path=target_path),
-        result,
     )
 
 

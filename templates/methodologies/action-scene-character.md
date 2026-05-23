@@ -1,81 +1,16 @@
----
-title: Action Scene Character Methodology
-status: authored
-audience: players
-applies_to_modes: [action]
----
+# Action Scene Character
 
-# Action Scene - Character Branch
+Goal: execute one fast character action in action order.
 
-Action scenes are quickfire contested moments. Fictional time is seconds or a
-few heartbeats. This sequence is binding for every player initiative turn in
-the character branch.
+1. Call `glass_check()`.
+2. Read action order, active beat, facts, scene clocks, scene trackers, and messages from MCP tool output.
+3. Choose one immediate action from the character's position and knowledge.
+4. Use `glass_scene_pressure(...)` when the action both rolls and reduces a public scene tracker; use `glass_roll(..., target_id="<active-beat-id>")` only when no tracker should change.
+5. Update character/mechanical state through `glass_*` MCP tools.
+6. Record durable continuity with `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "scope_id": "<scene-id>", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])` when state changed.
+7. Close with `glass_done(turn_type="act|answer|support|pass", scene_status="active")`.
+8. Submit tight public prose with `glass_turn_append(body="...")`.
 
-1. Read the action-order block in TURN_START, `table/`, public scene trackers,
-   recent turn summaries, your character state, and any directly relevant rules
-   named by TURN_START.
-2. Run `glass check`. Treat the listed scene clock and active beats as the
-   live dramatic contract for this turn. If a beat is near or at 10/10, land
-   it, close it, convert it, or pass; do not open a fourth beat.
-3. Choose movement or position first: where you are, what you close with, what
-   cover, leverage, route, or social angle you take, or why position is
-   unchanged.
-4. Choose one action that changes leverage, target state, progress, risk, or
-   the next actor's choice.
-5. If your move changes another actor's immediate options, understanding,
-   consent, or likely next action, leave the durable in-character bus traffic
-   now before prose. Use `banter` for offers/warnings/social pressure,
-   `table-talk` for party-visible coordination, `instruction` for explicit asks
-   or handoffs, `plot-hint` for clue/suspicion flags, or `secret` for DM-only
-   material. Prefer character ids from the TURN_START recipient roster; do not
-   guess ids. Use `glass character bulk-get --all` if you need to confirm one.
-6. Resolve uncertainty before prose. Use `glass roll` for checks and `glass
-   scene pressure` when reducing a tracker or target. If the action is not
-   covered by a sheet skill, roll it as an improvised `fool` skill; add
-   `--save-skill` only when it should become durable and a slot is available.
-   If a hidden fact is required before you can act, message the DM and end with
-   `--next dm` plus
-   `--open-question`. On `stall`, `regress`, or `collapse`, make the result
-   move play: record a visible cost, worse position, narrowed choice, beat
-   movement, or scene clock tick, or name that consequence in `glass done`.
-7. Persist allowed hard state before prose: character state, inventory,
-   messages, or `players/<id>/secrets/` edits. Commit authored markdown with
-   `glass sync apply`.
-8. Write concise public prose to the `TURN.md` path from TURN_START: movement,
-   action, visible consequence, and the new immediate position. Narrate the
-   *event*, not the roll. Risk tiers (`risky`, `desperate`), outcome labels
-   (`breakthrough`, `stall`, `regress`, `collapse`), skill tiers (`artisan`,
-   `superior`), momentum values, and die math do not appear in prose or in a
-   character's dialogue — they are bookkeeping and live in the closeout block.
-   Write "his aim is a hair off in the tense moment" not "risky throw,
-   finesse: 6 against 7." When you refer to an item, skill, or signature
-   move in prose, reach for the **generic descriptor** on the character
-   sheet (e.g. `baton`, `reading the bands`, `the fall-line ride`), not the
-   prose name or the slug.
-9. Run `glass done`. In action scenes, include `--position`,
-   `--pressure`, and the formal `--turn-type`. `pass` is valid only for a
-   short visible yield and also requires `--state "no state change"` plus
-   `--rolls none`.
+If your roll stalls, regresses, or collapses, do not retry the same beat from a different angle. The failed roll ticks that beat's failure pressure; at two failed rolls the beat closes and the DM gets the next handoff to offer a fresh route toward the same scene goal.
 
-Required closeout shape:
-
-```bash
-glass done \
-  --summary "<action taken and immediate result>" \
-  --state "<durable updates or no state change>" \
-  --rolls "<rolls/pressure used or none>" \
-  --turn-type "<act|answer|support|pass>" \
-  --position "<new position or unchanged>" \
-  --pressure "<tracker/HP/clock change or none>" \
-  --next default
-```
-
-## Done
-
-Your turn is done only when the action is resolved as far as your authority
-allows, public prose exists, and `glass done` reports `valid: true`.
-
-Optional reference: [`how-to/action-scene-reference.md`](../how-to/action-scene-reference.md).
-
-Narration craft (read before writing public prose):
-[`how-to/narration-craft-player.md`](../how-to/narration-craft-player.md).
+Do not write files. Keep character voice legible and direct under pressure.

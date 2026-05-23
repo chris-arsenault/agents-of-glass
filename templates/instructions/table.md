@@ -6,58 +6,58 @@ authority: binding
 
 # Public Table Instructions
 
-`table/` is the shared visible board. If players should reason from a visible
-fact in the current scene, it must appear in `table/` or another
-player-readable file.
+`table/` is retired as the agent continuity layer. The graph fact pack is the
+shared visible board for agent decisions, and agents read it through the MCP tool surface:
 
-There is no authored `table/index.md`. Do not create one. The table is made of
-`table/scene.md` plus named markdown artifacts such as `vel-hasken.md`,
-`ref-0042-sr.md`, or any other meaningful slug the scene needs. These names are
-examples, not a taxonomy or allow list.
+```text
+glass_fact_pack(audience="continuity", output_format="markdown")
+```
+
+When called with `audience="continuity"`, `glass_fact_pack` returns only continuity facts:
+usable world state, obligations, scene affordances, relationships, clues, and
+other facts agents should act on. Character profile material and table-facing
+guidance are separate audiences; do not treat them as the normal state feed.
+Facts marked `importance="low"` or `importance="minor"` are stored for audit/debug
+but omitted from fact-pack output.
+
+If players should reason from a visible fact in current play, record it with
+`glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])`. Public prose is submitted with
+`glass_turn_append(body="...")`; it is not a state transport layer.
+
+Do not create or update `table/index.md`, `table/scene.md`, or named table
+artifacts. Do not use files as a substitute for graph facts.
 
 ## Player Sequence
 
-1. Read `table/scene.md` and the named table artifacts relevant to your action.
-2. Use `glass table show [path]` when a table file needs command-visible output.
-3. Ask the DM only when the table is absent, ambiguous, or newly relevant.
-4. Do not edit `table/`.
+1. Read `glass_fact_pack(audience="continuity", output_format="markdown")`.
+2. Ask the DM only when the fact graph or hard-state MCP tool output is absent,
+   ambiguous, or newly relevant.
+3. Do not edit `table/`.
 
 ## DM Sequence
 
-1. Update `table/scene.md` before ending any turn that changes the current
-   visible situation.
-2. Create or update a named table artifact for every reusable visible NPC,
-   locale, ship, document, faction, clue, object, relationship, or other lore
-   item players are expected to reason from.
-3. When existing durable lore enters the scene, put the visible portion on the
-   table with `glass table use` or a named table artifact that links to the
-   durable lore.
-4. When a table artifact becomes durable canon, promote or copy it into
-   `shared/lore/` with `glass lore promote` or the `glass lore new` /
-   `glass lore upsert` sequence.
-5. Use command writes for table state:
+1. Update graph facts before ending any turn that changes the current visible
+   situation.
+2. Create or update a fact for every reusable visible NPC, locale, ship,
+   document, faction, clue, object, relationship, or other lore item players are
+   expected to reason from.
+3. When existing durable lore enters the scene, record the visible portion as a
+   scoped graph fact.
+4. Use graph facts for continuity state:
 
-```bash
-glass table write scene.md --body "<visible scene description>"
-glass table write <meaningful-slug>.md --body "<visible artifact>"
-glass table append <meaningful-slug>.md --body "<new visible detail>"
-glass table use shared/lore/<path>.md --as <meaningful-slug>.md
-glass lore promote table/<meaningful-slug>.md --to shared/lore/<path>.md
-glass table snapshot --label "<reason>"
+```text
+glass_state_update(updates=[
+  {"kind": "fact", "audience": "continuity", "importance": "medium", "scope_id": "<scene-id>", "subject_id": "scene", "predicate": "objective", "text": "<visible objective>"},
+  {"kind": "fact", "audience": "continuity", "importance": "medium", "scope_id": "<scene-id>", "subject_id": "<object>", "predicate": "descriptor", "text": "<plain descriptor and affordance>"},
+  {"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<character-id>", "predicate": "relationship", "object_id": "<other-character-id>", "text": "<neutral relationship fact>"},
+  {"kind": "fact", "audience": "profile", "importance": "medium", "subject_id": "<character-id>", "predicate": "social-texture", "text": "<table-facing texture>"}
+])
 ```
 
-6. Use `glass sync apply table` only for table files already edited directly.
-7. Mention table updates and lore promotions in `glass done --state`.
+5. Mention already-committed fact updates in `glass_done(state=[...])`.
 
 ## Boundary
 
-Only `table/` is the active table. DM notes, hooks, NPC files, lore, messages,
-and human-visible UI panels are separate surfaces unless the DM puts their
-visible content into `table/`.
-
-## CLI Encoding Opportunities
-
-These are not commands yet:
-
-- `glass table check` for stale scene state, missing named artifacts, unpromoted
-  durable lore, and stale table snapshots.
+Only the fact graph is active continuity. Reference lore, messages, old table
+files, transcripts, summaries, and human-visible UI panels are separate surfaces
+unless their visible content is recorded as graph facts.

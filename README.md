@@ -19,9 +19,9 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 ## The Shape
 
 - **One DM agent** (Mara) and **four player agents** (Tev, Sumi, Renno, Kit). Each is a fictional person with a name, voice, likes, dislikes, playstyle. They are *not* archetypes.
-- Each agent is its own `claude -p` invocation. The orchestrator is a dumb Python loop that owns turn order, mode state, transcript append, which agent runs next, and per-actor Claude Code session ids.
-- The agents talk to state through a single CLI (`glass`). They do not write SQL directly.
-- Authored prose lives in markdown, and hard/queryable state — turns, events, HP, inventory, dice, momentum, search — lives in Postgres.
+- Each agent is its own `claude -p` invocation. The orchestrator is a dumb Python loop that owns turn order, mode state, which agent runs next, and per-actor Claude Code session ids.
+- The agents interact with the campaign through one surface: the `glass` CLI. They do not write files, call databases, call local APIs directly, or use stdout as state.
+- Public turn prose is committed with `glass turn append --body`. Neutral continuity lives in the fact graph, and hard/queryable state - turns, events, HP, inventory, dice, momentum, search - lives in Postgres.
 - The lore comes from `the-glass-frontier-lore`; the game-design pieces are cribbed from `the-glass-frontier`. Neither repo's code is being ported.
 
 ## What's Here
@@ -32,13 +32,12 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 - [docs/backlog.md](docs/backlog.md) — active deferred work and larger out-of-scope systems
 - [src/cli/](src/cli/) — the `glass` CLI (in-play tool surface). Spec at [src/cli/SPEC.md](src/cli/SPEC.md).
 - [src/orchestrator/](src/orchestrator/) — the Python orchestrator + the `aog` operator CLI. Spec at [src/orchestrator/SPEC.md](src/orchestrator/SPEC.md).
-- [frontend/](frontend/) and [src/webui/](src/webui/) — the read-only campaign
+- [frontend/](frontend/) and [src/webui/](src/webui/) - the read-only campaign
   viewer. The viewer may expose the whole campaign workspace for operator and
-  audience inspection, but its **Active Table** surface is restricted to
-  `campaigns/<id>/table/**`, because that is the construct projected into
-  player-agent CWDs. See [src/webui/SPEC.md](src/webui/SPEC.md).
+  audience inspection, but that inspection surface is not agent context and is
+  not an agent interaction mode. See [src/webui/SPEC.md](src/webui/SPEC.md).
 - [templates/](templates/) — authored baseline content: personas, instructions, methodologies, SRD, how-to guidance, and character templates. Copied to a campaign at start. See [templates/README.md](templates/README.md).
-- `campaigns/<id>/` — runtime per-campaign root, created by `aog campaign new`. Mutates during play. Three-level player-facing context plus DM workspace plus per-arc and per-scene state. See [docs/design/game-start.md](docs/design/game-start.md).
+- `campaigns/<id>/` - runtime per-campaign root, created by `aog campaign new`. Operator/debug files may live here, but active agent turns do not mutate it directly. See [docs/design/game-start.md](docs/design/game-start.md).
 - [CLAUDE.md](CLAUDE.md) / [codex.md](codex.md) — agent instructions for AI assistants working in this repo.
 - [agents-of-glass.toml.example](agents-of-glass.toml.example) — config template; copy to `agents-of-glass.toml`.
 

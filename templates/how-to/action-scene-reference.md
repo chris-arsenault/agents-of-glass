@@ -11,7 +11,7 @@ turn sequence.
 
 ## Toolkit Patterns
 
-Use the tracker shape that matches the fiction:
+Use the clock or tracker shape that matches the fiction:
 
 - combat: HP, morale, cover, exposure, routing
 - chase: distance, routes, obstacles, escape windows
@@ -19,53 +19,54 @@ Use the tracker shape that matches the fiction:
 - escape/rescue/disaster: evacuation progress, hazard clocks, trapped people
 - heist/infiltration: alert clocks, objective progress, patrol position
 
-Do not force a scene into one of those labels. Name the pressure honestly.
+Do not force a scene into one of those labels. Name the visible endpoint honestly.
 
 ## Scene Clocks
 
 The required scene clock is usually the party objective: what the characters
-are trying to accomplish. Use `--polarity objective` for that clock. Add a
-separate `--polarity threat` or `--polarity timer` clock when an antagonist,
+are trying to accomplish. Use `polarity="objective"` for that clock. Add a
+separate `polarity="threat"` or `polarity="timer"` clock when an antagonist,
 hazard, or deadline needs its own visible movement.
 
-Use `glass scene clock tick <clock-id> <delta> --outcome "<why>"` when a
-meaningful success, failure, DM move, or beat resolution changes one of those
-clocks.
+Scene clocks and pressure trackers are separate:
 
-## Trackers
+- Scene clocks show objective, threat, or timer movement for the scene.
+- Scene trackers are roll-mediated pressure targets: HP, morale, resistance,
+  distance, leverage, alert, or another numeric value that gets reduced by
+  successful pressure.
 
-Every action scene needs at least one concrete endpoint. Some trackers count up:
-morale breaking, alert rising, a gate opening. Some count down: HP, resistance,
-distance, structural integrity, nerve.
+The DM creates pressure targets with `glass_scene_tracker_set(...)`. Use
+`glass_scene_pressure(...)` when a character action both rolls and reduces one
+of those trackers. The pressure target is the tracker id from `glass_check()` or
+`glass_scene_tracker_list()`.
 
-```bash
-glass scene tracker set enemy-rout --label "Enemy rout" --max 6
-glass scene tracker tick enemy-rout 2
-glass scene tracker set patrol-leader-hp --label "Patrol leader HP" --value 8 --max 8 --resistance 1
-```
+Use `glass_scene_clock_tick(clock_id="<clock-id>", delta=<delta>, outcome="<why>")`
+only for direct non-roll movement: a DM move, a beat close, a timer pulse, or a
+visible consequence that does not need a roll.
 
-## Pressure
+Ordinary `glass_roll(...)` calls in active play should use
+`target_id="<active-beat-id>"`. Failed outcomes tick that beat's failed-roll
+pressure. At two failed rolls the beat closes and the DM takes the next handoff;
+the next DM move should offer a fresh route toward the same scene goal, not a
+newly named retry of the same obstacle.
 
-Use `glass scene pressure` when an action reduces a numeric target:
+## Character State
 
-```bash
-glass scene pressure patrol-leader-hp swordsman finesse \
-  --risk risky --character tev-pc-1 --impact d8 \
-  --bonus 1 --because "dueling saber in close quarters"
-```
-
-The same command works for social pressure, chases, and hazards when the fiction
-supports a numeric target.
+Use `glass_character_set_hp(...)` for HP changes and
+`glass_character_consequence_add(...)` for lasting character fallout. Use
+`glass_state_update(...)` for neutral continuity facts that are neither clock
+movement nor character hard state.
 
 ## Outcome Authority
 
 The acting agent narrates the immediate visible outcome of their roll. The DM
-owns durable world state, tracker corrections, lasting PC fallout, and any
-correction when a narrated consequence overshoots the table state.
+owns durable world state, scene repair, hidden fallout, and any correction when a
+narrated consequence overshoots the table state. Players own public hard-state
+updates for their own characters.
 
 If a PC hits 0 HP, they are out of the action, not automatically dead. The DM
-chooses and records the consequence if it should persist:
+or owning player records the consequence if it should persist:
 
-```bash
-glass character consequence-add tev-pc-1 "Captured by the patrol" --severity serious --scope arc
+```text
+glass_character_consequence_add(character_id="tev-pc-1", label="Captured by the patrol", severity="serious", scope="arc")
 ```

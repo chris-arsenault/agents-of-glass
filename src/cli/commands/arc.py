@@ -67,6 +67,25 @@ def arc_create(
     pull_source: str,
     pull_utilization: str,
 ) -> None:
+    create_arc_service(
+        command_path=ctx,
+        emit_output=True,
+        arc_id=arc_id,
+        pull_source=pull_source,
+        pull_utilization=pull_utilization,
+    )
+
+
+def create_arc_service(
+    *,
+    command_path: click.Context | str = "glass_arc_create",
+    emit_output: bool = False,
+    arc_id: str,
+    pull_source: str,
+    pull_utilization: str,
+) -> dict[str, Any]:
+    """Create an arc from typed runtime inputs."""
+
     require_dm()
     pull_source = _require_text(pull_source, "--pull-source")
     pull_utilization = _require_concrete_note(
@@ -117,7 +136,7 @@ def arc_create(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "arc.create",
         command_params(
             arc_id=arc_id,
@@ -125,7 +144,9 @@ def arc_create(
             pull_utilization=pull_utilization,
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 def _write_arc_pull_note(
@@ -168,40 +189,51 @@ def _require_text(value: str, option_name: str) -> str:
     return cleaned
 
 
-def _require_concrete_note(value: str, option_name: str, instruction: str) -> str:
+def _require_concrete_note(value: str, option_name: str, _instruction: str) -> str:
     cleaned = _require_text(value, option_name)
-    if len(cleaned.split()) < 6:
-        raise GlassError(
-            agent_instruction(
-                f"{option_name} is too vague",
-                instruction,
-            )
-        )
     return cleaned
 
 
 @arc.command("list")
 @click.pass_context
 def arc_list(ctx: click.Context) -> None:
+    emit(list_arcs_service(command_path=ctx))
+
+
+def list_arcs_service(
+    *,
+    command_path: click.Context | str = "glass_arc_list",
+) -> dict[str, Any]:
+    """List campaign arcs."""
+
     workspace = _campaign_workspace()
     paths = get_paths()
     state = load_state(paths, workspace.campaign_id)
     arcs = _workspace.list_arcs(workspace)
     result = {"campaign_id": workspace.campaign_id, "arcs": arcs}
-    append_audit(paths, state, ctx, "arc.list", command_params(), result)
-    emit(result)
+    append_audit(paths, state, command_path, "arc.list", command_params(), result)
+    return result
 
 
 @arc.command("current")
 @click.pass_context
 def arc_current(ctx: click.Context) -> None:
+    emit(current_arc_service(command_path=ctx))
+
+
+def current_arc_service(
+    *,
+    command_path: click.Context | str = "glass_arc_current",
+) -> dict[str, Any]:
+    """Read the active arc."""
+
     workspace = _campaign_workspace()
     paths = get_paths()
     state = load_state(paths, workspace.campaign_id)
     current = _workspace.current_arc(workspace)
     result = {"campaign_id": workspace.campaign_id, "active_arc": current}
-    append_audit(paths, state, ctx, "arc.current", command_params(), result)
-    emit(result)
+    append_audit(paths, state, command_path, "arc.current", command_params(), result)
+    return result
 
 
 @arc.command("close-check")
@@ -209,6 +241,16 @@ def arc_current(ctx: click.Context) -> None:
 @click.pass_context
 def arc_close_check(ctx: click.Context, arc_id: str | None) -> None:
     """DM-only: report whether an arc is ready to close."""
+    emit(close_check_arc_service(command_path=ctx, arc_id=arc_id))
+
+
+def close_check_arc_service(
+    *,
+    command_path: click.Context | str = "glass_arc_close_check",
+    arc_id: str | None = None,
+) -> dict[str, Any]:
+    """Report whether an arc is ready to close."""
+
     require_dm()
     workspace = _campaign_workspace()
     paths = get_paths()
@@ -330,12 +372,12 @@ def arc_close_check(ctx: click.Context, arc_id: str | None) -> None:
     append_audit(
         paths,
         state,
-        ctx,
+        command_path,
         "arc.close-check",
         command_params(arc_id=arc_id),
         result,
     )
-    emit(result)
+    return result
 
 
 def _markdown_close_status(
@@ -412,6 +454,21 @@ def _arc_scene_summary_statuses(arc_dir: Path) -> list[dict[str, Any]]:
 @click.argument("arc_id")
 @click.pass_context
 def arc_activate(ctx: click.Context, arc_id: str) -> None:
+    activate_arc_service(
+        command_path=ctx,
+        emit_output=True,
+        arc_id=arc_id,
+    )
+
+
+def activate_arc_service(
+    *,
+    command_path: click.Context | str = "glass_arc_activate",
+    emit_output: bool = False,
+    arc_id: str,
+) -> dict[str, Any]:
+    """Activate an existing arc."""
+
     require_dm()
     workspace = _campaign_workspace()
     paths = get_paths()
@@ -441,7 +498,16 @@ def arc_activate(ctx: click.Context, arc_id: str) -> None:
         "active_arc": normalized_arc_id,
         "path": str(arc_dir),
     }
-    commit(paths, state, ctx, "arc.activate", command_params(arc_id=arc_id), result)
+    commit(
+        paths,
+        state,
+        command_path,
+        "arc.activate",
+        command_params(arc_id=arc_id),
+        result,
+        emit_output=emit_output,
+    )
+    return result
 
 
 @arc.command("close")
@@ -481,6 +547,29 @@ def arc_close(
     carry_clock_specs: tuple[str, ...],
     retire_clock_specs: tuple[str, ...],
 ) -> None:
+    close_arc_service(
+        command_path=ctx,
+        emit_output=True,
+        arc_id=arc_id,
+        summary=summary,
+        outcome_values=outcome_values,
+        carry_clock_specs=carry_clock_specs,
+        retire_clock_specs=retire_clock_specs,
+    )
+
+
+def close_arc_service(
+    *,
+    command_path: click.Context | str = "glass_arc_close",
+    emit_output: bool = False,
+    arc_id: str | None = None,
+    summary: str | None = None,
+    outcome_values: tuple[str, ...],
+    carry_clock_specs: tuple[str, ...] = (),
+    retire_clock_specs: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Close an arc and record its outcomes."""
+
     role = require_dm()
     workspace = _campaign_workspace()
     paths = get_paths()
@@ -580,7 +669,7 @@ def arc_close(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "arc.close",
         command_params(
             arc_id=arc_id,
@@ -590,7 +679,9 @@ def arc_close(
             retire_clock=list(retire_clock_specs),
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 def _validate_arc_clock_dispositions(

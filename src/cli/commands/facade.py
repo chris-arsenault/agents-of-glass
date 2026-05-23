@@ -19,12 +19,12 @@ from ..campaign import (
     resolve_active_campaign_workspace,
 )
 from ..errors import GlassError, agent_instruction
+from ..facts import fact_pack
 from ..ids import now_iso
 from ..messages import message_visible_to, render_message_identities
 from ..paths_resolve import display_path
 from ..role import current_role, require_dm
 from ..scene_beats import (
-    beat_check_required_for_turn,
     scene_contract_failures,
     scene_contract_snapshot,
 )
@@ -32,6 +32,7 @@ from ..config import get_paths
 from ..state import append_audit, commit, current_mode_record, load_state, queue_event
 from ..yaml_io import command_params, emit
 from .search import _run_search
+from .character import character_agent_view
 from .turn import (
     _HANDOFF_AGENT_IDS,
     _PLAYER_AGENT_IDS,
@@ -40,11 +41,11 @@ from .turn import (
     _TURN_END_TURN_TYPE_CHOICES,
     _active_turn_number,
     _require_active_turn_context,
+    _scene_contract_target_for_audit,
     _stage_closeout,
     _turn_audit_report,
     _turn_end_fix_suggestions,
     _turn_end_validation_problems,
-    _write_turn_closeout_artifact,
 )
 
 
@@ -56,13 +57,33 @@ from .turn import (
 )
 @click.pass_context
 def check(ctx: click.Context, no_mark: bool) -> None:
-    """One turn-start check: messages, scene contract, table, clocks, upkeep."""
+    """One turn-start check: messages, fact graph, scene contract, clocks, upkeep."""
+    check_service(command_path=ctx, emit_output=True, no_mark=no_mark)
+
+
+def check_service(
+    *,
+    command_path: click.Context | str = "glass_check",
+    emit_output: bool = False,
+    no_mark: bool = False,
+) -> dict[str, Any]:
+    """Build the turn-start check payload from runtime state."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     role = current_role()
     turn_context = _optional_active_turn_context(state)
-    scene_id = _active_scene_id(state, turn_context)
+    contract_target = (
+        _scene_contract_target_for_audit(state, turn_context)
+        if turn_context is not None
+        else None
+    )
+    scene_id = (
+        str(contract_target.get("scene_id") or "").strip()
+        if contract_target is not None
+        else _active_scene_id(state, turn_context)
+    )
     reference_turn = (
         _active_turn_number(turn_context)
         if turn_context is not None
@@ -91,7 +112,22 @@ def check(ctx: click.Context, no_mark: bool) -> None:
             campaign_id=campaign_id,
             visibility="public" if role.kind == "player" else None,
         )
+        scene_trackers = (
+            _db.scene_tracker_list(
+                conn,
+                campaign_id=campaign_id,
+                scene_id=scene_id,
+                visibility="public" if role.kind == "player" else None,
+            )
+            if scene_id
+            else []
+        )
         characters = _db.character_list(conn, campaign_id)
+        signature_moves = _db.character_signature_moves_list(
+            conn,
+            campaign_id=campaign_id,
+            visibility=None if role.kind in {"dm", "operator"} else "public",
+        )
         snapshot = (
             scene_contract_snapshot(
                 conn,
@@ -105,7 +141,7 @@ def check(ctx: click.Context, no_mark: bool) -> None:
         )
 
     hard_requirements: list[str] = []
-    required = beat_check_required_for_turn(turn_context)
+    required = contract_target is not None
     marked_beat_check = False
     scene_contract: dict[str, Any] | None = None
     if snapshot is not None:
@@ -138,6 +174,7 @@ def check(ctx: click.Context, no_mark: bool) -> None:
             "recent_beats": snapshot["recent_beats"],
             "completed_beats": snapshot["completed_beats"],
             "scene_note": snapshot["scene_note"],
+            "landing_guidance": snapshot["landing_guidance"],
             "warning_beats": [beat["beat_id"] for beat in snapshot["warning_beats"]],
             "expired_beats": [beat["beat_id"] for beat in snapshot["expired_beats"]],
             "continuation_gap": continuation_gap,
@@ -145,26 +182,61 @@ def check(ctx: click.Context, no_mark: bool) -> None:
     elif required:
         hard_requirements.append("no active scene is staged for beat tracking")
 
+    mode_record = current_mode_record(state) or {}
+    mode_name = str(mode_record.get("mode") or "")
+    fact_graph_modes = {
+        "organization-bootstrap",
+        "character-creation",
+        "scene-prep",
+        "scene-play",
+        "action",
+    }
     result = {
         "campaign_id": campaign_id,
         "actor": role.actor,
         "role": role.kind,
         "turn": turn_context,
-        "mode": current_mode_record(state),
+        "mode": mode_record,
         "unread_messages": [
             render_message_identities(paths, state, message) for message in visible_messages
         ],
         "unread_message_count": len(visible_messages),
         "messages_marked_read": bool(visible_messages and not no_mark),
-        "table": _table_overview(),
+        "table": (
+            {
+                "status": "retired_for_agent_continuity",
+                "detail": "use facts for continuity in this mode",
+            }
+            if mode_name in fact_graph_modes
+            else _table_overview()
+        ),
+        "facts": fact_pack(
+            campaign_id=campaign_id,
+            audience="continuity",
+            scene_id=scene_id,
+            actor=role.actor,
+            visibility="dm" if role.kind in {"dm", "operator"} else "public",
+            limit=80,
+        ),
         "durable_clocks": durable_clocks,
+        "scene_trackers": scene_trackers,
+        "characters": _character_hard_state(characters, signature_moves, role=role),
         "scene_contract": scene_contract,
         "pending_level_ups": _pending_level_ups(characters),
         "beat_check_marked": marked_beat_check,
         "ready_for_done": not hard_requirements,
         "hard_requirements": hard_requirements,
     }
-    commit(paths, state, ctx, "check", command_params(no_mark=no_mark), result)
+    commit(
+        paths,
+        state,
+        command_path,
+        "check",
+        command_params(no_mark=no_mark),
+        result,
+        emit_output=emit_output,
+    )
+    return result
 
 
 @click.command("done")
@@ -209,7 +281,6 @@ def check(ctx: click.Context, no_mark: bool) -> None:
 @click.option("--open-question", "open_questions", multiple=True)
 @click.option("--position", default="", help="Position/leverage change, or unchanged.")
 @click.option("--pressure", default="", help="Tracker/clock/HP/pressure change, or none.")
-@click.option("--to", "end_file", default=None, hidden=True)
 @click.pass_context
 def done(
     ctx: click.Context,
@@ -222,9 +293,39 @@ def done(
     open_questions: tuple[str, ...],
     position: str,
     pressure: str,
-    end_file: str | None,
 ) -> None:
     """Run turn audit and stage the closeout in one command."""
+    done_service(
+        command_path=ctx,
+        emit_output=True,
+        summary=summary,
+        state_changes=state_changes,
+        rolls=rolls,
+        turn_type=turn_type,
+        next_speaker=next_speaker,
+        scene_status=scene_status,
+        open_questions=open_questions,
+        position=position,
+        pressure=pressure,
+    )
+
+
+def done_service(
+    *,
+    command_path: click.Context | str = "glass_done",
+    emit_output: bool = False,
+    summary: str,
+    state_changes: tuple[str, ...],
+    rolls: str,
+    turn_type: str | None,
+    next_speaker: str,
+    scene_status: str,
+    open_questions: tuple[str, ...],
+    position: str,
+    pressure: str,
+) -> dict[str, Any]:
+    """Stage turn closeout from structured runtime inputs."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -242,6 +343,7 @@ def done(
         "scene_status": scene_status.strip() or "active",
         "position": position.strip(),
         "pressure": pressure.strip(),
+        "facts": [],
         "turn_type": (turn_type or "").strip() or None,
         "campaign_id": campaign_id,
         "turn_id": turn_context.get("turn_id") or "",
@@ -261,7 +363,6 @@ def done(
     )
     valid = not problems
     _stage_closeout(state, payload=payload, valid=valid, problems=problems)
-    _write_turn_closeout_artifact(payload, valid=valid, problems=problems, end_file=end_file)
 
     result = {
         "turn_id": turn_context.get("turn_id"),
@@ -292,7 +393,7 @@ def done(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "done",
         command_params(
             summary=summary_text,
@@ -306,7 +407,9 @@ def done(
             pressure=pressure.strip(),
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @click.command("find")
@@ -592,6 +695,36 @@ def _pending_level_ups(characters: list[dict[str, Any]]) -> list[dict[str, Any]]
             }
         )
     return pending
+
+
+def _character_hard_state(
+    characters: list[dict[str, Any]],
+    signature_moves: list[dict[str, Any]],
+    *,
+    role: Any,
+) -> list[dict[str, Any]]:
+    moves_by_character: dict[str, list[dict[str, Any]]] = {}
+    for move in signature_moves:
+        moves_by_character.setdefault(str(move.get("character_id") or ""), []).append(
+            {
+                "name": move.get("name"),
+                "descriptor": move.get("descriptor"),
+                "visibility": move.get("visibility"),
+            }
+        )
+    return [
+        character_agent_view(
+            {
+                **character,
+                "signature_moves": moves_by_character.get(
+                    str(character.get("character_id") or ""),
+                    [],
+                ),
+            },
+            role=role,
+        )
+        for character in characters
+    ]
 
 
 def _required_text(value: str, label: str) -> str:

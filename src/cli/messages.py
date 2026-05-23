@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import difflib
 import os
 import re
 from pathlib import Path
@@ -51,15 +50,12 @@ def load_message_types(paths: Paths) -> set[str]:
 
 
 def require_message_type(paths: Paths, message_type: str) -> None:
-    valid = load_message_types(paths)
-    if message_type in valid:
+    del paths
+    if message_type.strip():
         return
-    suggestion = difflib.get_close_matches(message_type, sorted(valid), n=1)
-    suffix = f" Did you mean {suggestion[0]!r}?" if suggestion else ""
     raise GlassError(
         agent_instruction(
-            f"unknown message type {message_type!r}",
-            f"Use one of: {', '.join(sorted(valid))}.{suffix}",
+            "message type is required",
             "Send the message as `glass msg <type> <recipient> <body>`.",
         )
     )

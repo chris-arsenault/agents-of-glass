@@ -1,11 +1,9 @@
-"""Helpers for arc / scene / lore management within a campaign workspace.
+"""Helpers for arc / scene management within a campaign workspace.
 
 Scaffolds the `campaigns/<id>/arcs/<arc>/...` directory tree, manages the
-campaign runtime state (active arc / active scene / arc list), and copies
-world-bible entries into the campaign's curated lore.
+campaign runtime state (active arc / active scene / arc list).
 
-These helpers are called by the `glass arc`, `glass scene`, and `glass lore`
-command groups in main.py.
+These helpers are called by the `glass arc` and `glass scene` command groups.
 """
 
 from __future__ import annotations
@@ -34,10 +32,6 @@ class CampaignWorkspace:
     @property
     def arcs_dir(self) -> Path:
         return self.root / "arcs"
-
-    @property
-    def lore_dir(self) -> Path:
-        return self.root / "shared" / "lore"
 
     def arc_dir(self, arc_id: str) -> Path:
         return self.arcs_dir / arc_id
@@ -453,106 +447,7 @@ def _timestamp_slug() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-# --- lore curation ---
-
-
-def import_lore(
-    workspace: CampaignWorkspace,
-    lore_path: Path,
-    source_root: Path,
-    alias: str | None = None,
-) -> Path:
-    """Copy a world-bible entry into campaigns/<id>/shared/lore/.
-
-    Preserves the entry's path relative to `source_root` (stripping the
-    top-level `player/` or `dm/` segment). If `alias` is given, that's used
-    as the destination filename instead.
-    """
-    if not lore_path.is_file():
-        raise FileNotFoundError(f"world-bible entry not found: {lore_path}")
-
-    try:
-        relative = lore_path.relative_to(source_root)
-    except ValueError:
-        relative = Path(lore_path.name)
-
-    if alias:
-        dest = workspace.lore_dir / Path(alias)
-        if not dest.suffix:
-            dest = dest.with_suffix(".md")
-    else:
-        parts = relative.parts
-        if parts and parts[0] in ("player", "dm"):
-            parts = parts[1:]
-        dest = workspace.lore_dir / Path(*parts) if parts else (
-            workspace.lore_dir / lore_path.name
-        )
-
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
-        raise FileExistsError(f"lore entry already exists at destination: {dest}")
-
-    text = lore_path.read_text(encoding="utf-8")
-    tagged = _tag_with_source(text, str(relative))
-    dest.write_text(tagged, encoding="utf-8")
-    return dest
-
-
-def list_lore(workspace: CampaignWorkspace) -> list[dict[str, Any]]:
-    if not workspace.lore_dir.exists():
-        return []
-    out: list[dict[str, Any]] = []
-    for p in sorted(workspace.lore_dir.rglob("*.md")):
-        rel = p.relative_to(workspace.lore_dir)
-        out.append({"path": str(rel), "absolute": str(p)})
-    return out
-
-
-def search_lore(
-    source_root: Path, query: str, *, limit: int = 20
-) -> list[dict[str, Any]]:
-    """Substring search across the world bible (filename + body).
-
-    Intended for the DM to find a candidate entry to `glass lore import`.
-    """
-    if not source_root.exists():
-        return []
-    query_lower = query.lower()
-    matches: list[dict[str, Any]] = []
-    for p in sorted(source_root.rglob("*.md")):
-        try:
-            text = p.read_text(encoding="utf-8")
-        except Exception:
-            continue
-        if query_lower not in p.name.lower() and query_lower not in text.lower():
-            continue
-        preview = ""
-        for line in text.splitlines():
-            if query_lower in line.lower():
-                preview = line.strip()[:160]
-                break
-        rel = p.relative_to(source_root)
-        matches.append({"path": str(rel), "absolute": str(p), "preview": preview})
-        if len(matches) >= limit:
-            break
-    return matches
-
-
 # --- helpers ---
-
-
-def _tag_with_source(text: str, source_path: str) -> str:
-    """Add `source: world-bible/<path>` to frontmatter (or create it)."""
-    if text.startswith("---\n"):
-        end = text.find("\n---\n", 4)
-        if end > 0:
-            frontmatter = text[4:end]
-            rest = text[end + 5 :]
-            if "source:" in frontmatter:
-                return text  # already tagged
-            new_frontmatter = frontmatter.rstrip() + f"\nsource: world-bible/{source_path}\n"
-            return f"---\n{new_frontmatter}---\n{rest}"
-    return f"---\nsource: world-bible/{source_path}\n---\n\n{text}"
 
 
 def _arc_plan_stub(arc_id: str) -> str:

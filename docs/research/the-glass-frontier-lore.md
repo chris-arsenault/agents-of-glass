@@ -10,7 +10,7 @@ The world is a shattered ring world (the rings broke 130 years ago), a planet be
 
 ## Architecture We're Cribbing
 
-- **Markdown authoring pattern.** Prose lives in one entry per file, with frontmatter and stable headings. We keep this file shape for campaign lore.
+- **Markdown authoring pattern.** Prose lives in one entry per file, with frontmatter and stable headings. We may keep this file shape for operator-curated lore outside live agent turns.
 - **Typed relationship vocabulary.** No generic relationships (`RELATED_TO` is banned). Relationship prose should use concrete language such as located in, governs, caused, or member of.
 - **Entry + section consistency.** Every durable entry has a consistent shape: id, title, type, attributes, and prose sections. No special file shape per content kind.
 - **DM/player separation in the wiki.** `dm/` content (themes, threads, loops, secret truths) is excluded from the player-facing layer. We mirror this — players see player-facing lore; the DM agent has DM-only access.
@@ -28,11 +28,15 @@ The world is a shattered ring world (the rings broke 130 years ago), a planet be
 - **The review tooling** (`review.py`, the React review app, voice-review prompts). Useful for human authors; we have agents.
 - **The full lint suite.** We'll want lints, but theirs are tuned for human-written prose; ours will need to check agent-emitted notes for different things.
 - **The narrative-role distinction (`viewpoint` / `titan`).** Useful for hand-authored fiction; not yet clear if it's useful for agentic generation.
-- **Their structured mirror and snapshot/restore workflow.** Our current persistence is markdown plus Postgres/search.
+- **Their structured mirror and snapshot/restore workflow.** Our current live persistence is fact graph plus Postgres/search, with markdown as reference/export.
 
 ## What We Read From It at Runtime
 
-The lore repo is **read-only at session time.** Player agents and the DM consult lore entries to ground their notes and decisions. We don't write back to it from our orchestrator — anything new an agent invents goes into campaign markdown (`shared/lore/`, `dm/notes/`, or table artifacts as appropriate).
+The lore repo is **read-only at session time.** The orchestrator may summarize
+or quote curated player-safe lore into injected prompts. Agents should not use
+the lore repo or campaign markdown as a write target; anything new that future
+agents must rely on becomes a graph fact or purpose-built hard state through
+`glass`.
 
 ## Open Questions
 

@@ -1,21 +1,5 @@
----
-title: Creative Influence Instructions
-target: executing-agent
-authority: binding
----
+# Creative Influences
 
-# Creative Influence Instructions
+Creative influence text in the injected prompt is optional flavor, not state.
 
-Creative influences are subordinate inputs. They never override persona,
-character state, table state, SRD rules, dice, or the active methodology.
-
-## Sequence
-
-1. Check `TURN_START.md` for a one-turn verse phrase or persisted tarot
-   influence.
-2. Choose one small effect on attention, image, pacing, risk appetite, or
-   interpretation.
-3. Apply that effect inside the prose or decision.
-4. Keep the influence unnamed unless the fiction itself makes naming it natural.
-5. End the turn through the active methodology's normal `glass done`
-   contract.
+It may affect word choice or attention at the margins. It must not override facts, hard-state MCP tool output, rules, player agency, or scene grounding. Do not turn influence text into a recurring fact unless `glass_state_update(updates=[{"kind": "fact", "audience": "profile", "importance": "medium", "subject_id": "<character-id>", "predicate": "social-texture", "text": "<table-facing texture>"}])` explicitly records it.

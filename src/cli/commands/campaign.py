@@ -146,13 +146,6 @@ def _require_text(value: str, option_name: str) -> str:
     return cleaned
 
 
-def _require_concrete_note(value: str, option_name: str, instruction: str) -> str:
+def _require_concrete_note(value: str, option_name: str, _instruction: str) -> str:
     cleaned = _require_text(value, option_name)
-    if len(cleaned.split()) < 6:
-        raise GlassError(
-            agent_instruction(
-                f"{option_name} is too vague",
-                instruction,
-            )
-        )
     return cleaned

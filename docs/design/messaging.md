@@ -22,7 +22,7 @@ There is no "subject," no "priority," no "thread," no "reply-to." Agents are sma
 glass msg read [--since-checkpoint] [--from <sender>] [--type <type>]
 ```
 
-Each agent has a per-recipient read checkpoint, advanced when they read. Reading without `--since-checkpoint` returns recent messages; with it, only unread. Agents typically read unread messages at turn start as part of `TURN_START.md` (see [`context-packages.md`](context-packages.md)).
+Each agent has a per-recipient read checkpoint, advanced when they read. Reading without `--since-checkpoint` returns recent messages; with it, only unread. The injected prompt may surface unread counts, and agents read message bodies through `glass msg read` (see [`context-packages.md`](context-packages.md)).
 
 ## Storage
 
@@ -48,7 +48,7 @@ Read state:
 
 Postgres because messages are queryable corpus data. Analysis later wants to ask "who messaged whom most" or "did secret messages correlate with later betrayals." Markdown-only would lose this.
 
-The orchestrator also projects each agent's unread messages into a flat `inbox/` directory inside their per-turn working directory, so agents who'd rather read files than run a CLI command have a path. Both paths land at the same place.
+There is no file inbox for agent turns. `glass msg read` is the only message read path.
 
 ## What This Gets Us
 
@@ -71,13 +71,13 @@ The message type list is the one place we validate, because untyped messages wou
 - A message to `dm` is readable only by the DM.
 - A message to a specific player is readable by that player **and by the DM** (the DM is the table arbiter and sees everything; players' journals are also DM-visible — see [`context-packages.md`](context-packages.md)).
 - A message to `party` is readable by all players (and the DM).
-- A player cannot read messages sent to other specific players. Campaign workspace file permissions plus the role-scoped `glass` API grant make this enforceable, not just policy.
+- A player cannot read messages sent to other specific players. Role-scoped `glass` command authorization makes this enforceable, not just policy.
 
 ## Failure Cases
 
 - Unknown type → CLI returns the valid set + closest match. Agent retries inline.
 - Unknown recipient → CLI returns the active roster. Agent retries inline.
-- Agent doesn't read messages at turn start → no automatic enforcement. `TURN_START.md` surfaces unread message counts prominently; agents that ignore them are producing a worse turn, but the orchestrator does not fire an error.
+- Agent doesn't read messages at turn start -> no automatic enforcement. The injected prompt surfaces unread message counts prominently; agents that ignore them are producing a worse turn, but the orchestrator does not fire an error.
 
 ## Relationship to the Transcript
 

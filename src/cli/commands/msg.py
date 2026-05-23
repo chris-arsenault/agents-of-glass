@@ -45,7 +45,6 @@ from ..messages import (
     message_visible_to,
     player_dirs,
     render_message_identities,
-    require_message_type,
     require_recipient,
     roster,
 )
@@ -123,13 +122,31 @@ def msg_group() -> None:
 def msg_send(
     ctx: click.Context, message_type: str, recipient: str, body_parts: tuple[str, ...]
 ) -> None:
+    send_message_service(
+        command_path=ctx,
+        emit_output=True,
+        message_type=message_type,
+        recipient=recipient,
+        body=" ".join(body_parts),
+    )
+
+
+def send_message_service(
+    *,
+    command_path: click.Context | str = "glass_message_send",
+    emit_output: bool = False,
+    message_type: str,
+    recipient: str,
+    body: str,
+) -> dict[str, Any]:
+    """Send one durable message from typed runtime inputs."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    require_message_type(paths, message_type)
+    message_type = _require_message_type_text(message_type)
     recipient = require_recipient(paths, state, recipient)
     role = current_role()
-    body = " ".join(body_parts)
     campaign_id = active_campaign_id()
     with pg_connection() as conn:
         message = _db.message_send(
@@ -145,11 +162,13 @@ def msg_send(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "msg.send",
         command_params(message_type=message_type, recipient=recipient),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @msg_group.command("read")
@@ -167,11 +186,32 @@ def msg_read(
     message_type: str | None,
     no_mark: bool,
 ) -> None:
+    read_messages_service(
+        command_path=ctx,
+        emit_output=True,
+        since_checkpoint=since_checkpoint,
+        sender=sender,
+        message_type=message_type,
+        no_mark=no_mark,
+    )
+
+
+def read_messages_service(
+    *,
+    command_path: click.Context | str = "glass_message_read",
+    emit_output: bool = False,
+    since_checkpoint: bool = False,
+    sender: str | None = None,
+    message_type: str | None = None,
+    no_mark: bool = False,
+) -> dict[str, Any]:
+    """Read durable messages visible to the current actor."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     if message_type:
-        require_message_type(paths, message_type)
+        message_type = _require_message_type_text(message_type)
     sender = canonicalize_actor_reference(paths, state, sender)
     role = current_role()
     campaign_id = active_campaign_id()
@@ -201,7 +241,7 @@ def msg_read(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "msg.read",
         command_params(
             since_checkpoint=since_checkpoint,
@@ -210,4 +250,13 @@ def msg_read(
             no_mark=no_mark,
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
+
+
+def _require_message_type_text(message_type: str) -> str:
+    cleaned = message_type.strip()
+    if not cleaned:
+        raise GlassError("message type is required")
+    return cleaned

@@ -121,8 +121,27 @@ def quest_beat(
 
     Bundled into `glass scene end --beats` for end-of-scene logging.
     """
+    quest_beat_service(
+        command_path=ctx,
+        emit_output=True,
+        text=" ".join(text_parts),
+        scene_id=scene_id,
+        arc_id=arc_id,
+    )
+
+
+def quest_beat_service(
+    *,
+    command_path: click.Context | str = "glass_quest_beat",
+    emit_output: bool = False,
+    text: str,
+    scene_id: str | None = None,
+    arc_id: str | None = None,
+) -> dict[str, object]:
+    """Append a party-visible story-shifting beat."""
+
     role = require_dm()
-    text = " ".join(text_parts).strip()
+    text = text.strip()
     if not text:
         raise GlassError(
             agent_instruction(
@@ -161,9 +180,11 @@ def quest_beat(
         "beats": beat_lines,
     }
     commit(
-        paths, state, ctx, "quest.beat",
+        paths, state, command_path, "quest.beat",
         command_params(scene=scene, arc=arc, text=text), result,
+        emit_output=emit_output,
     )
+    return result
 
 
 def _append_quest_beat(

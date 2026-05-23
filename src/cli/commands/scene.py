@@ -23,7 +23,7 @@ from ..campaign import (
     pg_connection,
     resolve_active_campaign_workspace,
 )
-from ..character_projection import write_public_character_mirror
+from ..character_display import write_public_character_mirror
 from ..config import REPO_ROOT, Paths, get_paths
 from ..constants import (
     CHECK_DICE_COUNT,
@@ -127,6 +127,25 @@ def scene() -> None:
 def scene_create(
     ctx: click.Context, scene_id: str, scene_type: str, arc_id: str | None
 ) -> None:
+    create_scene_service(
+        command_path=ctx,
+        emit_output=True,
+        scene_id=scene_id,
+        scene_type=scene_type,
+        arc_id=arc_id,
+    )
+
+
+def create_scene_service(
+    *,
+    command_path: click.Context | str = "glass_scene_create",
+    emit_output: bool = False,
+    scene_id: str,
+    scene_type: str,
+    arc_id: str | None = None,
+) -> dict[str, Any]:
+    """Create a scene record from typed runtime inputs."""
+
     require_dm()
     workspace = _campaign_workspace()
     paths = get_paths()
@@ -183,11 +202,13 @@ def scene_create(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "scene.create",
         command_params(scene_id=scene_id, scene_type=scene_type, arc_id=arc_id),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @scene.command("end")
@@ -237,6 +258,31 @@ def scene_end_cmd(
     as no-longer-active in the campaign workspace state. Also clears any
     scene_closing_turns countdown — the scene is over.
     """
+    end_scene_service(
+        command_path=ctx,
+        emit_output=True,
+        summary=summary,
+        beats=beats,
+        outcome_values=outcome_values,
+        xp_spec=xp_spec,
+        carry_clock_specs=carry_clock_specs,
+        retire_clock_specs=retire_clock_specs,
+    )
+
+
+def end_scene_service(
+    *,
+    command_path: click.Context | str = "glass_scene_end",
+    emit_output: bool = False,
+    summary: str | None = None,
+    beats: str | None = None,
+    outcome_values: tuple[str, ...],
+    xp_spec: str | None = None,
+    carry_clock_specs: tuple[str, ...] = (),
+    retire_clock_specs: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """End the active scene and bundle wrap-up writes."""
+
     role = require_dm()
     workspace = _campaign_workspace()
     paths = get_paths()
@@ -264,7 +310,7 @@ def scene_end_cmd(
         label="scene end",
     )
     close_result = _apply_scene_close(
-        ctx=ctx,
+        ctx=command_path,
         paths=paths,
         workspace=workspace,
         state=state,
@@ -281,7 +327,7 @@ def scene_end_cmd(
     )
     result = {"campaign_id": workspace.campaign_id, **close_result}
     commit(
-        paths, state, ctx, "scene.end",
+        paths, state, command_path, "scene.end",
         command_params(
             summary=summary,
             beats=beats,
@@ -291,7 +337,9 @@ def scene_end_cmd(
             retire_clock=list(retire_clock_specs),
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 _SCENE_TRANSITION_PLAY_MODES: tuple[str, ...] = (
@@ -410,6 +458,55 @@ def scene_transition_cmd(
     to push a sub-scene on top of the current one (action burst, flashback),
     or --return to pop back to a named parent scene from a nested scene.
     """
+    scene_transition_service(
+        command_path=ctx,
+        emit_output=True,
+        next_scene_id=next_scene_id,
+        kind=kind,
+        close_parent=close_parent,
+        scene_type=scene_type,
+        arc_id_override=arc_id_override,
+        new_mode=new_mode,
+        summary=summary,
+        outcome_values=outcome_values,
+        beats=beats,
+        xp_spec=xp_spec,
+        carry_clock_specs=carry_clock_specs,
+        retire_clock_specs=retire_clock_specs,
+        parent_summary=parent_summary,
+        parent_outcome_values=parent_outcome_values,
+        parent_beats=parent_beats,
+        parent_carry_clock_specs=parent_carry_clock_specs,
+        parent_retire_clock_specs=parent_retire_clock_specs,
+        force=force,
+    )
+
+
+def scene_transition_service(
+    *,
+    command_path: click.Context | str = "glass_scene_transition",
+    emit_output: bool = False,
+    next_scene_id: str,
+    kind: str | None,
+    close_parent: bool = False,
+    scene_type: str | None = None,
+    arc_id_override: str | None = None,
+    new_mode: str = "scene-play",
+    summary: str | None = None,
+    outcome_values: tuple[str, ...] = (),
+    beats: str | None = None,
+    xp_spec: str | None = None,
+    carry_clock_specs: tuple[str, ...] = (),
+    retire_clock_specs: tuple[str, ...] = (),
+    parent_summary: str | None = None,
+    parent_outcome_values: tuple[str, ...] = (),
+    parent_beats: str | None = None,
+    parent_carry_clock_specs: tuple[str, ...] = (),
+    parent_retire_clock_specs: tuple[str, ...] = (),
+    force: bool = False,
+) -> dict[str, Any]:
+    """Close or stage scenes in one atomic transition."""
+
     role = require_dm()
     if kind is None:
         raise GlassError(
@@ -458,7 +555,8 @@ def scene_transition_cmd(
 
     if kind == "nested":
         return _scene_transition_nested(
-            ctx=ctx, paths=paths, workspace=workspace, state=state,
+            ctx=command_path, emit_output=emit_output,
+            paths=paths, workspace=workspace, state=state,
             campaign_id=campaign_id, role=role,
             next_scene_slug=next_scene_slug, scene_type=scene_type,
             arc_id_override=arc_id_override, new_mode=new_mode,
@@ -467,7 +565,8 @@ def scene_transition_cmd(
 
     if kind == "return":
         return _scene_transition_return(
-            ctx=ctx, paths=paths, workspace=workspace, state=state,
+            ctx=command_path, emit_output=emit_output,
+            paths=paths, workspace=workspace, state=state,
             campaign_id=campaign_id, session_id=session_id, role=role,
             target_scene_slug=next_scene_slug, mode_stack=mode_stack,
             top_frame=top_frame,
@@ -490,7 +589,8 @@ def scene_transition_cmd(
             )
         )
     return _scene_transition_new(
-        ctx=ctx, paths=paths, workspace=workspace, state=state,
+        ctx=command_path, emit_output=emit_output,
+        paths=paths, workspace=workspace, state=state,
         campaign_id=campaign_id, session_id=session_id, role=role,
         next_scene_slug=next_scene_slug, scene_type=scene_type,
         arc_id_override=arc_id_override, new_mode=new_mode,
@@ -587,7 +687,8 @@ def _push_mode_frame(
 
 def _scene_transition_nested(
     *,
-    ctx: click.Context,
+    ctx: click.Context | str,
+    emit_output: bool,
     paths: Paths,
     workspace: _workspace.CampaignWorkspace,
     state: dict[str, Any],
@@ -599,7 +700,7 @@ def _scene_transition_nested(
     new_mode: str,
     top_frame: dict[str, Any],
     mode_stack: list[dict[str, Any]],
-) -> None:
+) -> dict[str, Any]:
     resolved_type = _require_scene_type(scene_type)
     arc_for_new = arc_id_override or state.get("active_arc") or top_frame.get("scene_id")
     scene_dir, resolved_type_slug, resolved_scene_slug = _create_scene_record(
@@ -645,12 +746,15 @@ def _scene_transition_nested(
             new_mode=new_frame["mode"],
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 def _scene_transition_return(
     *,
-    ctx: click.Context,
+    ctx: click.Context | str,
+    emit_output: bool,
     paths: Paths,
     workspace: _workspace.CampaignWorkspace,
     state: dict[str, Any],
@@ -666,7 +770,7 @@ def _scene_transition_return(
     xp_spec: str | None,
     carry_clock_specs: tuple[str, ...],
     retire_clock_specs: tuple[str, ...],
-) -> None:
+) -> dict[str, Any]:
     # Validate target is a parent on the stack (not the top, not absent)
     target_index = None
     for index in range(len(mode_stack) - 2, -1, -1):
@@ -772,12 +876,15 @@ def _scene_transition_return(
             retire_clock=list(retire_clock_specs),
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 def _scene_transition_new(
     *,
-    ctx: click.Context,
+    ctx: click.Context | str,
+    emit_output: bool,
     paths: Paths,
     workspace: _workspace.CampaignWorkspace,
     state: dict[str, Any],
@@ -804,7 +911,7 @@ def _scene_transition_new(
     parent_beats: str | None,
     parent_carry_clock_specs: tuple[str, ...],
     parent_retire_clock_specs: tuple[str, ...],
-) -> None:
+) -> dict[str, Any]:
     resolved_type = _require_scene_type(scene_type)
     if not outcome_values:
         raise GlassError(
@@ -986,7 +1093,9 @@ def _scene_transition_new(
             parent_retire_clock=list(parent_retire_clock_specs),
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 def _lookup_scene_type(
@@ -1027,7 +1136,7 @@ def scene_closing_down(
 ) -> None:
     """DM-only: declare the scene is closing down.
 
-    Sets a countdown that surfaces in every subsequent TURN_START.md as
+    Sets a countdown that surfaces in every subsequent injected prompt as
     "Scene closing — N rounds left" so players know to converge their
     threads. When the counter hits 0, agents see a "Final round" section
     instead. The DM closes with `glass scene end --outcome`.
@@ -1039,6 +1148,23 @@ def scene_closing_down(
     Use `--rounds N` for the typical case (1 round = ~5 agent turns).
     `--turns N` is an escape hatch for fine-grained control.
     """
+    closing_down_scene_service(
+        command_path=ctx,
+        emit_output=True,
+        round_budget=round_budget,
+        turn_budget=turn_budget,
+    )
+
+
+def closing_down_scene_service(
+    *,
+    command_path: click.Context | str = "glass_scene_closing_down",
+    emit_output: bool = False,
+    round_budget: int = 4,
+    turn_budget: int | None = None,
+) -> dict[str, Any]:
+    """Declare the active scene is closing down."""
+
     role = require_dm()
     if turn_budget is not None:
         if turn_budget <= 0:
@@ -1065,7 +1191,7 @@ def scene_closing_down(
     state = load_state(paths, campaign_id)
     # Stored as commits+1 because the orchestrator decrements once on the
     # commit of the DM's setting turn. The first non-DM turn that follows
-    # sees the user-friendly value in TURN_START.
+    # sees the user-friendly value in the injected prompt.
     state["scene_closing_turns"] = commits + 1
     queue_event(state, role.actor, f"scene closing down ({unit_label} left)")
     result = {
@@ -1073,9 +1199,11 @@ def scene_closing_down(
         "rounds": round_budget if turn_budget is None else None,
     }
     commit(
-        paths, state, ctx, "scene.closing-down",
+        paths, state, command_path, "scene.closing-down",
         command_params(rounds=round_budget, turns=turn_budget), result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @scene.group("clock")
@@ -1122,6 +1250,35 @@ def scene_clock_declare(
     visibility: str,
 ) -> None:
     """DM-only: declare or replace a scene-specific active-play clock."""
+    declare_scene_clock_service(
+        command_path=ctx,
+        emit_output=True,
+        clock_id=clock_id,
+        label=label,
+        goal=goal,
+        value=value,
+        max_value=max_value,
+        direction=direction,
+        polarity=polarity,
+        visibility=visibility,
+    )
+
+
+def declare_scene_clock_service(
+    *,
+    command_path: click.Context | str = "glass_scene_clock_declare",
+    emit_output: bool = False,
+    clock_id: str,
+    label: str,
+    goal: str,
+    value: int = 0,
+    max_value: int,
+    direction: str,
+    polarity: str | None = None,
+    visibility: str = "public",
+) -> dict[str, Any]:
+    """DM-only: declare or replace a scene-specific active-play clock."""
+
     role = require_dm()
     polarity_value = polarity or ("timer" if direction == "countdown" else "objective")
     if max_value <= 0:
@@ -1141,7 +1298,7 @@ def scene_clock_declare(
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    scene_id = _active_tracker_scene_id(state)
+    scene_id = _active_scene_clock_scene_id(state, tool_name="glass_scene_clock_declare")
     clock_key = slugify(clock_id)
     turn_id = str(state.get("active_turn_id") or "").strip() or None
     with pg_connection() as conn:
@@ -1171,7 +1328,7 @@ def scene_clock_declare(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "scene.clock.declare",
         command_params(
             clock_id=clock_key,
@@ -1184,7 +1341,9 @@ def scene_clock_declare(
             visibility=visibility,
         ),
         {"clock": record},
+        emit_output=emit_output,
     )
+    return {"clock": record}
 
 
 @scene_clock.command("tick")
@@ -1199,6 +1358,25 @@ def scene_clock_tick(
     outcome: str,
 ) -> None:
     """Move a scene clock directly when a turn creates a concrete consequence."""
+    tick_scene_clock_service(
+        command_path=ctx,
+        emit_output=True,
+        clock_id=clock_id,
+        delta=delta,
+        outcome=outcome,
+    )
+
+
+def tick_scene_clock_service(
+    *,
+    command_path: click.Context | str = "glass_scene_clock_tick",
+    emit_output: bool = False,
+    clock_id: str,
+    delta: int = 1,
+    outcome: str,
+) -> dict[str, Any]:
+    """Move a scene clock directly when a turn creates a concrete consequence."""
+
     if delta == 0:
         raise GlassError(
             agent_instruction(
@@ -1210,7 +1388,7 @@ def scene_clock_tick(
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     role = current_role()
-    scene_id = _active_tracker_scene_id(state)
+    scene_id = _active_scene_clock_scene_id(state, tool_name="glass_scene_clock_tick")
     clock_key = slugify(clock_id)
     turn_id = str(state.get("active_turn_id") or "").strip() or None
     outcome_text = outcome.strip()
@@ -1265,7 +1443,7 @@ def scene_clock_tick(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "scene.clock.tick",
         command_params(clock_id=clock_key, delta=delta, outcome=outcome_text),
         {
@@ -1275,12 +1453,20 @@ def scene_clock_tick(
             "delta": delta,
             "resolved": resolved,
         },
+        emit_output=emit_output,
     )
+    return {
+        "clock": clock,
+        "before": before,
+        "after": after,
+        "delta": delta,
+        "resolved": resolved,
+    }
 
 
 @scene.group("tracker")
 def scene_tracker() -> None:
-    """Scene-local generic counters/clocks."""
+    """Scene-local pressure trackers."""
 
 
 @scene_tracker.command("set")
@@ -1321,6 +1507,33 @@ def scene_tracker_set(
     public: bool,
 ) -> None:
     """DM-only: create or replace a scene-local generic tracker."""
+    set_scene_tracker_service(
+        command_path=ctx,
+        emit_output=True,
+        tracker_id=tracker_id,
+        label=label,
+        value=value,
+        max_value=max_value,
+        resistance=resistance,
+        impact_resistance=impact_resistance,
+        public=public,
+    )
+
+
+def set_scene_tracker_service(
+    *,
+    command_path: click.Context | str = "glass_scene_tracker_set",
+    emit_output: bool = False,
+    tracker_id: str,
+    label: str | None = None,
+    value: int = 0,
+    max_value: int,
+    resistance: int = 0,
+    impact_resistance: int = 0,
+    public: bool = True,
+) -> dict[str, Any]:
+    """DM-only: create or replace a scene-local generic tracker."""
+
     role = require_dm()
     if max_value <= 0:
         raise GlassError(
@@ -1366,7 +1579,7 @@ def scene_tracker_set(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "scene.tracker.set",
         command_params(
             tracker_id=tracker_key,
@@ -1378,7 +1591,9 @@ def scene_tracker_set(
             public=public,
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @scene_tracker.command("tick")
@@ -1387,6 +1602,23 @@ def scene_tracker_set(
 @click.pass_context
 def scene_tracker_tick(ctx: click.Context, tracker_id: str, delta: int) -> None:
     """DM-only: advance or reduce a scene tracker."""
+    tick_scene_tracker_service(
+        command_path=ctx,
+        emit_output=True,
+        tracker_id=tracker_id,
+        delta=delta,
+    )
+
+
+def tick_scene_tracker_service(
+    *,
+    command_path: click.Context | str = "glass_scene_tracker_tick",
+    emit_output: bool = False,
+    tracker_id: str,
+    delta: int = 1,
+) -> dict[str, Any]:
+    """DM-only: advance or reduce a scene tracker."""
+
     role = require_dm()
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -1431,11 +1663,13 @@ def scene_tracker_tick(ctx: click.Context, tracker_id: str, delta: int) -> None:
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "scene.tracker.tick",
         command_params(tracker_id=tracker_key, delta=delta),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @scene_tracker.command("list")
@@ -1447,6 +1681,16 @@ def scene_tracker_tick(ctx: click.Context, tracker_id: str, delta: int) -> None:
 @click.pass_context
 def scene_tracker_list(ctx: click.Context, all_scenes: bool) -> None:
     """List scene trackers visible to the current role."""
+    emit(list_scene_trackers_service(command_path=ctx, all_scenes=all_scenes))
+
+
+def list_scene_trackers_service(
+    *,
+    command_path: click.Context | str = "glass_scene_tracker_list",
+    all_scenes: bool = False,
+) -> dict[str, Any]:
+    """List scene trackers visible to the current role."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -1463,12 +1707,12 @@ def scene_tracker_list(ctx: click.Context, all_scenes: bool) -> None:
     append_audit(
         paths,
         state,
-        ctx,
+        command_path,
         "scene.tracker.list",
         command_params(all_scenes=all_scenes),
         result,
     )
-    emit(result)
+    return result
 
 
 @scene.command("pressure")
@@ -1506,6 +1750,39 @@ def scene_pressure(
     similar values all use the same numeric reduction shape. Any nonnumeric
     effect stays in prose via --note and the turn narration.
     """
+    pressure_scene_service(
+        command_path=ctx,
+        emit_output=True,
+        target_id=target_id,
+        skill=skill,
+        attribute=attribute,
+        risk=risk,
+        character_id=character_id,
+        impact_die=impact_die,
+        bonus=bonus,
+        save_skill=save_skill,
+        because=because,
+        note=note,
+    )
+
+
+def pressure_scene_service(
+    *,
+    command_path: click.Context | str = "glass_scene_pressure",
+    emit_output: bool = False,
+    target_id: str,
+    skill: str,
+    attribute: str,
+    risk: str,
+    character_id: str,
+    impact_die: str,
+    bonus: int = 0,
+    save_skill: bool = False,
+    because: str | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """Apply roll-mediated pressure to a scene tracker."""
+
     assert_attribute_name(attribute)
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -1556,7 +1833,7 @@ def scene_pressure(
             raise GlassError(
                 agent_instruction(
                     f"unknown character {character_id!r} in campaign {campaign_id!r}",
-                    "Use the character id from your TURN_START character context or public character sheet.",
+                    "Use the character id from the injected prompt or `glass character bulk-get --all`.",
                 )
             )
         if role.kind == "player" and character.get("player_id") != role.actor:
@@ -1777,7 +2054,7 @@ def scene_pressure(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "scene.pressure",
         command_params(
             target_id=target_key,
@@ -1792,7 +2069,9 @@ def scene_pressure(
             note=note,
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 def _impact_reduction(impact_roll: int) -> int:
@@ -1818,6 +2097,28 @@ def _active_tracker_scene_id(
             )
         )
     return None
+
+
+def _active_scene_clock_scene_id(state: dict[str, Any], *, tool_name: str) -> str:
+    current = current_mode_record(state)
+    if current and current.get("scene_id") and current["scene_id"] != "none":
+        mode = str(current.get("mode") or "").strip()
+        if mode in _SCENE_TRANSITION_PLAY_MODES:
+            return str(current["scene_id"])
+        raise GlassError(
+            agent_instruction(
+                f"{tool_name} requires the target scene to be the active play mode",
+                "Scene clocks are scene-play/action state. Do not declare or tick them while the active mode is scene-prep, campaign-planning, character-creation, or another setup frame.",
+                'After `glass_scene_create(...)`, call `glass_mode_end()` if needed, then `glass_mode_start(mode_name="scene-play", scene_id="<scene-id>")` or `glass_mode_start(mode_name="action", scene_id="<scene-id>")` before using scene clock tools.',
+            )
+        )
+    raise GlassError(
+        agent_instruction(
+            f"{tool_name} requires an active play scene",
+            'Start the target scene first with `glass_mode_start(mode_name="scene-play", scene_id="<scene-id>")` or `glass_mode_start(mode_name="action", scene_id="<scene-id>")`.',
+            "Scene clock tools take the scene id from the active mode; they do not infer it from the last created scene.",
+        )
+    )
 
 
 def _tracker_summary(prefix: str, tracker: dict[str, Any]) -> str:
@@ -1907,7 +2208,7 @@ def _validate_scene_clock_dispositions(
 
 def _apply_scene_close(
     *,
-    ctx: click.Context,
+    ctx: click.Context | str,
     paths: Paths,
     workspace: _workspace.CampaignWorkspace,
     state: dict[str, Any],
@@ -2238,17 +2539,29 @@ def _split_quest_beat_lines(text: str) -> list[str]:
 @scene.command("current")
 @click.pass_context
 def scene_current(ctx: click.Context) -> None:
+    emit(current_scene_service())
+
+
+def current_scene_service() -> dict[str, Any]:
+    """Read the active scene."""
+
     workspace = _campaign_workspace()
-    emit({
+    return {
         "campaign_id": workspace.campaign_id,
         "active_scene": _workspace.current_scene(workspace),
-    })
+    }
 
 
 @scene.command("list")
 @click.option("--arc", "arc_id", default=None, help="List scenes in a specific arc (default: active).")
 @click.pass_context
 def scene_list(ctx: click.Context, arc_id: str | None) -> None:
+    emit(list_scenes_service(arc_id=arc_id))
+
+
+def list_scenes_service(*, arc_id: str | None = None) -> dict[str, Any]:
+    """List scenes."""
+
     workspace = _campaign_workspace()
     scenes = _workspace.list_scenes(workspace, arc_id=arc_id)
-    emit({"campaign_id": workspace.campaign_id, "arc_id": arc_id, "scenes": scenes})
+    return {"campaign_id": workspace.campaign_id, "arc_id": arc_id, "scenes": scenes}

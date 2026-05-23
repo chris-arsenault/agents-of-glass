@@ -38,23 +38,28 @@ slot, do not become durable, and do not gain skill xp.
 If the action should become part of the character's durable toolkit, save the
 skill while rolling:
 
-```bash
-glass roll <new-skill-name> <attribute> --risk <level> --character <id> --save-skill
+```text
+glass_roll(character_id="<id>", skill="<new-skill-name>", attribute="<attribute>", risk="<level>", save_skill=True)
 ```
 
-`--save-skill` declares the skill at `fool` before the roll if a slot is
+`save_skill=True` declares the skill at `fool` before the roll if a slot is
 available, then lets that roll earn skill xp normally. If no slot is free, the
-command errors; roll without `--save-skill` to keep the check improvised.
+tool returns an error; roll with `save_skill=False` to keep the check improvised.
 
 Players can also declare without rolling — usually during intermission
 training or a quiet between-scene decision — with:
 
-```bash
-glass character skill-declare <id> <new-skill-name>
+```text
+glass_character_skill_declare(
+  character_id="<id>",
+  skill_id="<machine-skill-id>",
+  prose_name="<new skill name>",
+  descriptor="<plain skill descriptor>",
+)
 ```
 
 Use existing declared skills when they fit. Use improvised rolls for one-off
-actions. Use `--save-skill` only when the skill should persist on the sheet.
+actions. Use `save_skill=True` only when the skill should persist on the sheet.
 
 ## Starting Tier
 

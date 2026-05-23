@@ -223,10 +223,44 @@ class GlassApiProxyTests(unittest.TestCase):
                 ],
             )
             validate_grant(campaigns, token, ["find", "duke"])
+            validate_grant(campaigns, token, ["lore", "search", "Ridge-kiln"])
+            validate_grant(campaigns, token, ["lore", "read", "ridge-kiln"])
+            validate_grant(campaigns, token, ["lore", "list"])
+            validate_grant(
+                campaigns,
+                token,
+                ["fact", "pack", "--audience", "continuity", "--format", "markdown"],
+            )
+            validate_grant(campaigns, token, ["db", "--help"])
+            validate_grant(campaigns, token, ["character", "signature-add", "--help"])
+            validate_grant(
+                campaigns,
+                token,
+                ["fact", "set", "--audience", "continuity", "mox.status = Mox is pinned."],
+            )
             validate_grant(campaigns, token, ["next", "handoff", "dm"])
             validate_grant(campaigns, token, ["search", "text", "duke"])
             validate_grant(campaigns, token, ["tarot", "current"])
             validate_grant(campaigns, token, ["tarot", "list"])
+            validate_grant(campaigns, token, ["character", "signature-status", "tev"])
+            validate_grant(
+                campaigns,
+                token,
+                [
+                    "character",
+                    "signature-add",
+                    "tev",
+                    "Ride The Line Down",
+                    "--descriptor",
+                    "the fall-line ride",
+                    "--look",
+                    "Tev drops under the rail.",
+                    "--use",
+                    "when crossing a guarded descent",
+                    "--tell",
+                    "leaves burned palms",
+                ],
+            )
             validate_grant(
                 campaigns,
                 token,
@@ -241,11 +275,60 @@ class GlassApiProxyTests(unittest.TestCase):
                     "none",
                 ],
             )
-            validate_grant(campaigns, token, ["sync", "apply", "--from", "scratch/sync.json"])
+            with self.assertRaises(GlassError):
+                validate_grant(campaigns, token, ["sync", "apply", "--from", "scratch/sync.json"])
             with self.assertRaises(GlassError):
                 validate_grant(campaigns, token, ["db", "init"])
             with self.assertRaises(GlassError):
                 validate_grant(campaigns, token, ["tarot", "draw", "tev"])
+
+    def test_dm_grant_allows_character_repair_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            campaigns = Path(tmp) / "campaigns"
+            (campaigns / "c1").mkdir(parents=True)
+            token = mint_grant(
+                campaigns,
+                campaign_id="c1",
+                role="dm",
+                actor="dm",
+                glass_role="dm",
+                turn_id="c1-t0006",
+                ttl_seconds=60,
+            )
+
+            validate_grant(campaigns, token, ["lore", "search", "Salt-Crust"])
+            validate_grant(campaigns, token, ["db", "init", "--help"])
+            validate_grant(campaigns, token, ["character", "signature-status", "renno"])
+            validate_grant(
+                campaigns,
+                token,
+                [
+                    "character",
+                    "signature-add",
+                    "renno",
+                    "Closing Cut",
+                    "--descriptor",
+                    "one committed hot cut",
+                    "--look",
+                    "Renno plants their feet.",
+                    "--use",
+                    "when a wounded monster must stop moving",
+                    "--tell",
+                    "burned iron smell",
+                ],
+            )
+            validate_grant(
+                campaigns,
+                token,
+                [
+                    "character",
+                    "bulk-update",
+                    "--json",
+                    '{"character_id":"renno","signature_moves":[{"name":"Closing Cut","descriptor":"one committed hot cut","body":"Renno commits the blade."}]}',
+                ],
+            )
+            with self.assertRaises(GlassError):
+                validate_grant(campaigns, token, ["db", "init"])
 
     def test_standalone_client_proxies_to_local_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -280,15 +363,9 @@ campaigns = "{campaigns}"
                 turn_id="c1-t0001",
                 ttl_seconds=60,
             )
-            grant_file = root / "grant.json"
-            grant_file.write_text(
-                json.dumps({"api_url": url, "grant": grant}) + "\n",
-                encoding="utf-8",
-            )
             env = os.environ.copy()
-            env.pop("GLASS_API_URL", None)
-            env.pop("GLASS_API_GRANT", None)
-            env["GLASS_API_GRANT_FILE"] = str(grant_file)
+            env["GLASS_API_URL"] = url
+            env["GLASS_API_GRANT"] = grant
             result = subprocess.run(
                 [sys.executable, "scripts/glass-api-client", "--help"],
                 cwd=Path(__file__).resolve().parents[1],
@@ -302,19 +379,12 @@ campaigns = "{campaigns}"
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("Usage: glass", result.stdout)
 
-    def test_api_invocation_reads_from_projected_workspace_and_writes_canonical(self) -> None:
+    def test_api_invocation_uses_canonical_campaign_context_without_workspace_claim(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             campaigns = root / "campaigns"
             campaign_root = campaigns / "c1"
             campaign_root.mkdir(parents=True)
-            projection = root / ".glass-cwd" / "c1" / "tev"
-            (projection / "players" / "tev" / "public").mkdir(parents=True)
-            (projection / "players" / "tev" / "public" / "intro.md").write_text(
-                "hello from projection\n",
-                encoding="utf-8",
-            )
-            os.chmod(projection / "players" / "tev" / "public" / "intro.md", 0)
             config = root / "agents-of-glass.toml"
             config.write_text(
                 f"""
@@ -339,48 +409,25 @@ campaigns = "{campaigns}"
                 glass_role="player:tev",
                 turn_id="c1-t0001",
                 ttl_seconds=60,
-                workspace_root=projection,
-                workspace_reader_user="aog-tev",
             )
             claim = validate_grant(
                 campaigns,
                 token,
-                ["sync", "apply", "players/tev/public/intro.md"],
+                ["--help"],
             )
+            self.assertNotIn("workspace_root", claim)
             old_config = os.environ.get("GLASS_CONFIG")
             os.environ["GLASS_CONFIG"] = str(config)
             try:
-                with patch("cli.commands.sync.subprocess.run") as run:
-                    run.return_value = subprocess.CompletedProcess(
-                        args=[],
-                        returncode=0,
-                        stdout=b"hello from projection\n",
-                        stderr=b"",
-                    )
-                    result = _invoke_glass(
-                        ["sync", "apply", "players/tev/public/intro.md"],
-                        claim,
-                    )
+                result = _invoke_glass(["--help"], claim)
             finally:
-                os.chmod(projection / "players" / "tev" / "public" / "intro.md", 0o600)
                 if old_config is None:
                     os.environ.pop("GLASS_CONFIG", None)
                 else:
                     os.environ["GLASS_CONFIG"] = old_config
 
             self.assertEqual(result["exit_code"], 0, result["output"])
-            self.assertEqual(
-                (campaign_root / "players" / "tev" / "public" / "intro.md").read_text(
-                    encoding="utf-8"
-                ),
-                "hello from projection\n",
-            )
-            self.assertEqual(
-                (projection / "players" / "tev" / "public" / "intro.md").read_text(
-                    encoding="utf-8"
-                ),
-                "hello from projection\n",
-            )
+            self.assertIn("Usage: glass", result["output"])
 
 
 if __name__ == "__main__":

@@ -58,9 +58,8 @@ Outcome tiers are also a closure signal — see [`scene-ending.md`](scene-ending
 ## Pressure
 
 Action scenes use one generic pressure model for roll-mediated reduction of a
-numeric value. Combat is HP pressure. The same command can reduce the duke's
-resistance, the distance to a chase target, enemy morale, structural integrity,
-alert, or any other scene-local value.
+numeric value. A pressure target can represent HP, morale, resistance, distance,
+alert, leverage, structural integrity, or any other scene-local value.
 
 A pressure attempt has:
 
@@ -78,50 +77,55 @@ Impact maps to reduction:
 | `4-6` | 2 |
 | `7-10` | 3 |
 
-The v1 CLI applies impact on `breakthrough` and `advance`; `stall` is glancing
+The CLI applies impact on `breakthrough` and `advance`; `stall` is glancing
 pressure for 1 reduction before impact resistance; `regress` and `collapse`
 apply no numeric reduction. Nonnumeric effects remain prose.
 
 ## Scene Trackers
 
-Action scenes need a clearly defined endpoint, often numeric and player-visible.
-The DM should use scene-local trackers for any progress math that could drift
-between agents:
+Scene trackers are the roll-mediated pressure targets:
 
 ```bash
-glass scene tracker set enemy-rout --label "Enemy rout" --max 6
-glass scene tracker tick enemy-rout 2
+glass scene tracker set enemy-rout --label "Enemy rout" --value 6 --max 6
+glass scene pressure enemy-rout route-reading focus \
+  --risk risky --character tev-pc-1 --impact d8 \
+  --note "The front rank breaks."
 glass scene tracker list
 ```
 
-Trackers are generic on purpose. A tracker can be HP, morale, suspicion,
-distance, leverage, hazard pressure, survival rounds, or anything else that
-fits the scene. A pressure target can also carry `resistance` and
-`impact_resistance`:
+At least one action-scene pressure tracker should usually be public when
+players are expected to push it. Hidden trackers are valid for secret danger or
+opposition.
+
+## Scene Clocks
+
+Action scenes need a clearly defined endpoint, often numeric and player-visible.
+The DM should use scene clocks for progress math that could drift between
+agents:
 
 ```bash
-glass scene tracker set patrol-leader-hp --label "Patrol leader HP" \
-  --value 8 --max 8 --resistance 1
-
-glass scene pressure patrol-leader-hp swordsman finesse \
-  --risk risky --character tev-pc-1 --impact d8 \
-  --bonus 1 --because "dueling saber in close quarters"
+glass scene clock declare enemy-rout --label "Enemy rout" \
+  --goal "Break the ambush without killing everyone." --max 6 \
+  --direction progress --polarity objective
+glass scene clock tick enemy-rout 2 --outcome "The front rank breaks."
 ```
 
-At least one tracker in an action scene should usually be public so players
-know what they are trying to accomplish and when the scene is over. Hidden
-trackers are valid for danger clocks or secret opposition.
+Use `glass scene clock tick` for direct, non-roll movement.
+
+At least one active scene clock should usually be public so players know what
+they are trying to accomplish and when the scene is over. Hidden clocks are
+valid for secret danger or opposition.
 
 ## Durable Clocks
 
-Scene trackers are short-term. Use them for the current fight, chase, hazard,
-or social-pressure exchange.
+Scene clocks are short-term. Use them for the current fight, chase, hazard, or
+social-pressure exchange.
 
 Durable clocks are cross-scene pressure: a faction crackdown, an antagonist's
 plan, an arc danger clock, the party organization's standing, a thread that is
 advancing off-screen. These live in Postgres through `glass clock`; public
-clocks are projected to markdown so players can reference them without asking
-the DM.
+clocks are read through `glass` command output and may be summarized into the
+injected prompt.
 
 ```bash
 glass clock set accord-crackdown --scope arc --anchor first-arc \
@@ -149,9 +153,8 @@ For v1:
   otherwise unable to keep acting normally. It does not automatically mean dead.
 - **Death saves / death policy stay deferred** until a real campaign creates
   the need. See [`../backlog.md`](../backlog.md).
-- **Damage is pressure.** Most HP damage comes from `glass scene pressure`:
-  impact reduction is usually 1-3 HP. Bigger consequences are DM-authored
-  scene events, not a separate damage engine.
+- **Damage is hard state.** HP damage uses `glass character set-hp`. Bigger or
+  lasting fallout uses `glass character consequence-add`.
 - **Healing is also coarse.** In-scene first aid can stabilize or remove an
   effect; larger HP recovery usually waits for scene end, rest, treatment, or a
   DM-authored beat.
@@ -182,7 +185,7 @@ full pace. It still does not automatically mean dead. Death policy remains a
 campaign-tone decision, not a default subsystem.
 
 NPCs and hazards do not need full character rows until they drift. For early
-sessions, the DM may track enemy HP in scene prep or public trackers and only
+sessions, the DM may track short-term pressure with scene trackers and only
 codify what must survive across turns.
 
 ## Effects
@@ -281,7 +284,7 @@ The DM can also adjust momentum out-of-band (`glass character set-momentum`) for
 
 ## Character Schema
 
-Stored in Postgres (with a markdown summary cached for the agent's context). Working hypothesis:
+Stored in Postgres and read through `glass character ...`. Working hypothesis:
 
 ```yaml
 character_id: karrith
@@ -325,18 +328,16 @@ Schema isn't final. Will iterate after the first session.
 
 ## The Dice CLI
 
-`glass roll` is the base path for standalone checks. `glass scene pressure`
-uses the same check math when a roll is also reducing a scene target. Both the
-DM and player agents call these commands. Players call them for their own
-chosen rolls. The DM calls them for NPCs, hazards, opposition, and DM-side PC
-checks when resolving the check inside the DM turn avoids an unnecessary actor
-transition.
+`glass roll` is the base path for checks that do not also reduce a pressure
+tracker. `glass scene pressure` rolls and applies impact to one scene tracker
+in the same command. Character harm uses HP and consequences. Both the DM and
+player agents call the relevant hard-state commands for state they own.
 
 ```
 $ glass roll diplomacy presence --risk controlled --character karrith
 ```
 
-Output (yaml on stdout, also written to a per-session dice log):
+Output is YAML on CLI stdout and persisted as a roll/event record:
 
 ```yaml
 roll_id: 8a3...

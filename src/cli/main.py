@@ -2,8 +2,7 @@
 
 The CLI is the in-session tool surface for Agents of Glass. It records only
 coherence-critical state — sessions, mode labels, dice, character numbers,
-messages, note ratification state, turn metadata — and keeps prose in
-markdown.
+messages, note ratification state, graph facts, and turn metadata.
 
 This file is a thin shell. Each command group lives in `cli/commands/<group>.py`;
 shared helpers live in sibling modules (errors, constants, ids, yaml_io,
@@ -22,6 +21,7 @@ from .commands.campaign import campaign
 from .commands.character import character
 from .commands.clock import clock
 from .commands.db import db
+from .commands.fact import fact
 from .commands.facade import check, done, find, next_command
 from .commands.lore import lore
 from .commands.mode import mode
@@ -33,7 +33,6 @@ from .commands.scene import scene
 from .commands.search import search_group
 from .commands.session import session
 from .commands.summary import summary
-from .commands.sync import sync
 from .commands.table import table
 from .commands.tarot import tarot
 from .commands.thread import thread
@@ -105,6 +104,19 @@ def web_api_serve(host: str, port: int, config_path: str | None) -> None:
     from .web_api_server import serve_forever
 
     serve_forever(host=host, port=port, config_path=config_path)
+
+
+@click.group("mcp")
+def mcp_command() -> None:
+    """MCP server for typed agent-facing Glass tools."""
+
+
+@mcp_command.command("serve")
+def mcp_serve() -> None:
+    """Run the Glass MCP server over stdio."""
+    from .mcp_server import main as mcp_main
+
+    mcp_main()
 
 
 @api.group("daemon")
@@ -204,17 +216,18 @@ main.add_command(msg_group)
 main.add_command(turn)
 main.add_command(turns)
 main.add_command(db)
+main.add_command(fact)
 main.add_command(arc)
 main.add_command(scene)
 main.add_command(search_group)
 main.add_command(summary)
-main.add_command(sync)
 main.add_command(table)
 main.add_command(tarot)
 main.add_command(quest)
 main.add_command(lore)
 main.add_command(api)
 main.add_command(web_api)
+main.add_command(mcp_command)
 
 
 if __name__ == "__main__":

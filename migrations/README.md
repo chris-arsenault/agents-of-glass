@@ -32,6 +32,9 @@ Conventions:
 | `017_active_turn_runtime_and_turn_type.sql` | active-turn runtime staging columns plus committed `turns.turn_type` |
 | `018_scene_clocks_beats_and_turn_audit.sql` | scene-local clocks/beats plus active-turn audit and beat-check markers |
 | `019_scene_clock_polarity.sql` | objective/threat/timer polarity for scene-local clocks |
+| `020_skill_meta_and_item_descriptors.sql` | structured skill metadata and item descriptors |
+| `021_signature_moves.sql` | typed signature moves on characters |
+| `022_scene_beat_failure_ticks.sql` | failed-roll pressure on active scene beats |
 
 ## Running
 

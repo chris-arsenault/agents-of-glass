@@ -12,6 +12,14 @@ port = 5432
 database = "agents_of_glass"
 user = "agents_of_glass_app"
 
+[falkordb]
+# host/port for the LAN FalkorDB. Note port 16379 (not the default Redis 6379).
+# Password (if set on the FalkorDB instance) injected via env:
+# AOG_FALKOR_PASSWORD or REDIS_PASSWORD.
+host = "192.168.66.3"
+port = 16379
+graph = "agents_of_glass"
+
 [embedding]
 # OpenAI-compatible local embedding service.
 url = "http://192.168.66.3:5361/v1/embeddings"
@@ -34,17 +42,15 @@ provider = "claude"
 # Players routed to Codex when provider = "mixed-codex". Default mixed table is
 # the first two players: tev and sumi.
 codex_players = ["tev", "sumi"]
-# When true, active-play player turns use the character branch: no
-# player-persona file, no player notes/journal/drafts, and character-framed
-# methodologies/instructions. Override per run with
+# When true, active-play player turns use the character branch: character-framed
+# methodologies/instructions and no player-persona shaping. Override per run with
 # `--skip-player-persona` or `--no-skip-player-persona`.
 skip_player_persona = false
 
 [paths]
-templates = "templates"          # authored content; stable input, copied to campaigns/<id>/ at bootstrap
-campaigns = "campaigns"          # per-campaign live workspaces; created by `aog campaign bootstrap`
+templates = "templates"          # read-only agent reference: instructions, methodologies, rules, style
+campaigns = "campaigns"          # operator/debug campaign files and exports; not an agent write surface
 sessions = "sessions"            # runtime per-session state (legacy path; transitional)
-ephemeral_cwd = ".glass-cwd"     # stable per-actor agent CWDs; not committed
 
 [claude]
 # claude-p invocation tunables
@@ -55,9 +61,9 @@ model = "opus"
 # not attached to invocations. Override for an operator run with `aog campaign
 # run --use-session-id` or `--no-use-session-id`.
 use_session_id = false
-# Per-turn wall-clock cap. The DM during campaign-planning reads the
-# methodology, persona, world bible, does web searches, and writes 8+ files
-# per invocation. 300s was too short. 3600s (60 min) is the default;
+# Per-turn wall-clock cap. The DM during campaign-planning may read extensive
+# reference material and make multiple CLI calls. 300s was too short. 3600s
+# (60 min) is the default;
 # tighten if you want faster failure on hung agents.
 turn_timeout_seconds = 3600
 

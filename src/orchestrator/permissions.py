@@ -1,14 +1,7 @@
-"""Unix security model for the orchestrator.
+"""Unix permission helpers for operator-owned campaign workspaces.
 
-The canonical campaign tree is operator-owned. Agents do not get direct
-filesystem authority over `campaigns/`; they mutate durable state through
-Glass. Each spawned actor runs as a dedicated Unix user inside an actor-owned
-stable projection under `.glass-cwd/`.
-
-The chown/chmod operations that require root are delegated to a small helper
-script (`aog-permset`) installed by `scripts/provision-agents.sh` and invoked
-via sudo. If provisioning hasn't been run, agents fall back to the operator
-user and the projection remains current-user owned.
+Agents do not get direct filesystem authority over `campaigns/`; they mutate
+durable state through Glass.
 """
 
 from __future__ import annotations
@@ -70,9 +63,7 @@ def player_user_for(agent_id: str) -> str | None:
 def missing_operator_groups() -> list[str]:
     """Legacy compatibility hook.
 
-    The projection model no longer depends on the operator process having
-    refreshed supplementary groups. Projections are grouped to the operator's
-    primary group, and actor access is enforced by owner identity.
+    Agent turns no longer depend on supplementary Unix groups.
     """
     return []
 
@@ -80,35 +71,10 @@ def missing_operator_groups() -> list[str]:
 def apply_campaign_permissions(campaign_dir: Path) -> bool:
     """Legacy hook retained for callers.
 
-    Campaign workspaces are intentionally left operator-owned. The agent-facing
-    permission boundary is the actor projection plus the Glass API.
+    Campaign workspaces are intentionally left operator-owned.
     """
     log.debug("permissions: leaving campaign workspace operator-owned: %s", campaign_dir)
     return False
-
-
-def apply_projection_permissions(
-    projection_root: Path,
-    *,
-    actor_user: str | None = None,
-) -> bool:
-    """Make an actor projection actor-owned.
-
-    `projection.py` decides which files are visible and which surfaces are
-    writable. This helper enforces the Unix ownership model: the spawned actor
-    owns the projected workspace, while `.glass-cwd` parents stay
-    operator-owned traversal gates.
-    """
-    if not has_provisioned_users() or actor_user is None:
-        _chmod_projection_parents(projection_root)
-        return False
-    try:
-        _run_helper(["projection", str(projection_root.resolve()), actor_user])
-        return True
-    except RuntimeError:
-        log.exception("permissions: projection helper failed; falling back to chmod")
-        _chmod_projection_parents(projection_root)
-        return False
 
 
 def clean_workspace_via_helper(campaign_dir: Path) -> bool:
@@ -146,13 +112,3 @@ def operator_user() -> str:
         return pwd.getpwuid(os.geteuid()).pw_name
     except KeyError:
         return getpass.getuser()
-
-
-def _chmod_projection_parents(projection_root: Path) -> None:
-    for path in (projection_root.parent.parent, projection_root.parent):
-        if not path.exists():
-            continue
-        try:
-            os.chmod(path, 0o710)
-        except OSError:
-            log.debug("permissions: could not chmod projection parent %s", path)

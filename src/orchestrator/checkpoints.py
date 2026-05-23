@@ -1,14 +1,13 @@
 """Campaign checkpoints and restore.
 
 Checkpoints are operator-owned snapshots outside the live campaign workspace.
-They capture every persistence surface that can affect agent context:
+They capture every persistence surface that can affect runtime context:
 
-- campaign filesystem prose/projections
+- campaign filesystem prose/reference artifacts
 - Postgres campaign rows, including search chunks and embeddings
 
-The live campaign workspace remains the path agents read. Checkpoint archives
-live under campaigns/.checkpoints/ so discarded/restored state is not projected
-into agent CWDs.
+Checkpoint archives live under campaigns/.checkpoints/ so discarded/restored
+state stays outside normal runtime discovery.
 """
 
 from __future__ import annotations
@@ -379,10 +378,6 @@ def restore_checkpoint(
     shutil.copytree(fs_snapshot, current_dir, symlinks=True)
     _remove_runtime_json_files(current_dir)
     permissions.apply_campaign_permissions(current_dir)
-
-    projection_root = config.repo_root / ".glass-cwd" / campaign_id
-    if projection_root.exists():
-        shutil.rmtree(projection_root, ignore_errors=True)
 
     return {
         "campaign_id": campaign_id,

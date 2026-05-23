@@ -13,7 +13,6 @@ from ..ids import now_iso, slugify
 from ..role import current_role
 from ..scene_beats import (
     BEAT_MAX_ACTIVE,
-    BEAT_MAX_AGE,
     beat_check_required_for_turn,
     scene_contract_failures,
     scene_contract_snapshot,
@@ -21,6 +20,8 @@ from ..scene_beats import (
 from ..state import append_audit, commit, current_mode_record, load_state, queue_event
 from ..config import get_paths
 from ..yaml_io import command_params, emit
+
+_ACTIVE_PLAY_MODE_NAMES = {"scene-play", "action"}
 
 
 @click.group()
@@ -80,7 +81,7 @@ def beat_check(ctx: click.Context) -> None:
                 agent_instruction(
                     "active play cannot proceed until the scene clock/beat contract is live",
                     "The DM must declare at least one scene clock and start at least one beat for this scene before continuing active play.",
-                    "Use `glass scene clock declare <clock-id> --label ... --goal ... --value <n> --max <n> --direction progress|countdown --polarity objective|threat|timer --visibility public|dm` and `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`.",
+                    'Use `glass_scene_clock_declare(clock_id="<clock-id>", label="...", goal="...", max_value=<n>, direction="progress|countdown", polarity="objective|threat|timer", visibility="public|dm")` and `glass_beat_start(beat_id="<beat-id>", clock_id="<clock-id>", label="...", question="...")`.',
                 )
                 + "\n\nCurrent problems:\n"
                 + detail
@@ -120,11 +121,32 @@ def beat_start(
     question: str,
 ) -> None:
     """Start a new dramatic beat in the active scene."""
+    start_beat_service(
+        command_path=ctx,
+        emit_output=True,
+        beat_id=beat_id,
+        clock_id=clock_id,
+        label=label,
+        question=question,
+    )
+
+
+def start_beat_service(
+    *,
+    command_path: click.Context | str = "glass_beat_start",
+    emit_output: bool = False,
+    beat_id: str,
+    clock_id: str,
+    label: str,
+    question: str,
+) -> dict[str, Any]:
+    """Start a new dramatic beat in the active scene."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     role = current_role()
-    scene_id = _require_scene_id(state)
+    scene_id = _require_active_play_scene_id(state, tool_name="glass_beat_start")
     beat_key = slugify(beat_id)
     clock_key = slugify(clock_id)
     turn_id = str(state.get("active_turn_id") or "").strip() or None
@@ -145,7 +167,7 @@ def beat_start(
             raise GlassError(
                 agent_instruction(
                     f"unknown active scene clock {clock_key!r}",
-                    "Use `glass check` to inspect the active scene contract, or have the DM declare the scene clock first.",
+                    "Use `glass_check()` to inspect the active scene contract, or have the DM declare the scene clock first.",
                 )
             ) from None
         except ValueError as exc:
@@ -153,7 +175,7 @@ def beat_start(
                 raise GlassError(
                     agent_instruction(
                         f"cannot start beat: this scene already has {BEAT_MAX_ACTIVE} active beats",
-                        "Close or resolve an existing beat first with `glass beat close <beat-id>`.",
+                        "Close or resolve an existing beat first with `glass_beat_close(beat_id=\"<beat-id>\", outcome=\"...\", clock_delta=<n>)`.",
                     )
                 ) from None
             if str(exc) == "expired_active_beats":
@@ -161,7 +183,7 @@ def beat_start(
                     agent_instruction(
                         "cannot start a new beat while an active beat is already at 10/10",
                         "Close or convert the expired beat before opening another beat.",
-                        "Use `glass check` to see which beat must be resolved.",
+                        "Use `glass_check()` to see which beat must be resolved.",
                     )
                 ) from None
             if str(exc) == "beat_exists":
@@ -176,11 +198,13 @@ def beat_start(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "beat.start",
         command_params(beat_id=beat_key, clock=clock_key, label=label, question=question),
         {"beat": record},
+        emit_output=emit_output,
     )
+    return {"beat": record}
 
 
 @beat.command("close")
@@ -206,6 +230,25 @@ def beat_close(
     clock_delta: int,
 ) -> None:
     """Close an active beat and record its scene-clock movement."""
+    close_beat_service(
+        command_path=ctx,
+        emit_output=True,
+        beat_id=beat_id,
+        outcome=outcome,
+        clock_delta=clock_delta,
+    )
+
+
+def close_beat_service(
+    *,
+    command_path: click.Context | str = "glass_beat_close",
+    emit_output: bool = False,
+    beat_id: str,
+    outcome: str,
+    clock_delta: int,
+) -> dict[str, Any]:
+    """Close an active beat and record its scene-clock movement."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -224,7 +267,7 @@ def beat_close(
             raise GlassError(
                 agent_instruction(
                     f"unknown active beat {beat_key!r}",
-                    "Use `glass check` to inspect active beats for this scene.",
+                    "Use `glass_check()` to inspect active beats for this scene.",
                 )
             )
         closed = _db.scene_beat_close(
@@ -265,11 +308,13 @@ def beat_close(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "beat.close",
         command_params(beat_id=beat_key, outcome=outcome, clock_delta=clock_delta),
         {"beat": closed, "clock": clock_result},
+        emit_output=emit_output,
     )
+    return {"beat": closed, "clock": clock_result}
 
 
 @beat.command("convert")
@@ -284,6 +329,25 @@ def beat_convert(
     reason: str,
 ) -> None:
     """Convert an active beat into longer-running clock pressure."""
+    convert_beat_service(
+        command_path=ctx,
+        emit_output=True,
+        beat_id=beat_id,
+        to_clock_id=to_clock_id,
+        reason=reason,
+    )
+
+
+def convert_beat_service(
+    *,
+    command_path: click.Context | str = "glass_beat_convert",
+    emit_output: bool = False,
+    beat_id: str,
+    to_clock_id: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Convert an active beat into longer-running clock pressure."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -308,18 +372,20 @@ def beat_convert(
             raise GlassError(
                 agent_instruction(
                     f"cannot convert beat {beat_key!r} to clock {clock_key!r}",
-                    "Use `glass check` to inspect the active beats and scene clocks for this scene.",
+                    "Use `glass_check()` to inspect the active beats and scene clocks for this scene.",
                 )
             ) from None
     queue_event(state, role.actor, f"beat convert {record['label']}")
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "beat.convert",
         command_params(beat_id=beat_key, to_clock=clock_key, reason=reason),
         {"beat": record},
+        emit_output=emit_output,
     )
+    return {"beat": record}
 
 
 def _active_turn_context(state: dict[str, Any]) -> dict[str, Any] | None:
@@ -349,7 +415,29 @@ def _require_scene_id(state: dict[str, Any]) -> str:
     raise GlassError(
         agent_instruction(
             "scene beats require an active scene",
-            "Start or activate the scene and mode before using scene beat commands.",
-            "Use `glass scene current` and `glass mode start <mode> <scene-id>` to establish the active context.",
+            "Start or activate the scene and mode before using scene beat MCP tools.",
+            'Use `glass_scene_current()` and `glass_mode_start(mode_name="<mode>", scene_id="<scene-id>")` to establish the active context.',
+        )
+    )
+
+
+def _require_active_play_scene_id(state: dict[str, Any], *, tool_name: str) -> str:
+    current = current_mode_record(state)
+    if current and current.get("scene_id") and current["scene_id"] != "none":
+        mode = str(current.get("mode") or "").strip()
+        if mode in _ACTIVE_PLAY_MODE_NAMES:
+            return str(current["scene_id"])
+        raise GlassError(
+            agent_instruction(
+                f"{tool_name} requires the target scene to be the active play mode",
+                "Scene beats are scene-play/action state. Do not start beats while the active mode is scene-prep, campaign-planning, character-creation, or another setup frame.",
+                'After `glass_scene_create(...)`, call `glass_mode_end()` if needed, then `glass_mode_start(mode_name="scene-play", scene_id="<scene-id>")` or `glass_mode_start(mode_name="action", scene_id="<scene-id>")` before using beat tools.',
+            )
+        )
+    raise GlassError(
+        agent_instruction(
+            f"{tool_name} requires an active play scene",
+            'Start the target scene first with `glass_mode_start(mode_name="scene-play", scene_id="<scene-id>")` or `glass_mode_start(mode_name="action", scene_id="<scene-id>")`.',
+            "Beat tools take the scene id from the active mode; they do not infer it from the last created scene.",
         )
     )

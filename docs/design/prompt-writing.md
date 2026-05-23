@@ -8,8 +8,8 @@ identity directly.
 
 Agents of Glass has four layers that must stay distinct:
 
-- **Executing agent:** the subprocess invoked for one turn. It follows
-  `TURN_START.md`, `instructions/`, and `methodologies/`.
+- **Executing agent:** the subprocess invoked for one turn. It follows the
+  injected prompt, `instructions/`, and `methodologies/`.
 - **Table person:** Mara, Tev, Sumi, Renno, or Kit. This is the player or DM
   personality the model should embody at the table.
 - **Character:** the in-fiction PC a player controls. The character has limited
@@ -21,7 +21,7 @@ The prompt should tell the model which layer is active before listing files.
 
 ## Required Runtime Pattern
 
-Start every full `TURN_START.md` with an identity paragraph.
+Start every full injected prompt with an identity paragraph.
 
 For the DM:
 
@@ -36,13 +36,13 @@ For a player:
 ```markdown
 You are Tev, a player in a Glass Frontier TTRPG session. Act as this player at
 the table, using the personality, voice, tastes, and habits in
-`players/tev/persona.md`. You are playing the character summarized in your
-player workspace. Make choices as the player, and when you speak or act in
+  `players/tev/persona.md`. You are playing the character summarized by current
+  `glass` character state. Make choices as the player, and when you speak or act in
 fiction, embody only what the character knows and can do.
 ```
 
-Then list the mode, scene, output contract, message bus, table, context, recent
-turns, methodology, and tools.
+Then list the mode, scene, output contract, message bus, current facts, recent
+turn cues, methodology, and allowed `glass` commands.
 
 ## Wording Rules
 
@@ -90,8 +90,7 @@ into the main campaign.
 
 ## Proposed Follow-Up Pass
 
-1. Audit generated `TURN_START.md` output from one DM and one player turn after
-   bootstrap.
+1. Audit injected prompt output from one DM and one player turn after bootstrap.
 2. Replace remaining runtime-facing "see file" language with embodied identity
    language where it appears in methodologies or instructions.
 3. Keep design docs explicit about operator/coder intent, but prevent those

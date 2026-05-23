@@ -1,501 +1,246 @@
-"""Lore commands."""
+"""DB-backed lore reference commands."""
 
 from __future__ import annotations
 
-import json
-import os
-import random
-import shutil
-import sys
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+import sys
 
 import click
 
-from .. import db as _db
-from .. import workspace as _workspace
-from ..campaign import (
-    active_campaign_id,
-    active_campaign_root,
-    lookup_player_character_id,
-    pg_connection,
-    resolve_active_campaign_workspace,
-)
-from ..config import REPO_ROOT, Paths, get_paths, load_config
-from ..constants import (
-    ATTRIBUTE_TIERS,
-    ATTRIBUTES,
-    RISK_THRESHOLDS,
-    SKILL_TIERS,
-    STARTER_MESSAGE_TYPES,
-)
-from ..entities import (
-    markdown_title,
-    parse_frontmatter,
-    parse_sections,
-    upsert_entity_from_path,
-)
+from ..campaign import active_campaign_id
+from ..config import get_paths
 from ..errors import GlassError, agent_instruction
-from ..ids import new_id, now_iso, slugify
-from ..messages import (
-    infer_player_from_path,
-    load_message_types,
-    message_visible_to,
-    player_dirs,
-    require_message_type,
-    require_recipient,
-    roster,
-)
-from ..paths_resolve import (
-    clean_relative_path,
-    display_path,
-    ensure_under,
-    ensure_under_any,
-    resolve_content_path,
-    resolve_note_write_path,
-)
-from ..persistence import CampaignPersistence
-from ..role import (
-    Role,
-    actor_for_turn,
-    assert_character_writable,
-    current_role,
-    require_dm,
-    require_player,
-    role_label_for_turn,
-)
-from ..state import (
-    append_audit,
-    audit_path,
-    commit,
-    current_mode_record,
-    default_state,
-    inline_event_lines,
-    load_state,
-    normalize_state,
-    queue_event,
-    state_path,
-    state_summary,
-    transcript_path,)
-from ..validation import (
-    assert_attribute_name,
-    clamp,
-    outcome_for_margin,
-    validate_key_values,
-)
-from ..yaml_io import (
-    command_params,
-    emit,
-    make_jsonable,
-    read_body,
-    to_yaml,
-    yaml_scalar,
-)
-
-
-_campaign_workspace = resolve_active_campaign_workspace
+from ..ids import slugify
+from .. import lore_store
+from ..lore_store import LoreEntrySpec
+from ..role import current_role, require_dm
+from ..yaml_io import emit
 
 
 @click.group()
 def lore() -> None:
-    """Lore curation: import / list / search."""
+    """Reference lore stored in FalkorDB, not campaign files."""
 
 
-@lore.command("import")
-@click.argument("source_path")
-@click.option("--as", "alias", default=None, help="Override destination filename.")
-@click.pass_context
-def lore_import(ctx: click.Context, source_path: str, alias: str | None) -> None:
-    """Import an entry from the world bible into the campaign's curated lore.
+@lore.command("put")
+@click.argument("lore_id")
+@click.option("--title", default=None, help="Human-readable title.")
+@click.option("--kind", default="reference", show_default=True)
+@click.option(
+    "--scope",
+    type=click.Choice(["reference", "campaign"]),
+    default="campaign",
+    show_default=True,
+    help="Reference corpus or current-campaign prose reference namespace.",
+)
+@click.option(
+    "--visibility",
+    type=click.Choice(["public", "dm"]),
+    default="public",
+    show_default=True,
+)
+@click.option("--source", default=None, help="Source/provenance label.")
+@click.option("--tag", "tags", multiple=True, help="Repeatable search tag.")
+@click.option("--body", default=None, help="Prose body. Use --body-stdin for long text.")
+@click.option("--body-stdin", is_flag=True, help="Read the prose body from stdin.")
+def lore_put(
+    lore_id: str,
+    title: str | None,
+    kind: str,
+    scope: str,
+    visibility: str,
+    source: str | None,
+    tags: tuple[str, ...],
+    body: str | None,
+    body_stdin: bool,
+) -> None:
+    """Create or update a lore prose entry in FalkorDB.
 
-    SOURCE_PATH is interpreted relative to the lore root (`lore.path` in config),
-    or as an absolute path. Examples:
-      glass lore import player/concepts/ringglass.md
-      glass lore import dm/themes/builders-gone.md
+    This does not create campaign files. If the entry becomes campaign reality,
+    commit the usable portion with `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])`.
     """
+
     require_dm()
-    workspace = _campaign_workspace()
-    paths = get_paths()
-    campaign_id = active_campaign_id()
-    state = load_state(paths, campaign_id)
-    if paths.lore is None:
+    body_text = sys.stdin.read() if body_stdin else body
+    if not body_text or not body_text.strip():
         raise GlassError(
             agent_instruction(
-                "`lore.path` is not configured for world-bible imports",
-                "Do not use `glass lore import` in this campaign.",
-                "Create campaign lore directly with `glass lore new <type> <slug> ...`, or promote a table artifact with `glass lore promote <table-path> --to <shared/lore/path.md>`.",
+                "lore body is empty",
+                "Pass --body for short entries or --body-stdin for long prose.",
+                "Do not create a markdown lore file as a workaround.",
             )
         )
-
-    source = Path(source_path)
-    if not source.is_absolute():
-        source = (paths.lore / source).resolve()
-    try:
-        dest = _workspace.import_lore(workspace, source, paths.lore, alias=alias)
-    except FileExistsError as exc:
-        raise GlassError(
-            agent_instruction(
-                str(exc),
-                "Choose a different destination name with `--as <filename.md>`, or update the existing campaign lore file instead.",
-            )
-        ) from exc
-    except FileNotFoundError as exc:
-        raise GlassError(
-            agent_instruction(
-                str(exc),
-                "Use a source path that exists under the configured world-bible lore root.",
-                "If the lore is being invented during play, create it in the campaign with `glass lore new` or `glass lore promote` instead of importing.",
-            )
-        ) from exc
-
-    persistence = CampaignPersistence(
-        paths=paths,
-        campaign_id=workspace.campaign_id,
-        campaign_root=workspace.root,
+    campaign_id = active_campaign_id()
+    namespace = lore_store.namespace_for_scope(scope, campaign_id=campaign_id)
+    spec = LoreEntrySpec(
+        lore_id=lore_store.normalize_lore_id(lore_id),
+        title=title or lore_id.replace("-", " ").title(),
+        kind=kind,
+        namespace=namespace,
+        visibility=visibility,
+        source=source,
+        tags=tags,
+        body=body_text,
     )
-    persisted = persistence.register_markdown(dest, state=state, entity=True)
-
-    result = {
-        "campaign_id": workspace.campaign_id,
-        "source": str(source),
-        "destination": str(dest),
-        **persisted.to_dict(),
-    }
-    commit(
-        paths,
-        state,
-        ctx,
-        "lore.import",
-        command_params(source_path=source_path, alias=alias),
-        result,
-    )
+    emit(lore_store.upsert_lore_entry(campaign_id=campaign_id, spec=spec))
 
 
-def _record_for_lore_import(path: Path) -> dict[str, Any]:
-    """Build the same record shape as upsert_entity_from_path, but without the
-    paths-must-be-under-content guard (lore lands in campaigns/<id>/shared/lore/).
+@lore.command("ingest")
+@click.argument("source_path")
+@click.option(
+    "--scope",
+    type=click.Choice(["reference", "campaign"]),
+    default="reference",
+    show_default=True,
+)
+@click.option("--kind", default="reference", show_default=True)
+@click.option(
+    "--visibility",
+    type=click.Choice(["public", "dm"]),
+    default="public",
+    show_default=True,
+)
+@click.option("--tag", "tags", multiple=True, help="Repeatable search tag.")
+@click.option("--limit", type=int, default=200, show_default=True)
+def lore_ingest(
+    source_path: str,
+    scope: str,
+    kind: str,
+    visibility: str,
+    tags: tuple[str, ...],
+    limit: int,
+) -> None:
+    """Load markdown prose into the DB reference store.
+
+    This is an operator/DM ingestion path. It reads existing reference files and
+    writes FalkorDB lore entries; it never copies them into the campaign.
     """
-    text = path.read_text(encoding="utf-8")
-    fm = parse_frontmatter(text)
-    entity_id = fm.get("id") or slugify(path.stem)
-    return {
-        "entity_id": entity_id,
-        "title": fm.get("title") or markdown_title(text, path.stem),
-        "path": str(path),
-        "updated_at": now_iso(),
-        "sections": parse_sections(text, entity_id),
-        "frontmatter": fm,
-        "edges": [],
-    }
 
+    require_dm()
+    paths = get_paths()
+    source = Path(source_path).expanduser()
+    if not source.is_absolute():
+        base = paths.lore if paths.lore is not None else Path.cwd()
+        source = (base / source).resolve()
+    if not source.exists():
+        raise GlassError(f"lore source does not exist: {source}")
 
-@lore.command("list")
-@click.pass_context
-def lore_list(ctx: click.Context) -> None:
-    workspace = _campaign_workspace()
-    entries = _workspace.list_lore(workspace)
-    emit({"campaign_id": workspace.campaign_id, "lore": entries, "count": len(entries)})
+    files = [source] if source.is_file() else sorted(source.rglob("*.md"))
+    if len(files) > limit:
+        raise GlassError(
+            f"lore ingest matched {len(files)} files, above --limit {limit}"
+        )
+
+    campaign_id = active_campaign_id()
+    namespace = lore_store.namespace_for_scope(scope, campaign_id=campaign_id)
+    stored = []
+    for path in files:
+        if not path.is_file() or path.suffix.lower() != ".md":
+            continue
+        body = path.read_text(encoding="utf-8")
+        rel = _safe_relative(path, source if source.is_dir() else source.parent)
+        lore_id = slugify(str(rel.with_suffix("")))
+        title = _markdown_title(body) or path.stem.replace("-", " ").title()
+        result = lore_store.upsert_lore_entry(
+            campaign_id=campaign_id,
+            spec=LoreEntrySpec(
+                lore_id=lore_id,
+                title=title,
+                body=body,
+                kind=kind,
+                namespace=namespace,
+                visibility=visibility,
+                source=str(path),
+                tags=tags,
+            ),
+        )
+        stored.append(result)
+
+    emit(
+        {
+            "campaign_id": campaign_id,
+            "scope": scope,
+            "namespace": namespace,
+            "source": str(source),
+            "stored": stored,
+            "count": len(stored),
+        }
+    )
 
 
 @lore.command("search")
 @click.argument("query")
 @click.option("--limit", type=int, default=20, show_default=True)
-@click.pass_context
-def lore_search(ctx: click.Context, query: str, limit: int) -> None:
-    """Search the world bible (DM only) — for finding candidates to import."""
-    require_dm()
-    paths = get_paths()
-    if paths.lore is None:
-        raise GlassError(
-            agent_instruction(
-                "`lore.path` is not configured for world-bible search",
-                "Use `glass lore list` for campaign lore, or create/promote campaign lore directly.",
-            )
-        )
-    matches = _workspace.search_lore(paths.lore, query, limit=limit)
-    emit({"query": query, "lore_root": str(paths.lore), "matches": matches, "count": len(matches)})
+def lore_search(query: str, limit: int) -> None:
+    """Search DB-backed reference lore.
 
-
-@lore.command("new")
-@click.argument("entity_type")
-@click.argument("slug")
-@click.option("--title", default=None, help="Entry title (defaults to slug, title-cased).")
-@click.option("--tags", default="", help="Comma-separated tag list.")
-@click.option(
-    "--prominence",
-    type=click.Choice(["forgotten", "marginal", "recognized", "renowned", "mythic"]),
-    default=None,
-)
-@click.option(
-    "--category",
-    default=None,
-    help="Subdirectory under shared/lore/ (e.g. 'npcs', 'factions', 'locales'). "
-    "Defaults to the plural of <entity_type> when sensible.",
-)
-@click.pass_context
-def lore_new(
-    ctx: click.Context,
-    entity_type: str,
-    slug: str,
-    title: str | None,
-    tags: str,
-    prominence: str | None,
-    category: str | None,
-) -> None:
-    """Scaffold a new lore entry under campaigns/<id>/shared/lore/.
-
-    Creates a file with valid frontmatter, ready for the DM to fill in. The
-    entry is registered in local entity/search state immediately; edit the body,
-    then run `glass lore upsert <path>` once the entry is real.
-
-    Example:
-      glass lore new npc patrol-leader-verra --title "Patrol Leader Verra" \\
-                     --tags "patrol,accord" --prominence marginal
+    Results are source material, not continuity. Promote any load-bearing
+    detail with `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])`.
     """
-    require_dm()
-    workspace = _campaign_workspace()
-    paths = get_paths()
-    campaign_id = active_campaign_id()
-    state = load_state(paths, campaign_id)
-    slug_clean = _workspace.slugify(slug)
-    cat = category or _default_category_for(entity_type)
-    dest_dir = workspace.lore_dir / cat
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / f"{slug_clean}.md"
-    if dest.exists():
-        raise GlassError(
-            agent_instruction(
-                f"lore entry already exists: {display_path(dest)}",
-                "Edit and sync the existing file if it is the same entity.",
-                "Use a more specific slug if this is a different entity.",
-            )
-        )
 
-    title_value = title or slug_clean.replace("-", " ").title()
-    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    emit(lore_search_service(query=query, limit=limit))
 
-    fm_lines = [
-        "---",
-        f"title: {title_value}",
-        f"type: {entity_type}",
-        f"id: {slug_clean}",
-    ]
-    if tag_list:
-        fm_lines.append("tags: [" + ", ".join(tag_list) + "]")
-    if prominence:
-        fm_lines.append(f"prominence: {prominence}")
-    fm_lines.extend(["status: draft", "---", "", f"# {title_value}", "", "_Body to be authored._", ""])
-    dest.write_text("\n".join(fm_lines), encoding="utf-8")
-    persistence = CampaignPersistence(
-        paths=paths,
-        campaign_id=workspace.campaign_id,
-        campaign_root=workspace.root,
-    )
-    persisted = persistence.register_markdown(dest, state=state, entity=True)
 
-    result = {
-        "campaign_id": workspace.campaign_id,
-        "id": slug_clean,
-        "type": entity_type,
-        "title": title_value,
-        "path": str(dest),
-        "persistence": persisted.to_dict(),
-        "next": [
-            f"edit {dest} to fill in the body",
-            f"glass lore upsert {dest.relative_to(workspace.root)} to refresh local entity/search state",
-        ],
-    }
-    commit(
-        paths,
-        state,
-        ctx,
-        "lore.new",
-        command_params(
-            entity_type=entity_type,
-            slug=slug,
-            title=title,
-            tags=tags,
-            prominence=prominence,
-            category=category,
-        ),
-        result,
+def lore_search_service(*, query: str, limit: int = 20) -> dict:
+    """Search DB-backed reference lore visible to the current role."""
+
+    role = current_role()
+    return lore_store.search_lore_entries(
+        campaign_id=active_campaign_id(),
+        query=query,
+        limit=limit,
+        include_dm=role.kind in {"dm", "operator"},
     )
 
 
-def _default_category_for(entity_type: str) -> str:
-    plurals = {
-        "npc": "npcs",
-        "faction": "factions",
-        "location": "locales",
-        "locale": "locales",
-        "creature": "creatures",
-        "artifact": "artifacts",
-        "ship": "ships",
-        "transport": "ships",
-        "event": "events",
-        "occurrence": "events",
-        "concept": "concepts",
-        "thread": "threads",
-        "loop": "loops",
-        "theme": "themes",
-        "hook": "hooks",
-        "secret": "secrets",
-    }
-    return plurals.get(entity_type.lower(), entity_type.lower() + "s")
+@lore.command("read")
+@click.argument("lore_id")
+def lore_read(lore_id: str) -> None:
+    """Read one DB-backed lore entry."""
+
+    emit(lore_read_service(lore_id=lore_id))
 
 
-@lore.command("upsert")
-@click.argument("path_text")
-@click.pass_context
-def lore_upsert(ctx: click.Context, path_text: str) -> None:
-    """Register an authored lore entry in local entity/search state.
+def lore_read_service(*, lore_id: str) -> dict:
+    """Read one DB-backed lore entry visible to the current role."""
 
-    Use this after writing a lore file (either with `glass lore new` then
-    your editor, or directly with the agent's Write tool). The path can be
-    relative to the campaign workspace or absolute.
-
-    Example:
-      glass lore upsert shared/lore/npcs/patrol-leader-verra.md
-    """
-    require_dm()
-    paths = get_paths()
-    campaign_id = active_campaign_id()
-    state = load_state(paths, campaign_id)
-
-    raw = Path(path_text).expanduser()
-    if not raw.is_absolute():
-        # Resolve relative to cwd (typically the campaign workspace).
-        raw = (Path.cwd() / raw).resolve()
-
-    if not raw.exists():
-        raise GlassError(
-            agent_instruction(
-                f"lore file does not exist: {raw}",
-                "Pass the path to an existing authored lore markdown file, usually under `shared/lore/`.",
-                "Create a new entry with `glass lore new <type> <slug>` before upserting it.",
-            )
-        )
-
-    persistence = CampaignPersistence(
-        paths=paths,
-        campaign_id=campaign_id,
-        campaign_root=active_campaign_root(),
-    )
-    persisted = persistence.register_markdown(raw, state=state, entity=True)
-    result = persisted.to_dict()
-    commit(paths, state, ctx, "lore.upsert", command_params(path=path_text), result)
-
-
-@lore.command("promote")
-@click.argument("table_path")
-@click.option(
-    "--to",
-    "destination_path",
-    required=True,
-    help=(
-        "Destination under shared/lore/. May be a full shared/lore path or a "
-        "path relative to shared/lore/."
-    ),
-)
-@click.option("--replace", is_flag=True, help="Overwrite an existing lore file.")
-@click.pass_context
-def lore_promote(
-    ctx: click.Context,
-    table_path: str,
-    destination_path: str,
-    replace: bool,
-) -> None:
-    """Promote a player-visible table artifact into durable campaign lore."""
-    require_dm()
-    workspace = _campaign_workspace()
-    paths = get_paths()
-    campaign_id = active_campaign_id()
-    state = load_state(paths, campaign_id)
-
-    source_rel = clean_relative_path(table_path)
-    if source_rel.parts and source_rel.parts[0] == "table":
-        source_rel = Path(*source_rel.parts[1:])
-    if source_rel == Path("index.md"):
-        raise GlassError(
-            agent_instruction(
-                "table/index.md is retired and cannot be promoted",
-                "Promote a named table artifact instead, such as `npc-<slug>.md`, `locale-<slug>.md`, `ship-<slug>.md`, or `handouts/<slug>.md`.",
-                "If the content only exists in the scene description, first create a named table artifact with `glass table write <kind>-<slug>.md --body <markdown>`.",
-            )
-        )
-    source = ensure_under(
-        (workspace.table_dir / source_rel).resolve(),
-        workspace.table_dir,
-        "promote source must stay under table/",
-    )
-    if not source.exists() or not source.is_file():
-        raise GlassError(
-            agent_instruction(
-                f"table artifact does not exist: {display_path(source)}",
-                "Run `glass table show` to list player-visible artifacts.",
-                "Create the table artifact first with `glass table write <kind>-<slug>.md --body <markdown>`, then promote it.",
-            )
-        )
-    if source.suffix.lower() != ".md":
-        raise GlassError(
-            agent_instruction(
-                "table artifact must be a markdown file",
-                "Promote a `.md` artifact from the table, not a directory or non-markdown file.",
-            )
-        )
-
-    destination_rel = clean_relative_path(destination_path)
-    if destination_rel.suffix.lower() != ".md":
-        destination_rel = destination_rel.with_suffix(".md")
-    if destination_rel.parts[:2] != ("shared", "lore"):
-        destination_rel = Path("shared") / "lore" / destination_rel
-    destination = ensure_under(
-        (workspace.root / destination_rel).resolve(),
-        workspace.lore_dir,
-        "promoted lore must land under shared/lore/",
-    )
-    if destination.exists() and not replace:
-        raise GlassError(
-            agent_instruction(
-                f"lore entry already exists: {display_path(destination)}",
-                "Use `--replace` only when intentionally replacing that lore entry.",
-                "Otherwise choose a more specific destination path under `shared/lore/`.",
-            )
-        )
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    persistence = CampaignPersistence(
-        paths=paths,
-        campaign_id=campaign_id,
-        campaign_root=workspace.root,
-    )
-    persisted = persistence.register_markdown(destination, state=state, entity=True)
-    queue_event(
-        state,
-        "dm",
-        f"lore promote {display_path(source)} -> {display_path(destination)}",
-    )
-    result = {
-        "source": display_path(source),
-        "destination": display_path(destination),
-        "replace": replace,
-        "persistence": persisted.to_dict(),
-    }
-    commit(
-        paths,
-        state,
-        ctx,
-        "lore.promote",
-        command_params(
-            table_path=table_path,
-            destination_path=destination_path,
-            replace=replace,
-        ),
-        result,
+    role = current_role()
+    return lore_store.read_lore_entry(
+        campaign_id=active_campaign_id(),
+        lore_id=lore_id,
+        include_dm=role.kind in {"dm", "operator"},
     )
 
 
-if __name__ == "__main__":
-    main()
+@lore.command("list")
+@click.option("--limit", type=int, default=50, show_default=True)
+def lore_list(limit: int) -> None:
+    """List DB-backed lore entries available to this campaign."""
+
+    emit(lore_list_service(limit=limit))
+
+
+def lore_list_service(*, limit: int = 50) -> dict:
+    """List DB-backed lore entries visible to the current role."""
+
+    role = current_role()
+    return lore_store.list_lore_entries(
+        campaign_id=active_campaign_id(),
+        limit=limit,
+        include_dm=role.kind in {"dm", "operator"},
+    )
+
+
+def _markdown_title(body: str) -> str | None:
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            return stripped[2:].strip() or None
+    return None
+
+
+def _safe_relative(path: Path, root: Path) -> Path:
+    try:
+        return path.relative_to(root)
+    except ValueError:
+        return Path(path.name)

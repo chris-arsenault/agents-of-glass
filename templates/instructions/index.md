@@ -1,40 +1,15 @@
----
-title: Agent Instructions Index
-target: executing-agent
-authority: binding
----
-
 # Agent Instructions
 
-These files are binding mechanical instructions for operating inside a campaign
-turn workspace.
+This file is the binding runtime contract for ordinary agent turns. Design docs
+are not runtime instructions.
 
-## Read Order
+1. Read the injected prompt you were given at invocation.
+2. Use `glass_check()` unless the injected prompt explicitly marks the turn as rapid and optional.
+3. Read current continuity from `glass_fact_pack(audience="continuity", output_format="markdown")` or the facts embedded in the prompt.
+4. Mutate durable state only through purpose-built `glass_*` MCP tools and `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])`.
+5. Read and follow any `instructions` returned by MCP tools; successful tool calls can still give binding next-step guidance.
+6. Do not write files. Do not create scratch files. Do not edit campaign markdown. Do not use markdown sync tools. Do not shell out to `glass` when a typed MCP tool exists. Do not call local APIs or databases directly. Do not rely on stdout as state.
+7. Close with `glass_done(..., scene_status="<enum from tools/list>")`.
+8. Submit public prose with `glass_turn_append(body="...")`.
 
-1. Read `TURN_START.md`.
-2. Read the active methodology named by `TURN_START.md`.
-3. Read the instruction file that governs the first command or artifact you
-   need to touch.
-4. Read the SRD only for game rules required by the turn.
-5. Read how-to references only when the active methodology names one and the
-   turn needs craft guidance.
-
-## Core Files
-
-- [`output-contract.md`](output-contract.md): turn prose and `glass done`.
-- [`workspace-authoring.md`](workspace-authoring.md): projected files and
-  `glass sync apply`.
-- [`message-bus.md`](message-bus.md): message reads, sends, and message types.
-- [`table.md`](table.md): visible shared board updates.
-- [`recall-and-search.md`](recall-and-search.md): bounded old-context retrieval.
-- [`glass-cli.md`](glass-cli.md): command authority and command families.
-- [`character-state.md`](character-state.md): character rows, inventory, HP,
-  momentum, and consequences.
-- [`lore-and-notes.md`](lore-and-notes.md): notes, lore, proposals, and
-  ratification.
-- [`creative-influences.md`](creative-influences.md): verse and tarot inputs.
-
-## Boundary
-
-Instructions do not define the fiction or the game rules. They define required
-agent operations.
+Durable how-to, methodology, rules, and style files are read-only reference. They are not state and not an alternate interaction mode.

@@ -1,26 +1,11 @@
----
-title: Character Creation DM Relationship Setup
-status: authored
-audience: dm
-applies_to_modes: [character-creation]
----
-
 # Character Creation DM Relationship Setup
 
-This is the DM turn after every player has a public character mirror and intro,
-but before the relationship files exist. Its job is to start the relationship
-round, not to ratify or end character creation.
+Goal: move the table from individual PCs into relationship commitments.
 
-1. Run `glass character bulk-get --all`.
-2. Read every `players/*/public/intro.md`.
-3. Read [`how-to/narration-craft-dm.md`](../how-to/narration-craft-dm.md).
-4. Read DM intake that should shape relationship prompts.
-5. Update `table/scene.md` with the visible party situation if it changed.
-6. If useful, send focused prompts with
-   `glass msg table-talk <player> "<specific relationship prompt>"` or
-   `glass msg banter <player> "<specific relationship question>"`.
-7. Write `TURN.md` as a short public bridge into relationship writing.
-8. Run `glass done --summary "relationship round opened" --state "<visible table or prompt updates, or no state change>" --rolls none --next default`.
-
-Do not run `glass mode end`. `glass mode end` is only valid after every player
-has a non-empty `players/<id>/public/relationships.md`.
+1. Call `glass_check()`.
+2. Run `glass_character_bulk_get(all_characters=True)` and `glass_fact_pack(audience="continuity", output_format="markdown")`.
+3. Identify which players still owe relationship facts.
+4. Send targeted messages for missing or incoherent relationship commitments.
+5. Add or repair neutral relationship prompts with `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<character-id>", "predicate": "relationship", "object_id": "<other-character-id>", "text": "<neutral relationship commitment>"}])` only when needed.
+6. Close with `glass_done(..., scene_status="active")`.
+7. Submit a brief public bridge with `glass_turn_append(body="...")`.

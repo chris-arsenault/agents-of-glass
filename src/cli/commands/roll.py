@@ -23,7 +23,7 @@ from ..campaign import (
     pg_connection,
     resolve_active_campaign_workspace,
 )
-from ..character_projection import write_public_character_mirror
+from ..character_display import write_public_character_mirror
 from ..config import REPO_ROOT, Paths, get_paths, load_config
 from ..constants import (
     CHECK_DICE_COUNT,
@@ -68,6 +68,7 @@ from ..role import (
     require_player,
     role_label_for_turn,
 )
+from ..scene_beats import BEAT_FAILURE_LIMIT
 from ..state import (
     append_audit,
     audit_path,
@@ -98,6 +99,9 @@ from ..yaml_io import (
 )
 
 
+_FAILED_ROLL_OUTCOMES = {"stall", "regress", "collapse"}
+
+
 @click.command("roll")
 @click.argument("skill")
 @click.argument("attribute")
@@ -119,6 +123,31 @@ def roll(
     target_id: str | None,
     save_skill: bool,
 ) -> None:
+    roll_service(
+        command_path=ctx,
+        emit_output=True,
+        skill=skill,
+        attribute=attribute,
+        risk=risk,
+        character_id=character_id,
+        target_id=target_id,
+        save_skill=save_skill,
+    )
+
+
+def roll_service(
+    *,
+    command_path: click.Context | str = "glass_roll",
+    emit_output: bool = False,
+    skill: str,
+    attribute: str,
+    risk: str,
+    character_id: str,
+    target_id: str | None = None,
+    save_skill: bool = False,
+) -> dict[str, Any]:
+    """Resolve and persist one character roll from typed runtime inputs."""
+
     assert_attribute_name(attribute)
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -132,7 +161,7 @@ def roll(
             raise GlassError(
                 agent_instruction(
                     f"unknown character {character_id!r} in campaign {campaign_id!r}",
-                    "Use the character id from TURN_START, `glass character list`, or the player's public character sheet.",
+                    "Use the character id from the injected prompt, `glass character list`, or `glass character bulk-get --all`.",
                 )
             )
         if role.kind == "player" and character.get("player_id") != role.actor:
@@ -239,6 +268,16 @@ def roll(
                 skill=skill,
                 delta=skill_xp_delta,
             )
+        beat_failure = _apply_beat_failure_pressure(
+            conn,
+            state=state,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+            target_id=target_id,
+            outcome=outcome,
+            actor=role.actor,
+            turn_id=str(state.get("active_turn_id") or "").strip() or None,
+        )
         conn.commit()
         updated_character = _db.character_get(conn, campaign_id, character_id)
         if updated_character is None:
@@ -282,6 +321,14 @@ def roll(
     roll_row["skill_xp_eligible"] = skill_declared
     roll_row["momentum_effect"] = momentum_effect
     roll_row["momentum_guidance"] = momentum_guidance
+    if beat_failure is not None:
+        roll_row["beat_failure"] = beat_failure
+    roll_row["instructions"] = _roll_result_instructions(
+        outcome=outcome,
+        scene_id=scene_id,
+        target_id=target_id,
+        beat_failure=beat_failure,
+    )
     roll_row["character_mirror"] = write_public_character_mirror(
         paths,
         campaign_id,
@@ -290,7 +337,7 @@ def roll(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "roll",
         command_params(
             skill=skill,
@@ -301,4 +348,196 @@ def roll(
             save_skill=save_skill,
         ),
         roll_row,
+        emit_output=emit_output,
     )
+    return roll_row
+
+
+def _roll_result_instructions(
+    *,
+    outcome: str,
+    scene_id: str | None,
+    target_id: str | None,
+    beat_failure: dict[str, Any] | None,
+) -> list[str]:
+    instructions = [
+        "This roll is resolved. Carry this exact outcome forward; do not reroll the same action under a new skill or angle.",
+    ]
+    if outcome in _FAILED_ROLL_OUTCOMES:
+        instructions.append(
+            _failed_roll_instruction(
+                scene_id=scene_id,
+                target_id=target_id,
+                beat_failure=beat_failure,
+            )
+        )
+    elif scene_id:
+        instructions.append(
+            "If this resolves the live beat, close or convert the beat, tick the relevant scene clock/tracker, or commit any durable state change before glass_done; otherwise carry the success into the next action instead of drilling deeper."
+        )
+    else:
+        instructions.append(
+            "Use the result in public prose and record any durable state change with the matching MCP tool before glass_done."
+        )
+    return instructions
+
+
+def _failed_roll_instruction(
+    *,
+    scene_id: str | None,
+    target_id: str | None,
+    beat_failure: dict[str, Any] | None,
+) -> str:
+    if isinstance(beat_failure, dict):
+        status = str(beat_failure.get("status") or "")
+        reason = str(beat_failure.get("reason") or "")
+        beat = beat_failure.get("beat")
+        beat_id = ""
+        if isinstance(beat, dict):
+            beat_id = str(beat.get("beat_id") or "")
+        beat_id = beat_id or str(target_id or "").strip()
+        after = beat_failure.get("after")
+        limit = beat_failure.get("limit") or BEAT_FAILURE_LIMIT
+        if status == "closed":
+            return (
+                f"Failed-roll pressure on beat `{beat_id}` reached {after}/{limit}; "
+                "the beat is closed and the DM is queued to reframe the route. Do not retry or reopen it; finish the turn with the visible setback."
+            )
+        if status == "ticked":
+            return (
+                f"Failed-roll pressure on beat `{beat_id}` is {after}/{limit}. "
+                "Do not retry it from a different angle; finish the turn with a visible setback or cost."
+            )
+        if reason == "multiple_active_beats_require_target_id":
+            return (
+                "No beat failure pressure ticked because multiple active beats require target_id. Apply a visible consequence this turn; future ordinary active-play rolls must target one active beat from glass_check()."
+            )
+        if reason == "target_is_not_active_beat":
+            return (
+                "No beat failure pressure ticked because target_id is not an active beat. Apply a visible consequence this turn; future ordinary active-play rolls must target one active beat from glass_check()."
+            )
+        if reason == "no_active_beat":
+            return (
+                "No beat failure pressure ticked because there is no active beat. Apply a visible consequence this turn and ask the DM to open or reframe a beat if play needs one."
+            )
+    if scene_id:
+        return (
+            "This failed outcome needs a visible cost, consequence, or changed position before glass_done; do not retry the same obstacle unless the DM reframes it."
+        )
+    return (
+        "This failed outcome needs a visible cost, consequence, or changed position before glass_done."
+    )
+
+
+def _apply_beat_failure_pressure(
+    conn: Any,
+    *,
+    state: dict[str, Any],
+    campaign_id: str,
+    scene_id: str | None,
+    target_id: str | None,
+    outcome: str,
+    actor: str,
+    turn_id: str | None,
+) -> dict[str, Any] | None:
+    if outcome not in _FAILED_ROLL_OUTCOMES or not scene_id:
+        return None
+
+    active_beats = _db.scene_beat_list(
+        conn,
+        campaign_id=campaign_id,
+        scene_id=scene_id,
+        include_inactive=False,
+    )
+    if not active_beats:
+        return {
+            "status": "not_applied",
+            "reason": "no_active_beat",
+            "limit": BEAT_FAILURE_LIMIT,
+        }
+
+    target_key = slugify(target_id or "")
+    beat_id: str | None = None
+    if target_key:
+        for beat in active_beats:
+            if str(beat.get("beat_id") or "") == target_key:
+                beat_id = target_key
+                break
+        if beat_id is None:
+            return {
+                "status": "not_applied",
+                "reason": "target_is_not_active_beat",
+                "target_id": target_key,
+                "active_beat_ids": [str(beat.get("beat_id") or "") for beat in active_beats],
+                "limit": BEAT_FAILURE_LIMIT,
+            }
+    elif len(active_beats) == 1:
+        beat_id = str(active_beats[0].get("beat_id") or "")
+    else:
+        return {
+            "status": "not_applied",
+            "reason": "multiple_active_beats_require_target_id",
+            "active_beat_ids": [str(beat.get("beat_id") or "") for beat in active_beats],
+            "limit": BEAT_FAILURE_LIMIT,
+        }
+
+    tick = _db.scene_beat_failure_tick(
+        conn,
+        campaign_id=campaign_id,
+        scene_id=scene_id,
+        beat_id=beat_id,
+        actor=actor,
+        turn_id=turn_id,
+        limit=BEAT_FAILURE_LIMIT,
+        outcome=(
+            "failed-roll limit reached: two failed rolls against this beat; "
+            "DM must route the party toward the scene goal through a fresh offer "
+            "or angle."
+        ),
+    )
+    beat = tick["beat"]
+    queue_event(
+        state,
+        actor,
+        f"beat failure {beat['label']}: {tick['after']}/{tick['limit']}",
+    )
+    status = "ticked"
+    if tick["closed"]:
+        status = "closed"
+        queue_event(
+            state,
+            actor,
+            f"beat close {beat['label']} (failed twice; DM reframe)",
+        )
+        tick["handoff"] = _queue_dm_reframe_after_current_turn(state, beat_id=beat_id)
+    tick["status"] = status
+    return tick
+
+
+def _queue_dm_reframe_after_current_turn(
+    state: dict[str, Any], *, beat_id: str
+) -> dict[str, Any]:
+    entry = {
+        "agent": "dm",
+        "source": "beat.failure-limit",
+        "beat_id": beat_id,
+    }
+    queue = state.setdefault("next_speakers", [])
+    for existing in queue:
+        if not isinstance(existing, dict):
+            continue
+        if (
+            existing.get("agent") == "dm"
+            and existing.get("source") == "beat.failure-limit"
+            and existing.get("beat_id") == beat_id
+        ):
+            return existing
+
+    current_actor = str(state.get("active_turn_actor") or "").strip()
+    insert_at = len(queue)
+    if queue:
+        head = queue[0] if isinstance(queue[0], dict) else {"agent": queue[0]}
+        if head.get("agent") == current_actor:
+            insert_at = 1
+    queue.insert(insert_at, entry)
+    return entry

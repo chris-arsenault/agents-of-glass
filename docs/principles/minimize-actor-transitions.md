@@ -1,8 +1,9 @@
 # Minimize Actor Transitions
 
 Agent turns are expensive. Each time the orchestrator switches actors, the new
-agent rereads `TURN_START.md`, refreshes recent context, drains messages, and
-reconstructs the scene before writing a comparatively short completion.
+agent receives a fresh injected prompt, refreshes facts and messages through
+`glass`, and reconstructs the scene before writing a comparatively short
+completion.
 
 The system should therefore avoid ping-pong between agents unless a real
 play decision requires a different person at the table.

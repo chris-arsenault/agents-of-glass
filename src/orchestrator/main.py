@@ -15,6 +15,7 @@ from .campaign import (
     CampaignSpace,
     PHASE_ACTIVE,
     PHASE_CHARACTER_CREATION,
+    PHASE_INIT,
     PHASE_ORGANIZATION_BOOTSTRAP,
     PHASE_PLANNING,
 )
@@ -27,11 +28,8 @@ MODE_INTERMISSION = "intermission"
 MODE_SCENE_PREP = "scene-prep"
 
 
-# umask 002 so subdirs the orchestrator creates inside the campaign
-# workspace (notably per-turn artifact dirs under <agent>/turns/) are
-# group-writable. Combined with setgid + group=aog-<player> on the
-# parent turns/, this lets the player Unix user write their TURN.md
-# into a subdir the orchestrator (running as operator) created.
+# umask 002 keeps operator-created campaign directories group-readable for
+# local tooling. Agent turns no longer receive writable campaign directories.
 os.umask(0o002)
 
 
@@ -70,18 +68,12 @@ def _apply_cli_overrides(
     provider = cli.config.agent_provider
     if use_codex is not None:
         provider = "mixed-codex" if use_codex else "claude"
-    session_flag = (
-        cli.config.claude.use_session_id
-        if use_session_id is None
-        else use_session_id
-    )
+    session_flag = cli.config.claude.use_session_id if use_session_id is None else use_session_id
     cli.config = replace(
         cli.config,
         agent_provider=provider,
         skip_player_persona=(
-            cli.config.skip_player_persona
-            if skip_player_persona is None
-            else skip_player_persona
+            cli.config.skip_player_persona if skip_player_persona is None else skip_player_persona
         ),
         claude=replace(cli.config.claude, use_session_id=session_flag),
         orchestrator=(
@@ -321,13 +313,14 @@ def _run_campaign_lifecycle(
 
     _ensure_operator_groups_active()
     _ensure_db_migrated(cli)
+    if not dry_run:
+        _ensure_fact_graph_available(cli)
 
     if campaign_id is None:
         campaign_id = cli.store.latest_campaign()
         if campaign_id is None:
             raise click.ClickException(
-                "campaign id required when no campaign exists; "
-                "run `aog campaign run <campaign-id>`"
+                "campaign id required when no campaign exists; run `aog campaign run <campaign-id>`"
             )
     _ensure_glass_api_for_run(cli)
 
@@ -341,6 +334,7 @@ def _run_campaign_lifecycle(
         # Re-apply permissions on resume in case the perms helper has
         # been updated since this workspace was provisioned.
         from . import permissions as _permissions
+
         _permissions.apply_campaign_permissions(space.campaign_dir)
     else:
         click.secho(f"[1/5] Creating campaign workspace: {campaign_id}", fg="cyan")
@@ -353,8 +347,10 @@ def _run_campaign_lifecycle(
     click.echo("      state:     Postgres runtime row")
 
     if org_direction:
-        _write_operator_org_direction(
-            campaign_dir=space.campaign_dir,
+        _store_operator_org_direction(
+            cli=cli,
+            campaign_id=campaign_id,
+            phase_state=cm_state,
             direction=org_direction,
         )
 
@@ -369,8 +365,7 @@ def _run_campaign_lifecycle(
         phase_label="organization bootstrap",
         step_label="[2/6] Organization bootstrap",
         start_message=(
-            "[2/6] Invoking Mara for organization bootstrap "
-            f"(max {max_organization_turns} turn)"
+            f"[2/6] Invoking Mara for organization bootstrap (max {max_organization_turns} turn)"
         ),
         max_turns=max_organization_turns,
         checkpoint_label="after-organization-bootstrap",
@@ -380,8 +375,7 @@ def _run_campaign_lifecycle(
     )
     # Phase 3: character creation
     if skip_character_creation:
-        click.secho("[3/6] Character creation skipped (--skip-character-creation).",
-                    fg="yellow")
+        click.secho("[3/6] Character creation skipped (--skip-character-creation).", fg="yellow")
         click.echo()
         click.secho(
             f"Campaign '{campaign_id}' advanced through organization_bootstrap.",
@@ -400,8 +394,7 @@ def _run_campaign_lifecycle(
         phase_label="character creation",
         step_label="[3/6] Character creation",
         start_message=(
-            f"[3/6] Invoking players + DM for character creation "
-            f"(max {max_creation_turns} turns)"
+            f"[3/6] Invoking players + DM for character creation (max {max_creation_turns} turns)"
         ),
         max_turns=max_creation_turns,
         checkpoint_label="after-character-creation",
@@ -420,8 +413,7 @@ def _run_campaign_lifecycle(
         phase_label="campaign planning",
         step_label="[4/5] Campaign planning",
         start_message=(
-            f"[4/5] Invoking Mara for campaign planning "
-            f"(max {max_planning_turns} turns)"
+            f"[4/5] Invoking Mara for campaign planning (max {max_planning_turns} turns)"
         ),
         max_turns=max_planning_turns,
         checkpoint_label="after-campaign-planning",
@@ -501,9 +493,7 @@ def _run_campaign_lifecycle(
             if after.has_active_mode:
                 return
             if not after.has_active_mode:
-                should_continue, review_stop_budget = _consume_review_stop(
-                    review_stop_budget
-                )
+                should_continue, review_stop_budget = _consume_review_stop(review_stop_budget)
                 if should_continue:
                     click.echo("      skipped review stop after intermission")
                     active_state = after
@@ -557,10 +547,7 @@ def _start_next_active_mode(cli: CliState, *, campaign_id: str) -> str | None:
         scene_id = _next_intermission_scene_id(cli, campaign_id)
         _dm_glass(cli, campaign_id, ["mode", "start", MODE_INTERMISSION, scene_id])
         _queue_mara_next(cli, campaign_id)
-        click.echo(
-            f"      started intermission: {scene_id} "
-            "(Mara queued first, 15-turn cap)"
-        )
+        click.echo(f"      started intermission: {scene_id} (Mara queued first, 15-turn cap)")
         return MODE_INTERMISSION
 
     if next_mode == MODE_SCENE_PREP:
@@ -899,8 +886,7 @@ def _finalize_ended_bootstrap_phase(
     except Exception:
         return None
     if any(
-        frame.mode == mode_name and frame.scene_id == scene_id
-        for frame in runtime_state.mode_stack
+        frame.mode == mode_name and frame.scene_id == scene_id for frame in runtime_state.mode_stack
     ):
         return None
     if not _bootstrap_mode_has_turns(
@@ -991,14 +977,12 @@ def _require_bootstrap_mode_ended(
 ) -> None:
     state = cli.store.load(campaign_id)
     still_active = any(
-        frame.mode == mode_name and frame.scene_id == scene_id
-        for frame in state.mode_stack
+        frame.mode == mode_name and frame.scene_id == scene_id for frame in state.mode_stack
     )
     if not still_active:
         return
     state.mark_paused(
-        f"{phase_label} incomplete after {turns_run} turn(s); "
-        f"DM must call glass mode end"
+        f"{phase_label} incomplete after {turns_run} turn(s); DM must call glass mode end"
     )
     cli.store.save(state)
     raise click.ClickException(
@@ -1007,32 +991,19 @@ def _require_bootstrap_mode_ended(
     )
 
 
-_OPERATOR_ORG_DIRECTION_RELATIVE = Path("dm") / "notes" / "operator-org-direction.md"
-
-
-def _write_operator_org_direction(
+def _store_operator_org_direction(
     *,
-    campaign_dir: Path,
+    cli: CliState,
+    campaign_id: str,
+    phase_state: dict,
     direction: str,
 ) -> None:
-    """Persist the operator's `--org-direction` hint for Mara's bootstrap turn.
+    """Persist the operator's `--org-direction` hint as a graph fact."""
 
-    Only writes when the campaign is fresh (organization bootstrap has not
-    yet produced `shared/lore/organization.md`). On a non-fresh campaign,
-    prints a warning and skips the write — Mara has already chosen the
-    organization, and a late hint would not change it.
-    """
     direction_text = direction.strip()
     if not direction_text:
         return
-
-    organization_public = campaign_dir / "shared" / "lore" / "organization.md"
-    try:
-        existing_org = organization_public.read_text(encoding="utf-8").strip()
-    except OSError:
-        existing_org = ""
-
-    if existing_org:
+    if phase_state.get("phase") not in {PHASE_INIT, PHASE_ORGANIZATION_BOOTSTRAP}:
         click.secho(
             "      --org-direction ignored: organization bootstrap is already "
             "complete for this campaign.",
@@ -1040,30 +1011,96 @@ def _write_operator_org_direction(
         )
         return
 
-    target = campaign_dir / _OPERATOR_ORG_DIRECTION_RELATIVE
-    target.parent.mkdir(parents=True, exist_ok=True)
-    body = (
-        "---\n"
-        "title: Operator Organization Direction\n"
-        "type: operator-direction\n"
-        "status: dm-private\n"
-        "---\n\n"
-        "# Operator Organization Direction\n\n"
-        "The operator passed `--org-direction` when starting this campaign. "
-        "Treat it as starting input for the organization bootstrap turn — a "
-        "shape, theme, or seed phrase the operator wants the organization to "
-        "echo. You retain authorial control: refine, sharpen, and ground it "
-        "in concrete specifics so the organization is not generic. The "
-        "previous-campaign-organization-check still applies; do not reuse "
-        "another campaign's organization to honor this hint.\n\n"
-        "## Direction\n\n"
-        f"> {direction_text}\n"
-    )
-    target.write_text(body, encoding="utf-8")
+    from cli.facts import parse_fact_spec, set_fact
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        spec = parse_fact_spec(
+            f"operator.org-direction = {direction_text}",
+            default_scope_id="campaign",
+            visibility="dm",
+            salience="high",
+            audience="meta",
+        )
+        set_fact(
+            campaign_id=campaign_id,
+            spec=spec,
+            actor="operator",
+            turn_id=None,
+            mode="organization-bootstrap",
+            scene_id="organization-bootstrap",
+        )
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
     click.secho(
-        f"      operator direction written: {target}",
+        "      operator direction stored in fact graph",
         fg="cyan",
     )
+
+
+def _fact_subject_predicates(pack: dict) -> set[tuple[str, str]]:
+    return {
+        (
+            str(fact.get("subject_id") or "").strip(),
+            str(fact.get("predicate") or "").strip(),
+        )
+        for fact in pack.get("facts") or []
+    }
+
+
+def _fact_rows(pack: dict) -> list[dict]:
+    return [fact for fact in pack.get("facts") or [] if isinstance(fact, dict)]
+
+
+def _changed_since_checkpoint_or_template(
+    cli: CliState,
+    campaign_id: str,
+    rel: Path,
+    *,
+    checkpoint_label: str,
+) -> bool:
+    current = cli.config.campaigns_dir / campaign_id / rel
+    if not current.exists():
+        return False
+    try:
+        current_bytes = current.read_bytes()
+    except OSError:
+        return True
+
+    template = cli.config.templates_dir / rel
+    try:
+        if template.exists() and current_bytes == template.read_bytes():
+            return False
+    except OSError:
+        pass
+
+    try:
+        from .checkpoints import list_checkpoints
+
+        checkpoints = list_checkpoints(cli.config, campaign_id)
+    except Exception:
+        checkpoints = []
+
+    matching = [
+        checkpoint for checkpoint in checkpoints if checkpoint.get("label") == checkpoint_label
+    ]
+    for checkpoint in sorted(
+        matching,
+        key=lambda item: str(item.get("created_at") or ""),
+        reverse=True,
+    ):
+        checkpoint_path = Path(str(checkpoint.get("path") or ""))
+        prior = checkpoint_path / "filesystem" / rel
+        try:
+            if prior.exists() and current_bytes == prior.read_bytes():
+                return False
+        except OSError:
+            continue
+    return True
 
 
 def _validate_organization_bootstrap_complete(
@@ -1072,33 +1109,19 @@ def _validate_organization_bootstrap_complete(
 ) -> None:
     from cli import db as _db
     from cli.config import load_config as _load_glass_config
+    from cli.facts import fact_pack
 
     campaign_root = cli.config.campaigns_dir / campaign_id
     failures: list[str] = []
 
-    organization_public = campaign_root / "shared" / "lore" / "organization.md"
-    organization_private = campaign_root / "dm" / "notes" / "organization.md"
-    table_scene = campaign_root / "table" / "scene.md"
-
-    for path, label in (
-        (organization_public, "shared/lore/organization.md"),
-        (organization_private, "dm/notes/organization.md"),
-        (table_scene, "table/scene.md"),
+    for rel in (
+        Path("shared/lore/organization.md"),
+        Path("dm/notes/organization.md"),
     ):
-        try:
-            body = path.read_text(encoding="utf-8").strip()
-        except FileNotFoundError:
-            failures.append(f"missing {label}")
-            continue
-        if not body:
-            failures.append(f"empty {label}")
-
-    try:
-        scene_body = table_scene.read_text(encoding="utf-8")
-    except OSError:
-        scene_body = ""
-    if "No scene is currently active." in scene_body:
-        failures.append("table/scene.md still has the inactive table stub")
+        if (campaign_root / rel).exists():
+            failures.append(
+                f"{rel} exists; organization bootstrap must record graph facts, not markdown"
+            )
 
     if (campaign_root / "dm" / "foundation.md").exists():
         failures.append("dm/foundation.md exists; campaign planning started too early")
@@ -1121,9 +1144,30 @@ def _validate_organization_bootstrap_complete(
         if (campaign_root / rel).exists():
             failures.append(f"{rel} exists; org bootstrap must stay org-only")
 
+    clocks = []
     previous_config = os.environ.get("GLASS_CONFIG")
     os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
     try:
+        try:
+            pack = fact_pack(campaign_id=campaign_id, audience="continuity", limit=500)
+        except Exception as exc:
+            failures.append(f"fact graph unavailable for organization validation: {exc}")
+            pack = {"facts": []}
+        else:
+            if pack.get("status") == "unavailable":
+                failures.append(
+                    f"fact graph unavailable for organization validation: {pack.get('target')}"
+                )
+        facts = _fact_subject_predicates(pack)
+        for subject, predicate in (
+            ("campaign", "pull"),
+            ("organization", "identity"),
+            ("organization", "dangerous-work"),
+            ("organization", "character-brief"),
+        ):
+            if (subject, predicate) not in facts:
+                failures.append(f"missing graph fact {subject}.{predicate}")
+
         pg_config = _db.load_pg_config(_load_glass_config())
         with _db.connect(pg_config) as conn:
             clocks = _db.clock_list(
@@ -1142,55 +1186,100 @@ def _validate_organization_bootstrap_complete(
     if failures:
         detail = "\n".join(f"- {failure}" for failure in failures)
         raise click.ClickException(
-            "organization bootstrap validation failed; not advancing bootstrap "
-            f"phase:\n{detail}"
+            f"organization bootstrap validation failed; not advancing bootstrap phase:\n{detail}"
         )
 
 
 def _validate_campaign_planning_complete(cli: CliState, campaign_id: str) -> None:
+    from cli.config import get_paths
+    from cli.facts import fact_pack
+    from cli.state import load_state
+
     campaign_root = cli.config.campaigns_dir / campaign_id
     failures: list[str] = []
 
-    foundation = campaign_root / "dm" / "foundation.md"
-    context = campaign_root / "context.md"
-    framing = campaign_root / "shared" / "campaign-framing.md"
-
-    for path, label in (
-        (foundation, "dm/foundation.md"),
-        (context, "context.md"),
-        (framing, "shared/campaign-framing.md"),
+    for rel in (
+        Path("dm/foundation.md"),
+        Path("context.md"),
+        Path("shared/campaign-framing.md"),
     ):
-        try:
-            body = path.read_text(encoding="utf-8").strip()
-        except FileNotFoundError:
-            failures.append(f"missing {label}")
-            continue
-        if not body:
-            failures.append(f"empty {label}")
-            continue
-        if label == "shared/campaign-framing.md" and "**Stub.**" in body:
-            failures.append("shared/campaign-framing.md still has the stub content")
+        if _changed_since_checkpoint_or_template(
+            cli,
+            campaign_id,
+            rel,
+            checkpoint_label="after-character-creation",
+        ):
+            failures.append(
+                f"{rel} exists; campaign planning must record graph facts, not markdown"
+            )
 
-    arcs_root = campaign_root / "arcs"
-    arc_dirs = (
-        sorted(path.name for path in arcs_root.iterdir() if path.is_dir())
-        if arcs_root.exists()
-        else []
-    )
-    if not arc_dirs:
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        state = load_state(get_paths(), campaign_id)
+        pack = fact_pack(
+            campaign_id=campaign_id,
+            audience="continuity",
+            scene_id="character-creation",
+            limit=500,
+        )
+    except Exception as exc:
+        failures.append(
+            f"campaign planning validation could not read runtime state or facts: {exc}"
+        )
+        state = {}
+        pack = {"facts": []}
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
+
+    if pack.get("status") == "unavailable":
+        failures.append(
+            f"fact graph unavailable for campaign planning validation: {pack.get('target')}"
+        )
+
+    active_arc = str(state.get("active_arc") or "").strip()
+    arcs = [str(arc).strip() for arc in state.get("arcs") or [] if str(arc).strip()]
+    if not active_arc and not arcs:
         failures.append("no opening arc was created during campaign planning")
+
+    rows = _fact_rows(pack)
+    planning_subjects = {"campaign", "opening-arc", *arcs}
+    if active_arc:
+        planning_subjects.add(active_arc)
+    has_campaign_plan = any(
+        str(row.get("subject_id") or "").strip() in planning_subjects
+        and str(row.get("predicate") or "").strip()
+        in {"opening", "premise", "constraint", "constraints"}
+        for row in rows
+    )
+    if not has_campaign_plan:
+        failures.append("missing graph fact for campaign opening, premise, or constraint")
+
+    arc_subjects = {"arc", "opening-arc", *arcs}
+    if active_arc:
+        arc_subjects.add(active_arc)
+    has_arc_plan = any(
+        str(row.get("subject_id") or "").strip() in arc_subjects
+        and str(row.get("predicate") or "").strip() in {"focus", "direction", "status"}
+        for row in rows
+    )
+    if not has_arc_plan:
+        failures.append("missing graph fact for active arc focus, direction, or status")
 
     if failures:
         detail = "\n".join(f"- {failure}" for failure in failures)
         raise click.ClickException(
-            "campaign planning validation failed; not advancing bootstrap phase:\n"
-            f"{detail}"
+            f"campaign planning validation failed; not advancing bootstrap phase:\n{detail}"
         )
 
 
 def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> None:
     from cli import db as _db
     from cli.config import load_config as _load_glass_config
+    from cli.facts import fact_pack
 
     previous_config = os.environ.get("GLASS_CONFIG")
     os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
@@ -1211,13 +1300,27 @@ def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> No
             by_player[player_id].append(character)
 
     failures: list[str] = []
-    campaign_root = cli.config.campaigns_dir / campaign_id
+    relationship_subjects: set[str] = set()
+    try:
+        pack = fact_pack(
+            campaign_id=campaign_id,
+            audience="continuity",
+            scene_id="character-creation",
+            limit=500,
+        )
+        relationship_subjects = {
+            str(fact.get("subject_id") or "").strip()
+            for fact in pack.get("facts") or []
+            if str(fact.get("predicate") or "").strip() == "relationship"
+        }
+    except Exception as exc:
+        failures.append(f"fact graph unavailable for relationship validation: {exc}")
+
     for player_id in PLAYER_IDS:
         player_characters = by_player[player_id]
         if len(player_characters) != 1:
             failures.append(
-                f"{player_id}: expected exactly one character row, "
-                f"found {len(player_characters)}"
+                f"{player_id}: expected exactly one character row, found {len(player_characters)}"
             )
             continue
         character = player_characters[0]
@@ -1226,33 +1329,13 @@ def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> No
                 failures.append(f"{player_id}: missing character field {field_name}")
         goals = list(character.get("goals") or [])
         if not (2 <= len([goal for goal in goals if str(goal).strip()]) <= 3):
-            failures.append(
-                f"{player_id}: expected 2-3 canonical goals, found {len(goals)}"
-            )
+            failures.append(f"{player_id}: expected 2-3 canonical goals, found {len(goals)}")
         # Starting inventory shape is prompt guidance, not a bootstrap invariant.
         # Do not fail the operator process after relationship-building because a
         # player picked imperfect items during their build turn.
-        for rel_path in (
-            Path("players") / player_id / "public" / "character.md",
-            Path("players") / player_id / "public" / "intro.md",
-            Path("players") / player_id / "public" / "relationships.md",
-        ):
-            path = campaign_root / rel_path
-            try:
-                has_text = path.read_text(encoding="utf-8").strip()
-            except FileNotFoundError:
-                failures.append(f"{player_id}: missing {rel_path}")
-                continue
-            except PermissionError as exc:
-                failures.append(
-                    f"{player_id}: cannot read {rel_path}: {exc.strerror or exc}"
-                )
-                continue
-            except OSError:
-                failures.append(f"{player_id}: cannot read {rel_path}")
-                continue
-            if not has_text:
-                failures.append(f"{player_id}: missing or empty {rel_path}")
+        character_id = str(character.get("character_id") or "").strip()
+        if character_id and character_id not in relationship_subjects:
+            failures.append(f"{player_id}: missing relationship fact for {character_id}")
 
     if failures:
         detail = "\n".join(f"- {failure}" for failure in failures)
@@ -1292,9 +1375,35 @@ def _ensure_glass_api_for_run(cli: CliState) -> None:
     except Exception as exc:
         raise click.ClickException(f"failed to restart glass API: {exc}") from exc
     click.echo(
-        f"      glass API: {info.message} {info.url} "
-        f"pid={info.pid or '-'} (log: {info.log_path})"
+        f"      glass API: {info.message} {info.url} pid={info.pid or '-'} (log: {info.log_path})"
     )
+
+
+def _ensure_fact_graph_available(cli: CliState) -> None:
+    from cli import graph as _graph
+    from cli.config import load_config as _load_glass_config
+    from cli.local_env import load_repo_env
+
+    previous_config = os.environ.get("GLASS_CONFIG")
+    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
+    try:
+        load_repo_env()
+        try:
+            config = _graph.load_falkor_config(_load_glass_config())
+        except Exception as exc:
+            raise click.ClickException(f"failed to load FalkorDB configuration: {exc}") from exc
+        if _graph.is_available(config):
+            return
+        raise click.ClickException(
+            "FalkorDB fact graph is required before campaign agents run. "
+            f"Not reachable at {config.describe()}. Start or fix FalkorDB, "
+            "then rerun `aog campaign run`."
+        )
+    finally:
+        if previous_config is None:
+            os.environ.pop("GLASS_CONFIG", None)
+        else:
+            os.environ["GLASS_CONFIG"] = previous_config
 
 
 def _start_webui(
@@ -1331,8 +1440,7 @@ def _ensure_db_migrated(cli: CliState) -> None:
                 actions = _glass_db.migrate(conn)
         except Exception as exc:
             raise click.ClickException(
-                f"failed to migrate Postgres runtime schema at "
-                f"{pg_config.describe()}: {exc}"
+                f"failed to migrate Postgres runtime schema at {pg_config.describe()}: {exc}"
             ) from exc
         applied = [name for name, action in actions if action == "applied"]
         if applied:
@@ -1504,10 +1612,10 @@ def campaign_restore(
 
 @campaign.command("reconcile")
 @click.argument("campaign_id")
-@click.option("--repair", is_flag=True, help="Rewrite disposable projections and permissions.")
+@click.option("--repair", is_flag=True, help="Repair campaign permissions and runtime metadata.")
 @click.pass_obj
 def campaign_reconcile(cli: CliState, campaign_id: str, repair: bool) -> None:
-    """Check campaign state surfaces and optionally refresh projections."""
+    """Check campaign state surfaces and optionally repair metadata."""
     result = _reconcile_campaign(cli, campaign_id, repair=repair)
     click.echo(json.dumps(result, indent=2, sort_keys=True))
 
@@ -1540,7 +1648,7 @@ def campaign_prepare_turn(
     skip_player_persona: bool | None,
     use_session_id: bool | None,
 ) -> None:
-    """Build the next turn's TURN_START context without invoking the agent."""
+    """Build the next turn's injected prompt without invoking the agent."""
     _apply_cli_overrides(
         cli,
         use_session_id=use_session_id,
@@ -1552,9 +1660,7 @@ def campaign_prepare_turn(
     package = cli.orchestrator.prepare_turn(state)
     click.echo(f"prepared {package.turn_id}")
     click.echo(f"cwd: {package.spawn_cwd}")
-    click.echo(f"start:    {package.turn_start_path}")
-    click.echo(f"prose:    {package.turn_prose_path}")
-    click.echo(f"closeout: {package.turn_closeout_path}")
+    click.echo("prompt: injected at invocation; no turn files are written")
 
 
 @campaign.command("run")
@@ -1632,10 +1738,7 @@ def campaign_prepare_turn(
     "--turn-minimum-seconds",
     type=click.IntRange(min=0),
     default=None,
-    help=(
-        "Override [orchestrator].turn_minimum_seconds for this run. "
-        "Use 0 for no pacing delay."
-    ),
+    help=("Override [orchestrator].turn_minimum_seconds for this run. Use 0 for no pacing delay."),
 )
 @click.option(
     "--org-direction",
@@ -1694,15 +1797,21 @@ def campaign_run(
 
 @campaign.command("clean")
 @click.argument("campaign_id")
-@click.option("--state-only", is_flag=True,
-              help="Only delete runtime state/cache (runtime DB rows, stale JSON state, "
-                   "transcript export, audit.jsonl, scene-framing.md, per-agent turns/). "
-                   "Keeps the campaign workspace, DM/player content, arcs, lore, "
-                   "and characters/messages/rolls.")
-@click.option("--keep-workspace", is_flag=True,
-              help="Drop DB rows but leave the filesystem campaign "
-                   "workspace intact. For when you want to wipe persistence but "
-                   "keep authored content for re-import.")
+@click.option(
+    "--state-only",
+    is_flag=True,
+    help="Only delete runtime state/cache (runtime DB rows, stale JSON state, "
+    "transcript export, audit.jsonl, scene-framing.md, per-agent turns/). "
+    "Keeps the campaign workspace, DM/player content, arcs, lore, "
+    "and characters/messages/rolls.",
+)
+@click.option(
+    "--keep-workspace",
+    is_flag=True,
+    help="Drop DB rows but leave the filesystem campaign "
+    "workspace intact. For when you want to wipe persistence but "
+    "keep authored content for re-import.",
+)
 @click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
 @click.pass_obj
 def campaign_clean(
@@ -1739,9 +1848,7 @@ def campaign_clean(
     actions = ["DB rows"]
     if not keep_workspace:
         actions.append("filesystem workspace")
-    if not yes and not click.confirm(
-        f"Delete {', '.join(actions)} for campaign {campaign_id!r}?"
-    ):
+    if not yes and not click.confirm(f"Delete {', '.join(actions)} for campaign {campaign_id!r}?"):
         raise click.Abort()
 
     # 1. Postgres
@@ -1770,8 +1877,9 @@ def campaign_clean(
 
 @campaign.command("clear-scene")
 @click.argument("scene_id", required=False)
-@click.option("--campaign", "campaign_id", default=None,
-              help="Campaign id. Defaults to the latest.")
+@click.option(
+    "--campaign", "campaign_id", default=None, help="Campaign id. Defaults to the latest."
+)
 @click.option("--yes", is_flag=True, help="Do not prompt for confirmation.")
 @click.pass_obj
 def campaign_clear_scene(
@@ -1888,13 +1996,6 @@ def _reconcile_campaign(
                     state = cli.store.load(campaign_id)
                     cli.store.save(state)
                     repaired.append("orchestrator-runtime-state")
-            if repair and turns:
-                transcript = "\n\n".join(str(turn["markdown"]).rstrip() for turn in turns)
-                (campaign_dir / "transcript.md").write_text(
-                    transcript.rstrip() + "\n",
-                    encoding="utf-8",
-                )
-                repaired.append("transcript.md")
     finally:
         if previous_config is None:
             os.environ.pop("GLASS_CONFIG", None)

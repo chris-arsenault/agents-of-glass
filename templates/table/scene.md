@@ -4,14 +4,9 @@ status: inactive
 
 # Scene
 
-No scene is currently active.
+Retired for orchestrated agent turns.
 
-When a scene starts, the DM replaces this file with the current visible
-situation: where the party is, what is visible, who or what is present, what is
-in motion, and what immediate question or pressure is live. During play, keep it
-current instead of treating it as only the kickoff.
-
-This file is part of the player-agent table. Put only material the party can see
-or has been given. Reusable visible lore belongs in named sibling artifacts at
-`table/<meaningful-slug>.md`. Keep DM-only truth in DM notes and bring it here
-only when it becomes visible.
+Visible scene state for agents lives in graph facts and hard-state MCP tool
+output. Use `glass_fact_pack(audience="continuity", output_format="markdown")`,
+`glass_check()`, scene clocks, durable clocks, and character tools. Do not create or update table files as
+an agent continuity layer.

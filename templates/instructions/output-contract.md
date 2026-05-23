@@ -1,65 +1,31 @@
----
-title: Output Contract
-target: executing-agent
-authority: binding
----
-
 # Output Contract
 
-Every turn has two outputs:
+There are two runtime outputs, and only two. Both go through typed MCP tools.
+No file, stdout, shell command, API, database, or final chat response is a valid
+substitute.
 
-1. Public prose in `TURN.md`.
-2. Compact closeout from `glass done`.
+1. Durable state updates before closeout through the owning MCP tool.
 
-## Sequence
+Use `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])` for neutral facts and inventory deltas that do not have a more specific hard-state tool. Use purpose-built `glass_*` tools for clocks, beats, rolls, scenes, messages, and character mechanics.
 
-1. Run `glass check` on full turns, then finish required `glass` mutations and `glass sync apply` commits.
-2. Write public prose to the `TURN.md` path named in TURN_START.
-3. Run `glass done`.
-4. Exit.
+2. Closeout through `glass_done`:
 
-## Public Prose
-
-`TURN.md` is the visible story beat or process note. It is not the state
-transport layer.
-
-- Normal full turn: target 300-800 words. Prefer cutting a beat over compressing an event into a codified label when over budget.
-- Rapid response: answer only the prompt.
-- Housekeeping: short process-only note.
-- Scene transition or close: include the visible closure and next visible board.
-
-Do not put JSON, YAML, private planning, raw command logs, or long tool
-transcripts in `TURN.md`. Literal `glass ...` command lines are debug material;
-the command audit stores actual mutations.
-
-## Closeout
-
-```bash
-glass done \
-  --summary "<1-3 sentence continuity for the next actor>" \
-  --state "<durable updates or no state change>" \
-  --rolls "<rolls/checks used or none>" \
-  --next default
+```text
+glass_done(
+  summary="<1-3 sentence compact continuity>",
+  state=["<durable update or no state change>"],
+  rolls="<rolls/checks used or none>",
+  scene_status="active",
+  next_speaker="default",
+)
 ```
 
-For normal active-play player turns, add:
+3. Public prose through `glass_turn_append` after `glass_done` succeeds:
 
-```bash
---turn-type "<act|answer|support|pass>"
+```text
+glass_turn_append(body="<public prose>")
 ```
 
-`pass` is a real visible turn, not empty filler. It also requires
-`--state "no state change"` and `--rolls none`.
-
-Add fields when relevant:
-
-```bash
---open-question "<question the next actor must see>"
---position "<position/leverage changed or unchanged>"
---pressure "<tracker/clock/HP/pressure changed or none>"
---scene-status active|closing|ending|ended|blocked
-```
-
-Use `--next <agent-id>` only when overriding normal rotation or action order.
-On active-play turns, run `glass check` before the prose pass; `glass done`
-will tell you if that requirement is still missing.
+Do not write prose, closeout, notes, summaries, or scratch material to files. Do
+not rely on stdout as a state channel. Do not include literal tool-call syntax in
+public prose.

@@ -5,56 +5,21 @@ from __future__ import annotations
 import json
 import random
 from collections import Counter
-from pathlib import Path
 from typing import Any
 
 import click
 
 from .. import db as _db
 from ..campaign import active_campaign_id, pg_connection
-from ..character_projection import (
-    public_character_mirror_path as _public_character_mirror_path,
-    render_public_character_mirror as _render_public_character_mirror,
-    write_public_character_mirror as _write_public_character_mirror,
-)
-from ..config import Paths, get_paths
+from ..character_display import write_public_character_mirror as _write_public_character_mirror
+from ..config import get_paths
 from ..constants import ATTRIBUTE_TIERS, ATTRIBUTES, SKILL_TIERS
 from ..errors import GlassError, agent_instruction
-from ..paths_resolve import display_path
+from ..facts import FactSpec, set_fact_specs
 from ..role import assert_character_writable, current_role, require_dm
 from ..state import append_audit, commit, current_mode_record, load_state, queue_event
 from ..validation import assert_attribute_name, assert_valid_item_id, validate_key_values
 from ..yaml_io import command_params, emit, read_body
-
-
-PRIMARY_DRIVES = (
-    "ambition",
-    "care/protection",
-    "revenge",
-    "curiosity",
-    "greed",
-    "faith/ideology",
-    "pride",
-    "duty",
-    "pleasure/play",
-    "fear",
-)
-
-PULL_UTILIZATION_REQUIRED_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("source", ("source:", "source/domain", "source=")),
-    ("thesis", ("thesis:", "identity thesis", "thesis=")),
-    ("archetype", ("archetype",)),
-    ("drive", ("drive", "primary drive")),
-    ("trait", ("trait", "positive trait")),
-    ("table presence", ("table presence",)),
-    ("non-work want", ("non-work want", "non work want")),
-    ("opening social action", ("opening social action", "opening action")),
-    ("item", ("item", "inventory")),
-    ("skill", ("skill",)),
-    ("signature move", ("signature move", "signature")),
-    ("failure mode", ("failure", "complication")),
-    ("voice", ("voice", "prose")),
-)
 
 
 @click.group()
@@ -76,7 +41,7 @@ def character() -> None:
 @click.option(
     "--primary-drive",
     required=True,
-    help="One of the campaign drive list; must differ from other existing PCs.",
+    help="Free-text primary drive; must differ from other existing PCs.",
 )
 @click.option(
     "--positive-trait",
@@ -107,7 +72,7 @@ def character() -> None:
 @click.option(
     "--pull-utilization",
     required=True,
-    help="Non-adjacent source, identity thesis, and all required usage surfaces.",
+    help="Non-adjacent source and identity thesis.",
 )
 @click.option("--hp", "hp_max", type=int, default=10)
 @click.option(
@@ -148,6 +113,63 @@ def character_new(
     skill_values: tuple[str, ...],
     tags: tuple[str, ...],
 ) -> None:
+    create_character_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        player_id=player_id,
+        name=name,
+        species=species,
+        culture=culture,
+        archetype=archetype,
+        organization_role=organization_role,
+        pronouns=pronouns,
+        bio=bio,
+        goals=goals,
+        primary_drive=primary_drive,
+        positive_trait=positive_trait,
+        table_presence=table_presence,
+        non_work_want=non_work_want,
+        opening_social_action=opening_social_action,
+        life_prompts=life_prompts,
+        pull_utilization=pull_utilization,
+        hp_max=hp_max,
+        attribute_values=attribute_values,
+        skill_values=skill_values,
+        tags=tags,
+    )
+
+
+def create_character_service(
+    *,
+    command_path: click.Context | str = "glass_character_new",
+    emit_output: bool = False,
+    character_id: str,
+    player_id: str,
+    name: str,
+    species: str,
+    culture: str,
+    archetype: str,
+    organization_role: str,
+    pronouns: str = "",
+    bio: str,
+    goals: tuple[str, ...],
+    primary_drive: str,
+    positive_trait: str,
+    table_presence: str,
+    non_work_want: str,
+    opening_social_action: str,
+    life_prompts: tuple[str, ...],
+    pull_utilization: str,
+    hp_max: int = 10,
+    attribute_values: tuple[str, ...] = (),
+    skill_values: tuple[str, ...] = (),
+    starting_items: tuple[dict[str, Any], ...] = (),
+    fact_specs: tuple[FactSpec, ...] = (),
+    tags: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Create one character from already-shaped runtime inputs."""
+
     role = current_role()
     if role.kind == "player" and player_id != role.actor:
         raise GlassError(
@@ -207,6 +229,9 @@ def character_new(
         assert_attribute_name(attribute_name)
     skills = validate_key_values(skill_values, SKILL_TIERS, "skill")
     _validate_starting_skill_budget(skills)
+    inventory = _normalize_starting_inventory(starting_items)
+    mode = current_mode_record(state) or {}
+    active_scene = str(mode.get("scene_id") or "").strip() or None
 
     with pg_connection() as conn:
         if _db.character_exists(conn, campaign_id, character_id):
@@ -217,6 +242,16 @@ def character_new(
                 )
             )
         _validate_primary_drive_available(conn, campaign_id, normalized_primary_drive)
+    fact_result = set_fact_specs(
+        campaign_id=campaign_id,
+        specs=list(fact_specs),
+        actor=role.actor,
+        turn_id=str(state.get("active_turn_id") or "") or None,
+        mode=str(mode.get("mode") or "") or None,
+        scene_id=active_scene,
+        require_available=bool(fact_specs),
+    )
+    with pg_connection() as conn:
         record = _db.character_create(
             conn,
             campaign_id=campaign_id,
@@ -240,6 +275,7 @@ def character_new(
             attributes=attributes,
             skills=skills,
             hp_max=hp_max,
+            inventory=inventory,
             tags=list(tags),
         )
     mirror_result = _write_public_character_mirror(paths, campaign_id, record)
@@ -252,40 +288,72 @@ def character_new(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.new",
         command_params(character_id=character_id, player_id=player_id),
-        {"character": record, "mirror": mirror_result},
+        {"character": record, "facts": fact_result, "mirror": mirror_result},
+        emit_output=emit_output,
     )
+    return {"character": record, "facts": fact_result, "mirror": mirror_result}
 
 
 @character.command("get")
 @click.argument("character_id")
 @click.pass_context
 def character_get(ctx: click.Context, character_id: str) -> None:
+    emit(get_character_service(command_path=ctx, character_id=character_id))
+
+
+def get_character_service(
+    *,
+    command_path: click.Context | str = "glass_character_get",
+    character_id: str,
+    agent_projection: bool = False,
+) -> dict[str, Any]:
+    """Read one character record visible to the current role."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     campaign_id = active_campaign_id()
     with pg_connection() as conn:
         character = _db.character_get(conn, campaign_id, character_id)
+        role = current_role()
+        signature_moves = _db.character_signature_moves_list(
+            conn,
+            campaign_id=campaign_id,
+            character_id=character_id,
+            visibility=None if role.kind in {"dm", "operator"} else "public",
+        )
     if character is None:
         raise GlassError(_unknown_character_message(character_id, campaign_id))
+    character = {**character, "signature_moves": signature_moves}
+    if agent_projection:
+        character = character_agent_view(character, role=role)
     result = {"character": character}
     append_audit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.get",
         command_params(character_id=character_id),
         result,
     )
-    emit(result)
+    return result
 
 
 @character.command("list")
 @click.pass_context
 def character_list(ctx: click.Context) -> None:
+    emit(list_characters_service(command_path=ctx))
+
+
+def list_characters_service(
+    *,
+    command_path: click.Context | str = "glass_character_list",
+) -> dict[str, Any]:
+    """List compact character records for the current campaign."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -310,27 +378,38 @@ def character_list(ctx: click.Context) -> None:
             for c in characters
         ],
     }
-    append_audit(paths, state, ctx, "character.list", {}, result)
-    emit(result)
+    append_audit(paths, state, command_path, "character.list", {}, result)
+    return result
 
 
 @character.command("bulk-get")
 @click.argument("character_ids", nargs=-1)
 @click.option("--all", "include_all", is_flag=True, help="Return every character.")
-@click.option(
-    "--signatures/--no-signatures",
-    default=True,
-    show_default=True,
-    help="Include signature move slot status from markdown.",
-)
 @click.pass_context
 def character_bulk_get(
     ctx: click.Context,
     character_ids: tuple[str, ...],
     include_all: bool,
-    signatures: bool,
 ) -> None:
     """Read multiple full character records with one tool call."""
+
+    emit(
+        bulk_get_characters_service(
+            command_path=ctx,
+            character_ids=character_ids,
+            include_all=include_all,
+        )
+    )
+
+
+def bulk_get_characters_service(
+    *,
+    command_path: click.Context | str = "glass_character_bulk_get",
+    character_ids: tuple[str, ...] = (),
+    include_all: bool = False,
+    agent_projection: bool = False,
+) -> dict[str, Any]:
+    """Read multiple full character records visible to the current role."""
 
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -352,6 +431,7 @@ def character_bulk_get(
             )
         )
 
+    role = current_role()
     with pg_connection() as conn:
         if include_all:
             characters = _db.character_list(conn, campaign_id)
@@ -363,41 +443,99 @@ def character_bulk_get(
                     missing.append(character_id)
                 else:
                     characters.append(character)
+        moves = _db.character_signature_moves_list(
+            conn,
+            campaign_id=campaign_id,
+            visibility=None if role.kind in {"dm", "operator"} else "public",
+        )
     if missing:
         raise GlassError(
             agent_instruction(
                 f"unknown character(s) in campaign {campaign_id!r}: {', '.join(missing)}",
-                "Use character ids returned by `glass character list` or visible in the current TURN_START context.",
+                "Use character ids returned by `glass character list`, `glass character bulk-get --all`, or visible in the injected prompt.",
             )
         )
+
+    moves_by_character: dict[str, list[dict[str, Any]]] = {}
+    for move in moves:
+        moves_by_character.setdefault(str(move["character_id"]), []).append(move)
+    characters = [
+        {
+            **character,
+            "signature_moves": moves_by_character.get(
+                str(character["character_id"]),
+                [],
+            ),
+        }
+        for character in characters
+    ]
+    if agent_projection:
+        characters = [character_agent_view(character, role=role) for character in characters]
 
     result: dict[str, Any] = {
         "campaign_id": campaign_id,
         "count": len(characters),
         "characters": characters,
     }
-    if signatures:
-        result["signature_moves"] = {
-            character["character_id"]: _signature_status(paths, campaign_id, character)
-            for character in characters
-        }
 
     append_audit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.bulk-get",
-        command_params(character_ids=ids, all=include_all, signatures=signatures),
+        command_params(character_ids=ids, all=include_all),
         result,
     )
-    emit(result)
+    return result
+
+
+def character_agent_view(
+    character: dict[str, Any],
+    *,
+    role: Any,
+) -> dict[str, Any]:
+    """Return the MCP-facing character view for the current turn actor."""
+
+    view: dict[str, Any] = {
+        "character_id": character.get("character_id"),
+        "player_id": character.get("player_id"),
+        "name": character.get("name"),
+        "species": character.get("species"),
+        "culture": character.get("culture"),
+        "archetype": character.get("archetype"),
+        "organization_role": character.get("organization_role"),
+        "pronouns": character.get("pronouns"),
+        "bio": character.get("bio"),
+        "goals": character.get("goals") or [],
+        "primary_drive": character.get("primary_drive"),
+        "attributes": character.get("attributes") or {},
+        "skills": character.get("skills") or {},
+        "skill_meta": character.get("skill_meta") or {},
+        "hp": character.get("hp"),
+        "momentum": character.get("momentum"),
+        "inventory": character.get("inventory") or [],
+        "signature_moves": character.get("signature_moves") or [],
+        "tags": character.get("tags") or [],
+        "xp": character.get("xp"),
+        "level": character.get("level"),
+    }
+    if role.kind == "player" and str(character.get("player_id") or "") == role.actor:
+        view["profile"] = {
+            "positive_trait": character.get("positive_trait"),
+            "table_presence": character.get("table_presence"),
+            "non_work_want": character.get("non_work_want"),
+            "opening_social_action": character.get("opening_social_action"),
+            "life_prompt_answers": character.get("life_prompt_answers") or [],
+            "pull": character.get("pull_utilization_note"),
+        }
+    return view
 
 
 @character.command("mirror")
 @click.argument("character_id")
 @click.pass_context
 def character_mirror(ctx: click.Context, character_id: str) -> None:
-    """Write the canonical public character display from Postgres."""
+    """Retired: character rows are read through Glass commands."""
 
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -408,21 +546,17 @@ def character_mirror(ctx: click.Context, character_id: str) -> None:
     if character is None:
         raise GlassError(_unknown_character_message(character_id, campaign_id))
     assert_character_writable(character)
-    path = _public_character_mirror_path(paths, campaign_id, character)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    body = _render_public_character_mirror(character)
-    path.write_text(body, encoding="utf-8")
     result = {
         "character_id": character_id,
-        "path": display_path(path),
-        "bytes": len(body.encode("utf-8")),
+        "status": "retired",
+        "detail": "character markdown mirrors are not written; use character commands",
     }
     commit(
         paths,
         state,
         ctx,
         "character.mirror",
-        command_params(character_id=character_id, path=result["path"]),
+        command_params(character_id=character_id),
         result,
         save=False,
     )
@@ -541,10 +675,11 @@ def character_bulk_update(
             signature_result = None
             if update["signature_moves"]:
                 signature_result = _add_signature_moves_bulk(
-                    paths,
+                    conn,
                     campaign_id,
                     updated,
                     update["signature_moves"],
+                    actor=role.actor,
                 )
                 operations.append("signature_moves")
 
@@ -595,26 +730,43 @@ def character_bulk_update(
 @click.argument("character_id")
 @click.pass_context
 def character_signature_status(ctx: click.Context, character_id: str) -> None:
-    """Show signature move slots and current markdown entries."""
+    """Show signature move slots and current typed entries."""
+
+    emit(signature_status_service(command_path=ctx, character_id=character_id))
+
+
+def signature_status_service(
+    *,
+    command_path: click.Context | str = "glass_character_signature_status",
+    character_id: str,
+) -> dict[str, Any]:
+    """Show signature move slots and current typed entries."""
 
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
+    role = current_role()
     with pg_connection() as conn:
         character = _db.character_get(conn, campaign_id, character_id)
+        moves = _db.character_signature_moves_list(
+            conn,
+            campaign_id=campaign_id,
+            character_id=character_id,
+            visibility=None if role.kind in {"dm", "operator"} else "public",
+        )
     if character is None:
         raise GlassError(_unknown_character_message(character_id, campaign_id))
 
-    result = _signature_status(paths, campaign_id, character)
+    result = _signature_status(character, moves)
     append_audit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.signature-status",
         command_params(character_id=character_id),
         result,
     )
-    emit(result)
+    return result
 
 
 @character.command("signature-add")
@@ -633,13 +785,7 @@ def character_signature_status(ctx: click.Context, character_id: str) -> None:
         "--descriptor 'her old lockpick trick'."
     ),
 )
-@click.option("--body", default="", help="Freeform markdown body for the move.")
-@click.option(
-    "--from",
-    "source_path",
-    type=click.Path(path_type=Path),
-    help="Read freeform move markdown from this draft file.",
-)
+@click.option("--body", default="", help="Freeform prose body for the move.")
 @click.option("--look", default="", help="What the move looks/sounds/feels like.")
 @click.option("--use", "usual_use", default="", help="When the character reaches for it.")
 @click.option("--tell", default="", help="Trace, cost, risk, or who might recognize it.")
@@ -650,11 +796,37 @@ def character_signature_add(
     name: str,
     descriptor: str,
     body: str,
-    source_path: Path | None,
     look: str,
     usual_use: str,
     tell: str,
 ) -> None:
+    """Append one signature move if the character has an open slot."""
+
+    add_signature_move_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        name=name,
+        descriptor=descriptor,
+        body=body,
+        look=look,
+        usual_use=usual_use,
+        tell=tell,
+    )
+
+
+def add_signature_move_service(
+    *,
+    command_path: click.Context | str = "glass_character_signature_add",
+    emit_output: bool = False,
+    character_id: str,
+    name: str,
+    descriptor: str,
+    body: str = "",
+    look: str = "",
+    usual_use: str = "",
+    tell: str = "",
+) -> dict[str, Any]:
     """Append one signature move if the character has an open slot."""
 
     paths = get_paths()
@@ -668,65 +840,54 @@ def character_signature_add(
 
     name = _require_nonempty(name, "name")
     descriptor = _require_nonempty(descriptor, "--descriptor")
-    path = _signature_moves_path(paths, campaign_id, character)
-    existing_body = path.read_text(encoding="utf-8") if path.exists() else ""
-    move_names = _signature_move_names(existing_body)
-    duplicate = name.casefold()
-    if duplicate in {move.casefold() for move in move_names}:
-        raise GlassError(
-            agent_instruction(
-                f"signature move already exists for {character_id}: {name}",
-                "Choose a distinct move name, or update the existing signature move text in the character's signature moves file.",
-            )
-        )
-
-    slots = _signature_move_slots(character["level"])
-    if len(move_names) >= slots:
-        next_level = _next_signature_move_unlock(character["level"])
-        suffix = (
-            f"; next slot unlocks at level {next_level}"
-            if next_level is not None
-            else "; no more slots are available from level progression"
-        )
-        raise GlassError(
-            agent_instruction(
-                f"no signature move slots available for {character_id}: {len(move_names)}/{slots} used at level {character['level']}{suffix}",
-                "Do not add another signature move now.",
-                "Use `glass character signature-status <character-id>` to check slots before trying again.",
-            )
-        )
-
     move_body = _signature_move_body(
         body=body,
-        source_path=source_path,
         look=look,
         usual_use=usual_use,
         tell=tell,
         descriptor=descriptor,
     )
-    updated = _append_signature_move(existing_body, character, name, move_body)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(updated, encoding="utf-8")
+    with pg_connection() as conn:
+        try:
+            move = _db.character_signature_move_add(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                name=name,
+                descriptor=descriptor,
+                body=move_body,
+                actor=role.actor,
+            )
+            moves = _db.character_signature_moves_list(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                visibility="public",
+            )
+        except ValueError as exc:
+            raise _signature_move_db_error(character, name, str(exc)) from exc
 
     queue_event(state, role.actor, f"signature move added for {character_id}: {name}")
+    slots = _signature_move_slots(character["level"])
     result = {
         "character_id": character_id,
         "player_id": character["player_id"],
         "level": character["level"],
         "slots": slots,
-        "used": len(move_names) + 1,
-        "available": slots - len(move_names) - 1,
-        "path": display_path(path),
-        "move": name,
+        "used": len(moves),
+        "available": max(0, slots - len(moves)),
+        "move": move,
     }
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.signature-add",
         command_params(character_id=character_id, name=name),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @character.command("skill-declare")
@@ -771,6 +932,27 @@ def character_skill_declare(
     Use this command when adding a skill outside the roll command. During a
     roll, `--save-skill` declares a new skill before resolving the check.
     """
+    declare_skill_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        skill=skill,
+        prose_name=prose_name,
+        descriptor=descriptor,
+    )
+
+
+def declare_skill_service(
+    *,
+    command_path: click.Context | str = "glass_character_skill_declare",
+    emit_output: bool = False,
+    character_id: str,
+    skill: str,
+    prose_name: str,
+    descriptor: str,
+) -> dict[str, Any]:
+    """Declare a new skill at `fool` tier if the character has a free slot."""
+
     skill_name = (skill or "").strip()
     if not skill_name:
         raise GlassError(
@@ -839,7 +1021,7 @@ def character_skill_declare(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.skill-declare",
         command_params(
             character_id=character_id,
@@ -848,7 +1030,9 @@ def character_skill_declare(
             descriptor=descriptor,
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 def _skill_slot_cap_full_message(
@@ -909,6 +1093,23 @@ def resolve_skill_for_roll(
 @click.argument("delta", type=int)
 @click.pass_context
 def character_set_hp(ctx: click.Context, character_id: str, delta: int) -> None:
+    set_hp_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        delta=delta,
+    )
+
+
+def set_hp_service(
+    *,
+    command_path: click.Context | str = "glass_character_set_hp",
+    emit_output: bool = False,
+    character_id: str,
+    delta: int,
+) -> dict[str, Any]:
+    """Adjust a character's HP by a signed delta."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -945,11 +1146,13 @@ def character_set_hp(ctx: click.Context, character_id: str, delta: int) -> None:
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.set-hp",
         command_params(character_id=character_id, delta=delta),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @character.command("award-xp", context_settings={"ignore_unknown_options": True})
@@ -964,6 +1167,25 @@ def character_award_xp(
 
     Resolution of crossed level thresholds happens via `glass character level-up`.
     """
+    award_xp_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        delta=delta,
+        reason=reason,
+    )
+
+
+def award_xp_service(
+    *,
+    command_path: click.Context | str = "glass_character_award_xp",
+    emit_output: bool = False,
+    character_id: str,
+    delta: int,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """DM-only: award or revoke XP."""
+
     role = require_dm()
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -1011,11 +1233,13 @@ def character_award_xp(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.award-xp",
         command_params(character_id=character_id, delta=delta, reason=reason),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @character.command("level-up")
@@ -1034,6 +1258,23 @@ def character_level_up(
       - new_level % 4 == 0: --attribute required; that attribute bumps one tier
       - new_level % 5 == 0: momentum_ceiling += 1 (automatic)
     """
+    level_up_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        attribute_name=attribute_name,
+    )
+
+
+def level_up_service(
+    *,
+    command_path: click.Context | str = "glass_character_level_up",
+    emit_output: bool = False,
+    character_id: str,
+    attribute_name: str | None = None,
+) -> dict[str, Any]:
+    """Resolve one pending character level."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -1144,11 +1385,13 @@ def character_level_up(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.level-up",
         command_params(character_id=character_id, attribute=attribute_name),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @character.command("set-momentum", context_settings={"ignore_unknown_options": True})
@@ -1238,6 +1481,31 @@ def character_inventory_add(
     descriptor: str,
     effect_tags: tuple[str, ...],
 ) -> None:
+    inventory_add_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        item_id=item_id,
+        qty=qty,
+        prose_name=prose_name,
+        descriptor=descriptor,
+        effect_tags=effect_tags,
+    )
+
+
+def inventory_add_service(
+    *,
+    command_path: click.Context | str = "glass_character_inventory_add",
+    emit_output: bool = False,
+    character_id: str,
+    item_id: str,
+    qty: int = 1,
+    prose_name: str,
+    descriptor: str,
+    effect_tags: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Add an inventory item or increase its quantity."""
+
     if qty <= 0:
         raise GlassError(
             agent_instruction(
@@ -1311,7 +1579,7 @@ def character_inventory_add(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.inventory-add",
         command_params(
             character_id=character_id,
@@ -1322,7 +1590,9 @@ def character_inventory_add(
             effect_tags=normalized_effect_tags,
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @character.command("inventory-rm")
@@ -1333,6 +1603,25 @@ def character_inventory_add(
 def character_inventory_rm(
     ctx: click.Context, character_id: str, item_id: str, qty: int
 ) -> None:
+    inventory_remove_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        item_id=item_id,
+        qty=qty,
+    )
+
+
+def inventory_remove_service(
+    *,
+    command_path: click.Context | str = "glass_character_inventory_remove",
+    emit_output: bool = False,
+    character_id: str,
+    item_id: str,
+    qty: int = 1,
+) -> dict[str, Any]:
+    """Remove an inventory quantity."""
+
     if qty <= 0:
         raise GlassError(
             agent_instruction(
@@ -1383,11 +1672,13 @@ def character_inventory_rm(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.inventory-rm",
         command_params(character_id=character_id, item_id=item_id, qty=qty),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @character.command("consequence-add")
@@ -1423,18 +1714,58 @@ def character_consequence_add(
     scope: str,
     public: bool,
 ) -> None:
-    """DM-only: add a lasting character consequence.
+    """Add a lasting character consequence.
 
     Consequences are prose-backed state, not a condition engine. Use them for
     injuries, capture, obligations, disgrace, gear strain, or other effects
     that need to persist beyond the current line of narration.
     """
-    role = require_dm()
+    add_consequence_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        label=label,
+        description=description,
+        severity=severity,
+        scope=scope,
+        public=public,
+    )
+
+
+def add_consequence_service(
+    *,
+    command_path: click.Context | str = "glass_character_consequence_add",
+    emit_output: bool = False,
+    character_id: str,
+    label: str,
+    description: str = "",
+    severity: str = "minor",
+    scope: str = "scene",
+    public: bool = True,
+) -> dict[str, Any]:
+    """Add a lasting character consequence.
+
+    DM/operator may add any consequence. Players may add public consequences to
+    their own character, matching the player-owned turn model for HP and other
+    character state.
+    """
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     visibility = "public" if public else "dm"
     with pg_connection() as conn:
+        existing = _db.character_get(conn, campaign_id, character_id)
+        if existing is None:
+            raise GlassError(_unknown_character_message(character_id, campaign_id))
+        role = assert_character_writable(existing)
+        if role.kind == "player" and not public:
+            raise GlassError(
+                agent_instruction(
+                    "players may add only public consequences to their own character",
+                    "Use `public=True` for player-authored consequences; ask the DM to record hidden fallout.",
+                )
+            )
         try:
             consequence = _db.character_consequence_add(
                 conn,
@@ -1457,7 +1788,7 @@ def character_consequence_add(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.consequence-add",
         command_params(
             character_id=character_id,
@@ -1467,7 +1798,9 @@ def character_consequence_add(
             visibility=visibility,
         ),
         {"consequence": consequence},
+        emit_output=emit_output,
     )
+    return {"consequence": consequence}
 
 
 @character.command("consequence-list")
@@ -1482,6 +1815,25 @@ def character_consequence_list(
     include_hidden: bool,
 ) -> None:
     """List consequences for a character."""
+    emit(
+        list_consequences_service(
+            command_path=ctx,
+            character_id=character_id,
+            include_resolved=include_resolved,
+            include_hidden=include_hidden,
+        )
+    )
+
+
+def list_consequences_service(
+    *,
+    command_path: click.Context | str = "glass_character_consequence_list",
+    character_id: str,
+    include_resolved: bool = False,
+    include_hidden: bool = False,
+) -> dict[str, Any]:
+    """List consequences for a character."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -1514,7 +1866,7 @@ def character_consequence_list(
     append_audit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.consequence-list",
         command_params(
             character_id=character_id,
@@ -1523,7 +1875,7 @@ def character_consequence_list(
         ),
         result,
     )
-    emit(result)
+    return result
 
 
 @character.command("consequence-resolve")
@@ -1537,12 +1889,55 @@ def character_consequence_resolve(
     consequence_id: str,
     note: str,
 ) -> None:
-    """DM-only: resolve a lasting character consequence."""
-    role = require_dm()
+    """Resolve a lasting character consequence."""
+    resolve_consequence_service(
+        command_path=ctx,
+        emit_output=True,
+        character_id=character_id,
+        consequence_id=consequence_id,
+        note=note,
+    )
+
+
+def resolve_consequence_service(
+    *,
+    command_path: click.Context | str = "glass_character_consequence_resolve",
+    emit_output: bool = False,
+    character_id: str,
+    consequence_id: str,
+    note: str = "",
+) -> dict[str, Any]:
+    """Resolve a lasting character consequence.
+
+    DM/operator may resolve any consequence. Players may resolve public
+    consequences on their own character.
+    """
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     with pg_connection() as conn:
+        existing = _db.character_get(conn, campaign_id, character_id)
+        if existing is None:
+            raise GlassError(_unknown_character_message(character_id, campaign_id))
+        role = assert_character_writable(existing)
+        if role.kind == "player":
+            visible = _db.character_consequence_list(
+                conn,
+                campaign_id=campaign_id,
+                character_id=character_id,
+                include_hidden=False,
+                include_resolved=True,
+            )
+            if consequence_id not in {
+                str(item.get("consequence_id") or "") for item in visible
+            }:
+                raise GlassError(
+                    agent_instruction(
+                        f"unknown public consequence {consequence_id!r}",
+                        "Players may resolve only public consequences on their own character.",
+                    )
+                )
         try:
             consequence = _db.character_consequence_resolve(
                 conn,
@@ -1567,7 +1962,7 @@ def character_consequence_resolve(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "character.consequence-resolve",
         command_params(
             character_id=character_id,
@@ -1575,14 +1970,16 @@ def character_consequence_resolve(
             note=note,
         ),
         {"consequence": consequence},
+        emit_output=emit_output,
     )
+    return {"consequence": consequence}
 
 
 def _unknown_character_message(character_id: str, campaign_id: str | None = None) -> str:
     scope = f" in campaign {campaign_id!r}" if campaign_id else ""
     return agent_instruction(
         f"unknown character {character_id!r}{scope}",
-        "Use the character id from TURN_START, `glass character list`, or the player's public character sheet.",
+        "Use the character id from the injected prompt, `glass character list`, or `glass character bulk-get --all`.",
         "Do not invent character ids when calling character commands.",
     )
 
@@ -1631,16 +2028,7 @@ def _normalize_goals(goals: tuple[str, ...]) -> list[str]:
 
 
 def _normalize_primary_drive(value: str) -> str:
-    drive = _require_nonempty(value, "--primary-drive").casefold()
-    allowed = {item.casefold(): item for item in PRIMARY_DRIVES}
-    if drive not in allowed:
-        raise GlassError(
-            agent_instruction(
-                f"invalid primary drive: {value}",
-                f"Use one of: {', '.join(PRIMARY_DRIVES)}.",
-            )
-        )
-    return allowed[drive]
+    return _require_nonempty(value, "--primary-drive")
 
 
 def _validate_primary_drive_available(
@@ -1750,56 +2138,70 @@ def _parse_life_prompt_answer(raw_value: str, index: int) -> dict[str, str] | No
     }
 
 
-def _require_concrete_note(value: str, option_name: str, instruction: str) -> str:
+def _require_concrete_note(value: str, option_name: str, _instruction: str) -> str:
     cleaned = _require_nonempty(value, option_name)
-    if len(cleaned.split()) < 6:
-        raise GlassError(
-            agent_instruction(
-                f"{option_name} is too vague",
-                instruction,
-            )
-        )
     return cleaned
+
+
+def _normalize_starting_inventory(items: tuple[dict[str, Any], ...]) -> list[dict[str, Any]]:
+    inventory: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, raw_item in enumerate(items, start=1):
+        item_id = str(raw_item.get("id") or raw_item.get("item_id") or "").strip()
+        assert_valid_item_id(item_id)
+        if item_id in seen:
+            raise GlassError(
+                agent_instruction(
+                    f"duplicate starting item id: {item_id}",
+                    "Each starting inventory item needs a unique item_id.",
+                )
+            )
+        seen.add(item_id)
+        qty = int(raw_item.get("qty", 0) or 0)
+        if qty <= 0:
+            raise GlassError(
+                agent_instruction(
+                    f"starting item #{index} qty must be greater than zero",
+                    "Set a positive quantity for each starting inventory item.",
+                )
+            )
+        name = _require_nonempty(str(raw_item.get("name") or ""), f"starting item #{index} name")
+        descriptor = _require_nonempty(
+            str(raw_item.get("descriptor") or ""),
+            f"starting item #{index} descriptor",
+        )
+        effect_tags = _normalize_effect_tags(tuple(raw_item.get("effect_tags") or ()))
+        entry: dict[str, Any] = {
+            "id": item_id,
+            "qty": qty,
+            "name": name,
+            "descriptor": descriptor,
+        }
+        if effect_tags:
+            entry["effect_tags"] = effect_tags
+        inventory.append(entry)
+    return inventory
 
 
 def _require_pull_utilization_note(value: str, option_name: str) -> str:
     cleaned = _require_concrete_note(
         value,
         option_name,
-        (
-            "Name the non-adjacent source, identity thesis, and every required "
-            "surface where the pull changes the character."
-        ),
+        "Name the non-adjacent source and the identity thesis it creates.",
     )
-    if len(cleaned.split()) < 20:
+    normalized = cleaned.casefold()
+    if "source" not in normalized or "thesis" not in normalized:
         raise GlassError(
             agent_instruction(
-                f"{option_name} is too thin",
-                (
-                    "Use the shape `Source: ...; Thesis: ...; Used in: "
-                    "archetype, drive, trait, table presence, non-work want, "
-                    "opening social action, item, skill, signature move, "
-                    "failure mode, voice.`"
-                ),
+                f"{option_name} is missing source or thesis",
+                "Use a short note with `Source:` and `Thesis:`. Do not enumerate every surface.",
             )
         )
-    normalized = cleaned.casefold()
-    missing = [
-        label
-        for label, accepted_terms in PULL_UTILIZATION_REQUIRED_TERMS
-        if not any(term in normalized for term in accepted_terms)
-    ]
-    if missing:
+    if "used in:" in normalized or "surfaces" in normalized:
         raise GlassError(
             agent_instruction(
-                f"{option_name} is missing required pull surfaces: {', '.join(missing)}",
-                (
-                    "The non-adjacent pull must be an identity seed, not a "
-                    "single technique or item. Include `Source:`, `Thesis:`, "
-                    "and `Used in:` covering archetype, drive, trait, table "
-                    "presence, non-work want, opening social action, item, "
-                    "skill, signature move, failure mode, and voice."
-                ),
+                f"{option_name} is too detailed",
+                "Keep pull utilization to `Source:` and `Thesis:` only. Put concrete character details in the typed character fields.",
             )
         )
     return cleaned
@@ -2177,7 +2579,6 @@ def _normalize_signature_move_updates(value: Any) -> list[dict[str, str]]:
             )
         body = _signature_move_body(
             body=str(raw_move.get("body") or ""),
-            source_path=None,
             look=str(raw_move.get("look") or ""),
             usual_use=str(raw_move.get("use") or raw_move.get("usual_use") or ""),
             tell=str(
@@ -2188,7 +2589,7 @@ def _normalize_signature_move_updates(value: Any) -> list[dict[str, str]]:
             ),
             descriptor=descriptor,
         )
-        moves.append({"name": name, "body": body})
+        moves.append({"name": name, "descriptor": descriptor, "body": body})
     return moves
 
 
@@ -2459,110 +2860,41 @@ def _string_list(value: Any) -> list[str]:
     return strings
 
 
-SIGNATURE_MOVE_UNLOCK_LEVELS = (1, 3, 5, 7, 9)
-
-
 def _signature_move_slots(level: int) -> int:
-    return sum(1 for unlock in SIGNATURE_MOVE_UNLOCK_LEVELS if level >= unlock)
+    return _db.signature_move_slots(level)
 
 
 def _next_signature_move_unlock(level: int) -> int | None:
-    for unlock in SIGNATURE_MOVE_UNLOCK_LEVELS:
-        if level < unlock:
-            return unlock
-    return None
-
-
-def _signature_moves_path(
-    paths: Paths,
-    campaign_id: str,
-    character: dict[str, Any],
-) -> Path:
-    return (
-        paths.campaigns
-        / campaign_id
-        / "players"
-        / str(character["player_id"])
-        / "signature-moves.md"
-    )
+    return _db.next_signature_move_unlock(level)
 
 
 def _signature_status(
-    paths: Paths,
-    campaign_id: str,
     character: dict[str, Any],
+    moves: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    path = _signature_moves_path(paths, campaign_id, character)
-    body = path.read_text(encoding="utf-8") if path.exists() else ""
-    move_names = _signature_move_names(body)
     slots = _signature_move_slots(character["level"])
     return {
         "character_id": character["character_id"],
         "player_id": character["player_id"],
         "level": character["level"],
         "slots": slots,
-        "used": len(move_names),
-        "available": max(0, slots - len(move_names)),
-        "over_slots": len(move_names) > slots,
+        "used": len(moves),
+        "available": max(0, slots - len(moves)),
+        "over_slots": len(moves) > slots,
         "next_unlock_level": _next_signature_move_unlock(character["level"]),
-        "path": display_path(path),
-        "moves": move_names,
+        "moves": moves,
     }
-
-
-def _signature_move_names(body: str) -> list[str]:
-    names: list[str] = []
-    in_moves = False
-    for line in body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            in_moves = stripped.casefold() == "## moves"
-            continue
-        if not in_moves:
-            continue
-        if stripped.startswith("### "):
-            name = stripped.removeprefix("### ").strip()
-            if name and name.casefold() != "move name":
-                names.append(name)
-    return names
 
 
 def _signature_move_body(
     *,
     body: str,
-    source_path: Path | None,
     look: str,
     usual_use: str,
     tell: str,
     descriptor: str = "",
 ) -> str:
     descriptor = (descriptor or "").strip()
-    if body.strip() and source_path is not None:
-        raise GlassError(
-            agent_instruction(
-                "use either `--body` or `--from`, not both",
-                "Pass inline signature move text with `--body`, or read it from one markdown file with `--from`.",
-            )
-        )
-    if source_path is not None:
-        try:
-            source_body = source_path.expanduser().read_text(encoding="utf-8")
-        except OSError as exc:
-            raise GlassError(
-                agent_instruction(
-                    f"cannot read signature move draft: {source_path}",
-                    "Pass a readable markdown file with `--from`, or provide the move directly with `--body`.",
-                )
-            ) from exc
-        cleaned = source_body.strip()
-        if not cleaned:
-            raise GlassError(
-                agent_instruction(
-                    "signature move draft is empty",
-                    "Write the move text first, or use `--look`, `--use`, and `--tell` to build one.",
-                )
-            )
-        return _prepend_descriptor(cleaned, descriptor)
     if body.strip():
         return _prepend_descriptor(body.strip(), descriptor)
 
@@ -2592,61 +2924,52 @@ def _prepend_descriptor(existing_body: str, descriptor: str) -> str:
     return f"- **Descriptor (prefer in prose):** {descriptor}\n{existing_body}"
 
 
-def _append_signature_move(
-    existing_body: str,
+def _signature_move_db_error(
     character: dict[str, Any],
     name: str,
-    move_body: str,
-) -> str:
-    body = existing_body.strip()
-    if not body:
-        body = _render_signature_moves_header(character).strip()
-    if "## Moves" not in body:
-        body = body.rstrip() + "\n\n## Moves"
-    body = _strip_signature_move_placeholder(body)
-    entry = f"### {name}\n\n{move_body.strip()}"
-    return body.rstrip() + "\n\n" + entry + "\n"
-
-
-def _render_signature_moves_header(character: dict[str, Any]) -> str:
-    return (
-        "---\n"
-        f"title: {character['name']}'s Signature Moves\n"
-        "status: player-maintained\n"
-        "---\n\n"
-        "# Signature Moves\n\n"
-        "Start with one simple move at level 1. Add another slot at levels 3, "
-        "5, 7, and 9, for five total slots by level 9. These are narrative "
-        "consistency tools, not powers with guaranteed mechanics. A move "
-        "should be something active you can do under pressure, not just a tic, "
-        "trait, or possession. Spell-like resonance techniques are valid "
-        "signature moves.\n\n"
-        "Use `glass character signature-status <character-id>` before adding "
-        "a move, and `glass character signature-add <character-id> <name>` "
-        "when repetition makes a move identity-defining.\n\n"
-        "## Moves\n"
-    )
-
-
-def _strip_signature_move_placeholder(body: str) -> str:
-    lines = body.splitlines()
-    for index, line in enumerate(lines):
-        if line.strip().casefold() == "### move name":
-            return "\n".join(lines[:index]).rstrip()
-    return body
+    reason: str,
+) -> GlassError:
+    if reason == "signature_move_exists":
+        return GlassError(
+            agent_instruction(
+                f"signature move already exists for {character['character_id']}: {name}",
+                "Choose a distinct move name.",
+            )
+        )
+    if reason == "signature_move_slots_full":
+        slots = _signature_move_slots(character["level"])
+        next_level = _next_signature_move_unlock(character["level"])
+        suffix = (
+            f"; next slot unlocks at level {next_level}"
+            if next_level is not None
+            else "; no more slots are available from level progression"
+        )
+        return GlassError(
+            agent_instruction(
+                f"no signature move slots available for {character['character_id']}: {slots}/{slots} used at level {character['level']}{suffix}",
+                "Do not add another signature move now.",
+                "Use `glass character signature-status <character-id>` to check slots before trying again.",
+            )
+        )
+    return GlassError(str(reason))
 
 
 def _add_signature_moves_bulk(
-    paths: Paths,
+    conn,
     campaign_id: str,
     character: dict[str, Any],
     moves: list[dict[str, str]],
+    *,
+    actor: str,
 ) -> dict[str, Any]:
-    path = _signature_moves_path(paths, campaign_id, character)
-    body = path.read_text(encoding="utf-8") if path.exists() else ""
-    move_names = _signature_move_names(body)
+    existing_moves = _db.character_signature_moves_list(
+        conn,
+        campaign_id=campaign_id,
+        character_id=character["character_id"],
+        visibility=None,
+    )
     slots = _signature_move_slots(character["level"])
-    if len(move_names) + len(moves) > slots:
+    if len(existing_moves) + len(moves) > slots:
         next_level = _next_signature_move_unlock(character["level"])
         suffix = (
             f"; next slot unlocks at level {next_level}"
@@ -2655,34 +2978,46 @@ def _add_signature_moves_bulk(
         )
         raise GlassError(
             agent_instruction(
-                f"no signature move slots available for {character['character_id']}: {len(move_names)}/{slots} used at level {character['level']} and {len(moves)} requested{suffix}",
+                f"no signature move slots available for {character['character_id']}: {len(existing_moves)}/{slots} used at level {character['level']} and {len(moves)} requested{suffix}",
                 "Do not add these signature moves now.",
                 "Use `glass character signature-status <character-id>` to see slot availability.",
             )
         )
-    seen = {move.casefold() for move in move_names}
-    added: list[str] = []
+    seen = {str(move["name"]).casefold() for move in existing_moves}
+    for move in moves:
+        key = move["name"].casefold()
+        if key in seen:
+            raise _signature_move_db_error(character, move["name"], "signature_move_exists")
+        seen.add(key)
+
+    added: list[dict[str, Any]] = []
     for move in moves:
         name = move["name"]
-        key = name.casefold()
-        if key in seen:
-            raise GlassError(
-                agent_instruction(
-                    f"signature move already exists for {character['character_id']}: {name}",
-                    "Choose a distinct move name, or update the existing signature move text instead of adding a duplicate.",
+        try:
+            added.append(
+                _db.character_signature_move_add(
+                    conn,
+                    campaign_id=campaign_id,
+                    character_id=character["character_id"],
+                    name=name,
+                    descriptor=move["descriptor"],
+                    body=move["body"],
+                    actor=actor,
                 )
             )
-        seen.add(key)
-        body = _append_signature_move(body, character, name, move["body"])
-        added.append(name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body, encoding="utf-8")
+        except ValueError as exc:
+            raise _signature_move_db_error(character, name, str(exc)) from exc
+    all_moves = _db.character_signature_moves_list(
+        conn,
+        campaign_id=campaign_id,
+        character_id=character["character_id"],
+        visibility="public",
+    )
     return {
-        "path": display_path(path),
         "added": added,
         "slots": slots,
-        "used": len(move_names) + len(added),
-        "available": slots - len(move_names) - len(added),
+        "used": len(all_moves),
+        "available": max(0, slots - len(all_moves)),
     }
 
 

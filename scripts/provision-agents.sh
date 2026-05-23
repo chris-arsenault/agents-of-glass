@@ -10,8 +10,7 @@
 # actor private groups, adds the operator (dev) to all relevant groups so
 # the operator can inspect content via group membership,
 # installs a sudoers rule allowing the operator to spawn agent invocations
-# without password prompts, installs the aog-permset helper that the
-# orchestrator uses for actor-owned projections, and grants the agent users
+# without password prompts, installs the aog-permset helper, and grants the agent users
 # read/traverse access to the Glass Frontier lore repository when present.
 
 set -euo pipefail
@@ -88,15 +87,15 @@ install -o root -g root -m 0755 "$HELPER_SOURCE" "$HELPER_INSTALLED"
 # --- sudoers ---
 # The operator needs two privileges:
 #   1. spawn claude as an isolated agent user (sudo -u aog-<agent>)
-#   2. invoke the permset helper to chown/chmod actor projections
+#   2. invoke the permset helper for operator-owned campaign cleanup
 
 AGENT_LIST="$(IFS=,; echo "${AGENT_USERS[*]}")"
 TMP_SUDOERS="$(mktemp)"
 trap 'rm -f "$TMP_SUDOERS"' EXIT
 cat > "$TMP_SUDOERS" <<EOF
 # Created by scripts/provision-agents.sh
-# Allows the operator to spawn isolated agents and apply actor projection
-# ownership without password prompts.
+# Allows the operator to spawn isolated agents and run campaign cleanup without
+# password prompts.
 
 Defaults:$OPERATOR env_keep += "ANTHROPIC_API_KEY ANTHROPIC_BASE_URL CLAUDE_API_KEY GLASS_* AOG_* SULION_*"
 $OPERATOR ALL=($AGENT_LIST) NOPASSWD: SETENV: ALL
@@ -134,7 +133,6 @@ else
     echo "  lore access:  skipped; not found at $LORE_ROOT"
 fi
 echo
-echo "NOTE: bootstrap does not require a refreshed login shell; projections are"
-echo "grouped to the operator's primary group. Re-login is only needed if you"
+echo "NOTE: bootstrap does not require a refreshed login shell. Re-login is only needed if you"
 echo "want shell commands to see the supplementary groups directly."
 echo "Verify provisioned groups with: groups $OPERATOR"

@@ -40,7 +40,7 @@ Real tables have continuous low-stakes dialog between players that doesn't fit t
 
 **v1 path: the message bus.** `glass msg <type> <recipient> <body>` (see [`messaging.md`](messaging.md)) gives players durable, typed inter-agent communication that survives across turns and lands in the corpus. A player can `glass msg banter sumi "..."` mid-turn; Sumi sees it on her next turn via her inbox. The message bus also handles DM-private hints and party-wide instructions.
 
-This solves most of the dialog need: the *content* of inter-player communication, the *typed indexing* for analysis, and the *per-recipient privacy* (file-permission-enforced).
+This solves most of the dialog need: the *content* of inter-player communication, the *typed indexing* for analysis, and the *per-recipient privacy* enforced by `glass` command authorization.
 
 **Still open: real-time-feeling reactions.** The bus is durable but turn-bounded. A truly reactive moment — A says something startling, B reacts immediately, before the DM proceeds — isn't expressible. Possible additions if real sessions show this matters:
 

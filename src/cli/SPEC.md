@@ -1,6 +1,6 @@
 # `glass` CLI — Spec
 
-The in-session tool surface. Used by both the orchestrator and the agents. The single choke point for state mutation.
+The in-session tool surface. Used by both the orchestrator and the agents. It is the only agent interaction mode and the single choke point for state mutation.
 
 For the role this CLI plays in the system, see [`../../docs/design/architecture.md`](../../docs/design/architecture.md). For when agents call it, see [`../../docs/design/turn-loop.md`](../../docs/design/turn-loop.md).
 
@@ -8,16 +8,16 @@ This is a **spec, not an implementation**. We fill in details as we build. Align
 
 ## Conventions
 
-- **Output is YAML on stdout** for machine-readable returns. Errors go to stderr with a non-zero exit code.
+- **Command results are YAML on stdout** for machine-readable returns. Errors go to stderr with a non-zero exit code. CLI stdout is command return only; public prose and durable state never use raw provider stdout as an interaction channel.
 - **Permissions are role-enforced via env var.** The orchestrator sets `GLASS_ROLE=dm` or `GLASS_ROLE=player:tev` (etc.) when spawning each agent's subprocess. The CLI checks the role on each subcommand and rejects calls outside that role's allowlist.
 - **Errors are agent-friendly.** When an agent's call fails (unknown type, missing field, permission denied), the error message names what went wrong and lists valid options. The agent can retry inline.
 - **Audit log everywhere.** Every successful call appends to the active scene's `audit.jsonl` (`campaigns/<id>/arcs/<arc>/scenes/<scene>/audit.jsonl`). Calls outside an active scene (e.g. during campaign planning) append to a campaign-level audit.
 
 ## Subcommands
 
-### Arc and scene lifecycle (DM only — manages the dir hierarchy)
+### Arc and scene lifecycle (DM only)
 
-The DM scaffolds arcs and scenes through the CLI; the CLI creates the directory and stub files. The DM then writes content into the scaffolded files.
+The DM changes active arc/scene state through the CLI. Any backing files or exports created by these commands are implementation details for operator inspection. Orchestrated agents do not hand-edit those files.
 
 ```
 glass campaign pull-note --source <text> --used-in <surface> --note <text>
@@ -47,13 +47,8 @@ glass scene end --outcome <text>               # low-level: closes current scene
                                                # use only when no next scene is being staged
                                                # (e.g. immediately before glass arc close).
                                                # --outcome is repeatable, max 2 bullets
-glass table current                            # optional/debug: list live player-agent-visible table files
-glass table show [path]                        # read player-agent-visible table file/dir
-glass table write <path> --body <md>           # DM only; replace table file
-glass table append <path> --body <md>          # DM only; append table file
-glass table use <campaign-md> --as <path>      # DM only; copy visible lore onto table
-glass lore promote table/<path> --to <lore-md> # DM only; promote table artifact to lore
-glass table snapshot [--label <text>]          # DM only; archive table snapshot
+glass table current                            # optional/debug; table files are not agent continuity
+glass table show [path]                        # optional/debug; prefer glass fact pack
 ```
 
 ### Mode lifecycle (within a scene)
@@ -65,14 +60,14 @@ Modes can be pushed for nested situations (an action scene inside town play).
 glass mode push <mode-name>           # DM only — push a nested mode
 glass mode pop                        # DM only — pop back to parent
 glass mode current                    # show current mode + stack
-glass scene tracker set <id> --max N  # DM only — scene-local clock/progress tracker
-  [--value N] [--resistance N] [--impact-resistance N]
-glass scene tracker tick <id> [delta] # DM only — advance/reduce a tracker
-glass scene tracker list              # visible tracker state
 glass scene clock declare <id> --label <text> --goal <text> --max N \
   --direction progress|countdown --polarity objective|threat|timer
 glass scene clock tick <id> [delta] --outcome <text>
-glass scene pressure <target> <skill> <attribute> \
+glass scene tracker set <id> --max N  # DM only — scene-local pressure target
+  [--value N] [--resistance N] [--impact-resistance N]
+glass scene tracker tick <id> [delta] # DM only — direct tracker adjustment
+glass scene tracker list              # visible pressure targets
+glass scene pressure <tracker-id> <skill> <attribute> \
   --risk <level> --character <id> --impact <d6|d8|d10> \
   [--bonus N] [--save-skill] [--because <text>] [--note <text>]
 
@@ -96,10 +91,11 @@ orchestrator inlines a one-line summary into the transcript at the right point.
 Undeclared skills roll at `fool` and do not gain skill XP unless `--save-skill`
 declares them before the roll.
 
-`glass scene pressure` uses the same hit-check math, then rolls an impact die
-to reduce a scene tracker. It is generic: HP, resistance, distance, morale,
-alert, and similar numeric targets all use the same command. `--note` records a
-fictional effect but does not create a mechanical object.
+Use `glass scene pressure <tracker-id> ...` when a character action both rolls
+and reduces an established scene pressure tracker. Use `glass scene clock tick`
+for direct non-roll objective/threat/timer movement, `glass character set-hp`
+for HP changes, and `glass character consequence-add` for lasting character
+fallout.
 
 ### Characters
 
@@ -184,9 +180,9 @@ glass character new <id> --player <player-id> \
   --table-presence <text> --non-work-want <text> \
   --opening-social-action <text> \
   --life-prompt "<prompt>=<answer>" --life-prompt "<prompt>=<answer>" \
-  --pull-utilization "Source: <source>; Thesis: <identity thesis>; Used in: archetype, drive, trait, table presence, non-work want, opening social action, item, skill, signature move, failure mode, voice."
+  --pull-utilization "Source: <source>; Thesis: <identity thesis>."
 glass character get <id>
-glass character bulk-get <id>... [--all] [--no-signatures]
+glass character bulk-get <id>... [--all]
 glass character bulk-update --from update.json          # set fields, inventory, signatures, mirror, hp/momentum
 glass character set-hp <id> <delta>                     # DM, or own
 glass character set-momentum <id> <value>               # DM, or own
@@ -194,34 +190,31 @@ glass character inventory-add <id> <item-id> [--qty N] [--name TEXT] [--descript
 glass character inventory-rm <id> <item-id> [--qty N]
 glass character skill-declare <id> <skill-slug> [--name TEXT] [--descriptor TEXT]
 glass character signature-status <id>
-glass character signature-add <id> <name> [--descriptor TEXT] [--body TEXT | --from PATH] [--look TEXT --use TEXT --tell TEXT]
+glass character signature-add <id> <name> [--descriptor TEXT] [--body TEXT | --look TEXT --use TEXT --tell TEXT]
 glass character consequence-add <id> <label> [--severity minor|serious|critical]
 glass character consequence-list <id> [--all]
 glass character consequence-resolve <id> <consequence-id> [--note TEXT]
 ```
 
-### Notes (lore drafts and journal entries)
+### Notes (operator/admin and legacy prose surfaces)
 
-```
-glass note write <path>             # write a note. Path determines where: drafts/ vs journal/ vs canonical
-glass note propose <path>           # player only — push a draft to DM intake
-glass note ratify <intake-id>       # DM only — canonize a player draft into shared lore
-glass note reject <intake-id>       # DM only — drop a player draft
-```
-
-Note: lore drafts are encyclopedia-shaped (frontmatter + sections); journal entries are journal-shaped (free-form prose). The CLI does not enforce this — it's a convention. See [`../../docs/design/agents.md`](../../docs/design/agents.md).
+The old note/draft flow is not part of the orchestrated agent turn contract.
+Agent turns use neutral graph facts and purpose-built state commands; the
+operator may curate durable prose outside the turn loop. See
+[`../../docs/design/agents.md`](../../docs/design/agents.md).
 
 ### Lore curation
 
-The world bible at `../the-glass-frontier-lore/` is the DM's reference. It is not bulk-copied into the campaign. The DM imports specific entries on demand. See [`/templates/methodologies/campaign-planning.md`](../../templates/methodologies/campaign-planning.md#curate-dont-copy).
+Reference lore is prose source material stored in FalkorDB. It is not
+continuity, and it is not copied into campaign markdown. If a reference detail
+becomes true or visible in play, commit the usable portion as a neutral fact.
 
 ```
-glass lore import <world-bible-path> [--as <new-name>]   # DM only
-                                       # copies world-bible entry into campaigns/<id>/shared/lore/,
-                                       # preserves directory structure (or renames via --as),
-                                       # tags frontmatter with `source: world-bible/<path>`
-glass lore list                        # read — list imported entries (campaign canon)
-glass lore search <query>              # DM only — search the world bible without importing
+glass lore put <id> --body <text>      # DM only — upsert DB-backed prose reference
+glass lore ingest <path-or-dir>        # DM only — load existing markdown into DB; no campaign copy
+glass lore search <query>              # search DB-backed reference lore
+glass lore read <id>                   # read one DB-backed reference entry
+glass lore list                        # list DB-backed reference entries
 ```
 
 ### Threads (DM scaffolding)
@@ -245,18 +238,18 @@ glass msg read [--since-checkpoint] [--from <sender>] [--type <type>]
 ### Agent facade
 
 ```
-glass check                                  # combined messages/table/clocks/beat contract
+glass check                                  # combined messages/facts/clocks/beat contract
+glass fact pack --audience continuity|profile|meta|all --format yaml|markdown
+glass fact set --audience continuity|profile|meta [--scope S] "subject.predicate = value"
 glass done --summary S --state S --rolls S [--turn-type act|answer|support|pass] [--next default|agent]
-glass find <query> [--mode text|semantic|turns]
+glass lore search <query>                    # reference prose only; promote with facts
 glass next <handoff|rapid-round|housekeeping-round|restart-order|clear> [...]
 ```
 
 ### Turns (corpus access)
 
 ```
-glass turn append <markdown-file>           # called at end of agent turn (orchestrator handles header)
-glass turn end --summary S --state S --rolls S [--scene-status active|ended] [--next default|agent]
-                                                   # lower-level closeout; prefer glass done
+glass turn append --body <public-prose>      # required after glass done in agent turns
 glass turn initiative [--participants ...]  # DM only; roll/persist action-scene order
 glass turn handoff <agent-id>               # one-off next-speaker override
 glass turn rapid-round <prompt>             # DM only; short response from each player
@@ -271,26 +264,11 @@ glass tarot current [actor]
 glass tarot list [--actor <actor>] [--all]
 glass tarot draw <actor> [--turns N]             # DM only
 glass summary show campaign|arc|act|scene [id]
-glass summary write campaign|arc|act|scene [id] --body <markdown>
-glass summary append campaign|arc|act|scene [id] --body <markdown>
-glass sync apply [path-or-directory ...]          # commit projected markdown edits
+glass summary show campaign|arc|act|scene [id]
 ```
 
-`glass sync apply` commits markdown edits from the projected workspace to the
-canonical campaign. With paths, files are committed directly and directories
-recurse over markdown files:
-
-```
-glass sync apply players/tev/public/intro.md
-glass sync apply arcs/<arc> table
-glass sync apply
-```
-
-With no paths, it commits changed writable markdown files from the current
-projection. Successful markdown writes are registered with the persistence
-facade, so searchable markdown and local entity metadata stay centralized.
-The legacy `--from scratch/sync.json` manifest form remains supported for rare
-generated batches.
+Markdown sync commands are retired. Agent turns mutate durable state through
+purpose-built Glass commands and graph facts only.
 
 ## Environment
 

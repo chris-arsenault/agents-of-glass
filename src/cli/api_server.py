@@ -2,21 +2,20 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import threading
 import time
-import traceback
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from typing import Any, Iterator
-
-from click.testing import CliRunner
+from typing import Any
 
 from .api_grants import DEFAULT_API_URL, validate_grant
+from .command_executor import (
+    format_invoke_exception as _format_invoke_exception,
+    invoke_claim_args as _invoke_glass,
+)
 from .config import get_paths
 from .errors import GlassError, agent_instruction
 
@@ -24,7 +23,6 @@ from .errors import GlassError, agent_instruction
 _server: ThreadingHTTPServer | None = None
 _server_thread: threading.Thread | None = None
 _server_url: str | None = None
-_invoke_lock = threading.Lock()
 
 
 def ensure_background_server(
@@ -146,7 +144,7 @@ class _GlassCommandApiHandler(BaseHTTPRequestHandler):
                 raise GlassError(
                     agent_instruction(
                         "invalid glass API payload: `args` must be a string list",
-                        "Call the API with JSON shaped like `{\"grant\": \"...\", \"args\": [\"table\", \"show\"]}`.",
+                        "Call the API with JSON shaped like `{\"grant\": \"...\", \"args\": [\"check\"]}`.",
                     )
                 )
             paths = get_paths()
@@ -219,111 +217,3 @@ class _GlassCommandApiHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-
-
-def _invoke_glass(args: list[str], claim: dict[str, Any]) -> dict[str, Any]:
-    from .main import main as glass_main
-
-    campaigns_dir = get_paths().campaigns
-    campaign_id = str(claim["campaign_id"])
-    campaign_root = campaigns_dir / campaign_id
-    workspace_root = _claim_workspace_root(claim, fallback=campaign_root)
-    env = os.environ.copy()
-    env.update(
-        {
-            "GLASS_API_INTERNAL": "1",
-            "GLASS_CAMPAIGN_ID": campaign_id,
-            "GLASS_ROLE": str(claim["glass_role"]),
-            "GLASS_TURN_ID": str(claim["turn_id"]),
-        }
-    )
-    workspace_reader_user = claim.get("workspace_reader_user")
-    if isinstance(workspace_reader_user, str) and workspace_reader_user:
-        env["GLASS_WORKSPACE_READER_USER"] = workspace_reader_user
-    turn_prose_path = claim.get("turn_prose_path")
-    if isinstance(turn_prose_path, str) and turn_prose_path:
-        env["AOG_TURN_PROSE"] = turn_prose_path
-    turn_closeout_path = claim.get("turn_closeout_path")
-    if isinstance(turn_closeout_path, str) and turn_closeout_path:
-        env["AOG_TURN_CLOSEOUT"] = turn_closeout_path
-    runner = CliRunner()
-    with _invoke_lock, _pushd(workspace_root):
-        raw = runner.invoke(glass_main, args, env=env, prog_name="glass")
-        if raw.exit_code == 0:
-            _refresh_projection(campaign_root, workspace_root, claim)
-    return {
-        "exit_code": raw.exit_code,
-        "output": raw.output or _format_invoke_exception(raw.exception),
-    }
-
-
-def _format_invoke_exception(exc: BaseException | None) -> str:
-    if exc is None:
-        return ""
-    if isinstance(exc, SystemExit):
-        return ""
-    message = "".join(traceback.format_exception_only(type(exc), exc)).strip()
-    return f"glass internal error: {message}\n"
-
-
-def _claim_workspace_root(claim: dict[str, Any], *, fallback: Path) -> Path:
-    value = claim.get("workspace_root")
-    if not isinstance(value, str) or not value:
-        return fallback
-    path = Path(value).expanduser()
-    if not path.exists() or not path.is_dir():
-        return fallback
-    return path
-
-
-def _refresh_projection(
-    campaign_root: Path,
-    workspace_root: Path,
-    claim: dict[str, Any],
-) -> None:
-    if workspace_root.resolve() == campaign_root.resolve():
-        return
-    turn_number = _turn_number_from_claim(claim)
-    if turn_number is None:
-        return
-    try:
-        from orchestrator.config import load_config as _load_aog_config
-        from orchestrator.projection import refresh_projection_from_canonical
-        from orchestrator.state import Agent
-
-        role = str(claim.get("role") or "")
-        actor = str(claim.get("actor") or "")
-        agent = Agent(
-            id=actor,
-            display_name=actor,
-            role="dm" if role == "dm" else "player",
-        )
-        refresh_projection_from_canonical(
-            config=_load_aog_config(os.environ.get("GLASS_CONFIG")),
-            campaign_root=campaign_root,
-            agent=agent,
-            turn_number=turn_number,
-            projection_root=workspace_root,
-        )
-    except Exception:
-        # Command success should remain authoritative; projection refresh is a
-        # same-turn convenience and the next turn rebuilds from canonical state.
-        return
-
-
-def _turn_number_from_claim(claim: dict[str, Any]) -> int | None:
-    raw = str(claim.get("turn_id") or "")
-    marker = raw.rsplit("t", 1)
-    if len(marker) != 2 or not marker[1].isdigit():
-        return None
-    return int(marker[1])
-
-
-@contextlib.contextmanager
-def _pushd(path: Path) -> Iterator[None]:
-    old = Path.cwd()
-    os.chdir(path)
-    try:
-        yield
-    finally:
-        os.chdir(old)

@@ -1,152 +1,59 @@
----
-title: Glass CLI Instructions
-target: executing-agent
-authority: binding
----
+# Glass MCP Tools
 
-# Glass CLI Instructions
+Native MCP tools named `glass_*` are the only agent interaction mode for
+campaign state. They are typed wrappers over local Glass runtime services and
+run under the current turn grant. Do not call `glass` in a shell when a
+matching `glass_*` tool exists.
 
-`glass` is the persistent mutation boundary. If a command owns a kind of state,
-use the command instead of prose or ad hoc markdown.
+Use the canonical MCP `tools/list` request for tool discovery. It is a
+client-to-server request, takes no parameters, and returns the structured
+`tools/list` response containing each tool's name, description, and input
+schema. It is not a Glass tool and must not be called through `glass_help` or a
+shell command.
 
-## Turn Sequence
+Use `glass_help(command="<glass_tool_name>")` only when syntax or a parameter
+contract is unclear. For example:
 
-1. Read workspace files directly.
-2. Run `glass check` on full turns.
-3. Make hard-state changes with the specific `glass` command.
-4. Edit authored markdown at its real workspace path.
-5. Commit authored markdown with `glass sync apply <path-or-directory> ...`.
-6. Read the same path or command output only when verification is needed.
-7. Write `TURN.md`.
-8. Run `glass done`.
+- `glass_help(command="glass_state_update")`
+- `glass_help(command="glass_scene_clock_declare")`
+- `glass_help(command="glass_done")`
 
-## TURN_START Command Surface
+After reading help, return to the typed MCP tool named by the injected prompt or
+the methodology.
 
-Use the `## Your tools` section in TURN_START as the command surface for the
-current turn. It is generated from role, mode, turn type, active arc/scene, and
-pending upkeep. Do not browse the full CLI or repo source from inside a
-campaign turn.
+Canonical turn sequence:
 
-Every full turn starts and ends through the facade:
+1. `glass_check()`
+2. `glass_fact_pack(audience="continuity", output_format="markdown")` when you need to refresh continuity
+3. purpose-built state tools such as `glass_message_send(...)`, `glass_roll(...)`, `glass_scene_*`, `glass_character_*`, `glass_beat_*`, `glass_clock_*`
+4. `glass_lore_search(query="<query>")` only for DB-backed reference prose, when needed
+5. `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}, {"kind": "inventory_add", "character_id": "<character-id>", "item_id": "<item-id>", "name": "<item name>", "descriptor": "<plain descriptor>", "qty": 1, "effect_tags": ["<tag>"]}, {"kind": "inventory_remove", "character_id": "<character-id>", "item_id": "<item-id>", "qty": 1}])` for durable facts and inventory changes
+6. `glass_done(..., scene_status="active")`
+7. `glass_turn_append(body="<public prose>")`
 
-```bash
-glass check
-glass done --summary "<compact continuity>" --state "<durable updates or no state change>" --rolls "<rolls/checks used or none>" [--turn-type act|answer|support|pass] [--next default]
-glass find "<query>" [--mode text|semantic|turns] [--scene <scene-id>]
-```
+Fact audience contract:
 
-`glass check` drains unread messages, prints the active scene clock/beat
-contract, lists table files, shows durable clocks, and reports pending
-level-ups. On active-play turns, it also satisfies the required beat check when
-the scene contract is live. `glass done` runs the turn audit and stages the
-turn closeout in one command.
+- `glass_fact_pack(...)` requires an `audience`; choose `continuity` for the normal turn-state feed.
+- Every fact object must include `importance="high|medium|low|minor"`. Use `high` for campaign/scene facts the next actor must use and `medium` for ordinary durable state. `low` and `minor` are stored but omitted from fact-pack output; tool responses will warn because they are usually not the right place for playable state.
+- Use `glass_state_update(updates=[{"kind": "fact", "audience": "profile", "importance": "medium", "subject_id": "<character-id>", "predicate": "social-texture", "text": "<table-facing texture>"}])` only for character texture, table presence, voice, habits, and non-load-bearing personal color.
+- `audience="meta"` is for process guidance. It is not campaign reality.
+- `glass_done(...)` requires `scene_status`; use exactly one enum value from `tools/list`.
 
-TURN_START injects lower-level commands only when the current situation needs
-them. Examples:
+MCP return contract:
 
-```bash
-# Active play
-glass roll <skill> <attribute> --risk <level> --character <id> [--save-skill]
-glass scene pressure <target> <skill> <attribute> --risk <level> --character <id> --impact <d6|d8|d10> [--save-skill]
-glass table write <path> --body "<markdown>"
-glass table append <path> --body "<markdown>"
-glass summary write campaign|arc|scene [id] --body "<markdown>"
-glass summary append campaign|arc|scene [id] --body "<markdown>"
-glass msg <type> <recipient> <body>
+- Tool results include an `instructions` field even when `ok` is true. Read it before deciding the next action; it is current-turn guidance from the runtime system.
 
-# Beat/clock upkeep
-glass scene clock declare <id> --label "<label>" --goal "<goal>" --value <n> --max <n> --direction progress|countdown --polarity objective|threat|timer [--visibility public|dm]
-glass scene clock tick <id> [delta] --outcome "<visible progress or consequence>"
-glass beat start <id> --clock <clock-id> --label "<label>" --question "<question>"
-glass beat close <id> --outcome "<outcome>" --clock-delta <n>   # n required, 0 valid
-glass beat convert <id> --to-clock <clock-id> --reason "<reason>"
+Forbidden during agent turns:
 
-# Scene transition / prep
-glass scene transition <next-scene-id> --new|--nested|--return [--close-parent] --type <problem-family> [--arc <arc-id>] [--new-mode scene-play|action] --summary "<closing summary>" --outcome "<outcome>" --xp "tev=3,sumi=3,renno=3,kit=3" [--carry-clock <id>=<reason>]... [--retire-clock <id>=<reason>]... [--parent-summary "<...>"] [--parent-outcome "<...>"] [--parent-carry-clock <id>=<reason>]... [--parent-retire-clock <id>=<reason>]...
-# Single atomic transition. --new closes current + opens next at same stack level. --nested keeps current alive and pushes a sub-scene. --return <parent-id> closes current and pops back to a named parent on the stack. --new --close-parent closes both the current and its immediate parent before opening the next.
-glass scene end --summary "<summary>" --outcome "<outcome>" --xp "tev=3,sumi=3,renno=3,kit=3" [--carry-clock <id>=<reason>]... [--retire-clock <id>=<reason>]...
-# scene end is the low-level "close current scene without a successor" command; prefer scene transition during active play.
-glass arc close-check [<arc-id>]
-glass arc close <arc-id> --summary "<arc summary>" --outcome "<outcome>" [--carry-clock <id>=<reason>]... [--retire-clock <id>=<reason>]...
-# arc close refuses if active arc-scoped clocks lack a disposition.
-glass scene create <scene-slug> --type <problem-family> [--arc <arc-id>]
-glass mode start <scene-play|action> <scene-slug>
-# scene create + mode start are low-level recovery primitives. mode start refuses duplicate (mode, scene_id) frames on the stack. Use combat, chase, social-pressure, travel, and montage as scene types, not modes.
-glass thread current
-glass thread advance <thread-id> --note "<concrete visible beat>"
-glass next housekeeping-round --previous-scene "<closed>" --next-scene "<next>"
-glass next handoff <agent-id>
-glass next rapid-round "<prompt>"
-glass next restart-order <agent-id>
+- shelling out to `glass` when a typed MCP tool exists
+- file creation or edits
+- scratch files
+- campaign markdown edits
+- markdown sync tools
+- retired lore file workflows
+- table/summary/note maintenance tools
+- source, test, migration, template, or config edits
+- direct local API or database calls
 
-# Character creation / upkeep
-glass character new <character-id> --player <player-id> --name "<name>" --species "<species>" --culture "<culture>" --archetype "<level-20 mythic archetype>" --org-role "<organization role>" --bio "<public bio>" --goal "<goal>" --goal "<goal>" --primary-drive "<drive>" --positive-trait "<fun trait>" --table-presence "<recurring social bit>" --non-work-want "<want>" --opening-social-action "<direct PC action>" --life-prompt "<prompt>=<answer>" --life-prompt "<prompt>=<answer>" --pull-utilization "Source: <domain>; Thesis: <identity thesis>; Used in: archetype, drive, trait, table presence, non-work want, opening social action, item, skill, signature move, failure mode, voice." --attribute <name>=<tier> --skill "<skill>=artisan" --skill "<skill>=apprentice" --skill "<skill>=apprentice"
-glass character signature-add <character-id> "<move name>" --look "<what it looks like>" --use "<when you use it>" --tell "<risk, cost, or trace>"
-glass character bulk-get <id>... [--all]
-glass character bulk-update --json '<payload>'
-glass character mirror <id>
-glass character level-up <id> [--attribute <name>]
-
-# Authored markdown
-glass sync apply [path-or-directory ...]
-```
-
-If TURN_START does not list a lower-level command, do not go looking for one.
-Use `glass check`, `glass find`, `glass done`, or ask/close with a blocker.
-
-## Workspace Sync
-
-Use `glass sync apply` only for authored markdown files and directories:
-
-```bash
-glass sync apply players/<id>/public players/<id>/notes
-glass sync apply arcs/<arc> table shared
-glass sync apply
-```
-
-Do not sync turn artifact paths such as `dm/turns/<n>/TURN.md` or
-`players/<id>/turns/<n>/TURN.md`; the runner collects turn prose and closeout
-automatically.
-
-## Turn End
-
-Every turn ends with:
-
-```bash
-glass done \
-  --summary "<compact continuity for the next actor>" \
-  --state "<durable updates or no state change>" \
-  --rolls "<rolls/checks used or none>" \
-  --next default
-```
-
-For normal active-play player turns, also include:
-
-```bash
---turn-type "<act|answer|support|pass>"
-```
-
-Use `--next <agent-id>` only when normal rotation or action order must be
-overridden. Use `--open-question`, `--position`, and `--pressure` when those
-fields changed. `pass` requires `--state "no state change"` and `--rolls none`.
-If a roll produced `stall`, `regress`, or `collapse`, `glass done` will require
-a visible consequence through state, position, pressure, open question, beat
-movement, or scene clock movement.
-Roll output may also include a `momentum_effect`. Treat it as narrative only:
-`additional_good` means add one extra good visible consequence;
-`additional_complication` means add one extra visible complication.
-On active-play turns, run `glass check` before writing and `glass done` at
-closeout; if the beat check is still missing, `glass done` will say so
-explicitly. If `glass check` or `glass done` reports no active scene clock or
-no active beat after completed beats, treat that as a closure gap: players
-should hand to the DM with `--next dm` instead of opening a replacement beat
-unless the DM explicitly instructed it. The DM should usually keep 2-3 active
-beats live across distinct problem lanes; one closed beat is not a scene ending
-by itself. After eight or more completed beats, prefer a short visible `pass`
-and `--next dm` unless you have a decisive blockbuster-scale contribution.
-
-## Command Failure
-
-Read the error, make one clear correction, and retry when the fix is obvious.
-If the command still fails, continue only if the turn remains coherent and
-report the failed command in `glass done --state`.
+If a needed state operation has no typed MCP tool, close with a clear blocker or
+message the DM/operator. Do not invent a file, API, shell, or stdout workaround.

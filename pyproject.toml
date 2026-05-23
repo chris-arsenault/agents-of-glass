@@ -9,8 +9,10 @@ authors = [{ name = "Chris Arsenault" }]
 dependencies = [
     "click>=8.1",       # CLI
     "psycopg[binary]>=3.1",  # Postgres
+    "falkordb>=1.0",    # fact graph
     "pydantic>=2.0",    # selective data validation
     "rich>=13.0",       # readable terminal output
+    "mcp>=1.27.1",
 ]
 
 [project.optional-dependencies]
@@ -21,6 +23,7 @@ dev = [
 
 [project.scripts]
 glass = "cli.main:main"
+glass-mcp = "cli.mcp_server:main"
 aog = "orchestrator.main:main"
 
 [build-system]

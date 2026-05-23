@@ -55,6 +55,12 @@ updates momentum, use the resulting value as a narrative rider:
 a visible consequence, worse position, narrowed choice, clock/beat movement, or
 other concrete change that keeps the scene moving.
 
+In active scene play, ordinary rolls should target the active beat id. A
+`stall`, `regress`, or `collapse` against a beat ticks that beat's failed-roll
+pressure. At two failed rolls, the beat closes and the DM gets control to route
+the party toward the same scene goal through a fresh offer or angle. Do not
+retry a failed beat from a different angle unless the DM has reframed it.
+
 `advance` and `breakthrough` also award skill xp to the rolled skill (+1 and
 +2 respectively). Skills auto-promote at fixed thresholds — see
 [`skill-advancement.md`](skill-advancement.md).

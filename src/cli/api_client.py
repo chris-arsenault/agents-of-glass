@@ -16,12 +16,38 @@ def should_proxy(args: list[str], env: dict[str, str] | None = None) -> bool:
     env = env or os.environ
     if env.get("GLASS_API_INTERNAL"):
         return False
-    if args and args[0] == "api":
+    if args and args[0] in {"api", "mcp"}:
         return False
     return bool(env.get("GLASS_API_URL") and env.get("GLASS_API_GRANT"))
 
 
 def proxy_args(args: list[str], env: dict[str, str] | None = None) -> int:
+    env = env or os.environ
+    try:
+        data = invoke_api_args(args, env=env)
+    except OSError as exc:
+        sys.stderr.write(f"glass API request failed: {exc}\n")
+        return 69
+    except ValueError as exc:
+        sys.stderr.write(str(exc))
+        if not str(exc).endswith("\n"):
+            sys.stderr.write("\n")
+        return 70
+
+    output = data.get("output")
+    if isinstance(output, str) and output:
+        sys.stdout.write(output)
+        if not output.endswith("\n"):
+            sys.stdout.write("\n")
+    return int(data.get("exit_code", 1))
+
+
+def invoke_api_args(
+    args: list[str],
+    env: dict[str, str] | None = None,
+) -> dict[str, object]:
+    """Invoke the local Glass command API with an argv-shaped command."""
+
     env = env or os.environ
     url = env["GLASS_API_URL"].rstrip("/") + "/v1/command"
     payload = json.dumps(
@@ -41,22 +67,14 @@ def proxy_args(args: list[str], env: dict[str, str] | None = None) -> int:
             body = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
-    except OSError as exc:
-        sys.stderr.write(f"glass API request failed: {exc}\n")
-        return 69
 
     try:
         data = json.loads(body)
     except json.JSONDecodeError:
-        sys.stderr.write(f"glass API returned invalid JSON: {body}\n")
-        return 70
-
-    output = data.get("output")
-    if isinstance(output, str) and output:
-        sys.stdout.write(output)
-        if not output.endswith("\n"):
-            sys.stdout.write("\n")
-    return int(data.get("exit_code", 1))
+        raise ValueError(f"glass API returned invalid JSON: {body}\n") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"glass API returned non-object JSON: {body}\n")
+    return data
 
 
 def _timeout_seconds(env: dict[str, str]) -> float:

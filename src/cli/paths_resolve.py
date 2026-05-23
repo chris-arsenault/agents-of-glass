@@ -25,8 +25,8 @@ def clean_relative_path(path_text: str) -> Path:
         raise GlassError(
             agent_instruction(
                 "path arguments may not contain `..`",
-                "Use a workspace-relative path under the current campaign, such as `table/scene.md`, `shared/lore/<kind>/<slug>.md`, or `players/<id>/public/<file>.md`.",
-                "If the target is outside the workspace, choose the matching `glass` command that imports or promotes it instead of traversing directories.",
+                "Use a workspace-relative path only for commands that explicitly require a file path.",
+                "For continuity use graph facts; for reference prose use DB-backed `glass lore` commands.",
             )
         )
     return path
@@ -193,7 +193,7 @@ def resolve_note_write_path(
                 agent_instruction(
                     "DM note writes must stay in DM or shared campaign surfaces",
                     "Write under `workspace/`, `dm/intake/`, `dm/notes/`, `dm/journal/`, `dm/secret/`, `shared/`, or `arcs/`.",
-                    "Use `glass table write`, `glass lore new`, `glass lore promote`, or `glass scene end` when the intent belongs to those surfaces.",
+                    "Use graph facts for continuity and DB-backed `glass lore put` for reference prose.",
                 )
             )
 

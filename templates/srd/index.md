@@ -17,7 +17,7 @@ It is written for players and DMs, not for the repository implementer.
 - [`pressure.md`](pressure.md) — numeric pressure for combat, chases, social
   pressure, and other action scenes.
 - [`character-state.md`](character-state.md) — HP, consequences, inventory,
-  effects, signature moves, clocks, and trackers.
+  effects, signature moves, and clocks.
 - [`character-creation.md`](character-creation.md) — species, culture,
   attributes, skills, HP, inventory, and starting character budget.
 - [`skill-advancement.md`](skill-advancement.md) — declaring new skills, slot

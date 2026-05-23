@@ -1,83 +1,15 @@
----
-title: Action Scene DM Methodology
-status: authored
-audience: dm
-applies_to_modes: [action]
-toolkit_examples: [combat, chase, social-pressure, escape, duel, infiltration, disaster, heist]
----
+# Action Scene DM
 
-# Action Scene - DM
+Goal: keep action order moving while recording consequences in hard state.
 
-Action scenes are quickfire contested moments with visible pressure. This
-sequence is binding for every DM turn after action order exists.
+1. Call `glass_check()`.
+2. Read active beat, action order, facts, scene clocks, scene trackers, durable clocks, and messages from MCP tool output.
+3. Resolve pending uncertainty or make one concrete pressure move.
+4. Use `glass_scene_tracker_set(...)` to establish pressure targets, `glass_scene_pressure(...)` for roll-mediated tracker reduction, and clock/beat/consequence/message/handoff MCP tools for their own hard state.
+5. Record durable continuity with `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "scope_id": "<scene-id>", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])` when state changed.
+6. Close with `glass_done(..., scene_status="active")`.
+7. Submit public action prose with `glass_turn_append(body="...")`.
 
-1. Run `glass check`. It drains unread messages and prints the live action
-   scene clock/beat contract for this turn.
-2. Read `table/`, public trackers, recent turn summaries, and any directly
-   implicated DM notes, lore, NPCs, or hazard state.
-3. If the scene has no scene clock or no active beat, fix that before
-   continuing active play. When opening or reframing a scene,
-   declare the objective clock and start 2-3 active beats across distinct
-   problem lanes.
-4. Resolve pending clarifications and checks fairly. Use `glass roll`,
-   `glass scene pressure`, tracker/clock movement, or a clearly deterministic
-   move for opposition, hazards, NPCs, and DM-side PC checks. Do not ask a
-   player for a roll when the DM can resolve it on this turn. On `stall`,
-   `regress`, or `collapse`, make the result move play: record a visible cost,
-   worse position, narrowed choice, beat movement, or scene clock tick, or name
-   that consequence in `glass done`.
-5. Take one DM action: opposition move, environmental change, clock tick,
-   consequence, reveal, route change, social pressure shift, or answer that hands
-   the acting player back into the flow.
-6. Persist changed state before prose. Use `glass scene tracker`, `glass scene
-   pressure`, `glass clock`, `glass character`, and `glass table write/append`
-   for the state they own. Use named table artifacts for reusable visible lore,
-   and use `glass lore promote`/`glass lore upsert` when action-scene facts
-   become durable. If the scene creates a portable asset that can matter later,
-   make it concrete and persist it with the owning command when someone takes
-   it. Update notes, entities, hooks, or quest beats when needed. Commit authored
-   markdown with `glass sync apply`.
-7. Keep the endpoint honest. Advance or complete the declared pressure; do not
-   add one more twist solely to extend the action scene. Do not reroll
-   initiative after action order exists unless intentionally restarting the
-   order.
-8. Write concise public prose to the `TURN.md` path from TURN_START. Narrate
-   the *event*, not the roll. Risk tiers (`risky`, `desperate`), outcome
-   labels (`breakthrough`, `stall`, `regress`, `collapse`), skill tiers
-   (`artisan`, `superior`), momentum values, and die math do not appear in
-   prose or in NPC dialogue — they are bookkeeping and live in the closeout
-   block. Write "the cutter's saw bites once before the bell flattens the
-   sound" not "risky desperate cut on standard difficulty: 4 against 7." When
-   you refer to an item, NPC, place, or move in prose, reach for the
-   **generic descriptor** (e.g. `baton`, `the rescue winch`, `the old
-   captain`), not the prose name or the slug.
-9. Run `glass done`. Include position and pressure changes when they
-   changed, or none/unchanged when they did not.
+When a recent beat closed from repeated failed rolls, do not reopen the same obstacle under a new label. Offer a fresh route toward the same scene goal: change the angle, cost, exposed danger, or immediate choice so the party can move forward instead of retrying the failed approach.
 
-Required closeout shape:
-
-```bash
-glass done \
-  --summary "<opposition/environment/action result and live next pressure>" \
-  --state "<table/tracker/clock/character/lore updates or no state change>" \
-  --rolls "<rolls/pressure used, or none with brief reason>" \
-  --position "<position/leverage update or unchanged>" \
-  --pressure "<tracker/HP/clock change or none>" \
-  --next default
-```
-
-Use `--next <player>` only when a clarification or interrupt must return to a
-specific player before normal action order continues.
-
-## Done
-
-Your turn is done only when trackers/table/state reflect visible changes, any
-durable behind-the-scenes changes are stored, public prose exists, and
-`glass done` succeeds.
-
-Optional reference: [`how-to/action-scene-reference.md`](../how-to/action-scene-reference.md).
-
-Narration craft (read before writing public prose):
-[`how-to/narration-craft-dm.md`](../how-to/narration-craft-dm.md). Action
-scenes especially: commit to the line, advance the board, resolve to a
-new state. Negative-space narration kills action pacing.
+Do not write files. Use concrete verbs and outcomes.

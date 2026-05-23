@@ -10,7 +10,7 @@ status: hypothesis-confirmed
 An investigation into a prose-style failure that surfaced during review
 of `strike-force-panda` and `action-fork`. As of 2026-05-17 the working
 hypothesis has been confirmed by cross-provider agent self-diagnosis;
-a TURN_START block addressing the underlying distinction has been
+an injected-prompt block addressing the underlying distinction has been
 drafted and is pending a test run.
 
 Pair with [`docs/reviews/guidance.md`](guidance.md), which covers the
@@ -190,7 +190,7 @@ voices but doesn't actually want them illegible.
 
 ## Where the failure manifests at different densities
 
-- **Per-turn TURN.md**: the failure appears, usually one or two
+- **Per-turn public prose**: the failure appears, usually one or two
   sentences per turn at peak density. The earlier finding that "per-turn
   prose is clean; only summaries are bad" was an artifact of sympathetic
   reading at the turn level. With cold reading the difference is
@@ -223,7 +223,7 @@ both campaigns was written by the codex DM.
 
 ## Proposed intervention
 
-A single conceptual block in TURN_START, parallel to the
+A single conceptual block in the injected prompt, parallel to the
 `scene-framing-discipline` block, that names the distinction the
 agents themselves identified.
 
@@ -236,7 +236,7 @@ agents converged on (renno's "lookup table" test), and includes the
 PC-interior craft caveat for specialist player voices.
 
 Implementation is in `src/orchestrator/context.py:_codified_handles_vs_fiction_language_section`
-and wired into `_render_turn_start` for the same surfaces as
+and wired into prompt rendering for the same surfaces as
 `scene-framing-discipline`: DM turns in scene-prep, prelude, active
 play, organization-bootstrap, campaign-planning, character-creation,
 arc-creation, intermission; player turns in active-play modes.
@@ -262,7 +262,7 @@ arc-creation, intermission; player turns in active-play modes.
 ## Suggested next investigation steps
 
 1. **Run one new campaign** with the block in place. Pull 3-4 scene
-   summaries and 3-4 turn TURN.md files. Apply the four-failure-mode
+   summaries and 3-4 committed turn prose samples. Apply the four-failure-mode
    rubric with cold reading. Compare density to action-fork.
 2. **If the density drops sharply**: the intervention works. Move
    `status` to `closed`, file the follow-ups (corpus feedback loop,

@@ -215,19 +215,24 @@ use a skill slot, do not become durable, and do not gain skill xp.
 When the new skill should become part of the character's toolkit, save it while
 rolling:
 
-```bash
-glass roll <new-skill-name> <attribute> --risk <level> --character <id> --save-skill
+```text
+glass_roll(character_id="<id>", skill="<new-skill-name>", attribute="<attribute>", risk="<level>", save_skill=True)
 ```
 
-`--save-skill` declares the skill at `fool` before the roll if a slot is
-available. If the cap is full, declaration errors; roll without `--save-skill`
+`save_skill=True` declares the skill at `fool` before the roll if a slot is
+available. If the cap is full, declaration errors; roll with `save_skill=False`
 to keep the check improvised, or pick an existing skill.
 
 You can also declare without rolling — usually during intermission training or
 as a quiet decision between scenes:
 
-```bash
-glass character skill-declare <character-id> <new-skill-name>
+```text
+glass_character_skill_declare(
+  character_id="<character-id>",
+  skill_id="<machine-skill-id>",
+  prose_name="<new skill name>",
+  descriptor="<plain skill descriptor>",
+)
 ```
 
 Skill xp from `advance` (+1) and `breakthrough` (+2) auto-promotes the skill

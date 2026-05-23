@@ -1,222 +1,117 @@
 # The Turn Loop
 
-What a turn is, end to end.
-
-For deeper "why," see [`../principles/`](../principles/), especially
-[`minimize-actor-transitions.md`](../principles/minimize-actor-transitions.md).
-For modes, see [`modes.md`](modes.md). For closure (deferred), see
-[`scene-ending.md`](scene-ending.md). For unsettled design questions about
-speaker selection and inter-player dialog, see [`open-questions.md`](open-questions.md).
+What a turn is, end to end. For the system boundary, see
+[`architecture.md`](architecture.md). For modes, see [`modes.md`](modes.md).
 
 ## In One Paragraph
 
-The orchestrator picks the next agent based on the current mode's speaker rule
-and queued turn metadata. It builds TURN_START with the actor identity, compact
-continuity, visible table state, tool allowlist, output path, and exactly one
-methodology for that role and turn type. The agent writes prose and calls
-`glass` for coherent state changes. Before exit, the agent must close with
-`glass turn end`, which provides the compact summary used by the next actor.
+The orchestrator picks the next agent, injects the current prompt, stages the
+turn with `glass turn begin`, and starts the provider. The agent reads facts and
+hard state through `glass`, writes any durable changes through `glass`, closes
+with `glass done`, then commits the viewer-facing prose with
+`glass turn append --body`. The orchestrator accepts the turn only after the
+CLI has a closeout and a committed turn row.
 
 ## Codified vs Prose
 
-Three principles run the whole show:
+Three principles run the loop:
 
-1. **Codify the things agents drift on.** Numbers (dice, HP, momentum, attributes). Inventory lists. Names of places and NPCs. Mutations to canonical state. Speaker / mode / scene / turn labels. These go through the `glass` CLI (or the orchestrator's own state) so they stay consistent across turns and across agents.
+1. **Codify what drifts.** Numbers, rolls, HP, inventory, names that must remain
+   stable, relationships, scene objectives, messages, mode, scene, speaker, and
+   turn metadata go through `glass`.
+2. **Keep prose as prose.** Intent, tone, table talk, narration, and subjective
+   interpretation belong in the public prose submitted through
+   `glass turn append --body`.
+3. **Do not let prose become state by accident.** If the next agent must rely on
+   a fact, record it neutrally with `glass fact set` or `glass done --fact`.
 
-2. **Everything else is prose.** Intent, scene structure, what kind of action this is, whether the player is asking a question, what the DM thinks of the player's idea, who's preparing what defensive ability, what's visible to whom — the agents handle this in narrative. We do not enumerate intent types, build proposed-action arrays, require structured delta blocks, or attach visibility flags to actions. The agents are reading each other's prose; they're smart enough to handle it.
+There is no structured delta block in the prose. The mandatory structure is in
+CLI commands.
 
-3. **Minimize actor transitions.** A new agent invocation is expensive because
-it must reread context before writing a short turn. If the current actor can
-resolve something honestly within their authority, they should do it now
-instead of creating a handoff. This is why the DM rolls DM-side PC checks
-directly instead of asking a player to take an extra turn just to roll dice.
+## How A Turn Begins
 
-**The codification is a coherence mechanism, not a turn-structure enforcer.** It exists because numbers drift and names drift; everything else, agents do fine in prose.
+The orchestrator builds one injected prompt. It includes:
 
-## How a Turn Begins
+- the active table person and character, if any
+- mode, arc, scene, and generated turn type
+- the selected methodology
+- the allowed command surface
+- current fact graph continuity
+- hard-state cues from `glass` commands
+- relevant messages and recall pointers
+- the output contract
 
-The orchestrator builds a canonical per-turn `TURN_START.md` file in the
-numbered campaign history, then copies the active turn into the actor's stable
-projected workspace at `turns/TURN_START.md`. The agent's prompt is
-essentially "Read `turns/TURN_START.md` and take your turn." TURN_START is a
-thin pointer file — links to the role, public table, scene framing, recent turn
-summaries, unread messages, instruction surfaces, the selected methodology, and
-the tool allowlist. Full layout in [`context-packages.md`](context-packages.md).
+The prompt is instruction and context, not a writable state surface. Agents may
+refresh context with `glass check`, `glass fact pack`, and the commands named by
+the prompt or methodology.
 
-The methodology switch is programmatic. Normal player scene play points to
-`scene-play-player.md`; queued player cleanup points to
-`scene-housekeeping-player.md`; rapid prompts point to
-`rapid-response-player.md`; action order points to the action-scene documents;
-DM scene-boundary turns point to `scene-transition-dm.md`. A methodology is not
-allowed to route the agent to a different actual-play turn type.
+## What An Agent Does
 
-The orchestrator refreshes a stable actor CWD each turn with only the files the
-agent's role is allowed to see. Process-level isolation, not policy. See
-[`architecture.md`](architecture.md) for how.
+Inside the provider invocation, the agent may call `glass` commands in the order
+the table turn requires:
 
-## What an Agent's Turn Is
+- `glass check`
+- `glass fact pack --format markdown`
+- `glass roll ...`
+- `glass scene pressure ...`
+- `glass scene clock tick ...`
+- `glass character ...`
+- `glass clock ...`
+- `glass msg ...`
+- `glass turns find ...`
+- `glass find ...`
+- `glass fact set ...`
+- `glass done ... --fact ...`
+- `glass turn append --body "..."`
 
-Plain markdown. Whatever they want to say, written as the person they are.
+The agent does not create files, edit campaign markdown, write notes, maintain
+table files, or call a direct API. If a needed durable change lacks a CLI
+command, the turn should close with a blocker or message the DM/operator rather
+than inventing another state path.
 
-While they write it, they may call `glass` tools:
+## What The Orchestrator Adds
 
-- `glass roll <skill> <attribute> --risk <level> --character <id>` — when they want a check
-- `glass character bulk-get` / `bulk-update` — to read or record several character facts at once
-- `glass character set-hp` / `set-momentum` / `inventory-add` / `inventory-rm` — convenience wrappers for small state changes
-- `glass character consequence-add` / `consequence-list` / `consequence-resolve` — lasting fictional state that should not drift
-- `glass clock set` / `tick` / `list` / `show` / `resolve` — durable cross-scene pressure
-- `glass summary show` / `write` / `append` — authored continuity summaries at campaign, arc/act, and scene level
-- `glass sync apply [path-or-directory ...]` — commit projected markdown edits
-  from role-authorized document surfaces in one mutation
-- `glass mode start` / `mode end` (DM only)
-- `glass thread beat` — read-only or DM-advanced thread lookup
-- `glass search text` / `semantic` — bounded recall over indexed turns and
-  markdown
-- `glass msg <type> <recipient> <body>` — send a typed message ([`messaging.md`](messaging.md))
-- `glass msg read [--since-checkpoint]` — read messages addressed to them
-- `glass turns find ...` — exact past-turn lookup by metadata or `--text` when
-  more context is needed
-- `glass turn end --summary ... --state ... --rolls ... --next default` —
-  required closeout metadata for future TURN_START summaries
+The orchestrator supplies metadata that agents should not have to author:
 
-They make these calls in the order they would normally do them at a real table.
-When their prose is written and `glass turn end` has succeeded, they exit.
+- campaign id, arc id, scene id, mode, role, speaker, turn number, timestamp
+- staged turn id
+- event linkage for rolls, HP changes, messages, scene clocks, and durable clocks
 
-There is **no structured delta block in the prose**. There is no `intent:
-action` tag, `proposed_check` block, or `prepared_actions: [...]` array. The
-mandatory structure is the CLI closeout command, not an agent-authored schema
-inside the turn text.
+`glass turn append --body` commits the public prose into the structured turn
+feed. Markdown transcript exports may be refreshed for human review, but they
+are derived artifacts.
 
-## What the Orchestrator Adds
+## Public Prose
 
-The transcript is a markdown file. The orchestrator owns its structure:
+Public prose is submitted only through:
 
-- A **per-turn header** that records who's speaking, the role (DM or player), the active mode, the scene id, the turn number, the timestamp.
-- The **agent's prose** as written.
-- Inline **mechanical event lines**, automatically inserted by `glass turn append` based on the side-effects the agent triggered during their turn (rolls, pressure reductions, HP changes, inventory deltas).
-
-Example:
-
-```markdown
-## Turn 24 — Tev (player) — action, ringglass-market-chase
-
-Tev (OOC): "Okay Karrith's gonna swing on the patrol leader."
-
-Karrith hauls back the hammer and brings it down toward the leader's shoulder.
-
-> pressure Patrol leader HP: advance, impact d8=5 -> 2, -2 (8/8 -> 6/8)
-
-The hammer connects with a brutal crunch — the leader staggers but doesn't go down.
+```bash
+glass turn append --body "<public prose>"
 ```
 
-The `> 🎲` line is auto-inserted from the `glass roll` audit log at the right place in the prose. It's there for human readability and corpus indexing; the canonical record lives in Postgres.
-
-## What the DM Does
-
-Reads the prose. Responds in prose.
-
-The DM does not parse YAML or read schema fields off the player's turn. They read what the player wrote and react like a person — same as a real GM at a real table.
-
-If a player says "I prep my shield instead of attacking, Karrith's exposed," the DM understands this in plain language. The next time something attacks Karrith, the DM narrates the shield in play. There is no `prepared_actions` array; the prose is the source of truth, and the DM is smart enough to track preparations across the recent transcript window.
-
-If the preparation is meant to be hidden in-fiction ("Mork subtly attunes a barrier nobody can see"), that's also prose — and the DM honors the visibility in their narration. The monster doesn't know about it; the DM may attack anyway, and the shield trips at resolution time. **Visibility is a narrative choice, not a flag.**
-
-The same applies to questions the player has, intents the player has, requests for clarification — all prose, all read by the DM, all answered in the DM's next turn.
+Provider stdout is not public prose. A final chat response is not public prose.
+A markdown file is not public prose. Literal `glass ...` command lines inside
+the prose do not execute commands.
 
 ## Action Scenes
 
-Action scenes are the quickfire version of the turn loop. Runtime mode is
-`action`; labels such as `combat`, `chase`, and `social-pressure` belong in the
-scene `--type`, prep, and table artifacts. The actual distinction is protocol:
-tight turn order, fictional time measured in seconds or a few heartbeats,
-player-chosen rolls happening more often, and a visible objective tracked
-honestly.
+Action scenes use the same turn loop with tighter expectations:
 
-Action scenes use a persisted action order rolled by the DM after the opening
-layout:
+- keep one actor invocation atomic: upkeep, movement, one action, any roll, and
+  immediate outcome narration
+- use scene clocks, HP, inventory, consequences, messages, and neutral facts
+  when the result must not drift
+- record visible objectives and durable action-scene facts in the graph
+- submit the final narration with `glass turn append --body`
 
-```bash
-glass turn initiative
-```
+DM-side player-character checks are allowed when resolving them in the current
+DM turn avoids an unnecessary actor transition. Player-initiated rolls remain
+player-called on player turns.
 
-The DM is included in that order by default. Handoffs and rapid-response queues
-can interrupt for clarifications or bursts of reaction; when they drain, play
-continues from the stored action-order cursor.
+## What The Loop Does Not Do
 
-An action-scene turn is **atomic**. One agent invocation handles the turn's
-quick upkeep, movement, one action, any roll, and immediate outcome narration;
-no other-agent input is required unless the acting agent explicitly hands off
-for a DM clarification.
-
-> Karrith hauls back the hammer and brings it down toward the leader's shoulder.
-> [`glass scene pressure patrol-leader-hp hammer-work vitality --risk risky --character karrith --impact d8`]
-> The hammer connects with a brutal crunch — the leader staggers but doesn't go down.
-
-The pressure command resolved the mechanics; the player narrated both intent
-and outcome. The DM's turns for monsters, environmental hazards, or other
-opposition follow the same quickfire shape for the things the DM controls. If
-the DM needs a player-character check during the DM turn, the DM rolls it
-directly and uses the result in that same turn. Player-initiated rolls on
-player turns remain player-called.
-
-**Required:** an action-scene turn with a roll must include outcome narration
-that reflects the roll result. A player who rolls and doesn't narrate has
-produced a malformed turn. (This is a soft rule we enforce in the prompt, not a
-schema. The orchestrator can flag it but won't reject.)
-
-**One turn menu:** move, one action, quick upkeep. Upkeep includes message bus
-work, inventory checks, reading relevant lore/state, and asking DM questions. It
-does not grant a second action.
-
-**Rolls are more common, not handoff-heavy.** In ordinary scene play, many
-actions resolve through prose. In action scenes, more player actions are
-obviously uncertain and consequential, so players should expect to call rolls
-more often on their own turns. DM-side checks happen on the DM's turn without
-handing off just for dice. Safe movement, short speech, and pure upkeep
-usually do not need rolls.
-
-**The end condition is visible.** The DM declares what would end the action
-scene and tracks it numerically when numbers matter: enemy HP/morale, escape
-distance, suspicion, concession progress, hazard pressure, survival rounds.
-Use `glass scene tracker set/tick/list` for clocks and `glass scene pressure`
-for roll-mediated reduction so the math does not drift across agents.
-
-**No reactions by default.** Once an attack lands on you, it lands. Your *next*
-turn can include the consequences in narration ("blood from the gash she opened
-earlier is making my grip slick"), but you can't interrupt an attacker's turn to
-mitigate it.
-
-**Preparations are prose.** "I prepare my shield" is a thing the player wrote. The DM (or the next NPC turn) reads it and responds appropriately.
-
-## Non-Combat
-
-The player describes what they're doing — narrative, possibly with embedded `glass roll` calls if they think a check is warranted. The DM responds — narrative, possibly with embedded `glass roll` calls or NPC actions. There is **no enforced sequence** of "ask, adjudicate, roll, narrate." The agents handle pacing the way real players do: by writing.
-
-The DM can decide a player's roll was at the wrong risk or the wrong skill
-because of hidden state. Usually the DM corrects the interpretation in prose or,
-if a new check is actually needed, rolls the corrected DM-side PC check during
-the DM turn. Do not add a handoff solely to request a re-roll.
-
-## The Agent Tool Loop
-
-Inside their invocation, the agent runs Claude's normal tool loop. They can:
-
-- Look up lore (`glass search`, `glass turns find`, and file reads against player-facing content)
-- Check their own notes (read their journal directory)
-- Roll dice (`glass roll`)
-- Update state (`glass character set-hp`, `glass note write`, etc.)
-- Reference the current mode framing the orchestrator gave them
-
-They exit when they've finished writing their turn. The orchestrator picks up the prose artifact and the audit log of any tool calls they made, assembles them into the transcript, and moves on.
-
-## What the Loop Does Not Do
-
-- **Retry on failure.** A weird turn is a transcript event, not a do-over.
-- **Edit prior turns.** The public turn corpus is append-only; `transcript.md` is only a derived export.
-- **Hide internal reasoning.** Agent reasoning that didn't make it to a turn is not in the transcript by design.
-- **Make narrative decisions.** The orchestrator decides whose turn is next; nothing else.
-- **Parse the agent's prose for "intent" or "next-speaker hints."** Whose turn is next is decided by the mode's speaker rule (with the open-question caveats about interjections — see [`open-questions.md`](open-questions.md)).
-
-## Open Questions
-
-Speaker selection beyond the mode default, and inter-player dialog (table talk), are catalogued in [`open-questions.md`](open-questions.md).
+- It does not retry a weird turn automatically.
+- It does not edit prior turns.
+- It does not parse prose for "intent" fields or hidden schemas.
+- It does not accept file artifacts as a completed turn.
+- It does not make narrative decisions for the agents.

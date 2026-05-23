@@ -38,8 +38,7 @@ or cost: combat, chase, disaster, escape, social pressure, duel, infiltration,
 heist, race, exorcism, rescue, or any other quickfire pattern.
 
 Do not start `combat`, `chase`, `social-pressure`, `travel`, or `montage` as
-modes. Keep those words in `--type`, scene prep, table artifacts, trackers, and
-prose.
+modes. Keep those words in `--type`, scene prep, clocks, facts, and prose.
 
 ## Active Play Protocols
 

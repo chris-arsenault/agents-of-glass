@@ -26,7 +26,7 @@ Good player-authored details:
 - create a handle for action, decision, roll, cost, or consequence
 - narrow the scene toward its current question or end condition
 - give the next actor something usable
-- convert ambiguity into a decision, cost, offer, roll, tracker update, or
+- convert ambiguity into a decision, cost, offer, roll, clock update, or
   visible next step
 
 Do not use this authority to:
@@ -35,7 +35,7 @@ Do not use this authority to:
 - resolve major opposition for free
 - reveal another character's secret or hidden DM truth
 - speak for another player character
-- create mechanical state that belongs in `glass` commands
+- create mechanical state that belongs in `glass_*` MCP tools
 - expand the scene's scope or move the goal posts away from its current purpose
 
 If the detail would decide something uncertain and consequential, make the

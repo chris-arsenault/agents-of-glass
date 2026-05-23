@@ -1,13 +1,12 @@
 ---
-status: stub
+status: retired
 ---
 
 # Scratchpad
 
-Working notes — current thinking, in-progress thoughts, things to remember for the next turn or two.
+Retired for orchestrated agent turns.
 
-This file is meant to be **overwritten freely**. It is not a journal (those are dated and accumulate); it is a current-state file that captures what is on this person's mind right now.
-
-When something here matures into a durable thought, move it:
-- Chronological reflection → `journal/`
-- Encyclopedia entry → `notes/`
+Agents do not write scratch files or maintain current-thinking files. Record
+durable continuity with `glass_state_update`, submit public
+prose with `glass_turn_append`, and use messages for private
+communication.

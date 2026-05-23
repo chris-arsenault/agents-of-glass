@@ -35,8 +35,9 @@ second action.
 ## Endpoints
 
 The DM should declare what would end the action scene and track progress
-honestly: enemy HP, morale, distance, suspicion, concession progress, hazard
-pressure, survival rounds, or another concrete value.
+honestly with scene clocks, pressure trackers, HP, and consequences: enemy
+defeat, morale breaking, distance closed, suspicion rising, concession
+progress, hazard pressure, survival rounds, or another concrete value.
 
 When the endpoint resolves, end or shift the scene. Do not add one more twist
-after the tracker says the action is over.
+after the clock or hard state says the action is over.

@@ -75,8 +75,9 @@ Avoid pulls whose strongest details are only paperwork, accreditation,
 liability, recordkeeping, or chain of custody. Those can sharpen texture, but
 they should never become the primary fantasy of the organization.
 
-## Private Note Rule
+## Private Fact Rule
 
-Before character creation, keep `dm/notes/organization.md` broad. Write
-compromises, secrets, and tensions that belong to the org. Do not write named
-player forecasts or "this is Tev's lane" style prep yet.
+Before character creation, keep organization facts broad. Record compromises,
+secrets, and tensions that belong to the org through neutral facts or DM-only
+hard state when needed. Do not create named player forecasts or "this is Tev's
+lane" prep.

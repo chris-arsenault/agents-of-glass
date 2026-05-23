@@ -3,12 +3,7 @@
 from __future__ import annotations
 
 import json
-import os
 import random
-import shutil
-import sys
-from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import click
@@ -18,55 +13,20 @@ from .. import embeddings as _embeddings
 from .. import workspace as _workspace
 from ..campaign import (
     active_campaign_id,
-    active_campaign_root,
-    lookup_player_character_id,
     pg_connection,
     resolve_active_campaign_workspace,
 )
-from ..config import REPO_ROOT, Paths, get_paths
-from ..constants import (
-    ATTRIBUTE_TIERS,
-    ATTRIBUTES,
-    RISK_THRESHOLDS,
-    SKILL_TIERS,
-    STARTER_MESSAGE_TYPES,
-)
-from ..entities import (
-    markdown_title,
-    parse_frontmatter,
-    parse_sections,
-    upsert_entity_from_path,
-)
+from ..config import Paths, get_paths
 from ..errors import GlassError, agent_instruction
-from ..ids import new_id, now_iso, slugify
-from ..messages import (
-    infer_player_from_path,
-    load_message_types,
-    message_visible_to,
-    player_dirs,
-    require_message_type,
-    require_recipient,
-    roster,
-)
-from ..paths_resolve import (
-    clean_relative_path,
-    display_path,
-    ensure_under,
-    ensure_under_any,
-    resolve_content_path,
-    resolve_note_write_path,
-)
+from ..facts import LOW_FACT_IMPORTANCE, normalize_fact_importance
+from ..ids import now_iso
 from ..role import (
-    Role,
     actor_for_turn,
-    assert_character_writable,
     current_role,
     require_dm,
-    require_player,
     role_label_for_turn,
 )
 from ..scene_beats import (
-    ACTIVE_PLAY_TURN_KINDS,
     BEAT_MAX_AGE,
     BEAT_WARNING_AGE,
     beat_check_required_for_turn,
@@ -74,31 +34,15 @@ from ..scene_beats import (
     scene_contract_snapshot,
 )
 from ..state import (
-    append_audit,
     audit_path,
     commit,
     current_mode_record,
-    default_state,
     inline_event_lines,
     load_state,
-    normalize_state,
     queue_event,
-    state_path,
-    state_summary,
-    transcript_path,)
-from ..validation import (
-    assert_attribute_name,
-    clamp,
-    outcome_for_margin,
-    validate_key_values,
 )
 from ..yaml_io import (
     command_params,
-    emit,
-    make_jsonable,
-    read_body,
-    to_yaml,
-    yaml_scalar,
 )
 
 
@@ -112,6 +56,14 @@ _TURN_END_SCENE_STATUS_CHOICES = (
 )
 _TURN_END_TURN_TYPE_CHOICES = ("act", "answer", "support", "pass")
 _ACTIVE_PLAY_MODE_NAMES = {"scene-play", "action"}
+_FACT_REQUIRED_MODES = {
+    "organization-bootstrap",
+    "character-creation",
+    "scene-prep",
+    "scene-play",
+    "action",
+}
+_NO_CHANGE_VALUES = {"no state change", "none", "unchanged", "no change"}
 PASS_GUIDANCE_COMPLETED_BEATS = 8
 _TURN_END_NEXT_SET = set(_TURN_END_NEXT_CHOICES)
 _TURN_END_SCENE_STATUS_SET = set(_TURN_END_SCENE_STATUS_CHOICES)
@@ -155,6 +107,7 @@ _TURN_AUDIT_STATE_UPDATE_EVENTS = {
     "scene.pressure",
     "scene.tracker.set",
     "scene.tracker.tick",
+    "state.update",
     "summary.append",
     "summary.write",
     "table.append",
@@ -268,39 +221,56 @@ def turn_begin(
 
 
 @turn.command("append")
-@click.argument("markdown_file")
+@click.option("--body", required=True, help="Public turn prose body.")
+@click.option("--source", default="stdout", help="Source label when --body is used.")
 @click.option("--speaker")
 @click.option("--role", "turn_role", type=click.Choice(["dm", "player", "operator"]))
 @click.option("--mode", "mode_name")
 @click.option("--scene", "scene_id")
 @click.option("--character", "character_id")
-@click.option("--end-file", "end_file")
 @click.pass_context
 def turn_append(
     ctx: click.Context,
-    markdown_file: str,
+    body: str,
+    source: str,
     speaker: str | None,
     turn_role: str | None,
     mode_name: str | None,
     scene_id: str | None,
     character_id: str | None,
-    end_file: str | None,
 ) -> None:
+    append_turn_service(
+        command_path=ctx,
+        emit_output=True,
+        body=body,
+        source=source,
+        speaker=speaker,
+        turn_role=turn_role,
+        mode_name=mode_name,
+        scene_id=scene_id,
+        character_id=character_id,
+    )
+
+
+def append_turn_service(
+    *,
+    command_path: click.Context | str = "glass_turn_append",
+    emit_output: bool = False,
+    body: str,
+    source: str = "stdout",
+    speaker: str | None = None,
+    turn_role: str | None = None,
+    mode_name: str | None = None,
+    scene_id: str | None = None,
+    character_id: str | None = None,
+) -> dict[str, Any]:
+    """Commit viewer-facing public turn prose from typed runtime inputs."""
+
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
-    source = Path(markdown_file).expanduser()
-    if not source.is_absolute():
-        source = Path.cwd() / source
-    if not source.exists():
-        raise GlassError(
-            agent_instruction(
-                f"turn prose file does not exist: {markdown_file}",
-                "Write the public turn prose file first, then let the orchestrator append it.",
-                "During a normal agent turn, finish with `glass turn end ...` and exit; do not call `glass turn append` manually.",
-            )
-        )
-    body = source.read_text(encoding="utf-8").strip()
+    body = body.strip()
+    source_path = source.strip() or "stdout"
     turn_context = _require_active_turn_context(state)
     turn_end = _require_valid_staged_closeout(state)
     role = current_role()
@@ -318,28 +288,28 @@ def turn_append(
         raise GlassError(
             agent_instruction(
                 f"turn append speaker {speaker!r} does not match active turn actor {speaker_id!r}",
-                "Use the actor recorded by `glass turn begin`, or rerun the turn lifecycle from the orchestrator.",
+                "Use the actor staged by the orchestrator for this active turn.",
             )
         )
     if turn_role and turn_role != resolved_role:
         raise GlassError(
             agent_instruction(
                 f"turn append role {turn_role!r} does not match active turn role {resolved_role!r}",
-                "Use the role recorded by `glass turn begin`, or rerun the turn lifecycle from the orchestrator.",
+                "Use the role staged by the orchestrator for this active turn.",
             )
         )
     if mode_name and mode_name != resolved_mode:
         raise GlassError(
             agent_instruction(
                 f"turn append mode {mode_name!r} does not match active turn mode {resolved_mode!r}",
-                "Use the mode recorded by `glass turn begin`, or rerun the turn lifecycle from the orchestrator.",
+                "Use the mode staged by the orchestrator for this active turn.",
             )
         )
     if scene_id and scene_id != resolved_scene:
         raise GlassError(
             agent_instruction(
                 f"turn append scene {scene_id!r} does not match active turn scene {resolved_scene!r}",
-                "Use the scene recorded by `glass turn begin`, or rerun the turn lifecycle from the orchestrator.",
+                "Use the scene staged by the orchestrator for this active turn.",
             )
         )
     export_info = _turn_export_info(resolved_scene)
@@ -358,8 +328,7 @@ def turn_append(
     state["pending_events"] = remaining
 
     header = (
-        f"## Turn {turn_id} - {speaker_id} ({resolved_role}) - "
-        f"{resolved_mode}, {resolved_scene}"
+        f"## Turn {turn_id} - {speaker_id} ({resolved_role}) - {resolved_mode}, {resolved_scene}"
     )
     parts = [header, "", body]
     event_lines = inline_event_lines(flushed)
@@ -367,9 +336,7 @@ def turn_append(
         parts.extend(["", *event_lines])
     turn_markdown = "\n".join(parts).rstrip() + "\n\n"
     ts = now_iso()
-    turn_number_in_scene = _fallback_turn_number_in_scene(
-        state, scene_id=resolved_scene
-    )
+    turn_number_in_scene = _fallback_turn_number_in_scene(state, scene_id=resolved_scene)
 
     record = {
         "turn_id": turn_id,
@@ -380,7 +347,7 @@ def turn_append(
         "speaker": speaker_id,
         "role": resolved_role,
         "character_id": character_id,
-        "source_path": str(source),
+        "source_path": source_path,
         "prose": body,
         "event_summaries": [event["summary"] for event in flushed],
         "events": flushed,
@@ -393,10 +360,7 @@ def turn_append(
         "visibility": "public",
         **_turn_end_record_fields(turn_end),
     }
-    search_title = (
-        f"Turn {turn_id} - {speaker_id} "
-        f"({resolved_mode}, {resolved_scene})"
-    )
+    search_title = f"Turn {turn_id} - {speaker_id} ({resolved_mode}, {resolved_scene})"
     search_body = _turn_search_body(body, turn_end)
     embedded = _embeddings.embed_text(
         _embeddings.embedding_text(title=search_title, body=search_body),
@@ -421,7 +385,7 @@ def turn_append(
             speaker=speaker_id,
             role=resolved_role,
             character_id=character_id,
-            source_path=str(source),
+            source_path=source_path,
             prose=body,
             event_summaries=[event["summary"] for event in flushed],
             events=flushed,
@@ -448,7 +412,7 @@ def turn_append(
             source_id=str(turn_id),
             visibility="public",
             owner_actor=None,
-            path=str(source),
+            path=source_path,
             title=search_title,
             body=search_body,
             metadata={
@@ -472,17 +436,6 @@ def turn_append(
         )
         conn.commit()
 
-    # Derived compatibility export. The structured row above is the canonical
-    # communication surface for queries and the future viewer UI.
-    root_transcript = transcript_path(paths, state["campaign"])
-    root_transcript.parent.mkdir(parents=True, exist_ok=True)
-    with root_transcript.open("a", encoding="utf-8") as handle:
-        handle.write(turn_markdown)
-    scene_transcript_path = export_info.get("scene_transcript_path")
-    if isinstance(scene_transcript_path, Path):
-        with scene_transcript_path.open("a", encoding="utf-8") as handle:
-            handle.write(turn_markdown)
-
     next_speaker = str(turn_end.get("next") or "default")
     if next_speaker != "default" and resolved_mode != "character-creation":
         state["next_speakers"].append({"agent": next_speaker, "source": "turn.append"})
@@ -493,26 +446,22 @@ def turn_append(
         "turn": {key: value for key, value in record.items() if key != "markdown"},
         "events_flushed": flushed,
         "beat_advance": beat_advance,
-        "transcript_export_path": display_path(root_transcript),
-        "scene_transcript_export_path": (
-            display_path(scene_transcript_path)
-            if isinstance(scene_transcript_path, Path)
-            else None
-        ),
+        "transcript_export_path": None,
+        "scene_transcript_export_path": None,
     }
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "turn.append",
         command_params(
-            markdown_file=markdown_file,
             speaker=speaker_id,
-            end_file=end_file,
             turn_id=turn_context.get("turn_id"),
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @turn.command("audit")
@@ -544,7 +493,9 @@ def turn_audit(ctx: click.Context) -> None:
 
 
 @turn.command("end")
-@click.option("--summary", required=True, help="1-3 sentence compact continuity for the next actor.")
+@click.option(
+    "--summary", required=True, help="1-3 sentence compact continuity for the next actor."
+)
 @click.option(
     "--next",
     "next_speaker",
@@ -573,7 +524,6 @@ def turn_audit(ctx: click.Context) -> None:
 @click.option("--turn-type", default="", help="Formal player turn type when applicable.")
 @click.option("--position", default="", help="Position/leverage change, or unchanged.")
 @click.option("--pressure", default="", help="Tracker/clock/HP/pressure change, or none.")
-@click.option("--to", "end_file", default=None, hidden=True)
 @click.pass_context
 def turn_end(
     ctx: click.Context,
@@ -586,13 +536,12 @@ def turn_end(
     turn_type: str,
     position: str,
     pressure: str,
-    end_file: str | None,
 ) -> None:
     """Record the required end-of-turn closeout block.
 
-    The orchestrator commits public prose separately with `glass turn append`.
-    This command records the compact context block that future TURN_START files
-    embed, and optionally queues a next-speaker override.
+    The orchestrator commits public prose separately with glass_turn_append().
+    This command records the compact closeout block and optionally queues a
+    next-speaker override.
     """
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -612,6 +561,7 @@ def turn_end(
         "scene_status": scene_status.strip() or "active",
         "position": position.strip(),
         "pressure": pressure.strip(),
+        "facts": [],
         "turn_type": turn_type_text or None,
         "campaign_id": campaign_id,
         "turn_id": turn_context.get("turn_id") or "",
@@ -635,7 +585,6 @@ def turn_end(
         valid=valid,
         problems=problems,
     )
-    _write_turn_closeout_artifact(payload, valid=valid, problems=problems, end_file=end_file)
 
     result = {
         "turn_id": turn_context.get("turn_id"),
@@ -680,7 +629,7 @@ def _require_active_turn_context(state: dict[str, Any]) -> dict[str, Any]:
         raise GlassError(
             agent_instruction(
                 "no active turn context is staged in Postgres",
-                "Run this command from an orchestrated turn after the orchestrator has called `glass turn begin`.",
+                "Call this MCP tool only from an orchestrated turn after the orchestrator has staged the active turn.",
             )
         )
     return {
@@ -693,9 +642,7 @@ def _require_active_turn_context(state: dict[str, Any]) -> dict[str, Any]:
         "character_id": str(state.get("active_turn_character_id") or "").strip() or None,
         "kind": str(state.get("active_turn_kind") or "").strip(),
         "turn_type_required": bool(state.get("active_turn_turn_type_required")),
-        "allow_player_scene_close": bool(
-            state.get("active_turn_allow_player_scene_close")
-        ),
+        "allow_player_scene_close": bool(state.get("active_turn_allow_player_scene_close")),
         "beat_checked_at": state.get("active_turn_beat_checked_at"),
         "audit_ran_at": state.get("active_turn_audit_ran_at"),
     }
@@ -716,17 +663,23 @@ def _require_valid_staged_closeout(state: dict[str, Any]) -> dict[str, Any]:
         raise GlassError(
             agent_instruction(
                 "no staged turn closeout exists for the active turn",
-                "Run `glass turn end` after writing public prose, then retry the append.",
+                'Call `glass_done(...)` before `glass_turn_append(body="...")`, then retry the append.',
             )
         )
     valid = state.get("closeout_valid")
-    problems = [str(item).strip() for item in state.get("closeout_problems", []) if str(item).strip()]
+    problems = [
+        str(item).strip() for item in state.get("closeout_problems", []) if str(item).strip()
+    ]
     if valid is not True:
-        detail = "\n".join(f"- {problem}" for problem in problems) if problems else "- closeout is still invalid"
+        detail = (
+            "\n".join(f"- {problem}" for problem in problems)
+            if problems
+            else "- closeout is still invalid"
+        )
         raise GlassError(
             agent_instruction(
                 "staged turn closeout is invalid",
-                "Rerun `glass turn end` and fix the reported problems before the orchestrator appends the turn.",
+                "Rerun `glass_done(...)` and fix the reported problems before appending public prose.",
             )
             + "\n\nProblems:\n"
             + detail
@@ -740,9 +693,8 @@ def _require_valid_staged_closeout(state: dict[str, Any]) -> dict[str, Any]:
         "scene_status": str(state.get("closeout_scene_status") or "active").strip() or "active",
         "position": str(state.get("closeout_position") or "").strip(),
         "pressure": str(state.get("closeout_pressure") or "").strip(),
-        "turn_type": (
-            str(state.get("closeout_turn_type") or "").strip() or None
-        ),
+        "facts": list(state.get("closeout_facts") or []),
+        "turn_type": (str(state.get("closeout_turn_type") or "").strip() or None),
         "campaign_id": str(state.get("campaign") or ""),
         "turn_id": str(state.get("active_turn_id") or ""),
         "actor": str(state.get("active_turn_actor") or ""),
@@ -762,9 +714,7 @@ def _turn_end_record_fields(turn_end: dict[str, Any]) -> dict[str, Any]:
         "scene_status": str(turn_end.get("scene_status") or "active"),
         "state_changes": list(turn_end.get("state") or []),
         "rolls": str(turn_end.get("rolls") or ""),
-        "turn_type": (
-            str(turn_end.get("turn_type") or "").strip() or None
-        ),
+        "turn_type": (str(turn_end.get("turn_type") or "").strip() or None),
         "open_questions": list(turn_end.get("open_questions") or []),
         "position": str(turn_end.get("position") or ""),
         "pressure": str(turn_end.get("pressure") or ""),
@@ -781,7 +731,7 @@ def _turn_search_body(body: str, turn_end: dict[str, Any]) -> str:
     summary = str(turn_end.get("summary") or "").strip()
     if summary:
         parts.append(summary)
-    for key in ("state", "rolls", "turn_type", "open_questions", "position", "pressure"):
+    for key in ("state", "facts", "rolls", "turn_type", "open_questions", "position", "pressure"):
         value = turn_end.get(key)
         if isinstance(value, list):
             parts.extend(str(item) for item in value if str(item).strip())
@@ -796,19 +746,11 @@ def _required_text(value: str, label: str) -> str:
         raise GlassError(
             agent_instruction(
                 f"{label} cannot be empty",
-                "Provide a real value for every required `glass turn end` field.",
-                "Use `--rolls none` when no roll happened and `--state \"no state change\"` only when nothing durable changed.",
+                "Provide a real value for every required `glass_done(...)` field.",
+                'Use `rolls="none"` when no roll happened and `state=["no state change"]` only when nothing durable changed.',
             )
         )
     return text
-
-
-def _turn_end_target_path(*, end_file: str | None) -> Path | None:
-    raw = end_file or os.environ.get("AOG_TURN_CLOSEOUT")
-    if raw:
-        path = Path(raw).expanduser()
-        return path if path.is_absolute() else Path.cwd() / path
-    return None
 
 
 def _turn_number_from_turn_id(turn_id: str, *, campaign_id: str) -> int:
@@ -820,7 +762,7 @@ def _turn_number_from_turn_id(turn_id: str, *, campaign_id: str) -> int:
                 "Use the orchestrator-generated turn id, for example `campaign-t0001`.",
             )
         )
-    suffix = turn_id[len(prefix):]
+    suffix = turn_id[len(prefix) :]
     if not suffix.isdigit():
         raise GlassError(
             agent_instruction(
@@ -840,6 +782,7 @@ def _clear_staged_closeout(state: dict[str, Any]) -> None:
     state["closeout_open_questions"] = []
     state["closeout_position"] = None
     state["closeout_pressure"] = None
+    state["closeout_facts"] = []
     state["closeout_turn_type"] = None
     state["closeout_valid"] = None
     state["closeout_problems"] = []
@@ -871,12 +814,15 @@ def _stage_closeout(
 ) -> None:
     state["closeout_summary"] = str(payload.get("summary") or "").strip() or None
     state["closeout_next_speaker"] = str(payload.get("next") or "default").strip() or "default"
-    state["closeout_scene_status"] = str(payload.get("scene_status") or "active").strip() or "active"
+    state["closeout_scene_status"] = (
+        str(payload.get("scene_status") or "active").strip() or "active"
+    )
     state["closeout_state_changes"] = list(payload.get("state") or [])
     state["closeout_rolls"] = str(payload.get("rolls") or "").strip() or None
     state["closeout_open_questions"] = list(payload.get("open_questions") or [])
     state["closeout_position"] = str(payload.get("position") or "").strip() or None
     state["closeout_pressure"] = str(payload.get("pressure") or "").strip() or None
+    state["closeout_facts"] = list(payload.get("facts") or [])
     turn_type = str(payload.get("turn_type") or "").strip()
     state["closeout_turn_type"] = turn_type or None
     state["closeout_valid"] = bool(valid)
@@ -922,12 +868,8 @@ def _turn_audit_records(
             begin_index = idx
     if begin_index is None:
         return []
-    scoped = records[begin_index + 1:]
-    return [
-        record
-        for record in scoped
-        if str(record.get("actor") or "") == actor
-    ]
+    scoped = records[begin_index + 1 :]
+    return [record for record in scoped if str(record.get("actor") or "") == actor]
 
 
 def _turn_audit_activity(records: list[dict[str, Any]]) -> dict[str, int]:
@@ -949,8 +891,19 @@ def _turn_audit_activity(records: list[dict[str, Any]]) -> dict[str, int]:
             counts["messages_sent"] += 1
         if event in _TURN_AUDIT_RECALL_EVENTS or event.startswith(_TURN_AUDIT_RECALL_PREFIXES):
             counts["recall_actions"] += 1
-        if event in _TURN_AUDIT_STATE_UPDATE_EVENTS or event.startswith(_TURN_AUDIT_STATE_UPDATE_PREFIXES):
+        if event in _TURN_AUDIT_STATE_UPDATE_EVENTS or event.startswith(
+            _TURN_AUDIT_STATE_UPDATE_PREFIXES
+        ):
             counts["state_updates"] += 1
+        if event == "roll":
+            result = record.get("result")
+            if isinstance(result, dict):
+                beat_failure = result.get("beat_failure")
+                if (
+                    isinstance(beat_failure, dict)
+                    and str(beat_failure.get("status") or "") in {"ticked", "closed"}
+                ):
+                    counts["state_updates"] += 1
     return counts
 
 
@@ -982,6 +935,16 @@ def _scene_pressure_has_numeric_consequence(record: dict[str, Any]) -> bool:
     return int(result.get("reduction", 0) or 0) > 0
 
 
+def _roll_has_builtin_consequence(record: dict[str, Any]) -> bool:
+    if str(record.get("event") or "").strip() != "roll":
+        return False
+    result = _record_result(record)
+    beat_failure = result.get("beat_failure")
+    if not isinstance(beat_failure, dict):
+        return False
+    return str(beat_failure.get("status") or "") in {"ticked", "closed"}
+
+
 def _roll_record_summary(record: dict[str, Any], outcome: str) -> str:
     event = str(record.get("event") or "").strip()
     result = _record_result(record)
@@ -1010,7 +973,7 @@ def _roll_consequence_report(records: list[dict[str, Any]]) -> dict[str, Any]:
         outcome = _roll_outcome_for_record(record)
         if outcome not in _ROLL_OUTCOMES_REQUIRING_CONSEQUENCE:
             continue
-        if _scene_pressure_has_numeric_consequence(record):
+        if _scene_pressure_has_numeric_consequence(record) or _roll_has_builtin_consequence(record):
             continue
         required.append(
             {
@@ -1038,6 +1001,36 @@ def _roll_consequence_report(records: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _turn_fact_importance_report(records: list[dict[str, Any]]) -> dict[str, Any]:
+    facts: list[dict[str, Any]] = []
+    for record in records:
+        event = str(record.get("event") or "").strip()
+        if event != "state.update" and not event.startswith("character."):
+            continue
+        result = _record_result(record)
+        fact_result = result.get("facts")
+        if not isinstance(fact_result, dict):
+            continue
+        facts.extend(fact for fact in fact_result.get("facts") or [] if isinstance(fact, dict))
+    importances: list[str] = []
+    for fact in facts:
+        try:
+            importances.append(
+                normalize_fact_importance(
+                    str(fact.get("importance") or fact.get("salience") or ""),
+                    allow_missing=True,
+                )
+            )
+        except ValueError:
+            importances.append("medium")
+    return {
+        "count": len(importances),
+        "low_or_minor_count": sum(1 for value in importances if value in LOW_FACT_IMPORTANCE),
+        "only_low_or_minor": bool(importances)
+        and all(value in LOW_FACT_IMPORTANCE for value in importances),
+    }
+
+
 def _text_reports_change(value: str | None, *, empty_words: set[str]) -> bool:
     text = str(value or "").strip().lower()
     if not text:
@@ -1051,6 +1044,38 @@ def _payload_reports_roll_consequence(payload: dict[str, Any]) -> bool:
         str(payload.get("pressure") or ""),
         empty_words={"none", "unchanged", "no change"},
     )
+
+
+def _payload_requires_state_update(
+    turn_context: dict[str, Any],
+    payload: dict[str, Any],
+    audit_report: dict[str, Any],
+) -> bool:
+    mode = str(turn_context.get("mode") or payload.get("mode") or "").strip()
+    if mode not in _FACT_REQUIRED_MODES:
+        return False
+    activity = audit_report.get("activity") or {}
+    if int(activity.get("state_updates") or 0) > 0:
+        return False
+    state_changes = [
+        str(item).strip().lower() for item in payload.get("state", []) if str(item).strip()
+    ]
+    state_changed = bool(state_changes) and any(
+        not _is_no_change_text(item) for item in state_changes
+    )
+    position = str(payload.get("position") or "").strip().lower()
+    pressure = str(payload.get("pressure") or "").strip().lower()
+    position_changed = bool(position) and position not in _NO_CHANGE_VALUES
+    pressure_changed = bool(pressure) and pressure not in _NO_CHANGE_VALUES
+    open_questions = [item for item in payload.get("open_questions", []) if str(item).strip()]
+    return state_changed or position_changed or pressure_changed or bool(open_questions)
+
+
+def _is_no_change_text(value: str) -> bool:
+    text = str(value or "").strip().lower()
+    if text in _NO_CHANGE_VALUES:
+        return True
+    return text.endswith(" unchanged") or text.endswith(": unchanged")
 
 
 def _campaign_audit_records(paths: Paths, campaign_id: str) -> list[dict[str, Any]]:
@@ -1089,10 +1114,7 @@ def _scene_clock_movement_warning(
                 continue
             closed_beats += 1
             clock_result = result.get("clock")
-            if (
-                isinstance(clock_result, dict)
-                and int(clock_result.get("delta", 0) or 0) != 0
-            ):
+            if isinstance(clock_result, dict) and int(clock_result.get("delta", 0) or 0) != 0:
                 clock_movements += 1
         elif event == "scene.clock.tick":
             clock = result.get("clock")
@@ -1168,9 +1190,9 @@ def _scene_boundary_handoff_requirement(
         return None
     return (
         f"No active mode is staged while active arc `{active_arc}` remains open. "
-        "Start `scene-prep` with `glass mode start scene-prep <scene-id>`, "
+        'Start `scene-prep` with `glass_mode_start(mode_name="scene-prep", scene_id="<scene-id>")`, '
         "stage/start the next scene mode, or close the active arc before "
-        "`glass turn end` can commit."
+        "`glass_done(...)` can commit."
     )
 
 
@@ -1185,7 +1207,7 @@ def _scene_contract_gap_message(
             return (
                 f"This scene has 0 active scene clocks after {completed_beats} "
                 "completed beats. Treat this as a closure gap: end with "
-                "`--next dm` so the DM can close or transition, unless the DM "
+                '`next_speaker="dm"` so the DM can close or transition, unless the DM '
                 "deliberately opens a genuinely new scene question."
             )
         return (
@@ -1199,14 +1221,13 @@ def _scene_contract_gap_message(
                 f"This scene has 0 active beats after {completed_beats} "
                 "completed beats. Do not open a replacement beat by default. "
                 "If your character has no decisive blockbuster-scale "
-                "contribution, use a short visible pass and `--next dm` so "
+                'contribution, use a short visible pass and `next_speaker="dm"` so '
                 "the DM can close or transition."
             )
         return (
-            "This scene has 0 active beats. If the scene continues, end with "
-            "`--next dm` so the DM can restore 2-3 active beats; do not open a "
-            "replacement beat from a player turn unless the DM explicitly "
-            "instructed it."
+            "This scene has 0 active beats. If the scene continues, finish "
+            "with the visible outcome and let the DM restore 2-3 active beats; "
+            'use `next_speaker="dm"` only if no DM handoff is already queued.'
         )
     if completed_beats > PASS_GUIDANCE_COMPLETED_BEATS:
         return (
@@ -1228,7 +1249,7 @@ def _completed_beat_pass_guidance(completed_beats: int, *, role_kind: str) -> st
         return (
             f"This scene already has {completed_beats} completed beats. If you "
             "do not have a decisive blockbuster-scale contribution, use "
-            "`--turn-type pass` with one visible cue and `--next dm` rather "
+            '`turn_type="pass"` with one visible cue and `next_speaker="dm"` rather '
             "than adding procedure or opening another beat."
         )
     return (
@@ -1254,6 +1275,7 @@ def _turn_audit_report(
     )
     activity = _turn_audit_activity(records)
     roll_consequence = _roll_consequence_report(records)
+    fact_importance = _turn_fact_importance_report(records)
     hard_requirements: list[str] = []
     soft_considerations: list[str] = []
     scene_contract: dict[str, Any] | None = None
@@ -1285,11 +1307,14 @@ def _turn_audit_report(
                 "recent_beats": snapshot["recent_beats"],
                 "completed_beats": snapshot["completed_beats"],
                 "scene_note": snapshot["scene_note"],
+                "landing_guidance": snapshot["landing_guidance"],
             }
             soft_considerations.extend(snapshot.get("clock_warnings", []))
             soft_considerations.extend(snapshot.get("beat_warnings", []))
+            if snapshot.get("landing_guidance"):
+                soft_considerations.append(str(snapshot["landing_guidance"]))
             if not state.get("active_turn_beat_checked_at"):
-                hard_requirements.append("You MUST still run glass beat check.")
+                hard_requirements.append("You MUST still call glass_check().")
             continuation_gap = _scene_contract_gap_is_continuation(snapshot)
             completed_beats = int(snapshot.get("completed_beats", 0) or 0)
             for failure in scene_contract_failures(snapshot):
@@ -1304,7 +1329,7 @@ def _turn_audit_report(
                         )
                     else:
                         hard_requirements.append(
-                            "This active scene has 0 scene clocks. The DM MUST declare at least one with `glass scene clock declare ...`."
+                            "This active scene has 0 scene clocks. The DM MUST declare at least one with `glass_scene_clock_declare(...)`."
                         )
                 elif failure == "this active scene has 0 active beats":
                     if continuation_gap:
@@ -1317,7 +1342,7 @@ def _turn_audit_report(
                         )
                     else:
                         hard_requirements.append(
-                            "This active scene has 0 active beats. Start 2-3 active beats across distinct problem lanes with `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`."
+                            'This active scene has 0 active beats. Start 2-3 active beats across distinct problem lanes with `glass_beat_start(beat_id="<beat-id>", clock_id="<clock-id>", label="...", question="...")`.'
                         )
                 elif "more than" in failure:
                     hard_requirements.append(
@@ -1349,21 +1374,18 @@ def _turn_audit_report(
     if boundary_requirement:
         hard_requirements.append(boundary_requirement)
 
-    if (
-        roll_consequence.get("requires_consequence")
-        and not roll_consequence.get("has_consequence_record")
+    if roll_consequence.get("requires_consequence") and not roll_consequence.get(
+        "has_consequence_record"
     ):
         soft_considerations.append(
-            "A stall/regress/collapse roll has no follow-up consequence command; "
+            "A stall/regress/collapse roll has no follow-up consequence MCP tool; "
             "record a clock/beat/HP/inventory/consequence mutation before "
-            "closing, or pass `glass done --pressure \"<what changed, even "
-            "narrative-only>\"`."
+            'closing, or pass `pressure="<what changed, even narrative-only>"` '
+            "to `glass_done(...)`."
         )
 
     if activity["messages_sent"] <= 0:
-        soft_considerations.append(
-            "You sent 0 messages this turn; consider sending something."
-        )
+        soft_considerations.append("You sent 0 messages this turn; consider sending something.")
     if activity["recall_actions"] <= 0:
         soft_considerations.append(
             "You ran 0 recall/search checks this turn; consider checking the available surfaces if you are uncertain."
@@ -1372,6 +1394,10 @@ def _turn_audit_report(
         soft_considerations.append(
             "You recorded 0 durable state updates this turn; if the turn changed canon or table state, commit it before closing."
         )
+    elif fact_importance.get("only_low_or_minor"):
+        soft_considerations.append(
+            "Only low/minor facts were added this turn. They are stored for audit/debug but omitted from fact-pack output; add a high or medium fact if playable state changed."
+        )
 
     return {
         "activity": activity,
@@ -1379,6 +1405,7 @@ def _turn_audit_report(
         "soft_considerations": soft_considerations,
         "scene_contract": scene_contract,
         "roll_consequence": roll_consequence,
+        "fact_importance": fact_importance,
     }
 
 
@@ -1393,27 +1420,30 @@ def _turn_end_validation_problems(
     next_speaker = str(payload.get("next") or "default").strip() or "default"
     if next_speaker not in _TURN_END_NEXT_SET:
         problems.append(
-            f"`--next {next_speaker}` is invalid; use one of: {', '.join(_TURN_END_NEXT_CHOICES)}."
+            f"`next_speaker={next_speaker!r}` is invalid; use one of: {', '.join(_TURN_END_NEXT_CHOICES)}."
         )
     scene_status = str(payload.get("scene_status") or "active").strip() or "active"
     if scene_status not in _TURN_END_SCENE_STATUS_SET:
         problems.append(
-            f"`--scene-status {scene_status}` is invalid; use one of: {', '.join(_TURN_END_SCENE_STATUS_CHOICES)}."
+            f"`scene_status={scene_status!r}` is invalid; use one of: {', '.join(_TURN_END_SCENE_STATUS_CHOICES)}."
         )
     turn_type = str(payload.get("turn_type") or "").strip()
     if turn_type and turn_type not in _TURN_END_TURN_TYPE_SET:
         problems.append(
-            f"`--turn-type {turn_type}` is invalid; use one of: {', '.join(_TURN_END_TURN_TYPE_CHOICES)}."
+            f"`turn_type={turn_type!r}` is invalid; use one of: {', '.join(_TURN_END_TURN_TYPE_CHOICES)}."
         )
     if not state.get("active_turn_audit_ran_at"):
-        problems.append("run `glass turn audit` before `glass turn end`.")
+        problems.append("call `glass_check()` before `glass_done(...)`.")
     if turn_context.get("turn_type_required") and not turn_type:
         problems.append(
-            f"`--turn-type` is required for `{turn_context.get('kind') or 'this'}` player turns."
+            f"`turn_type` is required for `{turn_context.get('kind') or 'this'}` player turns."
         )
     for requirement in audit_report.get("hard_requirements", []):
-        if requirement == "You MUST still run glass beat check.":
-            problems.append("You MUST still run glass beat check.")
+        if requirement in {
+            "You MUST still run glass beat check.",
+            "You MUST still call glass_check().",
+        }:
+            problems.append("You MUST still call glass_check().")
         elif requirement.startswith("This active scene has 0 scene clocks"):
             problems.append(
                 "the active scene has 0 scene clocks; the DM must declare one before active play can continue."
@@ -1434,19 +1464,15 @@ def _turn_end_validation_problems(
     rolls = str(payload.get("rolls") or "").strip()
     if turn_type == "pass":
         if state_changes != ["no state change"]:
-            problems.append(
-                "`pass` requires exactly `--state \"no state change\"`."
-            )
+            problems.append('`pass` requires exactly `state=["no state change"]`.')
         if rolls.lower() != "none":
-            problems.append("`pass` requires `--rolls none`.")
+            problems.append('`pass` requires `rolls="none"`.')
         if (
             str(turn_context.get("role") or "") == "player"
             and scene_status != "active"
             and not bool(turn_context.get("allow_player_scene_close"))
         ):
-            problems.append(
-                "`pass` must keep `--scene-status active` for this player turn."
-            )
+            problems.append('`pass` must keep `scene_status="active"` for this player turn.')
     elif beat_check_required_for_turn(turn_context):
         scene_contract = audit_report.get("scene_contract") or {}
         for beat in scene_contract.get("active_beats", []):
@@ -1464,11 +1490,17 @@ def _turn_end_validation_problems(
         problems.append(
             "stall/regress/collapse roll needs a visible consequence. Either "
             "record a clock/beat/HP/inventory/consequence mutation event before "
-            "closing (e.g. `glass scene clock tick`, `glass beat close`, "
-            "`glass character set-hp`, `glass character consequence-add`, "
-            "`glass character inventory-rm`), or pass `--pressure \"<what "
-            "changed, even narrative-only>\"` to explicitly record the "
+            "closing (e.g. `glass_scene_clock_tick(...)`, `glass_beat_close(...)`, "
+            "`glass_character_set_hp(...)`, `glass_character_consequence_add(...)`, "
+            '`glass_character_inventory_remove(...)`), or pass `pressure="<what '
+            'changed, even narrative-only>"` to explicitly record the '
             "consequence in the turn-end block."
+        )
+    if _payload_requires_state_update(turn_context, payload, audit_report):
+        problems.append(
+            "durable state changed in a fact-graph mode; commit the state delta before closeout with "
+            '`glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])` '
+            "or a purpose-built hard-state tool."
         )
     deduped: list[str] = []
     seen: set[str] = set()
@@ -1484,58 +1516,58 @@ def _turn_end_fix_suggestions(problems: list[str]) -> list[str]:
     fixes: list[str] = []
     seen: set[str] = set()
     for problem in problems:
-        if "--turn-type" in problem:
-            fix = "Rerun `glass turn end` with `--turn-type act|answer|support|pass`."
-        elif "run `glass turn audit` before `glass turn end`" in problem:
-            fix = "Run `glass done` instead, or run `glass turn audit`, address any hard requirements it prints, then rerun `glass turn end`."
-        elif "You MUST still run glass beat check" in problem:
-            fix = "Run `glass check` (or `glass beat check`), then rerun `glass done` or `glass turn end`."
+        if "--turn-type" in problem or "`turn_type" in problem:
+            fix = 'Rerun `glass_done(...)` with `turn_type="act|answer|support|pass"`.'
+        elif (
+            "run `glass turn audit` before `glass turn end`" in problem
+            or "call `glass_check()` before" in problem
+        ):
+            fix = "Call `glass_done(...)` after addressing any hard requirements it prints."
+        elif (
+            "You MUST still run glass beat check" in problem
+            or "You MUST still call glass_check()" in problem
+        ):
+            fix = "Call `glass_check()`, then rerun `glass_done(...)`."
         elif "0 scene clocks" in problem:
-            fix = "Have the DM declare a scene clock with `glass scene clock declare ...`, then rerun `glass check` and `glass done`."
+            fix = "Have the DM declare a scene clock with `glass_scene_clock_declare(...)`, then rerun `glass_check()` and `glass_done(...)`."
         elif "0 active beats" in problem:
-            fix = "Start a beat with `glass beat start <beat-id> --clock <clock-id> --label ... --question ...`, then rerun `glass check` and `glass done`."
+            fix = 'Start a beat with `glass_beat_start(beat_id="<beat-id>", clock_id="<clock-id>", label="...", question="...")`, then rerun `glass_check()` and `glass_done(...)`.'
         elif "3-beat cap" in problem:
-            fix = "Close or convert an active beat, then rerun `glass check` and `glass done`."
+            fix = (
+                "Close or convert an active beat, then rerun `glass_check()` and `glass_done(...)`."
+            )
         elif "No active mode is staged while active arc" in problem:
-            fix = "Start `scene-prep` with `glass mode start scene-prep <scene-id>`, stage/start the next scene mode, or close the active arc, then rerun `glass turn audit` and `glass turn end`."
+            fix = 'Start `scene-prep` with `glass_mode_start(mode_name="scene-prep", scene_id="<scene-id>")`, stage/start the next scene mode, or close the active arc, then rerun `glass_done(...)`.'
         elif "Resolve or convert it before another non-pass turn" in problem:
-            fix = "Resolve the beat with `glass beat close`, convert it with `glass beat convert`, or pass instead of taking another non-pass turn."
+            fix = "Resolve the beat with `glass_beat_close(...)`, convert it with `glass_beat_convert(...)`, or pass instead of taking another non-pass turn."
         elif "roll needs a visible consequence" in problem:
-            fix = "Run a clock/beat/HP/inventory/consequence mutation command, or rerun with `--pressure \"<what changed>\"`."
-        elif "requires exactly `--state \"no state change\"`" in problem:
-            fix = "Rerun with `--state \"no state change\"` and no other `--state` values."
-        elif "`pass` requires `--rolls none`" in problem:
-            fix = "Rerun with `--rolls none`."
-        elif "`--scene-status" in problem or "must keep `--scene-status active`" in problem:
-            fix = "Rerun with a valid `--scene-status`, usually `active`."
-        elif "`--next" in problem:
-            fix = "Rerun with `--next default|dm|tev|sumi|renno|kit`."
+            fix = 'Run a clock/beat/HP/inventory/consequence mutation MCP tool, or rerun with `pressure="<what changed>"`.'
+        elif "commit the state delta before closeout" in problem:
+            fix = 'Run `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])`, then rerun `glass_done(...)`.'
+        elif (
+            'requires exactly `--state "no state change"`' in problem
+            or 'requires exactly `state=["no state change"]`' in problem
+        ):
+            fix = 'Rerun with `state=["no state change"]` and no other `state` values.'
+        elif (
+            "`pass` requires `--rolls none`" in problem
+            or '`pass` requires `rolls="none"`' in problem
+        ):
+            fix = 'Rerun with `rolls="none"`.'
+        elif (
+            "`--scene-status" in problem
+            or "`scene_status" in problem
+            or "must keep `--scene-status active`" in problem
+        ):
+            fix = 'Rerun with a valid `scene_status`, usually `"active"`.'
+        elif "`--next" in problem or "`next_speaker" in problem:
+            fix = 'Rerun with `next_speaker="default|dm|tev|sumi|renno|kit"`.'
         else:
-            fix = "Rerun `glass turn end` after correcting the reported field."
+            fix = "Rerun `glass_done(...)` after correcting the reported field."
         if fix not in seen:
             fixes.append(fix)
             seen.add(fix)
     return fixes
-
-
-def _write_turn_closeout_artifact(
-    payload: dict[str, Any],
-    *,
-    valid: bool,
-    problems: list[str],
-    end_file: str | None,
-) -> None:
-    target = _turn_end_target_path(end_file=end_file)
-    if target is None:
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    artifact = dict(payload)
-    artifact["valid"] = bool(valid)
-    artifact["problems"] = list(problems)
-    target.write_text(
-        json.dumps(artifact, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
 
 
 def _turn_export_info(scene_id: str) -> dict[str, Any]:
@@ -1553,16 +1585,10 @@ def _turn_export_info(scene_id: str) -> dict[str, Any]:
         scene_type = current.get("scene_type")
         if not arc_id:
             arc_id = current.get("arc_id")
-    transcript: Path | None = None
-    if arc_id:
-        transcript = workspace.scene_dir(str(arc_id), scene_id) / "transcript.md"
-        transcript.parent.mkdir(parents=True, exist_ok=True)
-        if not transcript.exists():
-            transcript.write_text(f"# Scene: {scene_id}\n\n", encoding="utf-8")
     return {
         "arc_id": arc_id,
         "scene_type": scene_type,
-        "scene_transcript_path": transcript,
+        "scene_transcript_path": None,
     }
 
 
@@ -1615,10 +1641,7 @@ def _advance_scene_beats_after_append(
 
 
 def _fallback_turn_number_in_scene(state: dict[str, Any], *, scene_id: str) -> int:
-    return (
-        sum(1 for turn in state.get("turns", []) if turn.get("scene_id") == scene_id)
-        + 1
-    )
+    return sum(1 for turn in state.get("turns", []) if turn.get("scene_id") == scene_id) + 1
 
 
 _HANDOFF_AGENT_IDS = ("dm", "tev", "sumi", "renno", "kit")
@@ -1637,16 +1660,31 @@ def turn_handoff(ctx: click.Context, agent_id: str) -> None:
     turn. After the queue is drained, round-robin resumes from the last
     redirected agent.
 
-    Example: a DM in their turn calls `glass turn handoff sumi` then
-    `glass turn handoff dm`. Sumi runs next, then the DM, then rotation
-    continues from the DM (dm -> next-in-rotation).
+    Example: a DM in their turn calls glass_turn_handoff(agent_id="sumi") then
+    glass_turn_handoff(agent_id="dm"). Sumi runs next, then the DM, then
+    rotation continues from the DM (dm -> next-in-rotation).
     """
+    handoff_turn_service(
+        command_path=ctx,
+        emit_output=True,
+        agent_id=agent_id,
+    )
+
+
+def handoff_turn_service(
+    *,
+    command_path: click.Context | str = "glass_turn_handoff",
+    emit_output: bool = False,
+    agent_id: str,
+) -> dict[str, Any]:
+    """Append a one-off override to the next-speaker queue."""
+
     if agent_id not in _HANDOFF_AGENT_IDS:
         raise GlassError(
             agent_instruction(
                 f"unknown handoff target {agent_id!r}",
                 f"Use one of: {', '.join(_HANDOFF_AGENT_IDS)}.",
-                "Use `glass turn end --next default` for normal rotation, or `--next dm` only when the DM specifically needs the next turn.",
+                'Use `next_speaker="default"` in `glass_done(...)` for normal rotation, or `next_speaker="dm"` only when the DM specifically needs the next turn.',
             )
         )
     paths = get_paths()
@@ -1657,9 +1695,15 @@ def turn_handoff(ctx: click.Context, agent_id: str) -> None:
     queue_event(state, role.actor, f"handoff -> {agent_id}")
     result = {"queue": list(state["next_speakers"])}
     commit(
-        paths, state, ctx, "turn.handoff",
-        command_params(agent_id=agent_id), result,
+        paths,
+        state,
+        command_path,
+        "turn.handoff",
+        command_params(agent_id=agent_id),
+        result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @turn.command("initiative")
@@ -1671,15 +1715,30 @@ def turn_handoff(ctx: click.Context, agent_id: str) -> None:
 )
 @click.option("--label", default="initiative", show_default=True)
 @click.pass_context
-def turn_initiative(
-    ctx: click.Context, participants_csv: str | None, label: str
-) -> None:
+def turn_initiative(ctx: click.Context, participants_csv: str | None, label: str) -> None:
     """DM-only: roll and persist action-scene turn order.
 
     Use this after the DM's opening layout for quickfire action scenes.
     The DM is always a participant, so their next turn after the
     opening layout can land wherever the initiative roll puts it.
     """
+    initiative_turn_service(
+        command_path=ctx,
+        emit_output=True,
+        participants_csv=participants_csv,
+        label=label,
+    )
+
+
+def initiative_turn_service(
+    *,
+    command_path: click.Context | str = "glass_turn_initiative",
+    emit_output: bool = False,
+    participants_csv: str | None = None,
+    label: str = "initiative",
+) -> dict[str, Any]:
+    """DM-only: roll and persist action-scene turn order."""
+
     role = require_dm()
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -1689,15 +1748,13 @@ def turn_initiative(
         raise GlassError(
             agent_instruction(
                 "initiative requires an active mode and scene",
-                "The DM should start action play first with `glass mode start action <scene-id>`.",
-                "Then run `glass turn initiative` once, from the DM turn that opens action play.",
+                'The DM should start action play first with `glass_mode_start(mode_name="action", scene_id="<scene-id>")`.',
+                "Then call `glass_turn_initiative(...)` once, from the DM turn that opens action play.",
             )
         )
 
     if participants_csv:
-        participants = [
-            entry.strip() for entry in participants_csv.split(",") if entry.strip()
-        ]
+        participants = [entry.strip() for entry in participants_csv.split(",") if entry.strip()]
     else:
         participants = list(_ACTION_PARTICIPANT_IDS)
     if "dm" not in participants:
@@ -1781,9 +1838,7 @@ def turn_initiative(
         for key in ("mode", "scene_id", "label", "round", "cursor", "order", "rolls")
     } | {"created_at": persisted["created_at"], "created_by": role.actor}
 
-    order_summary = ", ".join(
-        f"{item['agent']}({item['total']})" for item in public_rolls
-    )
+    order_summary = ", ".join(f"{item['agent']}({item['total']})" for item in public_rolls)
     queue_event(
         state,
         role.actor,
@@ -1795,29 +1850,54 @@ def turn_initiative(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "turn.initiative",
         command_params(participants=participants, label=label),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @turn.command("rapid-round")
 @click.argument("prompt_parts", nargs=-1, required=True)
-@click.option("--players", "players_csv", default=None,
-              help="Comma-separated player ids (subset of tev,sumi,renno,kit). "
-                   "Order matters. Defaults to all four in declaration order.")
+@click.option(
+    "--players",
+    "players_csv",
+    default=None,
+    help="Comma-separated player ids (subset of tev,sumi,renno,kit). "
+    "Order matters. Defaults to all four in declaration order.",
+)
 @click.pass_context
 def turn_rapid_round(
-    ctx: click.Context, prompt_parts: tuple[str, ...], players_csv: str | None,
+    ctx: click.Context,
+    prompt_parts: tuple[str, ...],
+    players_csv: str | None,
 ) -> None:
     """DM-only: queue a single-shot rapid response from each player.
 
-    Each queued turn sees the prompt in TURN_START.md and is told to give
+    Each queued turn sees the stimulus in the injected prompt and is told to give
     a brief reactive narration only — no rolls, no full menu, no handoff.
     Use this when the DM needs each player's character to react to the
     same stimulus quickly without spending a full per-player turn.
     """
+    rapid_round_turn_service(
+        command_path=ctx,
+        emit_output=True,
+        prompt=" ".join(prompt_parts),
+        players_csv=players_csv,
+    )
+
+
+def rapid_round_turn_service(
+    *,
+    command_path: click.Context | str = "glass_turn_rapid_round",
+    emit_output: bool = False,
+    prompt: str,
+    players_csv: str | None = None,
+) -> dict[str, Any]:
+    """DM-only: queue a single-shot rapid response from each player."""
+
     require_dm()
     if players_csv:
         targets = [p.strip() for p in players_csv.split(",") if p.strip()]
@@ -1835,28 +1915,37 @@ def turn_rapid_round(
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
     role = current_role()
-    prompt = " ".join(prompt_parts).strip()
+    prompt = prompt.strip()
     if not prompt:
         raise GlassError(
             agent_instruction(
                 "rapid-round prompt cannot be empty",
-                "Call `glass turn rapid-round <short shared stimulus>` so each queued player sees what to react to.",
+                'Call `glass_turn_rapid_round(prompt="<short shared stimulus>")` so each queued player sees what to react to.',
             )
         )
     for player in targets:
-        state["next_speakers"].append({
-            "agent": player,
-            "rapid_prompt": prompt,
-        })
+        state["next_speakers"].append(
+            {
+                "agent": player,
+                "rapid_prompt": prompt,
+            }
+        )
     queue_event(
-        state, role.actor,
+        state,
+        role.actor,
         f"rapid-round queued for {','.join(targets)}: {prompt[:60]}",
     )
     result = {"queue": list(state["next_speakers"]), "prompt": prompt}
     commit(
-        paths, state, ctx, "turn.rapid-round",
-        command_params(prompt=prompt, players=targets), result,
+        paths,
+        state,
+        command_path,
+        "turn.rapid-round",
+        command_params(prompt=prompt, players=targets),
+        result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @turn.command("housekeeping-round")
@@ -1869,12 +1958,12 @@ def turn_rapid_round(
 @click.option(
     "--previous-scene",
     default="",
-    help="Scene that just closed. Used only for TURN_START context.",
+    help="Scene that just closed. Used only for injected prompt context.",
 )
 @click.option(
     "--next-scene",
     default="",
-    help="Scene being staged next. Used only for TURN_START context.",
+    help="Scene being staged next. Used only for injected prompt context.",
 )
 @click.option(
     "--next",
@@ -1899,6 +1988,27 @@ def turn_housekeeping_round(
     player turns are for notes, journals, sheet cleanup, and private requests;
     they must not introduce new in-fiction action or mid/long-term plot design.
     """
+    housekeeping_round_turn_service(
+        command_path=ctx,
+        emit_output=True,
+        players_csv=players_csv,
+        previous_scene=previous_scene,
+        next_scene=next_scene,
+        next_actor=next_actor,
+    )
+
+
+def housekeeping_round_turn_service(
+    *,
+    command_path: click.Context | str = "glass_turn_housekeeping_round",
+    emit_output: bool = False,
+    players_csv: str | None = None,
+    previous_scene: str = "",
+    next_scene: str = "",
+    next_actor: str = "tev",
+) -> dict[str, Any]:
+    """DM-only: queue one non-plot housekeeping turn for each player."""
+
     require_dm()
     if players_csv:
         targets = [p.strip() for p in players_csv.split(",") if p.strip()]
@@ -1952,10 +2062,7 @@ def turn_housekeeping_round(
     queue_event(
         state,
         role.actor,
-        (
-            f"housekeeping-round queued for {','.join(targets)}"
-            f"; next scene actor: {next_actor}"
-        ),
+        (f"housekeeping-round queued for {','.join(targets)}; next scene actor: {next_actor}"),
     )
     result = {
         "queue": list(state["next_speakers"]),
@@ -1967,7 +2074,7 @@ def turn_housekeeping_round(
     commit(
         paths,
         state,
-        ctx,
+        command_path,
         "turn.housekeeping-round",
         command_params(
             players=targets,
@@ -1976,7 +2083,9 @@ def turn_housekeeping_round(
             next=next_actor,
         ),
         result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @turn.command("restart-order")
@@ -1989,6 +2098,21 @@ def turn_restart_order(ctx: click.Context, agent_id: str) -> None:
     out of order and you want to restart from a specific PC. Round-robin
     resumes from the new agent on subsequent turns.
     """
+    restart_order_turn_service(
+        command_path=ctx,
+        emit_output=True,
+        agent_id=agent_id,
+    )
+
+
+def restart_order_turn_service(
+    *,
+    command_path: click.Context | str = "glass_turn_restart_order",
+    emit_output: bool = False,
+    agent_id: str,
+) -> dict[str, Any]:
+    """DM-only: clear pending handoff queue and redirect to one agent."""
+
     require_dm()
     if agent_id not in _HANDOFF_AGENT_IDS:
         raise GlassError(
@@ -2007,9 +2131,15 @@ def turn_restart_order(ctx: click.Context, agent_id: str) -> None:
     queue_event(state, role.actor, f"restart turn order -> {agent_id}")
     result = {"cleared": cleared, "queue": list(state["next_speakers"])}
     commit(
-        paths, state, ctx, "turn.restart-order",
-        command_params(agent_id=agent_id), result,
+        paths,
+        state,
+        command_path,
+        "turn.restart-order",
+        command_params(agent_id=agent_id),
+        result,
+        emit_output=emit_output,
     )
+    return result
 
 
 @turn.command("clear-handoff")
@@ -2017,6 +2147,16 @@ def turn_restart_order(ctx: click.Context, agent_id: str) -> None:
 def turn_clear_handoff(ctx: click.Context) -> None:
     """DM-only: wipe any pending handoff queue (rare — usually the
     orchestrator consumes entries automatically on each turn)."""
+    clear_handoff_turn_service(command_path=ctx, emit_output=True)
+
+
+def clear_handoff_turn_service(
+    *,
+    command_path: click.Context | str = "glass_turn_clear_handoff",
+    emit_output: bool = False,
+) -> dict[str, Any]:
+    """DM-only: wipe any pending handoff queue."""
+
     require_dm()
     paths = get_paths()
     campaign_id = active_campaign_id()
@@ -2024,4 +2164,13 @@ def turn_clear_handoff(ctx: click.Context) -> None:
     previous = list(state.get("next_speakers", []))
     state["next_speakers"] = []
     result = {"cleared": previous}
-    commit(paths, state, ctx, "turn.clear-handoff", {}, result)
+    commit(
+        paths,
+        state,
+        command_path,
+        "turn.clear-handoff",
+        {},
+        result,
+        emit_output=emit_output,
+    )
+    return result
