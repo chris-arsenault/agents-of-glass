@@ -1,6 +1,6 @@
 # Agents of Glass — Agent Instructions
 
-This file is for AI assistants (Claude Code, Codex, etc.) working in this repo. Mirrored at [`codex.md`](codex.md). Read both [`README.md`](README.md) and [`docs/principles/`](docs/principles/) before making non-trivial changes.
+This file is for AI assistants (Claude Code, Codex, etc.) working in this repo. Mirrored in [`AGENTS.md`](AGENTS.md). Read both [`README.md`](README.md) and [`docs/principles/`](docs/principles/) before making non-trivial changes.
 
 ## What this repo is
 

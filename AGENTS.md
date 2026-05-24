@@ -1,6 +1,6 @@
 # Agents of Glass — Agent Instructions
 
-This file is for AI assistants (Claude Code, Codex, etc.) working in this repo. Mirrored at [`codex.md`](codex.md). Read both [`README.md`](README.md) and [`docs/principles/`](docs/principles/) before making non-trivial changes.
+This file is for AI assistants (Claude Code, Codex, etc.) working in this repo. Mirrored in [`AGENTS.md`](AGENTS.md). Read both [`README.md`](README.md) and [`docs/principles/`](docs/principles/) before making non-trivial changes.
 
 ## What this repo is
 
@@ -57,7 +57,14 @@ sudo bash scripts/provision-agents.sh
 
 ## Security model
 
-Spawned agents run as dedicated Unix users: `aog-mara` for the DM and `aog-<player>` for players. The orchestrator/operator remains the operator user. The canonical `campaigns/` tree stays operator-owned; filesystem isolation is enforced by actor-owned stable projections under `.glass-cwd/` plus the Glass API boundary. See [`docs/design/architecture.md`](docs/design/architecture.md#process-isolation). Without provisioning, the orchestrator falls through to running agents as the operator for dev/CI only.
+Each turn runs in an actor-owned campaign-shaped projection containing only
+that actor's visible files. Persistent mutations go through `glass`; the
+canonical `campaigns/` tree stays operator-owned. Spawned agents run as
+dedicated Unix users as a backstop: `aog-mara` for the DM and `aog-<player>`
+for players. The orchestrator/operator remains the operator user. See
+[`docs/design/architecture.md`](docs/design/architecture.md#process-isolation).
+Without provisioning, the workspace shape remains useful, but it is not a hard
+security boundary.
 
 ## Key reading order for new agents
 
