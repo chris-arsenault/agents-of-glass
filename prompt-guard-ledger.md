@@ -138,3 +138,26 @@ creation, 1 planning, 1 scene-prep, 19 scene-play; ~88k chars public prose;
 - **No guards restored.** New observation for a future pass: 20 active turns
   stayed inside a single scene; closure/transition machinery never engaged
   within the run window.
+
+### Second verification run: `cinderline` (2026-08-20, after A1 restoration + D8 fixes)
+
+Stopped by operator at 21 active turns (future shakedowns: `--max-turns 10`).
+
+- **D8 fixed.** Three scenes in 21 active turns (~7 turns each), each landing
+  well before the 12-turn pressure threshold. Both completed scenes resolved
+  their objective clocks at 6/6 and transitioned on causal verdicts
+  (fence-runner → gate-drag → under-the-yard). Beat outcomes read as
+  question-answered closures ("Answered, partly", "Answered no, and worse",
+  "Answered at cost"); resolved set pieces stayed dead. DM turn 27 is an
+  explicit verdict-and-ledger landing.
+- **A1 restoration held.** Zero custody/provenance beats. All stakes physical
+  or relational (a creature, a hand, a collapsing yard, spent savings); the
+  one document-like object (a broker chit) is spent as a cost, never
+  contested as evidence.
+- Problem families varied across the three scenes (breach/social, chase,
+  disaster/rescue); DM chose action mode; antagonist advanced position every
+  DM turn (plant → lure → winch → repossession → personal entry → one-pull
+  ultimatum).
+- Persisting operator-call item: Tev/Kit put die math in table-voice public
+  prose (persona-modeled); A5's strict reading vs players-are-people is
+  undecided.
