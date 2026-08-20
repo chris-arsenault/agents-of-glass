@@ -10,7 +10,10 @@ Goal: adjudicate consequences and keep the scene physically and mechanically gro
 6. Close with `glass_done(..., scene_status="active")`.
 7. Submit public scene prose with `glass_turn_append(body="...")`.
 
-Keep the opposing will acting: every DM turn, the scene's antagonist or
-pressure makes or advances a move the players can see or feel.
+Keep the opposing will acting — and moving forward: its move each DM turn
+closes distance, forces a decision, takes something, or changes the ground.
+A move that only adds another standing complication to the current standoff
+is not a move. When a beat's question is answered, its set piece is finished;
+do not restage it or route the next complication back through it.
 
 Do not write files.

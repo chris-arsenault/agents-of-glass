@@ -316,6 +316,7 @@ class ContextBuilder:
             else self._creative_influence_section(state, agent)
         )
         operator_org_direction_section = self._operator_org_direction_section(state, agent)
+        scene_length_section = self._scene_length_section(state, agent)
         problem_family_section = self._recent_problem_families_section(
             state,
             agent,
@@ -545,6 +546,7 @@ class ContextBuilder:
             f"{scene_contract_nudge_section}"
             f"{housekeeping_section}"
             f"{closing_section}"
+            f"{scene_length_section}"
             f"{scene_framing_discipline_section}"
             f"{codified_handles_section}"
             f"{creative_section}"
@@ -1566,6 +1568,48 @@ class ContextBuilder:
             )
         lines.append("")
         return "\n".join(lines) + "\n"
+
+    def _scene_length_section(self, state: SessionState, agent: Agent) -> str:
+        """Escalating landing pressure for DM turns in long-running scenes.
+
+        LLM DMs escalate in place instead of landing scenes (glasswake: 19
+        turns, one scene, objective 3/6, never closed — see
+        prompt-guard-ledger.md D8). The closing countdown only exists once the
+        DM declares it, so this injects the pressure to declare it, keyed to
+        how many turns the current scene has already run.
+        """
+
+        if agent.role != "dm" or state.active_mode.mode not in _ACTIVE_PLAY_MODES:
+            return ""
+        if state.scene_closing_turns is not None:
+            return ""
+        rows = self._query_campaign_rows(
+            """
+            SELECT MAX(turn_number_in_scene)
+            FROM turns
+            WHERE campaign_id = %s AND scene_id = %s
+            """,
+            (state.campaign, state.active_mode.scene_id),
+        )
+        scene_turns = int(rows[0][0]) if rows and rows[0] and rows[0][0] else 0
+        if scene_turns >= 18:
+            return (
+                f"## Scene length — {scene_turns} turns. Land it.\n\n"
+                "This scene has run long past its question. Do not add another "
+                "complication. This turn: resolve the objective clock with a "
+                "verdict — won, lost, or traded away — declare the closing "
+                "rounds, and set up the cut to what that verdict causes. A "
+                "defeat that moves the story beats a standoff that holds it.\n\n"
+            )
+        if scene_turns >= 12:
+            return (
+                f"## Scene length — {scene_turns} turns\n\n"
+                "This scene is aging. Steer toward a landing: stop introducing "
+                "new standing complications, spend this turn forcing the "
+                "scene's central question toward an answer, and plan to "
+                "declare the closing rounds within the next round or two.\n\n"
+            )
+        return ""
 
     def _operator_org_direction_section(self, state: SessionState, agent: Agent) -> str:
         """Render the operator's org-direction seed during organization bootstrap.

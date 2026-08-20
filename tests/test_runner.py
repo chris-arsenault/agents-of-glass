@@ -786,6 +786,50 @@ class OrchestratorQueueTests(unittest.TestCase):
             f"slim prompt {len(slim)} chars vs legacy {len(legacy)} chars",
         )
 
+    def test_scene_length_pressure_renders_for_dm_on_long_scenes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+            (root / "templates" / "instructions").mkdir(parents=True)
+            (root / "templates" / "methodologies").mkdir(parents=True)
+            (config.campaigns_dir / "c1").mkdir(parents=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "dm"})
+
+            builder = orchestrator.context_builder
+            with patch.object(builder, "_query_campaign_rows", return_value=[(19,)]):
+                prompt = orchestrator.prepare_turn(state).prompt
+            self.assertIn("Scene length — 19 turns. Land it.", prompt)
+
+            state2 = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "dm"})
+            with patch.object(builder, "_query_campaign_rows", return_value=[(13,)]):
+                prompt2 = orchestrator.prepare_turn(state2).prompt
+            self.assertIn("Scene length — 13 turns", prompt2)
+            self.assertNotIn("Land it.", prompt2)
+
+            state3 = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "dm"})
+            with patch.object(builder, "_query_campaign_rows", return_value=[(5,)]):
+                prompt3 = orchestrator.prepare_turn(state3).prompt
+            self.assertNotIn("Scene length", prompt3)
+
     def test_prepare_turn_character_surface_prompts_pending_level_up(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
