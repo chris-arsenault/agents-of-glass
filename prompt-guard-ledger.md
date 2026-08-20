@@ -99,5 +99,41 @@ Operator: add rows here during the M0 pass. Known seed from operator memory:
 
 ## M4 outcomes
 
-_Filled after the fresh campaign run: per retired guard (A1, A2, A6, A18-list,
-B7), did the failure mode recur, and what was restored where._
+Fresh campaign `glasswake` (2026-08-20, 27 turns: 1 org bootstrap, 5 character
+creation, 1 planning, 1 scene-prep, 19 scene-play; ~88k chars public prose;
+2–3 min/turn vs ash-ledger's ~1.2).
+
+- **A1 (anti-legal-drama), dropped** — did not recur as defined. Paper (seals,
+  dies, boundary logs, receipts) is heavily present but as live leverage
+  between opposing wills in a physically dangerous scene, not as
+  proof-for-later scene engine. Watch item: the DM gravitates to
+  provenance/paperwork stakes in both campaigns; acceptable while an
+  antagonist is acting through it.
+- **A2 (labor-verb steering), dropped** — did not recur. Scene engine was
+  race + negotiation + rescue + cover-up reveal against a named antagonist;
+  rigging/shoring appears as competence texture, not premise.
+- **A6 (persona-file leaning), dropped/inverted** — personas now visibly drive
+  prose. Four distinct registers on the page (Tev table-voice rules talk,
+  Sumi close-third with withheld interiority, Renno first-person sensory,
+  Kit theatrical chatter + OOC asides); Mara's mug/"what do you do" tells
+  present.
+- **A18 negative crew-type list, dropped** — org gate produced an acquisitive
+  premise (salvage crew racing cordons for contested live glass). No
+  service-provider drift.
+- **A5 (roll narration), relocated** — mostly held: no mechanics inside
+  fiction narration. But Tev and Kit put die math in *table-voice* public
+  prose ("Five against seven. Regress"; OOC roll reports), which their
+  personas model ("Twelve. That clears risky."). Operator call needed:
+  either allow mechanics at the table layer (players-are-people reading) or
+  tighten the base prompts; currently reads as charm, not leakage.
+- **D1 (process telemetry)** — none in public prose.
+- **D3 (ceremony repetition)** — creation was 5 turns (vs 13); no repeated
+  token-handoff beat; relationship phase produced four interlocking secrets
+  the DM tied to one antagonist-controlled door.
+- **D5 (competence porn)** — gone. Failed rolls reshaped the board (berm
+  breach, shoring collapse, destroyed sluice gate, medic dissolved); costs
+  compounded across turns (blind pilot, one-armed medic, self-exposed
+  forger, impounded ship).
+- **No guards restored.** New observation for a future pass: 20 active turns
+  stayed inside a single scene; closure/transition machinery never engaged
+  within the run window.
