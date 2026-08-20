@@ -6,7 +6,7 @@ The orchestrator picks the next agent, builds one injected prompt, spawns the pr
 
 There is one agent runtime path:
 
-1. Build an injected prompt containing identity, mode, scene, methodology, allowed command surface, fact graph continuity, message roster, trackers, and output contract.
+1. Build an injected prompt containing identity, mode, scene, methodology, allowed command surface, continuity facts, message roster, trackers, and output contract.
 2. Stage the active turn with `glass turn begin`.
 3. Mint a short-lived signed Glass API grant for the CLI proxy. The grant is an implementation detail behind `glass`; it is not an agent interaction mode, contains no workspace paths, and writes no grant file.
 4. Spawn the provider with `cwd = templates/`, which is read-only methodology/how-to reference for agents, not campaign state.
@@ -20,7 +20,7 @@ No agent turn creates turn files, prose files, closeout files, actor workspaces,
 
 ## State Boundary
 
-Agent-readable continuity is the fact graph plus hard-state command output, accessed through `glass`. Public prose is viewer/archive material after commit. Files under `templates/` are durable reference methodology, instructions, rules, and examples.
+Agent-readable continuity is the facts table plus hard-state command output, accessed through `glass`. Public prose is viewer/archive material after commit. Files under `templates/` are durable reference methodology, instructions, rules, and examples.
 
 ## Failure Handling
 

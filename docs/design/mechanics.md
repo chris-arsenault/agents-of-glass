@@ -123,7 +123,7 @@ social-pressure exchange.
 
 Durable clocks are cross-scene pressure: a faction crackdown, an antagonist's
 plan, an arc danger clock, the party organization's standing, a thread that is
-advancing off-screen. These live in Postgres through `glass clock`; public
+advancing off-screen. These live in SQLite through `glass clock`; public
 clocks are read through `glass` command output and may be summarized into the
 injected prompt.
 
@@ -144,7 +144,7 @@ injury, exhaustion, shock, structural strain on gear, and the loss of ability
 to keep acting at full pace.
 
 Default PC baseline remains `hp.current: 8-10`, with the exact max set during
-character creation. HP is canonical hard state in Postgres and changes through
+character creation. HP is canonical hard state in SQLite and changes through
 `glass character set-hp`.
 
 For v1:
@@ -284,7 +284,7 @@ The DM can also adjust momentum out-of-band (`glass character set-momentum`) for
 
 ## Character Schema
 
-Stored in Postgres and read through `glass character ...`. Working hypothesis:
+Stored in SQLite and read through `glass character ...`. Working hypothesis:
 
 ```yaml
 character_id: karrith
@@ -359,7 +359,7 @@ momentum_out: +3
 momentum_effect: additional_good
 ```
 
-Every roll is logged in Postgres with full context. This is non-negotiable — dice events are corpus data (see [`../principles/transcripts-as-corpus.md`](../principles/transcripts-as-corpus.md)).
+Every roll is logged in SQLite with full context. This is non-negotiable — dice events are corpus data (see [`../principles/transcripts-as-corpus.md`](../principles/transcripts-as-corpus.md)).
 
 ## What's Not in the System
 

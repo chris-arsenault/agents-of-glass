@@ -56,14 +56,14 @@ Template-based prompts with context fragments injected per template. We probably
 
 ### Postgres structured-world schema (`POSTGRES_MIGRATION.md`)
 
-A generic relationship schema (`node` + `edge` tables) plus thin typed companion tables (`character`, `location`, `chronicle`, `chronicle_turn`). They're moving toward this from earlier S3-blob storage. We are not using this exact schema, but the typed-companion-table pattern is good for our hard-state Postgres.
+A generic relationship schema (`node` + `edge` tables) plus thin typed companion tables (`character`, `location`, `chronicle`, `chronicle_turn`). They're moving toward this from earlier S3-blob storage. We are not using this exact schema, but the typed-companion-table pattern informs our embedded hard-state tables.
 
 ## What We're Explicitly Not Cribbing
 
 - **The TypeScript stack.** Python is the orchestrator language. No reason for two languages.
 - **Lambda / API Gateway / WebSocket plumbing.** We're not building a service.
 - **The React client.** No human at the table; no UI.
-- **The S3-based world-state stores** (`packages/persistence`). Markdown plus Postgres replace these.
+- **The S3-based world-state stores** (`packages/persistence`). Markdown plus embedded SQLite replace these.
 - **The world schema versioning** (`worldSchema.json`, `apps/world-schema-api`). Useful for a multi-tenant product; not for our experiment.
 - **The progress emitter** (Step Functions → SQS → API Gateway). Our orchestrator is in-process.
 - **The DTO Zod layer.** We'll have our own type contracts in Python, simpler.

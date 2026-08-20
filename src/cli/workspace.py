@@ -492,7 +492,7 @@ def _arc_clocks_stub(arc_id: str) -> str:
         "generated_by: glass clock\n"
         "---\n\n"
         f"# Public Clocks - {arc_id}\n\n"
-        "Postgres is canonical. Public arc clocks will be projected here.\n\n"
+        "SQLite is canonical. Public arc clocks will be projected here.\n\n"
         "## Active\n\n_None._\n\n"
         "## Resolved\n\n_None._\n"
     )

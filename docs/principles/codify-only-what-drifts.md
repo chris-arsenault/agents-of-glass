@@ -6,7 +6,7 @@ The rule for what goes in a schema vs what stays in prose.
 
 **Codify the things agents drift on. Everything else is prose.**
 
-Codification - the `glass` CLI, Postgres tables, and the fact graph - exists as
+Codification - the `glass` CLI and embedded SQLite tables - exists as
 a *coherence mechanism*. Its job is to make sure five separate Claude
 invocations agree on the things they cannot reliably re-derive. It is not a
 turn-structure enforcer, not an intent classifier, not a play-style policy.
@@ -21,7 +21,7 @@ Drift-prone things that must stay consistent across agents:
 - **Numerical character state** — HP, momentum, attribute tiers, skill tiers. Agents lose track of numbers.
 - **Inventory lists** — what items a character has, in what quantity. Agents will quietly add or drop things.
 - **Canonical names and relationships** - places, NPCs, factions, character
-  relationships, visible objects, and other reusable facts. These go in graph
+  relationships, visible objects, and other reusable facts. These go in continuity
   facts or purpose-built state, not prose echoes.
 - **Speaker / mode / scene / turn / session labels** — the orchestrator's own state. These are not in question by anyone.
 - **Mechanical event timing** — when a roll happened, when HP changed, in what order. The audit log records these per turn.
@@ -60,7 +60,7 @@ Despite all of the above, the transcript is a richly structured artifact. The st
 - **Per-turn header** (orchestrator-supplied) — speaker, role, mode, scene, turn number, timestamp.
 - **Inline mechanical event lines** (orchestrator-inserted from the `glass` audit log) — e.g. `> pressure Patrol leader HP: advance, impact d8=5 -> 2, -2 (8/8 -> 6/8)`.
 - **Mode transition records** (orchestrator-supplied at `glass mode start` / `glass mode end`).
-- **Dice events fully recorded in Postgres** — the inline summary is for readability; the canonical record (every modifier, the seed, the outcome math) is queryable by `roll_id`.
+- **Dice events fully recorded in SQLite** — the inline summary is for readability; the canonical record (every modifier, the seed, the outcome math) is queryable by `roll_id`.
 
 The agent submits prose through `glass turn append --body`. The orchestrator
 and CLI wrap that prose in structure and commit it to the turn feed. Markdown

@@ -1,11 +1,12 @@
 # Persistence Contract
 
-Agents of Glass has three durable store families. Agents do not choose between
-them directly. They use `glass`, and `glass` writes the correct store.
+Agents of Glass has one embedded runtime store plus authored and generated
+files. Agents do not choose between them directly. They use `glass`, and
+`glass` writes the correct surface.
 
-## FalkorDB Fact Graph
+## Embedded SQLite
 
-The fact graph owns neutral continuity: relationship facts, organization facts,
+The `facts` table owns neutral continuity: relationship facts, organization facts,
 visible scene state, commitments, stable descriptors, and any arbitrary factual
 statement that future agents need without inheriting narrative embellishment.
 
@@ -23,12 +24,7 @@ glass fact set [--scope <scope>] "subject.predicate = value"
 glass done --fact "subject.predicate = value"
 ```
 
-The graph is the permanent home for arbitrary facts. Do not put this layer in
-JSON files or campaign markdown.
-
-## Postgres
-
-Postgres owns hard/queryable runtime state:
+SQLite also owns hard/queryable runtime state:
 
 - public turn rows and `turns.prose`
 - event log and command audit
@@ -38,8 +34,15 @@ Postgres owns hard/queryable runtime state:
 - mode, scene, arc, queues, and other runtime metadata
 - search chunks and embeddings
 
-Agents never connect to Postgres directly. They use purpose-built `glass`
-commands.
+It also stores reference lore and search embeddings. SQLite is sufficient here
+because one orchestrator owns mutations, the viewer is read-only, and campaign
+data is local and modest. WAL mode permits concurrent viewer reads while a turn
+commits. A server database and graph traversal engine add deployment and
+credential failure modes without providing a capability the runtime uses.
+
+Agents never open the database directly. They use purpose-built `glass`
+commands. The file defaults to `campaigns/.agents-of-glass.sqlite3`; `[storage]`
+may override the path.
 
 ## Markdown And Files
 
@@ -77,15 +80,14 @@ agent should record the neutral fact with `glass fact set` or `glass done
 Operator checkpoints are campaign-wide. A checkpoint must capture every store
 that can affect what future agents see or remember:
 
-- fact graph data
-- Postgres rows for the campaign
+- embedded rows for the campaign, including facts and lore
 - campaign files and generated exports needed for operator/debug continuity
 
 Checkpoint and restore are `aog` operator actions, not agent actions.
 
 ## Rule Of Thumb
 
-If a future agent must know it as concrete state, put it in the fact graph or a
+If a future agent must know it as concrete state, put it in continuity facts or a
 purpose-built hard-state command.
 
 If it is public narration, submit it with `glass turn append --body`.

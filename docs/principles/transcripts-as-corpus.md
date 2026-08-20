@@ -29,8 +29,8 @@ This principle has consequences that touch most of the system:
 
 **The agent emits prose. The orchestrator emits structure.** Agents don't write YAML delta blocks at the end of their turns. They write what they have to say, calling `glass` for any mechanical thing along the way. The orchestrator wraps each turn with a structured header (speaker, role, mode, scene, turn number, timestamp) and inlines mechanical event lines (rolls, HP changes) drawn from the `glass` audit log. Structure comes from the metadata around the prose, not from forcing the agent to author both.
 
-**The durable home is Postgres.** `glass turn append --body` commits the
-agent's public prose into Postgres `turns.prose`, links/inlines pending events,
+**The durable home is SQLite.** `glass turn append --body` commits the
+agent's public prose into SQLite `turns.prose`, links/inlines pending events,
 and may refresh markdown transcript exports. Viewers and narrative-weaving
 passes consume the structured turn feed, not per-agent turn folders.
 
@@ -38,7 +38,7 @@ passes consume the structured turn feed, not per-agent turn folders.
 
 **Speakers are people, not roles.** The transcript records "Tev said X," not "player_2 said X." Same for the DM. This means the people files (`mara.md`, `tev.md`, etc.) are part of the corpus — readers later need to know *who* Tev is to make sense of what Tev said.
 
-**State mutations are events, recorded by the CLI, not by the agent.** When Karrith takes 3 damage, the agent calls `glass character set-hp karrith -3`. The CLI logs the event to Postgres and the orchestrator inlines a one-line mechanical event (`> ❤️ karrith hp -3 (5 → 2)`) into the transcript at the right point. The agent doesn't repeat the mutation in a structured field at the end of their turn. Snapshots can be reconstructed from the event log; events can't be reconstructed from snapshots.
+**State mutations are events, recorded by the CLI, not by the agent.** When Karrith takes 3 damage, the agent calls `glass character set-hp karrith -3`. The CLI logs the event to SQLite and the orchestrator inlines a one-line mechanical event (`> ❤️ karrith hp -3 (5 → 2)`) into the transcript at the right point. The agent doesn't repeat the mutation in a structured field at the end of their turn. Snapshots can be reconstructed from the event log; events can't be reconstructed from snapshots.
 
 **Mode transitions are first-class records.** "Entering action at chase-through-ringglass-market" is its own transcript entry, written by the orchestrator when the DM calls `glass mode start action`. Scene `--type` carries labels like combat or chase; mode boundaries are how analysis later carves the corpus into scenes.
 
@@ -60,7 +60,7 @@ Karrith grabs the rail and starts hauling himself up, wind whipping the kite-cor
 He gets a few rungs up before the wind catches him sideways and he has to lock both arms around the rail, breathing hard.
 ```
 
-The prose section is what humans (and narrative-weaving) read. The header is the orchestrator's; the `> 🎲` line is inlined from the `glass roll` audit log. There is no trailing YAML block. The canonical structured record (full roll context, the dice, the modifiers, the outcome) lives in Postgres against the `roll_id`, where analysis can find it whenever it needs more than the inline summary.
+The prose section is what humans (and narrative-weaving) read. The header is the orchestrator's; the `> 🎲` line is inlined from the `glass roll` audit log. There is no trailing YAML block. The canonical structured record (full roll context, the dice, the modifiers, the outcome) lives in SQLite against the `roll_id`, where analysis can find it whenever it needs more than the inline summary.
 
 ## What Belongs in the Corpus and What Doesn't
 

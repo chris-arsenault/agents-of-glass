@@ -16,13 +16,13 @@ from orchestrator.config import (
     CapsConfig,
     ClaudeConfig,
     OrchestratorConfig,
+    PromptsConfig,
     config_env_value,
     provider_for_actor,
 )
 from orchestrator.context import ContextBuilder, PLAYER_SURFACE_CHARACTER
 from orchestrator.main import main as aog_main
 from orchestrator.main import _consume_review_stop
-from orchestrator.main import _ensure_fact_graph_available
 from orchestrator.main import _next_mode_after_no_active_mode
 from orchestrator.main import _recover_bootstrap_phase_after_budget_exhaustion
 from orchestrator.main import _store_operator_org_direction
@@ -40,6 +40,7 @@ from orchestrator.runner import (
 )
 from orchestrator.state import AGENTS_BY_ID, SessionState, next_agent_for, speaker_order_for
 from orchestrator.store import SessionStore
+from orchestrator.system_prompt import assemble_system_prompt, materialize_system_prompt
 
 
 def committed_turn(prose: str = "Public turn.") -> dict:
@@ -78,6 +79,10 @@ def make_config(
             model=None,
             turn_timeout_seconds=60,
             use_session_id=use_session_id,
+        ),
+        prompts=PromptsConfig(
+            dm_base=root / "templates" / "prompts" / "dm-base.md",
+            player_base=root / "templates" / "prompts" / "player-base.md",
         ),
         caps=CapsConfig(
             session_max_turns=200,
@@ -355,69 +360,6 @@ class OrchestratorQueueTests(unittest.TestCase):
 
             self.assertEqual(result.exit_code, 0, result.output)
             self.assertEqual(seen, [30])
-
-    def test_campaign_run_blocks_before_api_when_fact_graph_unavailable(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "templates").mkdir()
-            (root / "campaigns").mkdir()
-            config_path = root / "agents-of-glass.toml"
-            config_path.write_text(
-                "\n".join(
-                    [
-                        "[paths]",
-                        'templates = "templates"',
-                        'campaigns = "campaigns"',
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-
-            with (
-                patch("orchestrator.main._ensure_operator_groups_active"),
-                patch("orchestrator.main._ensure_db_migrated"),
-                patch(
-                    "orchestrator.main._ensure_fact_graph_available",
-                    side_effect=click.ClickException(
-                        "FalkorDB fact graph is required before campaign agents run."
-                    ),
-                ),
-                patch("orchestrator.main._ensure_glass_api_for_run") as api,
-                patch("orchestrator.runner._stream_subprocess") as stream,
-            ):
-                result = CliRunner().invoke(
-                    aog_main,
-                    [
-                        "--config",
-                        str(config_path),
-                        "campaign",
-                        "run",
-                        "c1",
-                    ],
-                )
-
-            self.assertNotEqual(result.exit_code, 0)
-            self.assertIn("FalkorDB fact graph is required", result.output)
-            api.assert_not_called()
-            stream.assert_not_called()
-
-    def test_fact_graph_preflight_reports_unavailable_target(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            config = make_config(root)
-            target = SimpleNamespace(describe=lambda: "falkordb://localhost:16379/agents_of_glass")
-
-            with (
-                patch("cli.config.load_config", return_value={}),
-                patch("cli.graph.load_falkor_config", return_value=target),
-                patch("cli.graph.is_available", return_value=False),
-            ):
-                with self.assertRaises(click.ClickException) as exc:
-                    _ensure_fact_graph_available(SimpleNamespace(config=config))
-
-            self.assertIn("FalkorDB fact graph is required", exc.exception.message)
-            self.assertIn("localhost:16379", exc.exception.message)
 
     def test_org_direction_is_stored_as_dm_fact_not_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -799,6 +741,50 @@ class OrchestratorQueueTests(unittest.TestCase):
             )
             self.assertNotIn("players/tev/persona.md", turn_start)
             self.assertIn("do not rely on persona", turn_start)
+
+    def test_active_system_prompt_slims_turn_prompt(self) -> None:
+        def render(root: Path, *, with_base_prompts: bool) -> str:
+            config = make_config(root)
+            templates = root / "templates"
+            (templates / "instructions").mkdir(parents=True, exist_ok=True)
+            (templates / "methodologies").mkdir(parents=True, exist_ok=True)
+            if with_base_prompts:
+                prompts_dir = templates / "prompts"
+                prompts_dir.mkdir(parents=True, exist_ok=True)
+                (prompts_dir / "dm-base.md").write_text("# DM base\n")
+                (prompts_dir / "player-base.md").write_text("# Player base\n")
+            campaign_root = config.campaigns_dir / "c1"
+            campaign_root.mkdir(parents=True, exist_ok=True)
+            state = SessionState.new(
+                campaign="c1",
+                initial_mode="scene-play",
+                initial_scene="opening",
+                initial_budget=None,
+            )
+            orchestrator = Orchestrator(config, SessionStore(config))
+            attach_runtime_mocks(orchestrator, next_speaker={"agent": "dm"})
+            return orchestrator.prepare_turn(state).prompt
+
+        with tempfile.TemporaryDirectory() as tmp:
+            legacy = render(Path(tmp), with_base_prompts=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            slim = render(Path(tmp), with_base_prompts=True)
+
+        self.assertIn("Codified handles vs in-fiction language", legacy)
+        self.assertIn("Scene framing discipline", legacy)
+        self.assertNotIn("Codified handles vs in-fiction language", slim)
+        self.assertNotIn("Scene framing discipline", slim)
+        self.assertNotIn("do not rely on persona", slim)
+        self.assertIn("are in your system prompt", slim)
+        self.assertIn("## Context boundary", slim)
+        # The per-turn tool card is load-bearing (exact call shapes) and is
+        # deliberately kept; the gate is that every ledger-relocated section is
+        # gone (asserted above) and the prompt is at least a third shorter.
+        self.assertLessEqual(
+            len(slim),
+            (len(legacy) * 2) // 3,
+            f"slim prompt {len(slim)} chars vs legacy {len(legacy)} chars",
+        )
 
     def test_prepare_turn_character_surface_prompts_pending_level_up(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1493,8 +1479,8 @@ class OrchestratorQueueTests(unittest.TestCase):
             package = orchestrator.prepare_turn(state)
 
             turn_start = package.prompt
-            self.assertIn("## Fact Graph Continuity", turn_start)
-            self.assertIn("FalkorDB facts are the agent-readable continuity store", turn_start)
+            self.assertIn("## Continuity Facts", turn_start)
+            self.assertIn("Continuity facts are the agent-readable state store", turn_start)
             self.assertIn(
                 'glass_fact_pack(audience="continuity", output_format="markdown")',
                 turn_start,
@@ -1596,7 +1582,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 'glass_scene_create(scene_id="<next-scene>", scene_type="<problem-family>", arc_id="caulden-rack")',
                 turn_start,
             )
-            self.assertIn("scene verb, active antagonist move", turn_start)
+            self.assertIn("the opposing will and its move this scene", turn_start)
             self.assertIn("3 interactable scene toys", turn_start)
             self.assertIn('glass_scene_clock_declare(clock_id="<objective-clock-id>"', turn_start)
             self.assertIn('glass_beat_start(beat_id="<beat-id>"', turn_start)
@@ -1629,7 +1615,7 @@ class OrchestratorQueueTests(unittest.TestCase):
                 'glass_scene_create(scene_id="<scene-slug>", scene_type="<problem-family>", arc_id="caulden-rack")',
                 turn_start,
             )
-            self.assertIn("scene verb, active antagonist move", turn_start)
+            self.assertIn("the opposing will and its move this scene", turn_start)
             self.assertIn("3 interactable scene toys", turn_start)
             self.assertIn('glass_scene_clock_declare(clock_id="<objective-clock-id>"', turn_start)
             self.assertIn("glass_thread_current", turn_start)
@@ -1841,13 +1827,14 @@ class OrchestratorQueueTests(unittest.TestCase):
                     {"subject_id": "organization", "predicate": "identity"},
                     {"subject_id": "organization", "predicate": "dangerous-work"},
                     {"subject_id": "organization", "predicate": "character-brief"},
+                    {"subject_id": "organization", "predicate": "want"},
                 ],
             }
 
             with (
                 patch("cli.config.load_config", return_value={}),
                 patch("cli.facts.fact_pack", return_value=fact_pack),
-                patch("cli.db.load_pg_config", return_value=object()),
+                patch("cli.db.load_storage_config", return_value=object()),
                 patch("cli.db.clock_list", return_value=[]),
                 patch("cli.db.connect") as connect,
             ):
@@ -1866,6 +1853,8 @@ class OrchestratorQueueTests(unittest.TestCase):
                 "facts": [
                     {"subject_id": "campaign", "predicate": "opening"},
                     {"subject_id": "opening", "predicate": "focus"},
+                    {"subject_id": "opening", "predicate": "antagonist"},
+                    {"subject_id": "opening", "predicate": "inaction-consequence"},
                 ],
             }
 
@@ -1891,6 +1880,8 @@ class OrchestratorQueueTests(unittest.TestCase):
                 "facts": [
                     {"subject_id": "opening-arc", "predicate": "premise"},
                     {"subject_id": "opening-arc", "predicate": "direction"},
+                    {"subject_id": "opening-arc", "predicate": "antagonist"},
+                    {"subject_id": "opening-arc", "predicate": "inaction-consequence"},
                 ],
             }
 
@@ -1942,6 +1933,8 @@ class OrchestratorQueueTests(unittest.TestCase):
                 "facts": [
                     {"subject_id": "campaign", "predicate": "opening"},
                     {"subject_id": "opening", "predicate": "focus"},
+                    {"subject_id": "opening", "predicate": "antagonist"},
+                    {"subject_id": "opening", "predicate": "inaction-consequence"},
                 ],
             }
 
@@ -2088,8 +2081,9 @@ class OrchestratorQueueTests(unittest.TestCase):
 
             with (
                 patch("cli.config.load_config", return_value={}),
-                patch("cli.db.load_pg_config", return_value=object()),
+                patch("cli.db.load_storage_config", return_value=object()),
                 patch("cli.db.character_list", return_value=characters),
+                patch("cli.facts.fact_pack", return_value={"facts": []}),
                 patch("cli.db.connect") as connect,
             ):
                 connect.return_value.__enter__.return_value = object()
@@ -2577,6 +2571,80 @@ class OrchestratorQueueTests(unittest.TestCase):
             orchestrator._advance_action_order("c1", expected)
 
             orchestrator._advance_action_order_in_postgres.assert_called_once_with("c1", expected)
+
+
+class SystemPromptAssemblyTests(unittest.TestCase):
+    def _write_inputs(self, root: Path) -> None:
+        prompts_dir = root / "templates" / "prompts"
+        prompts_dir.mkdir(parents=True)
+        (prompts_dir / "dm-base.md").write_text("# DM base\n\nRun the table.\n")
+        (prompts_dir / "player-base.md").write_text("# Player base\n\nPlay the person.\n")
+        tev_dir = root / "templates" / "players" / "tev"
+        tev_dir.mkdir(parents=True)
+        (tev_dir / "persona.md").write_text(
+            "---\nname: Tev\nrole: player\nnarrative_style: rules-first-actor\n---\n\n"
+            "# Tev\n\nApprentice electrician.\n"
+        )
+        styles_dir = root / "templates" / "styles"
+        styles_dir.mkdir(parents=True)
+        (styles_dir / "rules-first-actor.md").write_text(
+            "---\ntitle: Rules-First Actor\n---\n\nShort declarative sentences.\n"
+        )
+
+    def test_assembles_base_persona_and_style_without_frontmatter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_inputs(root)
+            config = make_config(root)
+
+            content = assemble_system_prompt(config, AGENTS_BY_ID["tev"])
+
+            self.assertIsNotNone(content)
+            self.assertIn("Player base", content)
+            self.assertIn("Apprentice electrician.", content)
+            self.assertIn("Short declarative sentences.", content)
+            self.assertIn("Who you are at the table", content)
+            self.assertIn("How your prose moves", content)
+            self.assertNotIn("narrative_style:", content)
+            self.assertNotIn("title: Rules-First Actor", content)
+
+    def test_missing_base_disables_system_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = make_config(root)
+
+            self.assertIsNone(assemble_system_prompt(config, AGENTS_BY_ID["tev"]))
+            self.assertIsNone(
+                materialize_system_prompt(config, campaign_id="c1", agent=AGENTS_BY_ID["tev"])
+            )
+
+    def test_missing_persona_degrades_to_base_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_inputs(root)
+            config = make_config(root)
+
+            content = assemble_system_prompt(config, AGENTS_BY_ID["kit"])
+
+            self.assertIsNotNone(content)
+            self.assertIn("Player base", content)
+            self.assertNotIn("Who you are at the table", content)
+
+    def test_materialize_writes_outside_templates_and_campaign_trees(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._write_inputs(root)
+            config = make_config(root)
+
+            path = materialize_system_prompt(
+                config, campaign_id="c1", agent=AGENTS_BY_ID["tev"]
+            )
+
+            self.assertEqual(
+                path,
+                config.campaigns_dir / ".system-prompts" / "c1" / "tev.md",
+            )
+            self.assertIn("Apprentice electrician.", path.read_text())
 
 
 if __name__ == "__main__":

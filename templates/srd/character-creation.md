@@ -51,7 +51,7 @@ just repeat the archetype unless that overlap is the point.
 
 ## Canonical Identity
 
-Character creation records these canonical fields in Postgres:
+Character creation records these canonical fields through `glass`:
 
 - `species` / `race` — use the setting's species terminology.
 - `culture` — naming, social habits, and upbringing; independent of species.

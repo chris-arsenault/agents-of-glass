@@ -17,8 +17,7 @@ only through the `glass` CLI.
         v
      glass CLI
         |
-        +--> FalkorDB fact graph  (neutral continuity facts)
-        +--> Postgres             (turns, events, characters, rolls, messages)
+        +--> embedded SQLite      (facts, lore, turns, hard state, search)
         +--> operator files       (templates, exports, durable reference)
 ```
 
@@ -30,6 +29,12 @@ an alternate file, API, database, or stdout state path.
 
 There is one agent runtime path:
 
+0. For claude-provider actors, the orchestrator assembles a per-actor system
+   prompt (role base document + persona + narrative style, see
+   [`prompt-writing.md`](prompt-writing.md)) and passes it via
+   `--system-prompt-file`, replacing the default coding-agent system prompt.
+   Identity and craft live there; the injected prompt then carries only the
+   current turn.
 1. The orchestrator builds an injected prompt containing identity, mode, scene,
    selected methodology, allowed commands, current facts, hard-state cues,
    messages, and the output contract.
@@ -69,9 +74,10 @@ channel by itself.
 
 ## Data Stores
 
-### FalkorDB Fact Graph
+### Embedded SQLite
 
-The fact graph is the agent-readable continuity layer. It stores neutral facts
+SQLite is the durable runtime store. Its `facts` table is the agent-readable
+continuity layer and stores neutral statements
 such as organization definition, scene objectives, visible world state,
 character relationships, current commitments, and other durable statements that
 future agents must rely on without inheriting narrative phrasing.
@@ -90,9 +96,7 @@ glass fact set [--scope <scope>] "subject.predicate = value"
 glass done --fact "subject.predicate = value"
 ```
 
-### Postgres
-
-Postgres owns hard and queryable state:
+The same local file owns hard and queryable state:
 
 - turn rows and public prose
 - events and audit records
@@ -102,8 +106,10 @@ Postgres owns hard and queryable state:
 - runtime state such as mode, active arc, active scene, queues, and turn number
 - search chunks and embeddings
 
-Agents never connect to Postgres directly. They use purpose-built `glass`
-commands.
+Agents never open SQLite directly. They use purpose-built `glass` commands.
+SQLite provides transactions, WAL-backed concurrent viewer reads, and local
+vector scoring without a network service or credentials. The data volume and
+single-host writer model do not require a server database or graph engine.
 
 ### Operator Files
 
@@ -115,7 +121,7 @@ reference, exports, and authored material outside live agent turns:
 - `campaigns/<id>/` may contain operator/debug files, exports, and curated
   prose reference.
 - transcript markdown exports are generated readability artifacts; the durable
-  public corpus is Postgres `turns`.
+  public corpus is SQLite `turns`.
 
 Files are not the live agent state transport.
 
@@ -138,7 +144,7 @@ schemas, or accept file artifacts as turn output.
 
 `glass` is the contract. It provides:
 
-- fact graph reads and writes: `glass fact pack`, `glass fact set`
+- continuity fact reads and writes: `glass fact pack`, `glass fact set`
 - turn boundaries: `glass turn begin`, `glass done`, `glass turn append --body`
 - combined status: `glass check`
 - character state: `glass character ...`

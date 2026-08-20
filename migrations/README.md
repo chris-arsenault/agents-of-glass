@@ -1,6 +1,6 @@
-# Migrations
+# Legacy Postgres Migrations
 
-SQL files applied by `glass db migrate`. Files run in lexicographic order. Each migration is recorded in the `_migrations` table (id = filename, checksum = sha256 of file contents) so re-running is idempotent.
+These files record the pre-SQLite schema history and are no longer applied at runtime. The current embedded schema is [`embedded.sql`](embedded.sql), which `glass db migrate` applies idempotently.
 
 Conventions:
 
@@ -36,17 +36,18 @@ Conventions:
 | `021_signature_moves.sql` | typed signature moves on characters |
 | `022_scene_beat_failure_ticks.sql` | failed-roll pressure on active scene beats |
 
-## Running
+## Embedded storage
 
 ```
 glass db migrate                 # apply pending migrations
 glass db status                  # list applied + pending + checksum mismatches
 ```
 
-Connection details come from `[postgres]` in `agents-of-glass.toml` (or `agents-of-glass.local.toml`). Password from the env: `AOG_PG_PASSWORD` (preferred) or `PGPASSWORD` (libpq default). Other libpq env vars (`PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`) are read as fallbacks.
+The database defaults to `campaigns/.agents-of-glass.sqlite3`. Override its location only when needed:
 
-In the `with-cred` workflow on this machine:
+```toml
+[storage]
+path = "campaigns/.agents-of-glass.sqlite3"
+```
 
-```
-with-cred -- glass db migrate
-```
+No database credentials or external service are required.

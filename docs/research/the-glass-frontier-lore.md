@@ -28,7 +28,7 @@ The world is a shattered ring world (the rings broke 130 years ago), a planet be
 - **The review tooling** (`review.py`, the React review app, voice-review prompts). Useful for human authors; we have agents.
 - **The full lint suite.** We'll want lints, but theirs are tuned for human-written prose; ours will need to check agent-emitted notes for different things.
 - **The narrative-role distinction (`viewpoint` / `titan`).** Useful for hand-authored fiction; not yet clear if it's useful for agentic generation.
-- **Their structured mirror and snapshot/restore workflow.** Our current live persistence is fact graph plus Postgres/search, with markdown as reference/export.
+- **Their structured mirror and snapshot/restore workflow.** Our current live persistence is embedded SQLite, with markdown as reference/export.
 
 ## What We Read From It at Runtime
 

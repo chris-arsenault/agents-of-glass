@@ -1,6 +1,6 @@
 """Runtime state IO + audit + events.
 
-One runtime state record per campaign. Postgres is the required canonical
+One runtime state record per campaign. Embedded SQLite is the canonical
 store; `state.json` is not a supported runtime cache. Layout under
 campaigns/<id>/:
 
@@ -25,7 +25,7 @@ Schema (v5):
   note_intake:          list — DM intake queue
   entities:             dict — local entity metadata cache
   threads:              dict — DM thread tracker
-  turns:                list — structured turn rows mirrored from Postgres
+  turns:                list — structured turn rows loaded from SQLite
   next_speakers:        list[{agent, rapid_prompt?, housekeeping?, scene_transition?}] — handoff queue
   action_order:         dict | None — persistent initiative order for action scenes
   scene_trackers:       dict — scene-local generic counters/clocks
@@ -35,7 +35,6 @@ Schema (v5):
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -188,13 +187,12 @@ def normalize_state(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_state(paths: Paths, campaign_id: str) -> dict[str, Any]:
-    _require_postgres_runtime()
-    state = _load_state_from_postgres(campaign_id)
+    state = _load_state_from_storage(campaign_id)
     if state is not None:
         return normalize_state(state)
     raise GlassError(
         agent_instruction(
-            f"no runtime state for campaign {campaign_id!r} in Postgres",
+            f"no runtime state for campaign {campaign_id!r} in embedded storage",
             "Start or initialize the campaign runtime before running turn commands.",
             f"Use `aog campaign run {campaign_id}` for normal play, or run the campaign setup/migration commands for maintenance.",
         )
@@ -202,8 +200,7 @@ def load_state(paths: Paths, campaign_id: str) -> dict[str, Any]:
 
 
 def state_exists(paths: Paths, campaign_id: str) -> bool:
-    _require_postgres_runtime()
-    return _load_state_from_postgres(campaign_id) is not None
+    return _load_state_from_storage(campaign_id) is not None
 
 
 def initialize_state(paths: Paths, state: dict[str, Any]) -> None:
@@ -214,8 +211,7 @@ def initialize_state(paths: Paths, state: dict[str, Any]) -> None:
     """
     state = normalize_state(state)
     state["updated_at"] = now_iso()
-    _require_postgres_runtime()
-    _save_state_to_postgres(state)
+    _save_state_to_storage(state)
     _remove_stale_runtime_json(paths, state["campaign"])
 
 
@@ -226,31 +222,15 @@ def update_state_fields(
     *,
     state: dict[str, Any] | None = None,
 ) -> None:
-    """Write selected runtime-state fields directly to Postgres.
+    """Write selected runtime-state fields directly to embedded storage.
 
     When a caller already holds a state dict, keep it in sync so subsequent
     result rendering and audit code sees the same values.
     """
     if state is not None:
         state.update(fields)
-    _require_postgres_runtime()
-    _update_state_fields_in_postgres(campaign_id, fields)
+    _update_state_fields_in_storage(campaign_id, fields)
     _remove_stale_runtime_json(paths, campaign_id)
-
-
-def _postgres_runtime_enabled() -> bool:
-    return _db.postgres_configured(load_config())
-
-
-def _require_postgres_runtime() -> None:
-    if not _postgres_runtime_enabled():
-        raise GlassError(
-            agent_instruction(
-                "Postgres runtime is required",
-                "Configure `[postgres]` in `agents-of-glass.toml` or set libpq environment variables.",
-                "Then run `glass db migrate` before using runtime-backed CLI commands.",
-            )
-        )
 
 
 def _remove_stale_runtime_json(paths: Paths, campaign_id: str) -> None:
@@ -262,56 +242,56 @@ def _remove_stale_runtime_json(paths: Paths, campaign_id: str) -> None:
             path.unlink()
 
 
-def _load_state_from_postgres(campaign_id: str) -> dict[str, Any] | None:
+def _load_state_from_storage(campaign_id: str) -> dict[str, Any] | None:
     config = load_config()
-    pg_config = _db.load_pg_config(config)
+    storage_config = _db.load_storage_config(config)
     try:
-        with _db.connect(pg_config) as conn:
+        with _db.connect(storage_config) as conn:
             return _db.runtime_state_get(conn, campaign_id)
     except GlassError:
         raise
     except Exception as exc:
         raise GlassError(
             agent_instruction(
-                f"postgres runtime state load failed ({pg_config.describe()})",
-                "Run `glass db migrate`, then retry the command.",
-                f"Database detail: {exc}",
+                f"embedded runtime state load failed ({storage_config.describe()})",
+                "Check that the storage directory is writable, then retry the command.",
+                f"Storage detail: {exc}",
             )
         ) from exc
 
 
-def _save_state_to_postgres(state: dict[str, Any]) -> None:
+def _save_state_to_storage(state: dict[str, Any]) -> None:
     config = load_config()
-    pg_config = _db.load_pg_config(config)
+    storage_config = _db.load_storage_config(config)
     try:
-        with _db.connect(pg_config) as conn:
+        with _db.connect(storage_config) as conn:
             _db.runtime_state_upsert(conn, state)
     except GlassError:
         raise
     except Exception as exc:
         raise GlassError(
             agent_instruction(
-                f"postgres runtime state save failed ({pg_config.describe()})",
-                "Run `glass db migrate`, then retry the command.",
-                f"Database detail: {exc}",
+                f"embedded runtime state save failed ({storage_config.describe()})",
+                "Check that the storage directory is writable, then retry the command.",
+                f"Storage detail: {exc}",
             )
         ) from exc
 
 
-def _update_state_fields_in_postgres(campaign_id: str, fields: dict[str, Any]) -> None:
+def _update_state_fields_in_storage(campaign_id: str, fields: dict[str, Any]) -> None:
     config = load_config()
-    pg_config = _db.load_pg_config(config)
+    storage_config = _db.load_storage_config(config)
     try:
-        with _db.connect(pg_config) as conn:
+        with _db.connect(storage_config) as conn:
             _db.runtime_state_update_fields(conn, campaign_id, fields)
     except GlassError:
         raise
     except Exception as exc:
         raise GlassError(
             agent_instruction(
-                f"postgres runtime state field update failed ({pg_config.describe()})",
-                "Run `glass db migrate`, then retry the command.",
-                f"Database detail: {exc}",
+                f"embedded runtime state field update failed ({storage_config.describe()})",
+                "Check that the storage directory is writable, then retry the command.",
+                f"Storage detail: {exc}",
             )
         ) from exc
 

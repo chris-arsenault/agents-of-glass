@@ -10,7 +10,7 @@ A Python orchestrator + CLI that runs a closed-loop, fully agentic TTRPG simulat
 
 Four principles govern every decision. **Read these first:**
 
-1. **[Codify only what drifts](docs/principles/codify-only-what-drifts.md)** — codification (`glass` CLI, Postgres, and indexed authored files) is for numbers, inventory, names, dice. Everything else is prose. If you find yourself adding YAML schema fields to capture agent intent, stop.
+1. **[Codify only what drifts](docs/principles/codify-only-what-drifts.md)** — codification (`glass` CLI, embedded SQLite, and indexed authored files) is for numbers, inventory, names, dice. Everything else is prose. If you find yourself adding YAML schema fields to capture agent intent, stop.
 2. **[Transcripts are the corpus](docs/principles/transcripts-as-corpus.md)** — the artifact is the product. Structure comes from the orchestrator and CLI; the agent emits prose.
 3. **[Resist generic drift](docs/principles/resist-generic-drift.md)** — LLMs default to generic fantasy. Multi-turn loops drift toward "Thorgrim the Bold" / "the tavern" / "ancient evil stirs" unless actively resisted. Specificity is the defense.
 4. **[Goals and motivation](docs/principles/goals-and-motivation.md)** — what we're researching and why this exists.
@@ -77,7 +77,7 @@ security boundary.
 
 ## Environment
 
-- **Postgres** is on the LAN; connection via `agents-of-glass.toml`.
+- **Runtime storage** is embedded SQLite. It defaults to `campaigns/.agents-of-glass.sqlite3`; `[storage].path` can override that location.
 - **Secrets** are injected by the operator's external secrets manager (`with-cred -- <command>` in this PTY). Never write API keys to `.env` files or commit them.
 - **Lore repo** at `../the-glass-frontier-lore` is read-only at session time.
 

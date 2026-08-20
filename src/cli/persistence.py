@@ -1,7 +1,7 @@
 """Shared persistence facades for CLI mutations.
 
 Durable markdown is the agent-readable surface, but a successful mutation may
-also need to update Postgres search chunks and the runtime entity cache. Keeping
+also need to update embedded search chunks and the runtime entity cache. Keeping
 those side effects behind one facade prevents command implementations from
 updating only the filesystem and forgetting the other persistence layers.
 """
@@ -15,9 +15,8 @@ from typing import Any
 from . import db as _db
 from . import embeddings as _embeddings
 from .campaign import pg_connection
-from .config import Paths, load_config
+from .config import Paths
 from .entities import markdown_title, parse_frontmatter, upsert_entity_from_path
-from .errors import GlassError, agent_instruction
 from .ids import slugify
 from .paths_resolve import display_path
 
@@ -85,14 +84,6 @@ class CampaignPersistence:
         )
 
     def _index_markdown(self, path: Path, text: str) -> dict[str, Any]:
-        if not _db.postgres_configured(load_config()):
-            raise GlassError(
-                agent_instruction(
-                    "Postgres search index is required",
-                    "Configure `[postgres]` in `agents-of-glass.toml` or set libpq environment variables.",
-                    "Then run `glass db migrate` before syncing durable markdown.",
-                )
-            )
         try:
             rel = path.resolve().relative_to(self.campaign_root.resolve())
         except ValueError:

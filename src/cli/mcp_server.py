@@ -701,7 +701,7 @@ _MCP_RESPONSE_INSTRUCTIONS: dict[str, list[str]] = {
         "Use the returned schema to call the typed MCP tool directly; do not shell out or invent alternate parameters.",
     ],
     "glass_check": [
-        "Read unread messages, hard_requirements, scene_contract, clocks, beats, character hard state, and pending_level_ups before choosing the next tool.",
+        "Read unread messages, hard_requirements, compact facts, scene_contract, character hard state, and pending_level_ups before choosing the next tool.",
     ],
     "glass_fact_pack": [
         "Use these facts as neutral continuity only. Low/minor facts are omitted from fact-pack output; if important playable state is missing or wrong, commit it as high or medium with glass_state_update rather than relying on prose.",
@@ -970,14 +970,19 @@ def _dynamic_response_instructions(tool_name: str, result: Any | None) -> list[s
             if isinstance(scene_contract, dict)
             else ""
         )
-        prefix = [landing_guidance] if landing_guidance else []
+        action_guidance = (
+            str(scene_contract.get("action_guidance") or "").strip()
+            if isinstance(scene_contract, dict)
+            else ""
+        )
+        prefix = [item for item in (landing_guidance, action_guidance) if item]
         if hard_requirements:
             return prefix + [
                 "Satisfy hard_requirements with the relevant MCP tools before glass_done.",
-                "Use scene_contract active beats/clocks as the board for the next action; do not proceed from prose memory alone.",
+                "Use scene_contract.next_actions as the current board; do not proceed from prose memory alone.",
             ]
         return prefix + [
-            "Check is clean. Take the intended action using the relevant MCP tool, or call glass_done if no state change remains.",
+            "Check is clean. Choose from scene_contract.next_actions when present, then use the relevant MCP tool or call glass_done if no state change remains.",
         ]
     if tool_name == "glass_state_update":
         instructions = list(_MCP_RESPONSE_INSTRUCTIONS["glass_state_update"])
@@ -1084,7 +1089,7 @@ def glass_help(command: str = "", subcommand: str = "") -> GlassResult:
 
 @mcp.tool()
 def glass_check(no_mark: bool = False) -> GlassResult:
-    """Run turn-start check: messages, fact graph, scene contract, clocks, and upkeep."""
+    """Run compact turn-start check: messages, facts, scene contract, hard state, and upkeep."""
 
     return _run_service(
         check_service,
@@ -1103,7 +1108,7 @@ def glass_fact_pack(
     actor: str = "",
     limit: int = 80,
 ) -> GlassResult:
-    """Read scoped facts from FalkorDB for the required audience."""
+    """Read scoped continuity facts for the required audience."""
 
     formatter = render_fact_pack_markdown if output_format == "markdown" else to_yaml
     return _run_service(

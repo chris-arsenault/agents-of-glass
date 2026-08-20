@@ -28,7 +28,7 @@ than a character or player agent can see.
 | Methodology | `methodologies/` | executing agent | Binding ordered workflow for a phase or generated turn type |
 | SRD | `srd/` | player/DM | Public TTRPG rules and mechanics |
 | How-to / examples | `how-to/` | player/DM | Non-binding craft advice and seeds |
-| Reference lore | FalkorDB `LoreEntry` | DM/player | Prose source material, not continuity |
+| Reference lore | SQLite `lore_entries` | DM/player | Prose source material, not continuity |
 | Design docs | `docs/design/` | coder | Implementation rationale and architecture |
 
 ## Authority Order
@@ -79,6 +79,6 @@ When adding or moving text, ask who the sentence is commanding:
 - If it explains a game rule a human table could read, put it in `srd/`.
 - If it gives taste, examples, or creative options, put it in `how-to/`.
 - If a character could know it in-world as durable campaign reality, put it in
-  the fact graph. If it is only source prose, put it in DB-backed reference
+  continuity facts. If it is only source prose, put it in embedded reference
   lore.
 - If it explains why the code is shaped this way, put it in `docs/design/`.

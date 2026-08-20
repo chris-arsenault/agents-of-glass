@@ -1,101 +1,61 @@
 # Prompt Writing Guidance
 
-Runtime prompts should make agents inhabit the correct table role. Do not make
-them reason from a detached file inventory when the prompt can state the active
-identity directly.
+Runtime prompting is a two-layer stack. The **system prompt** carries who the
+agent is and how they write; the **injected turn message** carries the current
+situation and this turn's job. Do not mix the layers: identity and craft do not
+belong in the turn message, and turn state does not belong in the system prompt.
 
-## Persona Stack
+## The system prompt layer
 
-Agents of Glass has four layers that must stay distinct:
+Claude-provider actors run with a fully custom system prompt that replaces the
+default coding-agent prompt (`claude -p --system-prompt-file`). It is assembled
+per actor by `src/orchestrator/system_prompt.py` from three authored inputs:
 
-- **Executing agent:** the subprocess invoked for one turn. It follows the
-  injected prompt, `instructions/`, and `methodologies/`.
-- **Table person:** Mara, Tev, Sumi, Renno, or Kit. This is the player or DM
-  personality the model should embody at the table.
-- **Character:** the in-fiction PC a player controls. The character has limited
-  knowledge and acts inside the world.
-- **World state:** table, scene, transcript, lore, rolls, clocks, and
-  Postgres-backed hard state.
+- `templates/prompts/{dm,player}-base.md` — role identity frame, creative
+  direction, craft principles, fairness rules, boundaries, and the durable
+  guards relocated from the old turn prompt (see `prompt-guard-ledger.md`).
+- The actor's persona (`templates/dm/persona.md`,
+  `templates/players/<id>/persona.md`) — inlined wholesale under "Who you are
+  at the table". Personas are embodied, never referenced as files.
+- The persona's assigned narrative style (`templates/styles/<style>.md`, via
+  `narrative_style:` frontmatter) — inlined under "How your prose moves".
 
-The prompt should tell the model which layer is active before listing files.
+Codex-provider actors do not yet get a system prompt override; the turn prompt
+renders its legacy identity and guard sections for them (see
+`docs/backlog.md` "Codex System-Prompt Support").
 
-## Required Runtime Pattern
+## The turn message layer
 
-Start every full injected prompt with an identity paragraph.
+`ContextBuilder._render_turn_start` builds one injected message per turn. When
+the actor has an active system prompt it contains only: a one-line identity
+pointer, mode/scene/turn-type header, turn-kind sections (rapid, action order,
+closing countdown, housekeeping), output contract, message-bus check, creative
+influence, fact pack, reference lore, workspace pointers, and the per-turn-type
+tool card. The tool card keeps exact call shapes on purpose — it is what
+prevents malformed tool calls.
 
-For the DM:
+## Persona stack
 
-```markdown
-You are Mara, the DM for a Glass Frontier TTRPG campaign. Run the table as this
-person: use the voice, tastes, pacing, and table habits in `dm/persona.md`. You
-keep your attention on the table, the scene, and the players' choices.
-```
+Four layers stay distinct:
 
-For a player:
+- **Executing agent:** the subprocess invoked for one turn. Follows the system
+  prompt, the injected turn message, and the active methodology.
+- **Table person:** Mara, Tev, Sumi, Renno, or Kit — carried by the system
+  prompt (persona + style inlined).
+- **Character:** the in-fiction PC, known through continuity facts and
+  hard-state MCP tool output.
+- **World state:** facts, rolls, clocks, messages, scene state behind `glass_*`
+  tools.
 
-```markdown
-You are Tev, a player in a Glass Frontier TTRPG session. Act as this player at
-the table, using the personality, voice, tastes, and habits in
-  `players/tev/persona.md`. You are playing the character summarized by current
-  `glass` character state. Make choices as the player, and when you speak or act in
-fiction, embody only what the character knows and can do.
-```
+## Wording rules
 
-Then list the mode, scene, output contract, message bus, current facts, recent
-turn cues, methodology, and allowed `glass` commands.
-
-## Wording Rules
-
-- Use "You are..." for the active table person.
-- Use "You are playing..." for the player-to-character bridge.
-- Use "Run the table as..." for the DM-to-table bridge.
-- Prefer "use the personality/voice/tastes/habits in..." over "here is a
-  persona file."
-- Keep persona language subordinate to rules, table state, rolls, and output
-  contract.
+- The system prompt says "You are..." and speaks in the second person about the
+  agent's own tastes and craft; it never describes the persona as a document.
+- The turn message names the active table identity in one line and defers to
+  the system prompt for everything durable.
+- No file-path references to persona or style files anywhere an agent reads:
+  contents are inlined, paths are build inputs.
 - Put operator, inspection, shakedown, evaluation, and implementation language
-  only in operator/coder-facing docs.
-- If a method is a bootstrap or validation tool for the human operator, phrase
-  the runtime job in table terms: first incident, first mission, time jump,
-  party consequence, scene wrap.
-
-## Bad And Better
-
-Bad:
-
-```markdown
-Your persona is at `players/tev/persona.md`.
-```
-
-Better:
-
-```markdown
-You are Tev, a player in a Glass Frontier TTRPG session. Use
-`players/tev/persona.md` as your personality, voice, table habits, and tastes.
-```
-
-Bad:
-
-```markdown
-Run a short inspectable shakedown so the operator can decide whether to keep the
-campaign.
-```
-
-Better:
-
-```markdown
-Run a short first incident: one normal scene, one action scene, then a time jump
-into the main campaign.
-```
-
-## Proposed Follow-Up Pass
-
-1. Audit injected prompt output from one DM and one player turn after bootstrap.
-2. Replace remaining runtime-facing "see file" language with embodied identity
-   language where it appears in methodologies or instructions.
-3. Keep design docs explicit about operator/coder intent, but prevent those
-   phrases from being copied into `templates/methodologies/`, `templates/srd/`,
-   `templates/how-to/`, or generated turn prompts.
-4. Add a small prompt lint check for runtime templates that flags
-   `operator`, `inspection`, `shakedown`, and `persona file` unless the file is
-   documented as coder/operator-facing.
+  only in operator/coder-facing docs. Runtime prompts express the in-table job.
+- Guard text is governed by `prompt-guard-ledger.md`: guards are regression
+  fixes; move or remove them only with a ledger disposition.

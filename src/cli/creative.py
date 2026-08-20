@@ -2,7 +2,7 @@
 
 These are intentionally light. Verse phrases are not persisted; they are
 deterministic per turn so rerenders are stable. Tarot influences are persisted
-by the caller in Postgres and exposed through `glass tarot`.
+by the caller in SQLite and exposed through `glass tarot`.
 """
 
 from __future__ import annotations

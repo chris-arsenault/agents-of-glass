@@ -21,7 +21,7 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 - **One DM agent** (Mara) and **four player agents** (Tev, Sumi, Renno, Kit). Each is a fictional person with a name, voice, likes, dislikes, playstyle. They are *not* archetypes.
 - Each agent is its own `claude -p` invocation. The orchestrator is a dumb Python loop that owns turn order, mode state, which agent runs next, and per-actor Claude Code session ids.
 - The agents interact with the campaign through one surface: the `glass` CLI. They do not write files, call databases, call local APIs directly, or use stdout as state.
-- Public turn prose is committed with `glass turn append --body`. Neutral continuity lives in the fact graph, and hard/queryable state - turns, events, HP, inventory, dice, momentum, search - lives in Postgres.
+- Public turn prose is committed with `glass turn append --body`. Neutral continuity and hard/queryable state such as turns, events, HP, inventory, dice, momentum, and search live in one embedded SQLite store.
 - The lore comes from `the-glass-frontier-lore`; the game-design pieces are cribbed from `the-glass-frontier`. Neither repo's code is being ported.
 
 ## What's Here
@@ -41,7 +41,40 @@ We don't know the answers. The project is set up to find out. See [docs/principl
 - [CLAUDE.md](CLAUDE.md) / [codex.md](codex.md) — agent instructions for AI assistants working in this repo.
 - [agents-of-glass.toml.example](agents-of-glass.toml.example) — config template; copy to `agents-of-glass.toml`.
 
+## Run It Locally
+
+Python runtime and tests:
+
+```bash
+uv sync --frozen --extra dev
+uv run glass db status
+uv run pytest -q
+```
+
+Web viewer:
+
+```bash
+cd frontend && pnpm install --frozen-lockfile && cd ..
+uv run aog web start
+```
+
+Open `http://127.0.0.1:26000`. The viewer API runs on port 26002. No database
+service or database credentials are required; the store defaults to
+`campaigns/.agents-of-glass.sqlite3`.
+
+To exercise campaign setup without invoking a provider, run:
+
+```bash
+uv run aog campaign run <campaign-id> --dry-run
+```
+
+Live play uses the same command without `--dry-run` and requires the configured
+Claude or Codex provider executable. Run `sudo bash scripts/provision-agents.sh`
+once if dedicated Unix-user isolation is required; without it, the orchestrator
+can run under the operator account but does not provide that hard isolation.
+
 ## Status
 
-Active prototype. The orchestrator, CLI, persistence, and local web UI exist
-and are being exercised against `campaigns/test-7`.
+Active prototype. The orchestrator, CLI, embedded persistence, and local web UI
+run together; live play still requires a configured provider executable and its
+normal authentication.

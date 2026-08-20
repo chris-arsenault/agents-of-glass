@@ -187,7 +187,9 @@ def status_webui(
 ) -> WebuiDaemonInfo:
     data = _read_pid_file()
     pid = _int_or_none(data.get("pid")) if data else None
-    if _health(url):
+    frontend_healthy = _health(url)
+    api_healthy = _web_api_health(web_api_url)
+    if frontend_healthy and api_healthy:
         return _info(
             running=True,
             pid=pid if pid and _pid_exists(pid) else _frontend_pid(repo_root, url),
@@ -195,12 +197,18 @@ def status_webui(
             api_url=web_api_url,
             message="healthy",
         )
+    if frontend_healthy:
+        message = "web UI is healthy but its API is unavailable"
+    elif api_healthy:
+        message = "web API is healthy but the UI is not running"
+    else:
+        message = "not running"
     return _info(
         running=False,
         pid=pid,
         url=url,
         api_url=web_api_url,
-        message="not running",
+        message=message,
     )
 
 
@@ -267,8 +275,22 @@ def _cmdline_uses_port(cmdline: list[str], port: int) -> bool:
 def _health(url: str) -> bool:
     try:
         with urllib.request.urlopen(url, timeout=1) as response:
-            return 200 <= response.status < 500
+            if response.status != 200:
+                return False
+            body = response.read(131072).decode("utf-8", errors="replace")
+            return "<title>Agents of Glass" in body
     except (OSError, urllib.error.URLError):
+        return False
+
+
+def _web_api_health(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url.rstrip("/") + "/v1/health", timeout=1) as response:
+            if response.status != 200:
+                return False
+            payload = json.loads(response.read().decode("utf-8"))
+            return isinstance(payload, dict) and payload.get("status") == "ok"
+    except (OSError, urllib.error.URLError, json.JSONDecodeError):
         return False
 
 

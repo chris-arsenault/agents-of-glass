@@ -19,7 +19,7 @@ from ..yaml_io import emit
 
 @click.group()
 def lore() -> None:
-    """Reference lore stored in FalkorDB, not campaign files."""
+    """Reference lore stored outside campaign files."""
 
 
 @lore.command("put")
@@ -54,7 +54,7 @@ def lore_put(
     body: str | None,
     body_stdin: bool,
 ) -> None:
-    """Create or update a lore prose entry in FalkorDB.
+    """Create or update a lore prose entry in embedded storage.
 
     This does not create campaign files. If the entry becomes campaign reality,
     commit the usable portion with `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])`.
@@ -113,7 +113,7 @@ def lore_ingest(
     """Load markdown prose into the DB reference store.
 
     This is an operator/DM ingestion path. It reads existing reference files and
-    writes FalkorDB lore entries; it never copies them into the campaign.
+    writes embedded lore entries; it never copies them into the campaign.
     """
 
     require_dm()

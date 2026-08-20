@@ -524,7 +524,7 @@ def activate_arc_service(
         "Disposition for an active arc-scoped clock at arc close: "
         "`<clock-id>=<reason>`. Use when the pressure continues into "
         "subsequent arcs or campaign play. The clock stays active in "
-        "Postgres; re-anchor it later with `glass clock set` if needed."
+        "embedded storage; re-anchor it later with `glass clock set` if needed."
     ),
 )
 @click.option(

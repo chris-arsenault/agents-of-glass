@@ -21,6 +21,7 @@ from cli.api_server import ensure_background_server
 from .config import AogConfig, config_env_value, provider_for_actor
 from .context import ContextBuilder, ContextPackage
 from .glass_bridge import GlassBridgeError
+from .system_prompt import materialize_system_prompt
 from .state import (
     AGENTS_BY_ID,
     Agent,
@@ -299,12 +300,12 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 return _glass_db.runtime_next_speaker_peek(conn, campaign)
         finally:
@@ -351,12 +352,12 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 return _glass_db.action_order_get(
                     conn,
@@ -385,12 +386,12 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 return _glass_db.runtime_next_speaker_consume(
                     conn,
@@ -418,12 +419,12 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 advanced = _glass_db.action_order_advance(
                     conn,
@@ -505,9 +506,9 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
-                raise ValueError("Postgres runtime is required for active turn closeout")
-            pg_config = _glass_db.load_pg_config(toml_data)
+            if not _glass_db.storage_configured(toml_data):
+                raise ValueError("embedded runtime storage is required for active turn closeout")
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 runtime_turn = _glass_db.runtime_active_turn_get(conn, campaign)
         finally:
@@ -531,9 +532,9 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
-                raise ValueError("Postgres runtime is required for public prose")
-            pg_config = _glass_db.load_pg_config(toml_data)
+            if not _glass_db.storage_configured(toml_data):
+                raise ValueError("embedded runtime storage is required for public prose")
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 records = _glass_db.turn_list(
                     conn,
@@ -1176,12 +1177,12 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 return _glass_db.runtime_active_turn_get(conn, campaign)
         finally:
@@ -1208,12 +1209,12 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 return _glass_db.runtime_next_speaker_prepend(
                     conn,
@@ -1252,12 +1253,12 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 _glass_db.message_send(
                     conn,
@@ -1401,12 +1402,12 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 snapshot = scene_contract_snapshot(
                     conn,
@@ -1452,12 +1453,12 @@ class Orchestrator:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 return _glass_db.runtime_scene_closing_tick(conn, campaign)
         finally:
@@ -1547,6 +1548,13 @@ class Orchestrator:
             actor_command.append(provider_executable)
             if self.config.claude.model:
                 actor_command.extend(["--model", self.config.claude.model])
+            system_prompt_path = materialize_system_prompt(
+                self.config,
+                campaign_id=state.campaign,
+                agent=agent,
+            )
+            if system_prompt_path is not None:
+                actor_command.extend(["--system-prompt-file", str(system_prompt_path)])
             actor_command.extend(claude_session_args)
             actor_command.extend(
                 _claude_mcp_args(
@@ -2195,7 +2203,7 @@ def _collect_turn_end(
 ) -> dict[str, Any]:
     if not isinstance(runtime_turn, dict):
         raise ValueError(
-            "missing active turn closeout in Postgres; call `glass_done(...)` before public prose"
+            "missing active turn closeout in embedded storage; call `glass_done(...)` before public prose"
         )
     turn_id = str(runtime_turn.get("turn_id") or "").strip()
     if turn_id != expected_turn_id:
@@ -2204,7 +2212,7 @@ def _collect_turn_end(
         )
     raw = runtime_turn.get("closeout")
     if not isinstance(raw, dict):
-        raise ValueError("active turn closeout is missing from Postgres")
+        raise ValueError("active turn closeout is missing from embedded storage")
     if raw.get("valid") is not True:
         problems = [str(item).strip() for item in raw.get("problems", []) if str(item).strip()]
         detail = "; ".join(problems) if problems else "closeout is still invalid"

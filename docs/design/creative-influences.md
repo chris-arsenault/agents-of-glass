@@ -60,13 +60,13 @@ arrives.
 ```
 
 The tarot text is project-authored archetype language, not copied deck text.
-It is stored in Postgres so it can be queried by `glass tarot` and later shown
+It is stored in SQLite so it can be queried by `glass tarot` and later shown
 in viewer UI. Tarot affects how the player or DM approaches a turn; it does
 not create a status effect, compel action, or change dice.
 
 ## Persistence
 
-Postgres owns tarot because it is ordered, turn-scoped runtime state. The
+SQLite owns tarot because it is ordered, turn-scoped runtime state. The
 canonical table is `tarot_influences`.
 
 Markdown does not project tarot yet. The phrase corpus is code/data and is not

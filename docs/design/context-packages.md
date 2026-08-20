@@ -21,13 +21,13 @@ Every injected prompt includes:
 - character identity and current hard state when the actor is a player
 - campaign id, mode, arc, scene, generated turn type, and speaker role
 - the selected methodology for this invocation
-- current neutral fact graph excerpts
+- current neutral continuity facts
 - relevant hard-state summaries from `glass` commands
 - message cues and any required message reads
 - allowed command surface
 - output contract: `glass done`, then `glass turn append --body`
 
-The prompt should include enough current fact graph state for the agent to start
+The prompt should include enough current fact state for the agent to start
 cleanly, but the agent can refresh with:
 
 ```bash
@@ -49,7 +49,7 @@ Agents query durable state through the CLI:
 - past turns and prose recall: `glass turns find`, `glass find`
 - public turn feed: `glass turns feed`
 
-Agents do not query Postgres, FalkorDB, local HTTP endpoints, or campaign files
+Agents do not open SQLite, query local HTTP endpoints, or read campaign files
 directly as a live state interface.
 
 ## Writable Through `glass`
@@ -103,6 +103,6 @@ The prompt should not dump full prior narration by default. It should provide
 current facts and compact hard-state cues, then let agents request bounded
 recall through `glass turns find`, `glass turns feed`, or `glass find`.
 
-The final public prose of each turn lives in Postgres `turns.prose` after
+The final public prose of each turn lives in SQLite `turns.prose` after
 `glass turn append --body`. Markdown transcripts are generated exports for
 humans.

@@ -9,7 +9,9 @@ Agent-facing durable reference lives here:
 - `methodologies/` - required workflows by mode and role
 - `srd/` - public rules
 - `how-to/` - optional examples and craft guidance
-- `styles/` - optional prose craft references
+- `styles/` - prose craft registers, inlined into per-actor system prompts
+- `prompts/` - per-role base system-prompt documents (assembled with persona
+  and style into each actor's system prompt; not read by agents at runtime)
 
 Runtime continuity does not live in markdown files. Agents read continuity from
 the fact graph and hard-state Glass MCP tools, mutate state only through `glass`

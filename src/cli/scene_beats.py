@@ -162,6 +162,90 @@ def scene_landing_guidance(
     return None
 
 
+def scene_action_guidance(
+    *,
+    completed_beats: int,
+    active_beats: list[dict[str, Any]],
+    visible_clocks: list[dict[str, Any]],
+    role_kind: str,
+) -> str | None:
+    if not active_beats:
+        return None
+    near_objective = any(_objective_clock_near_resolution(clock) for clock in visible_clocks)
+    if completed_beats >= 6 or near_objective:
+        if role_kind == "player":
+            return (
+                "Action guidance: make one decisive move that changes visible "
+                "position, moves a clock, closes a beat, or accepts a concrete "
+                "cost. Do not spend the turn elaborating the method unless the "
+                "method is the immediate risk."
+            )
+        return (
+            "Action guidance: resolve or reframe the current pressure with a "
+            "visible consequence or route change. Avoid adding another layer of "
+            "method unless it creates a new scene question."
+        )
+    return (
+        "Action guidance: choose one active beat and change table position; "
+        "facts should record outcomes, not the procedure used to reach them."
+    )
+
+
+def scene_next_actions(
+    *,
+    active_beats: list[dict[str, Any]],
+    completed_beats: int,
+    visible_clocks: list[dict[str, Any]],
+    role_kind: str,
+) -> list[dict[str, str]]:
+    actions: list[dict[str, str]] = []
+    for beat in active_beats:
+        beat_id = str(beat.get("beat_id") or "").strip()
+        if not beat_id:
+            continue
+        actions.append(
+            {
+                "target_id": beat_id,
+                "label": str(beat.get("label") or beat_id),
+                "clock_id": str(beat.get("clock_id") or ""),
+                "intent": "Act toward this beat's visible outcome; if a roll is needed, use this target_id.",
+                "afterward": "Move/close/convert the beat or update facts only if the table position actually changed.",
+            }
+        )
+    if completed_beats >= 8 or any(
+        _objective_clock_near_resolution(clock) for clock in visible_clocks
+    ):
+        close_afterward = (
+            'Players should use next_speaker="dm"; the DM should close, '
+            "transition, or deliberately open a new scene question."
+            if role_kind == "player"
+            else "Close, transition, or deliberately open a new scene question."
+        )
+        actions.append(
+            {
+                "target_id": "dm-handoff-or-scene-close",
+                "label": "Land or transition the scene",
+                "clock_id": "",
+                "intent": (
+                    "Use when the core tension has landed or the remaining work "
+                    "is only cleanup."
+                ),
+                "afterward": close_afterward,
+            }
+        )
+    if not actions and role_kind == "player":
+        actions.append(
+            {
+                "target_id": "dm-handoff",
+                "label": "Ask DM to restore the board",
+                "clock_id": "",
+                "intent": "Use when no active beat is available.",
+                "afterward": 'Close with next_speaker="dm".',
+            }
+        )
+    return actions
+
+
 def _objective_clock_near_resolution(clock: dict[str, Any]) -> bool:
     if str(clock.get("polarity") or "objective") != "objective":
         return False
@@ -285,6 +369,12 @@ def scene_contract_snapshot(
         active_beat_count=len(active_beats),
         visible_clocks=visible_clocks,
     )
+    action_guidance = scene_action_guidance(
+        completed_beats=completed_beats,
+        active_beats=active_beats,
+        visible_clocks=visible_clocks,
+        role_kind=role_kind,
+    )
     beat_warnings = _beat_warnings(
         active_beat_count=len(active_beats),
         completed_beats=completed_beats,
@@ -319,6 +409,13 @@ def scene_contract_snapshot(
         ],
         "scene_note": scene_close_note(completed_beats),
         "landing_guidance": landing_guidance,
+        "action_guidance": action_guidance,
+        "next_actions": scene_next_actions(
+            active_beats=active_beats,
+            completed_beats=completed_beats,
+            visible_clocks=visible_clocks,
+            role_kind=role_kind,
+        ),
     }
 
 

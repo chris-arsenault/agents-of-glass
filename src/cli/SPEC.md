@@ -86,7 +86,7 @@ glass roll <skill> <attribute> --risk <level> --character <id> [--target <id>] [
 
 Returns a structured roll record (dice, modifiers, total, target, margin,
 outcome tier, momentum delta, and narrative momentum effect). Momentum is not
-added to the total. Logged to Postgres `dice_event` and the audit log. The
+added to the total. Logged to SQLite `dice_event` and the audit log. The
 orchestrator inlines a one-line summary into the transcript at the right point.
 Undeclared skills roll at `fool` and do not gain skill XP unless `--save-skill`
 declares them before the roll.
@@ -199,13 +199,13 @@ glass character consequence-resolve <id> <consequence-id> [--note TEXT]
 ### Notes (operator/admin and legacy prose surfaces)
 
 The old note/draft flow is not part of the orchestrated agent turn contract.
-Agent turns use neutral graph facts and purpose-built state commands; the
+Agent turns use neutral continuity facts and purpose-built state commands; the
 operator may curate durable prose outside the turn loop. See
 [`../../docs/design/agents.md`](../../docs/design/agents.md).
 
 ### Lore curation
 
-Reference lore is prose source material stored in FalkorDB. It is not
+Reference lore is prose source material stored in embedded SQLite. It is not
 continuity, and it is not copied into campaign markdown. If a reference detail
 becomes true or visible in play, commit the usable portion as a neutral fact.
 

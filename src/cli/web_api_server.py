@@ -266,7 +266,7 @@ def _campaign_summary_payload(campaign_id: str) -> dict[str, Any]:
     }
     try:
         config = load_config()
-        with db.connect(db.load_pg_config(config)) as conn:
+        with db.connect(db.load_storage_config(config)) as conn:
             payload["runtime"] = _runtime_payload(conn, campaign_id)
             payload["characters"] = db.character_list(conn, campaign_id)
             payload["clocks"] = db.clock_list(
@@ -320,7 +320,7 @@ def _campaign_live_payload(
     }
     try:
         config = load_config()
-        with db.connect(db.load_pg_config(config)) as conn:
+        with db.connect(db.load_storage_config(config)) as conn:
             turns = _turn_delta(conn, campaign_id, after_turn=after_turn, limit=turn_limit)
             messages = _message_delta(
                 conn,
@@ -395,7 +395,7 @@ def _campaign_turns_payload(
         "cursor": after_turn,
     }
     try:
-        with db.connect(db.load_pg_config(load_config())) as conn:
+        with db.connect(db.load_storage_config(load_config())) as conn:
             payload.update(_turn_delta(conn, campaign_id, after_turn=after_turn, limit=limit))
     except Exception as exc:
         payload["database_error"] = str(exc)
@@ -411,7 +411,7 @@ def _campaign_scenes_payload(campaign_id: str) -> dict[str, Any]:
         "active": _active_arc_scene(campaign_root),
     }
     try:
-        with db.connect(db.load_pg_config(load_config())) as conn:
+        with db.connect(db.load_storage_config(load_config())) as conn:
             rows = db.scene_index(conn, campaign_id=campaign_id)
     except Exception as exc:
         payload["database_error"] = str(exc)
@@ -546,7 +546,7 @@ def _campaign_turns_range_payload(
         "items": [],
     }
     try:
-        with db.connect(db.load_pg_config(load_config())) as conn:
+        with db.connect(db.load_storage_config(load_config())) as conn:
             payload["items"] = db.turn_list(
                 conn,
                 campaign_id=campaign_id,
@@ -567,7 +567,7 @@ def _campaign_messages_payload(
     cursor = _first_query_value(query, "after")
     payload: dict[str, Any] = {"campaign_id": campaign_id, "items": [], "cursor": cursor}
     try:
-        with db.connect(db.load_pg_config(load_config())) as conn:
+        with db.connect(db.load_storage_config(load_config())) as conn:
             payload.update(_message_delta(conn, campaign_id, cursor=cursor, limit=limit))
     except Exception as exc:
         payload["database_error"] = str(exc)
@@ -582,7 +582,7 @@ def _campaign_events_payload(
     cursor = _first_query_value(query, "after")
     payload: dict[str, Any] = {"campaign_id": campaign_id, "items": [], "cursor": cursor}
     try:
-        with db.connect(db.load_pg_config(load_config())) as conn:
+        with db.connect(db.load_storage_config(load_config())) as conn:
             payload.update(_event_delta(conn, campaign_id, cursor=cursor, limit=limit))
     except Exception as exc:
         payload["database_error"] = str(exc)
@@ -597,7 +597,7 @@ def _campaign_rolls_payload(
     cursor = _first_query_value(query, "after")
     payload: dict[str, Any] = {"campaign_id": campaign_id, "items": [], "cursor": cursor}
     try:
-        with db.connect(db.load_pg_config(load_config())) as conn:
+        with db.connect(db.load_storage_config(load_config())) as conn:
             payload.update(_roll_delta(conn, campaign_id, cursor=cursor, limit=limit))
     except Exception as exc:
         payload["database_error"] = str(exc)
@@ -652,7 +652,7 @@ def _campaign_current_turn_output_payload(
         "generated_at": _now_iso(),
     }
     try:
-        with db.connect(db.load_pg_config(load_config())) as conn:
+        with db.connect(db.load_storage_config(load_config())) as conn:
             state = db.runtime_state_get(conn, campaign_id)
     except Exception as exc:
         payload.update(_empty_current_turn_output(campaign_id))

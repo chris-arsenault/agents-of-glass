@@ -48,6 +48,10 @@ from .turn import (
     _turn_end_validation_problems,
 )
 
+_CHECK_FACT_SOURCE_LIMIT = 60
+_CHECK_FACT_OUTPUT_LIMIT = 24
+_CHECK_FACT_TEXT_LIMIT = 320
+
 
 @click.command("check")
 @click.option(
@@ -57,7 +61,7 @@ from .turn import (
 )
 @click.pass_context
 def check(ctx: click.Context, no_mark: bool) -> None:
-    """One turn-start check: messages, fact graph, scene contract, clocks, upkeep."""
+    """One compact turn-start check: messages, facts, scene contract, clocks, upkeep."""
     check_service(command_path=ctx, emit_output=True, no_mark=no_mark)
 
 
@@ -175,6 +179,8 @@ def check_service(
             "completed_beats": snapshot["completed_beats"],
             "scene_note": snapshot["scene_note"],
             "landing_guidance": snapshot["landing_guidance"],
+            "action_guidance": snapshot["action_guidance"],
+            "next_actions": snapshot["next_actions"],
             "warning_beats": [beat["beat_id"] for beat in snapshot["warning_beats"]],
             "expired_beats": [beat["beat_id"] for beat in snapshot["expired_beats"]],
             "continuation_gap": continuation_gap,
@@ -210,13 +216,11 @@ def check_service(
             if mode_name in fact_graph_modes
             else _table_overview()
         ),
-        "facts": fact_pack(
+        "facts": _check_fact_pack(
             campaign_id=campaign_id,
-            audience="continuity",
             scene_id=scene_id,
             actor=role.actor,
             visibility="dm" if role.kind in {"dm", "operator"} else "public",
-            limit=80,
         ),
         "durable_clocks": durable_clocks,
         "scene_trackers": scene_trackers,
@@ -712,8 +716,9 @@ def _character_hard_state(
                 "visibility": move.get("visibility"),
             }
         )
-    return [
-        character_agent_view(
+    compact_characters: list[dict[str, Any]] = []
+    for character in characters:
+        full_view = character_agent_view(
             {
                 **character,
                 "signature_moves": moves_by_character.get(
@@ -723,8 +728,159 @@ def _character_hard_state(
             },
             role=role,
         )
-        for character in characters
+        compact_characters.append(_compact_character_for_check(full_view))
+    return compact_characters
+
+
+def _check_fact_pack(
+    *,
+    campaign_id: str,
+    scene_id: str,
+    actor: str,
+    visibility: str,
+) -> dict[str, Any]:
+    pack = fact_pack(
+        campaign_id=campaign_id,
+        audience="continuity",
+        scene_id=scene_id,
+        actor=actor,
+        visibility=visibility,
+        limit=_CHECK_FACT_SOURCE_LIMIT,
+    )
+    return _compact_check_fact_pack(pack, scene_id=scene_id, actor=actor)
+
+
+def _compact_check_fact_pack(
+    pack: dict[str, Any],
+    *,
+    scene_id: str | None,
+    actor: str | None,
+) -> dict[str, Any]:
+    if str(pack.get("status") or "") != "ok":
+        return pack
+
+    source_facts = [
+        fact for fact in list(pack.get("facts") or []) if isinstance(fact, dict)
     ]
+    ranked = sorted(
+        source_facts,
+        key=lambda fact: _check_fact_rank(fact, scene_id=scene_id, actor=actor),
+    )
+    selected = ranked[:_CHECK_FACT_OUTPUT_LIMIT]
+    compact_facts = [_compact_fact_for_check(fact) for fact in selected]
+    omitted_count = max(len(source_facts) - len(compact_facts), 0)
+    result = {
+        **pack,
+        "facts": compact_facts,
+        "count": len(compact_facts),
+        "source_count": len(source_facts),
+        "omitted_count": omitted_count,
+        "detail": (
+            "Compact turn-start continuity. Use glass_fact_pack(...) only when "
+            "older or full fact text is needed for this turn."
+        ),
+    }
+    if omitted_count:
+        result["omitted_detail"] = (
+            f"{omitted_count} lower-priority facts omitted from glass_check."
+        )
+    return result
+
+
+def _check_fact_rank(
+    fact: dict[str, Any],
+    *,
+    scene_id: str | None,
+    actor: str | None,
+) -> tuple[int, int, str]:
+    scope = str(fact.get("scope_id") or "")
+    importance = str(fact.get("importance") or fact.get("salience") or "medium")
+    updated_at = str(fact.get("updated_at") or "")
+    subject = str(fact.get("subject_id") or "")
+    if scene_id and scope in {scene_id, f"scene.{scene_id}"}:
+        scope_rank = 0
+    elif actor and scope in {actor, f"character.{actor}", f"player.{actor}"}:
+        scope_rank = 1
+    elif scope in {"party", "organization", "campaign"}:
+        scope_rank = 2
+    else:
+        scope_rank = 3
+    importance_rank = {"high": 0, "medium": 1}.get(importance, 2)
+    return (scope_rank, importance_rank, f"{_reverse_sort_text(updated_at)}:{subject}")
+
+
+def _reverse_sort_text(value: str) -> str:
+    return "".join(chr(255 - ord(char)) for char in value)
+
+
+def _compact_fact_for_check(fact: dict[str, Any]) -> dict[str, Any]:
+    text = str(fact.get("text") or "").strip()
+    compact = {
+        key: fact.get(key)
+        for key in (
+            "scope_id",
+            "subject_id",
+            "predicate",
+            "object_id",
+            "source_turn_id",
+            "importance",
+            "salience",
+            "salience_rank",
+            "updated_at",
+            "audience",
+        )
+        if key in fact
+    }
+    compact["text"] = _truncate_for_check(text, _CHECK_FACT_TEXT_LIMIT)
+    if len(text) > _CHECK_FACT_TEXT_LIMIT:
+        compact["truncated"] = True
+    return compact
+
+
+def _compact_character_for_check(character: dict[str, Any]) -> dict[str, Any]:
+    compact = {
+        key: character.get(key)
+        for key in (
+            "character_id",
+            "player_id",
+            "name",
+            "pronouns",
+            "species",
+            "archetype",
+            "organization_role",
+            "primary_drive",
+            "attributes",
+            "skills",
+            "hp",
+            "momentum",
+            "inventory",
+            "signature_moves",
+            "level",
+            "xp",
+        )
+        if key in character
+    }
+    profile = character.get("profile")
+    if isinstance(profile, dict):
+        compact["profile"] = {
+            key: profile.get(key)
+            for key in (
+                "positive_trait",
+                "table_presence",
+                "non_work_want",
+                "opening_social_action",
+            )
+            if profile.get(key) not in (None, "", [])
+        }
+    return compact
+
+
+def _truncate_for_check(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    if limit <= 3:
+        return "." * max(limit, 0)
+    return text[: limit - 3].rstrip() + "..."
 
 
 def _required_text(value: str, label: str) -> str:

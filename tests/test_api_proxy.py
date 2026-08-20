@@ -1,4 +1,3 @@
-import json
 import os
 import socket
 import subprocess
@@ -40,14 +39,14 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def initialize_postgres_state(config: Path, campaign_id: str) -> None:
+def initialize_embedded_state(config: Path, campaign_id: str) -> None:
     load_repo_env()
     previous = os.environ.get("GLASS_CONFIG")
     os.environ["GLASS_CONFIG"] = str(config)
     try:
         toml_data = load_config()
-        pg_config = _db.load_pg_config(toml_data)
-        with _db.connect(pg_config) as conn:
+        storage_config = _db.load_storage_config(toml_data)
+        with _db.connect(storage_config) as conn:
             _db.migrate(conn)
             _db.delete_campaign_data(conn, campaign_id)
         initialize_state(get_paths(), default_state(campaign_id))
@@ -338,11 +337,8 @@ class GlassApiProxyTests(unittest.TestCase):
             config = root / "agents-of-glass.toml"
             config.write_text(
                 f"""
-[postgres]
-host = "192.168.66.3"
-port = 5432
-database = "agents_of_glass"
-user = "agents_of_glass_app"
+[storage]
+path = "{campaigns / ".agents-of-glass.sqlite3"}"
 
 [paths]
 content = "{root / "templates"}"
@@ -388,11 +384,8 @@ campaigns = "{campaigns}"
             config = root / "agents-of-glass.toml"
             config.write_text(
                 f"""
-[postgres]
-host = "192.168.66.3"
-port = 5432
-database = "agents_of_glass"
-user = "agents_of_glass_app"
+[storage]
+path = "{campaigns / ".agents-of-glass.sqlite3"}"
 
 [paths]
 content = "{root / "templates"}"
@@ -400,7 +393,7 @@ campaigns = "{campaigns}"
 """.lstrip(),
                 encoding="utf-8",
             )
-            initialize_postgres_state(config, "c1")
+            initialize_embedded_state(config, "c1")
             token = mint_grant(
                 campaigns,
                 campaign_id="c1",

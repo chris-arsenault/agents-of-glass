@@ -10,12 +10,12 @@ messages, and operational debug surfaces as the UI grows.
 There are two different visibility questions, and the UI must not blur them:
 
 1. **What can the human viewer inspect?** Potentially every operator/debug
-   surface and backing store. The viewer is an observation/debug surface.
+  surface and embedded store. The viewer is an observation/debug surface.
 2. **What did the player agents have visibility into?** The injected prompt plus
    the output of their authorized `glass` commands.
 
 The **Active Table** panel must not imply a second agent state surface. If it is
-present, it is a viewer rendering of CLI-readable state such as graph facts,
+present, it is a viewer rendering of CLI-readable state such as continuity facts,
 scene trackers, clocks, and committed public prose. It must not be treated as
 something agents read or write directly.
 
@@ -35,7 +35,7 @@ authorized `glass` command.
 - Local helper: `scripts/run-webui-local.sh`, which starts the read-only web API
   and frontend in the mapped Docker port range.
 - Source of truth:
-  - Postgres for turns, messages, rolls, characters, hard state, and runtime.
+  - Embedded SQLite for facts, lore, turns, messages, rolls, characters, hard state, and runtime.
   - Markdown for campaign files.
 
 ## Viewer Surfaces
@@ -52,7 +52,7 @@ authorized `glass` command.
 - **File browser / DM notes / lore:** inspection surfaces for human viewers,
   not evidence that a player agent saw the file.
 - **Lore/debug summaries:** coherence/debug surfaces, not agent-visible state
-  unless the relevant content is in graph facts or authorized command output.
+unless the relevant content is in continuity facts or authorized command output.
 
 ## Deployment Notes
 

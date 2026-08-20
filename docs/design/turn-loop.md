@@ -36,7 +36,7 @@ The orchestrator builds one injected prompt. It includes:
 - mode, arc, scene, and generated turn type
 - the selected methodology
 - the allowed command surface
-- current fact graph continuity
+- current continuity facts
 - hard-state cues from `glass` commands
 - relevant messages and recall pointers
 - the output contract

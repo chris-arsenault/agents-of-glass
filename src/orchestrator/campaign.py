@@ -4,7 +4,7 @@ A campaign workspace lives at `campaigns/<id>/` and is populated by copying
 the `templates/` tree at campaign-bootstrap time. Bootstrap phase fields
 (init / organization_bootstrap / character_creation / campaign_planning /
 active) live in
-the Postgres runtime state row. `state.json` is a stale legacy path only and
+the embedded runtime state row. `state.json` is a stale legacy path only and
 is removed when touched.
 
 This module is the home for the campaign workspace lifecycle. It does NOT
@@ -137,7 +137,7 @@ class CampaignManager:
         if state is not None:
             return state
         raise FileNotFoundError(
-            f"No campaign state found for {campaign_id!r} in Postgres runtime state"
+            f"No campaign state found for {campaign_id!r} in embedded runtime storage"
         )
 
     def advance_phase(self, campaign_id: str, new_phase: str) -> dict[str, Any]:
@@ -170,7 +170,7 @@ class CampaignManager:
                 stale.unlink()
 
     def _sync_state_to_postgres(self, state: dict[str, Any]) -> None:
-        """Keep campaign phase fields in the Postgres runtime row."""
+        """Keep campaign phase fields in the embedded runtime row."""
         import os
 
         from cli import db as _glass_db
@@ -181,12 +181,12 @@ class CampaignManager:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 if _glass_db.runtime_state_get(conn, state["campaign"]) is None:
                     _glass_db.runtime_state_upsert(
@@ -219,12 +219,12 @@ class CampaignManager:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 return _glass_db.runtime_state_get(conn, campaign_id)
         finally:

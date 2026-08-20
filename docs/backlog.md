@@ -19,9 +19,23 @@ Follow-ups:
 - Keep API/grant implementation details out of injected prompts except as
   environment plumbing for the `glass` command.
 
-## Fact Graph Adoption
+## Codex System-Prompt Support
 
-The graph fact store is the permanent home for arbitrary continuity facts.
+Claude-provider actors run with a per-role custom system prompt
+(`--system-prompt-file`, assembled from base document + persona + narrative
+style). The codex branch is unchanged and codex actors still run with codex's
+default instructions.
+
+Follow-ups:
+
+- Verify whether `codex exec` supports a base-instructions override compatible
+  with full replacement, and thread the same assembled document through it.
+- Until then, expect voice/register differences between providers in
+  mixed-codex campaigns.
+
+## Continuity Fact Adoption
+
+The embedded facts table is the permanent home for arbitrary continuity facts.
 
 Follow-ups:
 

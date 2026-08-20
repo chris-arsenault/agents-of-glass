@@ -2,7 +2,7 @@
 
 Historically named "session" — kept for backward compat with the
 orchestrator's GlassBridge invocation. Each campaign now has exactly
-one runtime state record in Postgres. `state.json` is not a supported
+one runtime state record in embedded SQLite. `state.json` is not a supported
 runtime cache. The "session" concept is gone; what these commands manage
 is the campaign's runtime state.
 """

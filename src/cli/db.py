@@ -1,16 +1,4 @@
-"""Postgres connection + migration runner for the glass CLI.
-
-Connection params are sourced (in order) from:
-
-  1. The `[postgres]` section of the active TOML config.
-  2. libpq env vars: PGHOST, PGPORT, PGDATABASE, PGUSER.
-  3. Password specifically: AOG_PG_PASSWORD (preferred) or PGPASSWORD.
-
-Migration files live at `<repo-root>/migrations/*.sql`, applied in
-lexicographic order. Each migration's contents are checksummed (sha256);
-re-running an applied migration with a changed file flags a checksum
-mismatch but does not auto-update the database.
-"""
+"""Embedded SQLite storage and queries for the glass CLI."""
 
 from __future__ import annotations
 
@@ -22,77 +10,59 @@ from typing import Any, Iterator
 import hashlib
 import json
 import logging
-import os
 
-try:
-    import psycopg
-except ImportError:  # pragma: no cover — caller surfaces the error
-    psycopg = None  # type: ignore[assignment]
+from .embedded import EmbeddedConnection
 
 
 log = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS_DIR = REPO_ROOT / "migrations"
+SCHEMA_PATH = MIGRATIONS_DIR / "embedded.sql"
 
 
 @dataclass(frozen=True)
-class PgConfig:
-    host: str | None
-    port: int | None
-    database: str | None
-    user: str | None
-
-    def to_kwargs(self) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {}
-        if self.host:
-            kwargs["host"] = self.host
-        if self.port:
-            kwargs["port"] = self.port
-        if self.database:
-            kwargs["dbname"] = self.database
-        if self.user:
-            kwargs["user"] = self.user
-        password = os.environ.get("AOG_PG_PASSWORD") or os.environ.get("PGPASSWORD")
-        if password:
-            kwargs["password"] = password
-        return kwargs
+class StorageConfig:
+    path: Path
 
     def describe(self) -> str:
-        host = self.host or os.environ.get("PGHOST", "localhost")
-        port = self.port or int(os.environ.get("PGPORT", "5432"))
-        db = self.database or os.environ.get("PGDATABASE", "?")
-        user = self.user or os.environ.get("PGUSER", "?")
-        return f"postgres://{user}@{host}:{port}/{db}"
+        return f"sqlite://{self.path}"
 
 
-def load_pg_config(toml_data: dict[str, Any] | None = None) -> PgConfig:
-    section = (toml_data or {}).get("postgres", {}) if toml_data else {}
-    raw_port = section.get("port") if section else None
-    return PgConfig(
-        host=section.get("host") if section else None,
-        port=int(raw_port) if raw_port is not None else None,
-        database=section.get("database") if section else None,
-        user=section.get("user") if section else None,
-    )
+def load_storage_config(toml_data: dict[str, Any] | None = None) -> StorageConfig:
+    """Resolve the local database path from config, with a repo-local default."""
+    data = toml_data or {}
+    section = data.get("storage", {})
+    raw_path = section.get("path") if isinstance(section, dict) else None
+    if raw_path:
+        path = Path(str(raw_path)).expanduser()
+    else:
+        paths = data.get("paths", {})
+        raw_campaigns = (
+            paths.get("campaigns", "campaigns")
+            if isinstance(paths, dict)
+            else "campaigns"
+        )
+        campaigns_path = Path(str(raw_campaigns)).expanduser()
+        if not campaigns_path.is_absolute():
+            campaigns_path = REPO_ROOT / campaigns_path
+        path = campaigns_path / ".agents-of-glass.sqlite3"
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return StorageConfig(path=path.resolve())
 
 
-def postgres_configured(toml_data: dict[str, Any] | None = None) -> bool:
-    """True when Postgres connection details are configured."""
-    if isinstance((toml_data or {}).get("postgres"), dict):
-        return True
-    return any(os.environ.get(name) for name in ("PGHOST", "PGDATABASE"))
+def storage_configured(toml_data: dict[str, Any] | None = None) -> bool:
+    """Embedded storage is always available; config only overrides its path."""
+    return True
 
 
 @contextmanager
-def connect(pg_config: PgConfig) -> Iterator["psycopg.Connection[Any]"]:
-    """Open a Postgres connection. Caller manages transactions."""
-    if psycopg is None:
-        raise RuntimeError(
-            "psycopg is not installed; install with `pip install psycopg[binary]`"
-        )
-    conn = psycopg.connect(**pg_config.to_kwargs())
+def connect(storage_config: StorageConfig) -> Iterator[EmbeddedConnection]:
+    """Open the embedded store and ensure its schema exists."""
+    conn = EmbeddedConnection(storage_config.path)
     try:
+        migrate(conn)
         yield conn
     finally:
         conn.close()
@@ -102,18 +72,16 @@ def connect(pg_config: PgConfig) -> Iterator["psycopg.Connection[Any]"]:
 
 
 def list_migration_files() -> list[Path]:
-    if not MIGRATIONS_DIR.exists():
-        return []
-    return sorted(p for p in MIGRATIONS_DIR.glob("*.sql"))
+    return [SCHEMA_PATH] if SCHEMA_PATH.exists() else []
 
 
-def ensure_migrations_table(conn: "psycopg.Connection[Any]") -> None:
+def ensure_migrations_table(conn: EmbeddedConnection) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS _migrations (
                 id          text PRIMARY KEY,
-                applied_at  timestamptz NOT NULL DEFAULT now(),
+                applied_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 checksum    text NOT NULL
             )
             """
@@ -121,7 +89,7 @@ def ensure_migrations_table(conn: "psycopg.Connection[Any]") -> None:
     conn.commit()
 
 
-def list_applied(conn: "psycopg.Connection[Any]") -> dict[str, str]:
+def list_applied(conn: EmbeddedConnection) -> dict[str, str]:
     with conn.cursor() as cur:
         cur.execute("SELECT id, checksum FROM _migrations ORDER BY id")
         return {row[0]: row[1] for row in cur.fetchall()}
@@ -131,44 +99,65 @@ def _checksum(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def apply_migration(conn: "psycopg.Connection[Any]", path: Path) -> None:
+def apply_migration(conn: EmbeddedConnection, path: Path) -> None:
     sql = path.read_text(encoding="utf-8")
     checksum = _checksum(path)
+    conn.execute_script(sql)
+    _upgrade_draft_embedded_schema(conn)
     with conn.cursor() as cur:
-        cur.execute(sql)
         cur.execute(
-            "INSERT INTO _migrations (id, checksum) VALUES (%s, %s)",
+            """INSERT INTO _migrations (id, checksum) VALUES (%s, %s)
+            ON CONFLICT(id) DO UPDATE SET checksum = excluded.checksum""",
             (path.name, checksum),
         )
     conn.commit()
 
 
-def migrate(conn: "psycopg.Connection[Any]") -> list[tuple[str, str]]:
-    """Apply all pending migrations.
+def _upgrade_draft_embedded_schema(conn: EmbeddedConnection) -> None:
+    """Preserve stores created while the embedded schema was being introduced."""
+    with conn.cursor() as cur:
+        cur.execute("PRAGMA table_info(lore_entries)")
+        columns = {str(row[1]) for row in cur.fetchall()}
+        if "lore_id" not in columns or "id" in columns:
+            return
+        for statement in (
+            "ALTER TABLE lore_entries ADD COLUMN id TEXT",
+            "ALTER TABLE lore_entries ADD COLUMN kind TEXT NOT NULL DEFAULT 'reference'",
+            "ALTER TABLE lore_entries ADD COLUMN tags_text TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE lore_entries ADD COLUMN body_text TEXT NOT NULL DEFAULT ''",
+        ):
+            cur.execute(statement)
+        cur.execute(
+            """
+            UPDATE lore_entries
+            SET id = lore_id,
+                kind = COALESCE(entry_type, 'reference'),
+                tags_text = '',
+                body_text = COALESCE(body, '')
+            """
+        )
 
-    Returns a list of (migration_id, action) where action is one of:
-      'applied' — newly applied
-      'already-applied' — skipped (checksum matches)
-      'checksum-mismatch' — applied previously but file has changed; skipped
-    """
+
+def migrate(conn: EmbeddedConnection) -> list[tuple[str, str]]:
+    """Create or refresh the idempotent embedded schema."""
     ensure_migrations_table(conn)
     applied = list_applied(conn)
     files = list_migration_files()
     actions: list[tuple[str, str]] = []
     for path in files:
         checksum = _checksum(path)
-        if path.name in applied:
-            if applied[path.name] != checksum:
-                actions.append((path.name, "checksum-mismatch"))
-            else:
-                actions.append((path.name, "already-applied"))
-            continue
-        apply_migration(conn, path)
-        actions.append((path.name, "applied"))
+        if path.name not in applied:
+            apply_migration(conn, path)
+            actions.append((path.name, "applied"))
+        elif applied[path.name] == checksum:
+            actions.append((path.name, "already-applied"))
+        else:
+            apply_migration(conn, path)
+            actions.append((path.name, "updated"))
     return actions
 
 
-def status(conn: "psycopg.Connection[Any]") -> dict[str, Any]:
+def status(conn: EmbeddedConnection) -> dict[str, Any]:
     """Report applied + pending + checksum-mismatched migrations."""
     ensure_migrations_table(conn)
     applied = list_applied(conn)
@@ -367,7 +356,7 @@ def _jsonb_list(value: Any) -> str:
 
 
 def runtime_state_get(
-    conn: "psycopg.Connection[Any]", campaign_id: str
+    conn: EmbeddedConnection, campaign_id: str
 ) -> dict[str, Any] | None:
     with conn.cursor() as cur:
         cur.execute(
@@ -495,7 +484,7 @@ def runtime_state_get(
 
 
 def runtime_state_upsert(
-    conn: "psycopg.Connection[Any]", state: dict[str, Any]
+    conn: EmbeddedConnection, state: dict[str, Any]
 ) -> None:
     known = {
         "schema_version",
@@ -759,7 +748,7 @@ def _runtime_state_update_param(key: str, value: Any) -> Any:
 
 
 def runtime_state_update_fields(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     campaign_id: str,
     fields: dict[str, Any],
 ) -> None:
@@ -812,7 +801,7 @@ def runtime_state_update_fields(
 
 
 def runtime_active_turn_get(
-    conn: "psycopg.Connection[Any]", campaign_id: str
+    conn: EmbeddedConnection, campaign_id: str
 ) -> dict[str, Any] | None:
     with conn.cursor() as cur:
         cur.execute(
@@ -899,7 +888,7 @@ def runtime_active_turn_get(
 
 
 def runtime_next_speaker_peek(
-    conn: "psycopg.Connection[Any]", campaign_id: str
+    conn: EmbeddedConnection, campaign_id: str
 ) -> dict[str, Any] | None:
     with conn.cursor() as cur:
         cur.execute(
@@ -917,7 +906,7 @@ def runtime_next_speaker_peek(
 
 
 def runtime_next_speaker_consume(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     expected_entry: dict[str, Any],
@@ -948,7 +937,7 @@ def runtime_next_speaker_consume(
 
 
 def runtime_next_speaker_prepend(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     entry: dict[str, Any],
@@ -978,7 +967,7 @@ def runtime_next_speaker_prepend(
 
 
 def runtime_scene_closing_tick(
-    conn: "psycopg.Connection[Any]", campaign_id: str
+    conn: EmbeddedConnection, campaign_id: str
 ) -> bool:
     with conn.cursor() as cur:
         cur.execute(
@@ -999,7 +988,7 @@ def runtime_scene_closing_tick(
 
 
 def runtime_state_delete(
-    conn: "psycopg.Connection[Any]", campaign_id: str
+    conn: EmbeddedConnection, campaign_id: str
 ) -> dict[str, int]:
     deleted: dict[str, int] = {}
     with conn.cursor() as cur:
@@ -1024,7 +1013,7 @@ def runtime_state_delete(
 
 
 def character_get(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     campaign_id: str,
     character_id: str,
 ) -> dict[str, Any] | None:
@@ -1039,7 +1028,7 @@ def character_get(
 
 
 def character_exists(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     campaign_id: str,
     character_id: str,
 ) -> bool:
@@ -1052,7 +1041,7 @@ def character_exists(
 
 
 def character_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     campaign_id: str,
 ) -> list[dict[str, Any]]:
     with conn.cursor() as cur:
@@ -1065,7 +1054,7 @@ def character_list(
 
 
 def character_create(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1142,7 +1131,7 @@ def character_create(
 
 
 def character_update_fields(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1205,7 +1194,7 @@ def character_update_fields(
 
 
 def character_update_hp(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1236,7 +1225,7 @@ def character_update_hp(
 
 
 def character_update_momentum(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1268,7 +1257,7 @@ def character_update_momentum(
 
 
 def character_set_momentum_internal(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1284,7 +1273,7 @@ def character_set_momentum_internal(
 
 
 def character_award_xp(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1330,7 +1319,7 @@ def character_award_xp(
 
 
 def character_level_up(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1415,7 +1404,7 @@ def character_level_up(
 
 
 def character_apply_skill_xp(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1458,7 +1447,7 @@ def character_apply_skill_xp(
 
 
 def character_declare_skill(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1526,7 +1515,7 @@ def character_declare_skill(
 
 
 def character_set_skill_meta(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1548,7 +1537,7 @@ def character_set_skill_meta(
 
 
 def character_set_inventory(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1605,7 +1594,7 @@ def _row_to_signature_move(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def character_signature_moves_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str | None = None,
@@ -1633,7 +1622,7 @@ def character_signature_moves_list(
 
 
 def character_signature_move_add(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1734,7 +1723,7 @@ def _row_to_consequence(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def character_consequence_add(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1777,7 +1766,7 @@ def character_consequence_add(
 
 
 def character_consequence_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str | None = None,
@@ -1808,7 +1797,7 @@ def character_consequence_list(
 
 
 def character_consequence_resolve(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     character_id: str,
@@ -1926,7 +1915,7 @@ def _row_to_message(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def message_send(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     session_id: str,
@@ -1950,7 +1939,7 @@ def message_send(
 
 
 def message_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     agent_id: str | None = None,
@@ -1996,7 +1985,7 @@ def message_list(
 
 
 def message_mark_read(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     agent_id: str,
     message_ids: list[str],
@@ -2016,7 +2005,7 @@ def message_mark_read(
 
 
 def roll_record(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     session_id: str,
@@ -2162,7 +2151,7 @@ def _row_to_turn(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def turn_insert(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     turn_id: int,
@@ -2246,7 +2235,7 @@ def turn_insert(
 
 
 def turn_count(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene: str | None = None,
@@ -2265,7 +2254,7 @@ def turn_count(
 
 
 def turn_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene: str | None = None,
@@ -2331,7 +2320,7 @@ def turn_list(
 
 
 def scene_index(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
 ) -> list[dict[str, Any]]:
@@ -2392,7 +2381,7 @@ def scene_index(
 
 
 def event_insert_many(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str | None,
@@ -2510,7 +2499,7 @@ def _row_to_scene_tracker(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def scene_tracker_get(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     tracker_id: str,
@@ -2526,7 +2515,7 @@ def scene_tracker_get(
 
 
 def scene_tracker_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str | None = None,
@@ -2558,7 +2547,7 @@ def scene_tracker_list(
 
 
 def scene_tracker_upsert(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     tracker_id: str,
@@ -2610,7 +2599,7 @@ def scene_tracker_upsert(
 
 
 def scene_tracker_tick(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     tracker_id: str,
@@ -2644,7 +2633,7 @@ def scene_tracker_tick(
 
 
 def scene_tracker_set_value(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     tracker_id: str,
@@ -2669,7 +2658,7 @@ def scene_tracker_set_value(
 
 
 def scene_tracker_delete_scene(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -2688,7 +2677,7 @@ def scene_tracker_delete_scene(
 
 
 def action_order_get(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     mode: str,
@@ -2711,7 +2700,7 @@ def action_order_get(
 
 
 def action_order_upsert(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     mode: str,
@@ -2756,7 +2745,7 @@ def action_order_upsert(
 
 
 def action_order_advance(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     mode: str,
@@ -2805,7 +2794,7 @@ def action_order_advance(
 
 
 def action_order_clear_scene(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -2856,7 +2845,7 @@ def _row_to_action_order(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def search_chunk_upsert(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     chunk_id: str,
     campaign_id: str,
@@ -2925,7 +2914,7 @@ def search_chunk_upsert(
 
 
 def search_chunks_delete_source(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     source_type: str,
@@ -2948,7 +2937,7 @@ def search_chunks_delete_source(
 
 
 def search_query(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     query: str,
@@ -2967,22 +2956,18 @@ def search_query(
     if source_type:
         where.append("source_type = %s")
         params.append(source_type)
-    # Full text search is the primary implementation. The ILIKE fallback keeps
-    # obvious proper-noun queries useful even when tokenization is unhelpful.
-    sql_params = [query, *params, query, query, query, limit]
+    pattern = f"%{query}%"
+    sql_params = [pattern, pattern, *params, pattern, pattern, limit]
     with conn.cursor() as cur:
         cur.execute(
             f"""
             SELECT chunk_id, source_type, source_id, visibility, owner_actor,
                    path, title, body, metadata,
-                   ts_rank_cd(search_vector, websearch_to_tsquery('english', %s)) AS rank
+                   (CASE WHEN title LIKE %s THEN 2.0 ELSE 0.0 END
+                    + CASE WHEN body LIKE %s THEN 1.0 ELSE 0.0 END) AS rank
             FROM search_chunks
             WHERE {' AND '.join(where)}
-              AND (
-                search_vector @@ websearch_to_tsquery('english', %s)
-                OR title ILIKE ('%%' || %s || '%%')
-                OR body ILIKE ('%%' || %s || '%%')
-              )
+              AND (title LIKE %s OR body LIKE %s)
             ORDER BY rank DESC, updated_at DESC
             LIMIT %s
             """,
@@ -3007,7 +2992,7 @@ def search_query(
 
 
 def search_query_semantic(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     query: str,
@@ -3038,14 +3023,14 @@ def search_query_semantic(
             f"""
             SELECT chunk_id, source_type, source_id, visibility, owner_actor,
                    path, title, body, metadata,
-                   1 - (embedding_vector <=> %s::vector) AS rank,
+                   cosine_similarity(embedding_vector, %s) AS rank,
                    embedding_model, embedding_provider
             FROM search_chunks
             WHERE {' AND '.join(where)}
-            ORDER BY embedding_vector <=> %s::vector, updated_at DESC
+            ORDER BY rank DESC, updated_at DESC
             LIMIT %s
             """,
-            [query_vector, *params, query_vector, limit],
+            [query_vector, *params, limit],
         )
         rows = cur.fetchall()
     return [
@@ -3126,7 +3111,7 @@ def _row_to_tarot(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def tarot_current(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     actor: str,
@@ -3152,7 +3137,7 @@ def tarot_current(
 
 
 def tarot_draw(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     actor: str,
@@ -3201,7 +3186,7 @@ def tarot_draw(
 
 
 def tarot_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     actor: str | None = None,
@@ -3288,7 +3273,7 @@ def _row_to_clock(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def clock_get(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     clock_id: str,
@@ -3304,7 +3289,7 @@ def clock_get(
 
 
 def clock_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scope: str | None = None,
@@ -3340,7 +3325,7 @@ def clock_list(
 
 
 def clock_upsert(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     clock_id: str,
@@ -3420,7 +3405,7 @@ def clock_upsert(
 
 
 def clock_tick(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     clock_id: str,
@@ -3464,7 +3449,7 @@ def clock_tick(
 
 
 def clock_set_status(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     clock_id: str,
@@ -3566,7 +3551,7 @@ def _row_to_scene_clock(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def scene_clock_get(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -3583,7 +3568,7 @@ def scene_clock_get(
 
 
 def scene_clock_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -3612,7 +3597,7 @@ def scene_clock_list(
 
 
 def scene_clock_upsert(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -3670,7 +3655,7 @@ def scene_clock_upsert(
 
 
 def scene_clock_apply_delta(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -3729,7 +3714,7 @@ def scene_clock_apply_delta(
 
 
 def scene_clock_drop_scene(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -3807,7 +3792,7 @@ def _row_to_scene_beat(row: tuple[Any, ...]) -> dict[str, Any]:
 
 
 def scene_beat_get(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -3824,7 +3809,7 @@ def scene_beat_get(
 
 
 def scene_beat_list(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -3849,7 +3834,7 @@ def scene_beat_list(
 
 
 def scene_beat_start(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -3926,7 +3911,7 @@ def scene_beat_start(
 
 
 def scene_beat_close(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -3960,7 +3945,7 @@ def scene_beat_close(
 
 
 def scene_beat_failure_tick(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -4029,7 +4014,7 @@ def scene_beat_failure_tick(
 
 
 def scene_beat_convert(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -4082,7 +4067,7 @@ def scene_beat_convert(
 
 
 def scene_beat_increment_active(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -4108,7 +4093,7 @@ def scene_beat_increment_active(
 
 
 def scene_beat_drop_scene(
-    conn: "psycopg.Connection[Any]",
+    conn: EmbeddedConnection,
     *,
     campaign_id: str,
     scene_id: str,
@@ -4139,7 +4124,7 @@ def scene_beat_drop_scene(
 
 
 def delete_campaign_data(
-    conn: "psycopg.Connection[Any]", campaign_id: str
+    conn: EmbeddedConnection, campaign_id: str
 ) -> dict[str, int]:
     """Remove every row tied to the campaign across all tables.
 

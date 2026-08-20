@@ -95,7 +95,7 @@ from ..yaml_io import (
 
 @click.group()
 def db() -> None:
-    """Postgres connection + migration runner."""
+    """Embedded storage schema and status."""
 
 
 @db.command("migrate")
@@ -103,20 +103,20 @@ def db() -> None:
 def db_migrate(ctx: click.Context) -> None:
     """Apply pending SQL migrations from the repo's migrations/ directory."""
     config = load_config()
-    pg_config = _db.load_pg_config(config)
+    storage_config = _db.load_storage_config(config)
     try:
-        with _db.connect(pg_config) as conn:
+        with _db.connect(storage_config) as conn:
             actions = _db.migrate(conn)
     except Exception as exc:
         raise GlassError(
             agent_instruction(
-                f"db migrate failed against {pg_config.describe()}",
-                "Fix the Postgres connection/settings, then rerun `glass db migrate`.",
-                f"Database detail: {exc}",
+                f"db migrate failed against {storage_config.describe()}",
+                "Check that the storage directory is writable, then rerun `glass db migrate`.",
+                f"Storage detail: {exc}",
             )
         ) from exc
 
-    result = {"target": pg_config.describe(), "actions": actions}
+    result = {"target": storage_config.describe(), "actions": actions}
     # Best-effort audit: skip if no active session, or if the active-session
     # pointer is stale (points to a cleared/deleted session).
     paths = get_paths()
@@ -135,19 +135,19 @@ def db_migrate(ctx: click.Context) -> None:
 def db_status(ctx: click.Context) -> None:
     """Show applied + pending migrations and any checksum mismatches."""
     config = load_config()
-    pg_config = _db.load_pg_config(config)
+    storage_config = _db.load_storage_config(config)
     try:
-        with _db.connect(pg_config) as conn:
+        with _db.connect(storage_config) as conn:
             report = _db.status(conn)
     except Exception as exc:
         raise GlassError(
             agent_instruction(
-                f"db status failed against {pg_config.describe()}",
-                "Fix the Postgres connection/settings, then rerun `glass db status`.",
-                f"Database detail: {exc}",
+                f"db status failed against {storage_config.describe()}",
+                "Check that the storage directory is writable, then rerun `glass db status`.",
+                f"Storage detail: {exc}",
             )
         ) from exc
-    report["target"] = pg_config.describe()
+    report["target"] = storage_config.describe()
     emit(report)
 
 

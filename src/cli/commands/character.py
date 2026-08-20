@@ -1047,7 +1047,7 @@ def _skill_slot_cap_full_message(
 
 
 def resolve_skill_for_roll(
-    conn: "_db.psycopg.Connection[Any]",  # type: ignore[name-defined]
+    conn: "_db.EmbeddedConnection",
     *,
     campaign_id: str,
     character: dict[str, Any],

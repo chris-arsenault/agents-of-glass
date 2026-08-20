@@ -61,7 +61,7 @@ def search_semantic(
 )
 @click.pass_context
 def search_reindex(ctx: click.Context, turns_only: bool) -> None:
-    """DM-only: rebuild the Postgres search index for this campaign."""
+    """DM-only: rebuild the embedded search index for this campaign."""
     require_dm()
     paths = get_paths()
     campaign_id = active_campaign_id()

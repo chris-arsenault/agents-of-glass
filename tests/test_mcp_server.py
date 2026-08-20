@@ -92,6 +92,24 @@ class GlassMcpServerTests(unittest.TestCase):
         self.assertIn("Do not work around this failed tool call", failure["instructions"][0])
         self.assertIn('glass_help(command="glass_done")', failure["instructions"][1])
 
+    def test_check_response_instructions_surface_action_guidance(self) -> None:
+        response = mcp_server._run_service(
+            lambda: {
+                "hard_requirements": [],
+                "scene_contract": {
+                    "landing_guidance": "Scene landing guidance: land it.",
+                    "action_guidance": "Action guidance: choose outcomes over procedure.",
+                    "next_actions": [{"target_id": "clear-door"}],
+                },
+            },
+            tool_name="glass_check",
+        )
+
+        self.assertTrue(response["ok"])
+        self.assertIn("Scene landing guidance", response["instructions"][0])
+        self.assertIn("Action guidance", response["instructions"][1])
+        self.assertIn("scene_contract.next_actions", response["instructions"][2])
+
     def test_low_importance_fact_updates_warn_without_rejection(self) -> None:
         response = mcp_server._run_service(
             lambda: {

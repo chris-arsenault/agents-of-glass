@@ -406,7 +406,7 @@ def _failed_roll_instruction(
         if status == "ticked":
             return (
                 f"Failed-roll pressure on beat `{beat_id}` is {after}/{limit}. "
-                "Do not retry it from a different angle; finish the turn with a visible setback or cost."
+                "Finish this turn with a visible setback or cost. A later actor may make the second attempt before the beat closes, but it should be a concrete action that changes table position rather than more diagnosis."
             )
         if reason == "multiple_active_beats_require_target_id":
             return (

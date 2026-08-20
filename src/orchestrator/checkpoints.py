@@ -4,7 +4,7 @@ Checkpoints are operator-owned snapshots outside the live campaign workspace.
 They capture every persistence surface that can affect runtime context:
 
 - campaign filesystem prose/reference artifacts
-- Postgres campaign rows, including search chunks and embeddings
+- embedded campaign rows, including continuity facts and search vectors
 
 Checkpoint archives live under campaigns/.checkpoints/ so discarded/restored
 state stays outside normal runtime discovery.
@@ -25,211 +25,82 @@ from . import permissions
 from .config import AogConfig, config_env_value
 
 
-POSTGRES_TABLES: tuple[tuple[str, tuple[str, ...], str], ...] = (
+STORAGE_TABLES: tuple[tuple[str, str], ...] = (
     (
         "characters",
-        (
-            "campaign_id", "character_id", "player_id", "name", "archetype",
-            "pronouns", "bio", "attributes", "skills", "momentum_current",
-            "momentum_floor", "momentum_ceiling", "hp_current", "hp_max",
-            "inventory", "tags", "created_at", "updated_at", "xp", "level",
-            "skill_xp", "species", "culture", "organization_role", "goals",
-        ),
         "character_id",
     ),
     (
         "campaign_runtime_states",
-        (
-            "campaign_id", "status", "created_at", "updated_at", "wrapped_at",
-            "summary", "turn_counter", "mode_stack", "pending_events",
-            "note_intake", "entities", "threads", "next_speakers",
-            "scene_closing_turns", "active_turn_id", "active_turn_number",
-            "active_turn_actor", "active_turn_role", "active_turn_mode",
-            "active_turn_scene_id", "active_turn_character_id",
-            "active_turn_kind", "active_turn_turn_type_required",
-            "active_turn_allow_player_scene_close",
-            "active_turn_beat_checked_at", "active_turn_audit_ran_at",
-            "closeout_summary", "closeout_next_speaker",
-            "closeout_scene_status", "closeout_state_changes",
-            "closeout_rolls", "closeout_open_questions",
-            "closeout_position", "closeout_pressure", "closeout_turn_type",
-            "closeout_valid", "closeout_problems", "closeout_updated_at",
-            "state_extra",
-        ),
         "campaign_id",
     ),
     (
         "turns",
-        (
-            "campaign_id", "turn_id", "session_id", "scene_id", "mode",
-            "speaker", "role", "character_id", "source_path", "prose",
-            "event_summaries", "events", "markdown", "created_at", "arc_id",
-            "scene_type", "turn_number_in_scene", "visibility",
-            "turn_summary", "next_speaker", "scene_status", "state_changes",
-            "rolls", "turn_type", "open_questions", "position", "pressure",
-            "turn_end",
-        ),
         "turn_id",
     ),
     (
         "messages",
-        (
-            "id", "campaign_id", "session_id", "sender", "recipient", "type",
-            "body", "created_at",
-        ),
         "created_at, id",
     ),
     (
         "message_reads",
-        ("agent_id", "message_id", "read_at"),
         "agent_id, message_id",
     ),
     (
         "rolls",
-        (
-            "id", "campaign_id", "session_id", "scene_id", "character_id",
-            "actor", "skill", "attribute", "risk", "dice", "skill_tier",
-            "skill_modifier", "attribute_tier", "attribute_modifier",
-            "momentum_in", "total", "target", "margin", "outcome",
-            "momentum_delta", "momentum_out", "target_id", "metadata",
-            "created_at",
-        ),
         "created_at, id",
     ),
     (
         "xp_awards",
-        (
-            "id", "campaign_id", "character_id", "actor", "delta",
-            "xp_before", "xp_after", "reason", "session_id", "scene_id",
-            "created_at",
-        ),
         "created_at, id",
     ),
     (
         "level_ups",
-        (
-            "id", "campaign_id", "character_id", "actor", "from_level",
-            "to_level", "hp_roll", "hp_max_before", "hp_max_after",
-            "attribute_bumped", "attribute_to_tier", "momentum_ceiling_before",
-            "momentum_ceiling_after", "session_id", "scene_id", "created_at",
-        ),
         "created_at, id",
     ),
+    ("signature_moves", "created_at, id"),
     (
         "character_consequences",
-        (
-            "id", "campaign_id", "character_id", "label", "description",
-            "severity", "scope", "visibility", "status", "created_by",
-            "resolved_by", "resolution_note", "created_at", "resolved_at",
-        ),
         "created_at, id",
     ),
     (
         "clocks",
-        (
-            "campaign_id", "clock_id", "scope", "anchor_id", "label",
-            "description", "value", "max_value", "direction", "visibility",
-            "status", "created_by", "updated_by", "created_at", "updated_at",
-            "resolved_at", "resolution_note",
-        ),
         "clock_id",
     ),
     (
         "clock_events",
-        (
-            "id", "campaign_id", "clock_id", "actor", "event_type", "delta",
-            "value_before", "value_after", "note", "created_at",
-        ),
         "created_at, id",
     ),
     (
         "events",
-        (
-            "event_id", "campaign_id", "scene_id", "turn_id", "actor",
-            "event_type", "visibility", "summary", "payload", "created_at",
-            "claimed_at",
-        ),
         "created_at, event_id",
     ),
     (
         "scene_trackers",
-        (
-            "campaign_id", "tracker_id", "scene_id", "label", "value",
-            "max_value", "resistance", "impact_resistance", "visibility",
-            "status", "updated_by", "created_at", "updated_at",
-        ),
         "scene_id, tracker_id",
     ),
     (
         "scene_clocks",
-        (
-            "campaign_id", "scene_id", "clock_id", "label", "goal", "value",
-            "max_value", "direction", "visibility", "status", "created_by",
-            "created_turn_id", "resolved_turn_id", "outcome", "created_at",
-            "updated_at", "resolved_at",
-        ),
         "scene_id, clock_id",
     ),
     (
         "scene_beats",
-        (
-            "campaign_id", "scene_id", "beat_id", "clock_id", "label",
-            "question", "status", "non_pass_turns", "created_by",
-            "created_turn_id", "closed_by", "closed_turn_id", "outcome",
-            "converted_to_clock_id", "created_at", "updated_at", "closed_at",
-        ),
         "scene_id, beat_id",
     ),
     (
         "action_orders",
-        (
-            "campaign_id", "mode", "scene_id", "label", "round", "cursor",
-            "order_agents", "rolls", "active", "created_by", "created_at",
-            "updated_at",
-        ),
         "scene_id, mode",
     ),
     (
         "search_chunks",
-        (
-            "chunk_id", "campaign_id", "source_type", "source_id",
-            "visibility", "owner_actor", "path", "title", "body", "metadata",
-            "embedding_vector", "embedding_model", "embedding_provider",
-            "embedding_dim", "embedded_at", "updated_at",
-        ),
         "source_type, source_id, chunk_id",
     ),
     (
         "tarot_influences",
-        (
-            "id", "campaign_id", "actor", "deck_id", "deck_name", "card_id",
-            "card_name", "influence", "source_note", "starts_turn",
-            "expires_turn", "active", "created_at",
-        ),
         "actor, starts_turn, id",
     ),
-)
-
-
-RESTORE_DELETE_ORDER = (
-    "message_reads",
-    "events",
-    "scene_beats",
-    "scene_clocks",
-    "scene_trackers",
-    "action_orders",
-    "search_chunks",
-    "tarot_influences",
-    "turns",
-    "campaign_runtime_states",
-    "clock_events",
-    "clocks",
-    "rolls",
-    "xp_awards",
-    "level_ups",
-    "character_consequences",
-    "messages",
-    "characters",
+    ("facts", "scope_id, salience_rank DESC, updated_at, uid"),
+    ("lore_entries", "namespace, updated_at, uid"),
 )
 
 _RUNTIME_JSON_FILES = {
@@ -279,8 +150,8 @@ def create_checkpoint(
             ignore=_checkpoint_ignore,
         )
 
-        postgres = export_postgres(config, campaign_id)
-        _write_json(tmp_path / "postgres.json", postgres)
+        storage = export_storage(config, campaign_id)
+        _write_json(tmp_path / "storage.json", storage)
 
         manifest = {
             "checkpoint_id": checkpoint_id,
@@ -289,12 +160,12 @@ def create_checkpoint(
             "created_at": _now(),
             "paths": {
                 "filesystem": "filesystem",
-                "postgres": "postgres.json",
+                "storage": "storage.json",
             },
             "counts": {
-                "postgres": {
+                "storage": {
                     table: len(rows)
-                    for table, rows in postgres.get("tables", {}).items()
+                    for table, rows in storage.get("tables", {}).items()
                 },
             },
         }
@@ -349,11 +220,11 @@ def restore_checkpoint(
         raise FileNotFoundError(f"checkpoint not found: {checkpoint_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     fs_snapshot = checkpoint_path / manifest["paths"]["filesystem"]
-    postgres_snapshot = checkpoint_path / manifest["paths"]["postgres"]
+    storage_snapshot = checkpoint_path / manifest["paths"]["storage"]
     if not fs_snapshot.exists():
         raise FileNotFoundError(f"checkpoint filesystem snapshot missing: {fs_snapshot}")
-    if not postgres_snapshot.exists():
-        raise FileNotFoundError(f"checkpoint postgres snapshot missing: {postgres_snapshot}")
+    if not storage_snapshot.exists():
+        raise FileNotFoundError(f"checkpoint storage snapshot missing: {storage_snapshot}")
 
     restore_id = _checkpoint_id(f"restore-{checkpoint_id}")
     discarded_root = root / "_discarded" / restore_id
@@ -364,13 +235,13 @@ def restore_checkpoint(
     if current_dir.exists():
         shutil.copytree(current_dir, discarded_root / "filesystem", symlinks=True)
     try:
-        _write_json(discarded_root / "postgres.json", export_postgres(config, campaign_id))
+        _write_json(discarded_root / "storage.json", export_storage(config, campaign_id))
     except Exception:
         # Do not mutate if we cannot archive all live persistence surfaces.
         raise
 
-    postgres = json.loads(postgres_snapshot.read_text(encoding="utf-8"))
-    restore_postgres(config, campaign_id, postgres)
+    storage = json.loads(storage_snapshot.read_text(encoding="utf-8"))
+    restore_storage(config, campaign_id, storage)
 
     live_archive = discarded_root / "live-workspace-before-restore"
     if current_dir.exists():
@@ -388,7 +259,7 @@ def restore_checkpoint(
     }
 
 
-def export_postgres(config: AogConfig, campaign_id: str) -> dict[str, Any]:
+def export_storage(config: AogConfig, campaign_id: str) -> dict[str, Any]:
     from cli import db as _glass_db
     from cli.config import load_config as _load_glass_config
 
@@ -396,34 +267,38 @@ def export_postgres(config: AogConfig, campaign_id: str) -> dict[str, Any]:
     os.environ["GLASS_CONFIG"] = config_env_value(config)
     try:
         toml_data = _load_glass_config()
-        if not _glass_db.postgres_configured(toml_data):
-            raise RuntimeError("Postgres is not configured; cannot checkpoint campaign state")
-        pg_config = _glass_db.load_pg_config(toml_data)
-        with _glass_db.connect(pg_config) as conn:
+        storage_config = _glass_db.load_storage_config(toml_data)
+        with _glass_db.connect(storage_config) as conn:
             tables: dict[str, list[dict[str, Any]]] = {}
+            table_columns: dict[str, list[str]] = {}
             with conn.cursor() as cur:
-                for table, columns, order_by in POSTGRES_TABLES:
+                for table, order_by in STORAGE_TABLES:
+                    columns = _table_columns(cur, table)
+                    table_columns[table] = columns
                     column_sql = ", ".join(columns)
                     if table == "message_reads":
                         query = (
-                            f"SELECT to_jsonb(t) FROM (SELECT {column_sql} "
+                            f"SELECT {column_sql} "
                             "FROM message_reads r "
                             "JOIN messages m ON m.id = r.message_id "
                             "WHERE m.campaign_id = %s "
-                            f"ORDER BY {order_by}) t"
+                            f"ORDER BY {order_by}"
                         )
                     else:
                         query = (
-                            f"SELECT to_jsonb(t) FROM (SELECT {column_sql} "
+                            f"SELECT {column_sql} "
                             f"FROM {table} WHERE campaign_id = %s "
-                            f"ORDER BY {order_by}) t"
+                            f"ORDER BY {order_by}"
                         )
                     cur.execute(query, (campaign_id,))
-                    tables[table] = [dict(row[0]) for row in cur.fetchall()]
+                    tables[table] = [
+                        dict(zip(columns, row, strict=True)) for row in cur.fetchall()
+                    ]
         return {
             "campaign_id": campaign_id,
             "exported_at": _now(),
-            "target": pg_config.describe(),
+            "target": storage_config.describe(),
+            "columns": table_columns,
             "tables": tables,
         }
     finally:
@@ -433,7 +308,7 @@ def export_postgres(config: AogConfig, campaign_id: str) -> dict[str, Any]:
             os.environ["GLASS_CONFIG"] = previous
 
 
-def restore_postgres(
+def restore_storage(
     config: AogConfig,
     campaign_id: str,
     snapshot: dict[str, Any],
@@ -443,38 +318,40 @@ def restore_postgres(
 
     tables = snapshot.get("tables")
     if not isinstance(tables, dict):
-        raise ValueError("invalid postgres checkpoint: missing tables")
+        raise ValueError("invalid storage checkpoint: missing tables")
+    snapshot_columns = snapshot.get("columns")
+    if not isinstance(snapshot_columns, dict):
+        raise ValueError("invalid storage checkpoint: missing columns")
 
     previous = os.environ.get("GLASS_CONFIG")
     os.environ["GLASS_CONFIG"] = config_env_value(config)
     try:
         toml_data = _load_glass_config()
-        if not _glass_db.postgres_configured(toml_data):
-            raise RuntimeError("Postgres is not configured; cannot restore campaign state")
-        pg_config = _glass_db.load_pg_config(toml_data)
+        storage_config = _glass_db.load_storage_config(toml_data)
         restored: dict[str, int] = {}
-        with _glass_db.connect(pg_config) as conn:
+        with _glass_db.connect(storage_config) as conn:
             with conn.cursor() as cur:
-                _delete_postgres_campaign(cur, campaign_id)
-                for table, columns, _order_by in POSTGRES_TABLES:
+                _delete_storage_campaign(cur, campaign_id)
+                for table, _order_by in STORAGE_TABLES:
                     rows = tables.get(table, [])
                     if not isinstance(rows, list):
-                        raise ValueError(f"invalid postgres checkpoint table: {table}")
+                        raise ValueError(f"invalid storage checkpoint table: {table}")
+                    columns = _table_columns(cur, table)
+                    if snapshot_columns.get(table) != columns:
+                        raise ValueError(f"storage checkpoint schema mismatch: {table}")
                     column_sql = ", ".join(columns)
-                    select_sql = ", ".join(columns)
+                    placeholders = ", ".join("%s" for _column in columns)
                     for row in rows:
+                        if not isinstance(row, dict) or set(row) != set(columns):
+                            raise ValueError(f"invalid storage checkpoint row: {table}")
                         if str(row.get("campaign_id", campaign_id)) != campaign_id:
                             if table != "message_reads":
                                 raise ValueError(
                                     f"checkpoint row campaign mismatch in {table}"
                                 )
                         cur.execute(
-                            f"""
-                            INSERT INTO {table} ({column_sql})
-                            SELECT {select_sql}
-                            FROM json_populate_record(NULL::{table}, %s::json)
-                            """,
-                            (json.dumps(row),),
+                            f"INSERT INTO {table} ({column_sql}) VALUES ({placeholders})",
+                            tuple(row[column] for column in columns),
                         )
                     restored[table] = len(rows)
             conn.commit()
@@ -486,12 +363,20 @@ def restore_postgres(
             os.environ["GLASS_CONFIG"] = previous
 
 
-def _delete_postgres_campaign(cur: Any, campaign_id: str) -> None:
-    for table in RESTORE_DELETE_ORDER:
+def _table_columns(cur: Any, table: str) -> list[str]:
+    cur.execute(f"PRAGMA table_info({table})")
+    columns = [str(row[1]) for row in cur.fetchall()]
+    if not columns:
+        raise RuntimeError(f"embedded storage table is missing: {table}")
+    return columns
+
+
+def _delete_storage_campaign(cur: Any, campaign_id: str) -> None:
+    for table, _order_by in reversed(STORAGE_TABLES):
         if table == "message_reads":
             cur.execute(
-                "DELETE FROM message_reads r USING messages m "
-                "WHERE r.message_id = m.id AND m.campaign_id = %s",
+                "DELETE FROM message_reads WHERE message_id IN "
+                "(SELECT id FROM messages WHERE campaign_id = %s)",
                 (campaign_id,),
             )
         else:

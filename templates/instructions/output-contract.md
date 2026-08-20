@@ -29,3 +29,10 @@ glass_turn_append(body="<public prose>")
 Do not write prose, closeout, notes, summaries, or scratch material to files. Do
 not rely on stdout as a state channel. Do not include literal tool-call syntax in
 public prose.
+
+Public prose is fiction and table talk only. Process reporting — failed
+lookups, missing reference material, tool trouble, blockers — belongs in
+messages or the closeout summary, never in `glass_turn_append` prose. A turn
+that hits a process wall still submits in-fiction or table-voice prose for
+whatever did happen, and routes the blocker through `glass_message_send` or
+`glass_done(open_questions=[...])`.

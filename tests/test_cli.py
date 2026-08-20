@@ -19,6 +19,7 @@ from cli.commands.character import (
     _validate_starting_skill_budget,
     character_agent_view,
 )
+from cli.commands.facade import _compact_check_fact_pack, _compact_character_for_check
 from cli.config import Paths
 from cli.config import get_paths, load_config
 from cli.constants import (
@@ -32,7 +33,7 @@ from cli.local_env import load_repo_env
 from cli.embeddings import EmbeddingBatch
 from cli.main import main
 from cli.messages import load_message_types
-from cli.scene_beats import scene_close_note, scene_landing_guidance
+from cli.scene_beats import scene_action_guidance, scene_close_note, scene_landing_guidance, scene_next_actions
 from cli.state import load_state, update_state_fields
 from cli.commands.turn import _turn_fact_importance_report
 from cli.validation import assert_valid_item_id, momentum_narrative_effect
@@ -52,11 +53,8 @@ def make_env(tmp_path: Path, campaign_id: str = "c1") -> dict[str, str]:
     config = tmp_path / "agents-of-glass.toml"
     config.write_text(
         f"""
-[postgres]
-host = "192.168.66.3"
-port = 5432
-database = "agents_of_glass"
-user = "agents_of_glass_app"
+[storage]
+path = "{campaigns / ".agents-of-glass.sqlite3"}"
 
 [paths]
 templates = "{templates}"
@@ -65,7 +63,7 @@ campaigns = "{campaigns}"
         + "\n",
         encoding="utf-8",
     )
-    reset_postgres_runtime(config, campaign_id)
+    reset_embedded_runtime(config, campaign_id)
     return {
         "GLASS_CONFIG": str(config),
         "GLASS_CAMPAIGN_ID": campaign_id,
@@ -75,14 +73,14 @@ campaigns = "{campaigns}"
     }
 
 
-def reset_postgres_runtime(config: Path, campaign_id: str) -> None:
+def reset_embedded_runtime(config: Path, campaign_id: str) -> None:
     load_repo_env()
     previous = os.environ.get("GLASS_CONFIG")
     os.environ["GLASS_CONFIG"] = str(config)
     try:
         toml_data = load_config()
-        pg_config = _db.load_pg_config(toml_data)
-        with _db.connect(pg_config) as conn:
+        storage_config = _db.load_storage_config(toml_data)
+        with _db.connect(storage_config) as conn:
             _db.migrate(conn)
             _db.delete_campaign_data(conn, campaign_id)
     finally:
@@ -393,7 +391,7 @@ class GlassCliTests(unittest.TestCase):
             tmp_path = Path(tmp)
             env = make_env(tmp_path, "scratch")
             campaign_id = "phase-campaign"
-            reset_postgres_runtime(Path(env["GLASS_CONFIG"]), campaign_id)
+            reset_embedded_runtime(Path(env["GLASS_CONFIG"]), campaign_id)
             config = load_aog_config(env["GLASS_CONFIG"])
             manager = CampaignManager(config)
 
@@ -549,6 +547,32 @@ class GlassCliTests(unittest.TestCase):
             ),
         )
 
+    def test_scene_action_guidance_and_next_actions_push_outcomes_over_procedure(self) -> None:
+        active_beats = [
+            {
+                "beat_id": "clear-the-door",
+                "label": "Clear the Door",
+                "clock_id": "get-out",
+            }
+        ]
+        guidance = scene_action_guidance(
+            completed_beats=7,
+            active_beats=active_beats,
+            visible_clocks=[{"polarity": "objective", "value": 3, "max": 4}],
+            role_kind="player",
+        )
+        next_actions = scene_next_actions(
+            active_beats=active_beats,
+            completed_beats=7,
+            visible_clocks=[{"polarity": "objective", "value": 3, "max": 4}],
+            role_kind="player",
+        )
+
+        self.assertIn("changes visible position", guidance)
+        self.assertEqual(next_actions[0]["target_id"], "clear-the-door")
+        self.assertEqual(next_actions[0]["clock_id"], "get-out")
+        self.assertEqual(next_actions[1]["target_id"], "dm-handoff-or-scene-close")
+
     def test_turn_fact_importance_report_flags_only_low_minor_facts(self) -> None:
         report = _turn_fact_importance_report(
             [
@@ -667,6 +691,87 @@ class GlassCliTests(unittest.TestCase):
         self.assertNotIn("profile", other)
         self.assertNotIn("table_presence", other)
 
+    def test_compact_character_check_view_omits_long_bio_and_keeps_owner_texture(self) -> None:
+        character = {
+            "character_id": "tev-hero",
+            "player_id": "tev",
+            "name": "Tev",
+            "species": "human",
+            "culture": "Sithari",
+            "archetype": "Route guard",
+            "organization_role": "door guard",
+            "pronouns": "he/him",
+            "bio": "Long backstory that should not be repeated in every check.",
+            "goals": ["Get home."],
+            "primary_drive": "care/protection",
+            "positive_trait": "Makes route jokes when people are cold.",
+            "table_presence": "Keeps a route slate on the table.",
+            "non_work_want": "Wants one quiet dinner.",
+            "opening_social_action": "Hands Sumi a dry cord.",
+            "life_prompt_answers": [{"prompt": "praised", "answer": "redirects credit"}],
+            "pull_utilization_note": "Source: ferry boards; Thesis: routes become care.",
+            "attributes": {"focus": "advanced"},
+            "skills": {"route reading": "artisan"},
+            "skill_meta": {"route reading": {"notes": "long"}},
+            "hp": {"current": 10, "max": 10},
+            "momentum": {"current": 0, "floor": 0, "ceiling": 6},
+            "inventory": [],
+            "signature_moves": [],
+            "tags": [],
+            "xp": 0,
+            "level": 1,
+        }
+
+        full = character_agent_view(
+            character,
+            role=type("Role", (), {"kind": "player", "actor": "tev"})(),
+        )
+        compact = _compact_character_for_check(full)
+
+        self.assertEqual(compact["character_id"], "tev-hero")
+        self.assertEqual(compact["profile"]["table_presence"], "Keeps a route slate on the table.")
+        self.assertNotIn("bio", compact)
+        self.assertNotIn("goals", compact)
+        self.assertNotIn("life_prompt_answers", compact["profile"])
+        self.assertNotIn("skill_meta", compact)
+
+    def test_compact_check_fact_pack_prioritizes_scene_and_truncates(self) -> None:
+        long_text = "x" * 400
+        facts = [
+            {
+                "scope_id": "campaign",
+                "subject_id": f"campaign-{index}",
+                "predicate": "note",
+                "text": "campaign fact",
+                "importance": "medium",
+                "updated_at": f"2026-05-23T00:{index:02d}:00Z",
+            }
+            for index in range(30)
+        ]
+        facts.append(
+            {
+                "scope_id": "opening",
+                "subject_id": "gate",
+                "predicate": "status",
+                "text": long_text,
+                "importance": "medium",
+                "updated_at": "2026-05-23T01:00:00Z",
+            }
+        )
+
+        compact = _compact_check_fact_pack(
+            {"status": "ok", "facts": facts, "count": len(facts)},
+            scene_id="opening",
+            actor="tev",
+        )
+
+        self.assertEqual(compact["count"], 24)
+        self.assertEqual(compact["source_count"], 31)
+        self.assertEqual(compact["omitted_count"], 7)
+        self.assertEqual(compact["facts"][0]["subject_id"], "gate")
+        self.assertTrue(compact["facts"][0]["truncated"])
+        self.assertLessEqual(len(compact["facts"][0]["text"]), 320)
+
     def test_starting_skill_budget_requires_two_apprentice_one_artisan(self) -> None:
         _validate_starting_skill_budget(
             {
@@ -712,7 +817,7 @@ class GlassCliTests(unittest.TestCase):
         self.assertEqual(_signature_move_slots(9), 5)
         self.assertEqual(_signature_move_slots(10), 5)
 
-    def test_signature_moves_are_postgres_character_state(self) -> None:
+    def test_signature_moves_are_embedded_character_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             runner = CliRunner()
@@ -1062,7 +1167,7 @@ Recipients are `dm`, `party`, or a player id.
             previous = os.environ.get("GLASS_CONFIG")
             os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
             try:
-                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                with _db.connect(_db.load_storage_config(load_config())) as conn:
                     rows = _db.message_list(
                         conn,
                         campaign_id="c1",
@@ -2055,7 +2160,7 @@ Recipients are `dm`, `party`, or a player id.
             previous = os.environ.get("GLASS_CONFIG")
             os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
             try:
-                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                with _db.connect(_db.load_storage_config(load_config())) as conn:
                     setup_clock = _db.scene_clock_get(
                         conn,
                         campaign_id="c1",
@@ -2456,7 +2561,7 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("after: 1", first.output)
             self.assertIn("status: ticked", first.output)
             self.assertIn("instructions:", first.output)
-            self.assertIn("Do not retry it from a different angle", first.output)
+            self.assertIn("A later actor may make the second attempt", first.output)
 
             invoke_ok(
                 runner,
@@ -2539,7 +2644,7 @@ Recipients are `dm`, `party`, or a player id.
             previous = os.environ.get("GLASS_CONFIG")
             os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
             try:
-                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                with _db.connect(_db.load_storage_config(load_config())) as conn:
                     beat = _db.scene_beat_get(
                         conn,
                         campaign_id="c1",
@@ -3031,7 +3136,7 @@ Recipients are `dm`, `party`, or a player id.
             previous = os.environ.get("GLASS_CONFIG")
             os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
             try:
-                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                with _db.connect(_db.load_storage_config(load_config())) as conn:
                     beat = _db.scene_beat_get(
                         conn,
                         campaign_id="c1",
@@ -3099,7 +3204,7 @@ Recipients are `dm`, `party`, or a player id.
             previous = os.environ.get("GLASS_CONFIG")
             os.environ["GLASS_CONFIG"] = env["GLASS_CONFIG"]
             try:
-                with _db.connect(_db.load_pg_config(load_config())) as conn:
+                with _db.connect(_db.load_storage_config(load_config())) as conn:
                     beat = _db.scene_beat_get(
                         conn,
                         campaign_id="c1",
@@ -3540,7 +3645,7 @@ Recipients are `dm`, `party`, or a player id.
             with patch(
                 "cli.commands.lore.lore_store.upsert_lore_entry",
                 return_value={
-                    "target": "falkordb://test/agents_of_glass",
+                    "target": "sqlite:///tmp/agents-of-glass.sqlite3",
                     "id": "splitfork",
                     "namespace": "c1",
                     "title": "The Splitfork",
@@ -4700,6 +4805,17 @@ Recipients are `dm`, `party`, or a player id.
                         ],
                         "dm",
                     )
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "organization.want = The Compact wants the dispatcher's sealed route ledger, which the civic wardens guard.",
+                        ],
+                        "dm",
+                    )
                     glass(stream_env, ["mode", "end"], "dm")
                     close_turn(
                         stream_env,
@@ -4803,6 +4919,28 @@ Recipients are `dm`, `party`, or a player id.
                             "--audience",
                             "continuity",
                             "arc.focus = The first arc asks who controls public passage.",
+                        ],
+                        "dm",
+                    )
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "arc.antagonist = Warden-Captain Sel Odrane, who controls the route seals, commands twelve wardens, and moves next against the night ferries.",
+                        ],
+                        "dm",
+                    )
+                    glass(
+                        stream_env,
+                        [
+                            "fact",
+                            "set",
+                            "--audience",
+                            "continuity",
+                            "arc.inaction-consequence = If the party does nothing, Odrane seals the last open crossing and the ferry families lose their routes for good.",
                         ],
                         "dm",
                     )
@@ -4939,7 +5077,6 @@ Recipients are `dm`, `party`, or a player id.
             with (
                 patch("orchestrator.main._ensure_operator_groups_active"),
                 patch("orchestrator.main._ensure_glass_api_for_run"),
-                patch("orchestrator.main._ensure_fact_graph_available"),
                 patch(
                     "orchestrator.main._checkpoint_or_raise", return_value={"checkpoint_id": "test"}
                 ),
@@ -5215,6 +5352,154 @@ Recipients are `dm`, `party`, or a player id.
             self.assertIn("--return", bad.output)
             self.assertIn("--close-parent", bad.output)
             self.assertIn("--force", bad.output)
+
+    def test_campaign_checkpoint_restores_embedded_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runner = CliRunner()
+            env = make_env(tmp_path)
+            dm_env = {**env, "GLASS_ROLE": "dm"}
+            invoke_ok(runner, ["session", "new", "--campaign", "c1"], env)
+            invoke_ok(
+                runner,
+                [
+                    "fact",
+                    "set",
+                    "--audience",
+                    "continuity",
+                    "checkpoint.flag = Before checkpoint",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                ["lore", "put", "checkpoint-note", "--body", "Before checkpoint"],
+                dm_env,
+            )
+
+            checkpoint = runner.invoke(
+                aog_main,
+                [
+                    "--config",
+                    env["GLASS_CONFIG"],
+                    "campaign",
+                    "checkpoint",
+                    "c1",
+                    "--label",
+                    "embedded-state-test",
+                ],
+                env=env,
+                catch_exceptions=False,
+            )
+            self.assertEqual(checkpoint.exit_code, 0, checkpoint.output)
+            match = re.search(r"^checkpoint: (\S+)$", checkpoint.output, re.MULTILINE)
+            self.assertIsNotNone(match)
+            checkpoint_id = match.group(1) if match else ""
+
+            invoke_ok(
+                runner,
+                [
+                    "fact",
+                    "set",
+                    "--audience",
+                    "continuity",
+                    "checkpoint.flag = After checkpoint",
+                ],
+                dm_env,
+            )
+            invoke_ok(
+                runner,
+                ["lore", "put", "checkpoint-note", "--body", "After checkpoint"],
+                dm_env,
+            )
+
+            restored = runner.invoke(
+                aog_main,
+                [
+                    "--config",
+                    env["GLASS_CONFIG"],
+                    "campaign",
+                    "restore",
+                    "c1",
+                    checkpoint_id,
+                    "--yes",
+                ],
+                env=env,
+                catch_exceptions=False,
+            )
+            self.assertEqual(restored.exit_code, 0, restored.output)
+            fact_pack = invoke_ok(
+                runner,
+                ["fact", "pack", "--audience", "continuity"],
+                dm_env,
+            ).output
+            lore = invoke_ok(
+                runner,
+                ["lore", "read", "checkpoint-note"],
+                dm_env,
+            ).output
+            self.assertIn("Before checkpoint", fact_pack)
+            self.assertNotIn("After checkpoint", fact_pack)
+            self.assertIn("Before checkpoint", lore)
+            self.assertNotIn("After checkpoint", lore)
+
+    def test_campaign_dry_run_prepares_current_phase_without_advancing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            campaigns = tmp_path / "campaigns"
+            templates = Path(__file__).resolve().parents[1] / "templates"
+            config = tmp_path / "agents-of-glass.toml"
+            config.write_text(
+                f"""
+[storage]
+path = "{tmp_path / "store.sqlite3"}"
+
+[paths]
+templates = "{templates}"
+campaigns = "{campaigns}"
+
+[orchestrator]
+turn_minimum_seconds = 0
+""".lstrip(),
+                encoding="utf-8",
+            )
+            env = {
+                "GLASS_CONFIG": str(config),
+                "GLASS_CAMPAIGN_ID": "dry-run-test",
+                "GLASS_ROLE": "",
+                "GLASS_TURN_ID": "",
+                "AOG_PLAYER_SURFACE": "",
+            }
+            with (
+                patch("orchestrator.main._ensure_operator_groups_active"),
+                patch("orchestrator.main._ensure_glass_api_for_run"),
+                patch("orchestrator.permissions.apply_campaign_permissions"),
+            ):
+                result = CliRunner().invoke(
+                    aog_main,
+                    [
+                        "--config",
+                        str(config),
+                        "campaign",
+                        "run",
+                        "dry-run-test",
+                        "--dry-run",
+                        "--max-turns",
+                        "1",
+                    ],
+                    env=env,
+                    catch_exceptions=False,
+                )
+
+            self.assertEqual(result.exit_code, 0, result.output)
+            self.assertIn("dry run completed", result.output)
+            self.assertIn("phase was not advanced", result.output)
+            state = runtime_state(env)
+            session = SessionStore(load_aog_config(config)).load("dry-run-test")
+            self.assertEqual(state["phase"], "organization_bootstrap")
+            self.assertEqual(session.status, "ready")
+            self.assertEqual(state["turn_counter"], 0)
+            self.assertEqual(state["mode_stack"][-1]["mode"], "organization-bootstrap")
 
 
 if __name__ == "__main__":

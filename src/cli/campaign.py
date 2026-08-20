@@ -1,9 +1,8 @@
-"""Active campaign resolution + Postgres connection helper.
+"""Active campaign resolution and embedded storage helper.
 
 These helpers bridge the CLI to the running campaign workspace and the
-Postgres backend. `active_campaign_id` is the source of truth for the
-DB scope; `pg_connection` is the context manager every PG-touching
-command goes through.
+embedded store. `active_campaign_id` is the source of truth for the
+storage scope; `pg_connection` remains the shared connection helper used by commands.
 """
 
 from __future__ import annotations
@@ -83,20 +82,20 @@ def lookup_player_character_id(campaign_id: str, player_id: str) -> str | None:
 
 @contextmanager
 def pg_connection() -> Iterator[Any]:
-    """Open a Postgres connection from the resolved config."""
-    pg_config = _db.load_pg_config(load_config())
+    """Open the embedded store from the resolved config."""
+    storage_config = _db.load_storage_config(load_config())
     try:
-        with _db.connect(pg_config) as conn:
+        with _db.connect(storage_config) as conn:
             yield conn
     except GlassError:
         raise
     except Exception as exc:
         raise GlassError(
             agent_instruction(
-                f"postgres connection failed ({pg_config.describe()})",
-                "Ensure Postgres is running and the campaign database settings are correct.",
-                "Run `glass db status` or `glass db migrate` after fixing the connection.",
-                f"Connection detail: {exc}",
+                f"embedded storage connection failed ({storage_config.describe()})",
+                "Check that the storage directory is writable.",
+                "Run `glass db status` after fixing the filesystem problem.",
+                f"Storage detail: {exc}",
             )
         ) from exc
 

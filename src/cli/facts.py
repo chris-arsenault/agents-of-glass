@@ -1,6 +1,6 @@
-"""FalkorDB-backed neutral continuity facts.
+"""Embedded neutral continuity facts.
 
-This module is deliberately not a markdown mirror. It owns the graph shape used
+This module is deliberately not a markdown mirror. It owns the tabular shape used
 for agent-readable continuity: current neutral facts with loose predicates,
 source turn metadata, and scoped retrieval.
 """
@@ -12,8 +12,8 @@ from datetime import UTC, datetime
 import re
 from typing import Any
 
+from . import db as _db
 from .config import load_config
-from .errors import GlassError, agent_instruction
 from .ids import slugify
 
 
@@ -225,20 +225,16 @@ def set_fact(
     mode: str | None = None,
     scene_id: str | None = None,
 ) -> dict[str, Any]:
-    """Persist a current fact in FalkorDB and return the stored identity."""
-
-    from . import graph as _graph
+    """Persist a current fact in the embedded store and return its identity."""
 
     scoped_spec = spec if spec.scope_id else replace(
         spec,
         scope_id=default_fact_scope_for_mode(mode, scene_id),
     )
-    config = _graph.load_falkor_config(load_config())
-    if not _graph.is_available(config):
-        raise GlassError(_graph_unavailable_message(config.describe()))
-    with _graph.connect(config) as g:
-        stored = _set_fact_graph(
-            g,
+    config = _db.load_storage_config(load_config())
+    with _db.connect(config) as conn:
+        stored = _set_fact_storage(
+            conn,
             campaign_id=campaign_id,
             spec=scoped_spec,
             actor=actor,
@@ -246,6 +242,7 @@ def set_fact(
             mode=mode,
             scene_id=scene_id,
         )
+        conn.commit()
     return {"target": config.describe(), **stored}
 
 
@@ -259,29 +256,18 @@ def set_fact_specs(
     scene_id: str | None = None,
     require_available: bool = True,
 ) -> dict[str, Any]:
-    """Persist many facts with one FalkorDB connection."""
+    """Persist many facts in one embedded transaction."""
 
     if not specs:
         return {"status": "skipped", "facts": [], "count": 0}
-    from . import graph as _graph
-
     scoped_specs = _scope_fact_specs(specs, mode=mode, scene_id=scene_id)
-    config = _graph.load_falkor_config(load_config())
-    if not _graph.is_available(config):
-        if not require_available:
-            return {
-                "status": "unavailable",
-                "target": config.describe(),
-                "facts": [],
-                "count": 0,
-            }
-        raise GlassError(_graph_unavailable_message(config.describe()))
+    config = _db.load_storage_config(load_config())
     facts: list[dict[str, Any]] = []
-    with _graph.connect(config) as g:
+    with _db.connect(config) as conn:
         for spec in scoped_specs:
             facts.append(
-                _set_fact_graph(
-                    g,
+                _set_fact_storage(
+                    conn,
                     campaign_id=campaign_id,
                     spec=spec,
                     actor=actor,
@@ -290,6 +276,7 @@ def set_fact_specs(
                     scene_id=scene_id,
                 )
             )
+        conn.commit()
     return {"status": "stored", "target": config.describe(), "facts": facts, "count": len(facts)}
 
 
@@ -302,30 +289,11 @@ def fact_pack(
     visibility: str = DEFAULT_VISIBILITY,
     limit: int = 80,
 ) -> dict[str, Any]:
-    from . import graph as _graph
-
     audience = normalize_fact_audience(audience, allow_all=True)
-    try:
-        config = _graph.load_falkor_config(load_config())
-    except Exception as exc:
-        return {
-            "status": "unavailable",
-            "target": f"unconfigured FalkorDB ({exc})",
-            "audience": audience,
-            "facts": [],
-            "count": 0,
-        }
-    if not _graph.is_available(config):
-        return {
-            "status": "unavailable",
-            "target": config.describe(),
-            "audience": audience,
-            "facts": [],
-            "count": 0,
-        }
-    with _graph.connect(config) as g:
-        rows = _fact_pack_graph(
-            g,
+    config = _db.load_storage_config(load_config())
+    with _db.connect(config) as conn:
+        rows = _fact_pack_storage(
+            conn,
             campaign_id=campaign_id,
             scene_id=scene_id,
             actor=actor,
@@ -343,26 +311,18 @@ def fact_pack(
 
 
 def render_fact_pack_markdown(pack: dict[str, Any]) -> str:
-    status = str(pack.get("status") or "")
-    if status == "unavailable":
-        return (
-            "## Fact Graph Continuity\n\n"
-            f"FalkorDB is unavailable at `{pack.get('target')}`. Do not fall back "
-            "to prose summaries as continuity; report the blocker in closeout if "
-            "the turn needs prior state.\n\n"
-        )
     facts = list(pack.get("facts") or [])
     audience = str(pack.get("audience") or DEFAULT_AUDIENCE)
     lines = [
-        "## Fact Graph Continuity"
+        "## Continuity Facts"
         if audience == DEFAULT_AUDIENCE
-        else f"## Fact Graph ({audience})",
+        else f"## Continuity Facts ({audience})",
         "",
         "This is the continuity source for agent decisions. Prose files are viewer/archive material; do not use them as the state layer.",
         "",
     ]
     if not facts:
-        lines.append("_No active graph facts matched this turn scope yet._")
+        lines.append("_No active facts matched this turn scope yet._")
         lines.append("")
         return "\n".join(lines)
 
@@ -391,6 +351,148 @@ def render_fact_pack_markdown(pack: dict[str, Any]) -> str:
         lines.append(f"- `{target}`{audience_suffix}: {text}{source_suffix}")
     lines.append("")
     return "\n".join(lines)
+
+
+def _set_fact_storage(
+    conn: Any,
+    *,
+    campaign_id: str,
+    spec: FactSpec,
+    actor: str | None,
+    turn_id: str | None,
+    mode: str | None,
+    scene_id: str | None,
+) -> dict[str, Any]:
+    now = _now_iso()
+    scope_id = spec.scope_id or scene_id or "campaign"
+    salience = normalize_fact_importance(spec.salience, allow_missing=True)
+    salience_rank = _salience_rank(salience)
+    fact_id = _fact_id(scope_id, spec.subject_id, spec.predicate, spec.object_id)
+    fact_uid = f"{campaign_id}:fact:{fact_id}"
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO facts (
+                uid, id, campaign_id, scope_id, subject_id, predicate,
+                object_id, claim_text, visibility, status, salience,
+                salience_rank, audience, source_turn_id, actor, mode, scene_id,
+                created_at, updated_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s,
+                %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT(uid) DO UPDATE SET
+                object_id = excluded.object_id,
+                claim_text = excluded.claim_text,
+                visibility = excluded.visibility,
+                status = 'active',
+                salience = excluded.salience,
+                salience_rank = excluded.salience_rank,
+                audience = excluded.audience,
+                source_turn_id = excluded.source_turn_id,
+                actor = excluded.actor,
+                mode = excluded.mode,
+                scene_id = excluded.scene_id,
+                updated_at = excluded.updated_at
+            """,
+            (
+                fact_uid,
+                fact_id,
+                campaign_id,
+                scope_id,
+                spec.subject_id,
+                spec.predicate,
+                spec.object_id,
+                spec.text,
+                spec.visibility,
+                salience,
+                salience_rank,
+                spec.audience,
+                turn_id,
+                actor,
+                mode,
+                scene_id,
+                now,
+                now,
+            ),
+        )
+    return {
+        "id": fact_id,
+        "uid": fact_uid,
+        "subject_id": spec.subject_id,
+        "predicate": spec.predicate,
+        "object_id": spec.object_id,
+        "scope_id": scope_id,
+        "text": spec.text,
+        "audience": spec.audience,
+        "importance": salience,
+        "salience": salience,
+        "salience_rank": salience_rank,
+    }
+
+
+def _fact_pack_storage(
+    conn: Any,
+    *,
+    campaign_id: str,
+    scene_id: str | None,
+    actor: str | None,
+    visibility: str,
+    audience: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    scopes = ["campaign", "party", "organization"]
+    if scene_id:
+        scopes.extend([scene_id, f"scene.{scene_id}"])
+    if actor:
+        scopes.extend([actor, f"character.{actor}", f"player.{actor}"])
+    scopes = list(dict.fromkeys(scopes))
+    visibilities = _visible_fact_levels(visibility)
+    scope_params = ", ".join("%s" for _scope in scopes)
+    visibility_params = ", ".join("%s" for _visibility in visibilities)
+    query_limit = limit if audience == "all" else max(limit * 5, limit + 50)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT scope_id, subject_id, predicate, object_id, claim_text,
+                   source_turn_id, salience, salience_rank, updated_at, audience
+            FROM facts
+            WHERE campaign_id = %s
+              AND status = 'active'
+              AND visibility IN ({visibility_params})
+              AND (scope_id IN ({scope_params}) OR scene_id = %s OR actor = %s)
+            ORDER BY scope_id, salience_rank DESC, updated_at DESC
+            LIMIT %s
+            """,
+            [campaign_id, *visibilities, *scopes, scene_id, actor, query_limit],
+        )
+        rows = cur.fetchall()
+    facts: list[dict[str, Any]] = []
+    for row in rows:
+        row_audience = normalize_fact_audience(row[9], allow_missing=True)
+        row_importance = normalize_fact_importance(row[6], allow_missing=True)
+        if audience != "all" and row_audience != audience:
+            continue
+        if row_importance in LOW_FACT_IMPORTANCE:
+            continue
+        facts.append(
+            {
+                "scope_id": row[0],
+                "subject_id": row[1],
+                "predicate": row[2],
+                "object_id": row[3],
+                "text": row[4],
+                "source_turn_id": row[5],
+                "importance": row_importance,
+                "salience": row_importance,
+                "salience_rank": _salience_rank(row_importance),
+                "updated_at": row[8],
+                "audience": row_audience,
+            }
+        )
+        if len(facts) >= limit:
+            break
+    return facts
 
 
 def _set_fact_graph(
@@ -629,11 +731,3 @@ def _salience_rank(value: str | None) -> int:
 
 def _now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _graph_unavailable_message(target: str) -> str:
-    return agent_instruction(
-        f"FalkorDB is not reachable at {target}",
-        "Do not create a markdown fact file as a substitute.",
-        'Use `glass_state_update(updates=[{"kind": "fact", "audience": "continuity", "importance": "medium", "subject_id": "<entity-id>", "predicate": "<predicate>", "text": "<neutral fact>"}])` only when the graph is available, or report the graph blocker in closeout.',
-    )

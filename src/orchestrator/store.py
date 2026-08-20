@@ -180,9 +180,9 @@ class SessionStore:
             os.environ["GLASS_CONFIG"] = config_env_value(self.config)
             try:
                 toml_data = _load_glass_config()
-                if not _glass_db.postgres_configured(toml_data):
+                if not _glass_db.storage_configured(toml_data):
                     return []
-                pg_config = _glass_db.load_pg_config(toml_data)
+                pg_config = _glass_db.load_storage_config(toml_data)
                 with _glass_db.connect(pg_config) as conn:
                     return _glass_db.turn_list(
                         conn,
@@ -206,7 +206,7 @@ class SessionStore:
             handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
     def clear_state(self, campaign: str) -> None:
-        """Delete runtime state/cache (Postgres runtime rows plus stale JSON).
+        """Delete runtime state/cache (embedded rows plus stale JSON).
 
         Does NOT delete the campaign workspace itself or any DM/player-
         authored content. Operator escape hatch.
@@ -234,12 +234,12 @@ class SessionStore:
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
             toml_data = _load_glass_config()
-            if not _glass_db.postgres_configured(toml_data):
+            if not _glass_db.storage_configured(toml_data):
                 raise RuntimeError(
-                    "Postgres runtime is required; configure [postgres] in "
+                    "Embedded runtime storage is unavailable; check [storage] in "
                     "agents-of-glass.toml or libpq environment variables"
                 )
-            pg_config = _glass_db.load_pg_config(toml_data)
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 _glass_db.runtime_state_delete(conn, campaign)
         finally:
@@ -279,7 +279,7 @@ class SessionStore:
         previous = os.environ.get("GLASS_CONFIG")
         os.environ["GLASS_CONFIG"] = config_env_value(self.config)
         try:
-            return _glass_db.postgres_configured(_load_glass_config())
+            return _glass_db.storage_configured(_load_glass_config())
         finally:
             if previous is None:
                 os.environ.pop("GLASS_CONFIG", None)
@@ -289,7 +289,7 @@ class SessionStore:
     def _require_postgres_runtime(self) -> None:
         if not self._postgres_runtime_configured():
             raise RuntimeError(
-                "Postgres runtime is required; configure [postgres] in "
+                "Embedded runtime storage is unavailable; check [storage] in "
                 "agents-of-glass.toml or libpq environment variables"
             )
 
@@ -458,7 +458,7 @@ class SessionStore:
             )
             if inferred_cursor is not None:
                 run_metadata[SCENE_PLAY_PLAYER_CURSOR_KEY] = inferred_cursor
-        run_metadata["glass_state"] = "postgres runtime state"
+        run_metadata["glass_state"] = "embedded SQLite runtime state"
         claude_sessions = dict(glass_state.get("aog_claude_sessions") or {})
         if existing:
             claude_sessions.update(existing.claude_sessions)

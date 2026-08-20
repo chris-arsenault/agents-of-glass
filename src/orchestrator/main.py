@@ -313,8 +313,6 @@ def _run_campaign_lifecycle(
 
     _ensure_operator_groups_active()
     _ensure_db_migrated(cli)
-    if not dry_run:
-        _ensure_fact_graph_available(cli)
 
     if campaign_id is None:
         campaign_id = cli.store.latest_campaign()
@@ -344,7 +342,7 @@ def _run_campaign_lifecycle(
         except (FileExistsError, FileNotFoundError) as exc:
             raise click.ClickException(str(exc))
     click.echo(f"      workspace: {space.campaign_dir}")
-    click.echo("      state:     Postgres runtime row")
+    click.echo("      state:     embedded SQLite runtime row")
 
     if org_direction:
         _store_operator_org_direction(
@@ -373,6 +371,9 @@ def _run_campaign_lifecycle(
         dry_run=dry_run,
         validate=_validate_organization_bootstrap_complete,
     )
+    if dry_run and cm_state.get("phase") == PHASE_ORGANIZATION_BOOTSTRAP:
+        _echo_dry_run_stop(campaign_id, PHASE_ORGANIZATION_BOOTSTRAP)
+        return
     # Phase 3: character creation
     if skip_character_creation:
         click.secho("[3/6] Character creation skipped (--skip-character-creation).", fg="yellow")
@@ -382,7 +383,7 @@ def _run_campaign_lifecycle(
             fg="green",
         )
         click.echo(f"Next phase: {PHASE_CHARACTER_CREATION}")
-        click.echo("Runtime state: Postgres runtime row")
+        click.echo("Runtime state: embedded SQLite runtime row")
         return
     cm_state = _run_bootstrap_phase(
         cli,
@@ -402,6 +403,9 @@ def _run_campaign_lifecycle(
         dry_run=dry_run,
         validate=_validate_character_creation_complete,
     )
+    if dry_run and cm_state.get("phase") == PHASE_CHARACTER_CREATION:
+        _echo_dry_run_stop(campaign_id, PHASE_CHARACTER_CREATION)
+        return
     # Phase 4: campaign planning
     cm_state = _run_bootstrap_phase(
         cli,
@@ -421,6 +425,9 @@ def _run_campaign_lifecycle(
         dry_run=dry_run,
         validate=_validate_campaign_planning_complete,
     )
+    if dry_run and cm_state.get("phase") == PHASE_PLANNING:
+        _echo_dry_run_stop(campaign_id, PHASE_PLANNING)
+        return
     # Phase 5: active campaign handoff
     if cm_state.get("phase") != PHASE_ACTIVE:
         cm_state = cli.campaign_manager.advance_phase(campaign_id, PHASE_ACTIVE)
@@ -445,7 +452,7 @@ def _run_campaign_lifecycle(
                     f"Campaign '{campaign_id}' is ready.",
                     fg="green",
                 )
-                click.echo("Runtime state: Postgres runtime row")
+                click.echo("Runtime state: embedded SQLite runtime row")
                 return
 
         mode_at_start = active_state.active_mode.mode
@@ -594,7 +601,7 @@ def _has_intermission_turns(cli: CliState, campaign_id: str) -> bool:
     os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
     try:
         toml_data = _load_glass_config()
-        pg_config = _glass_db.load_pg_config(toml_data)
+        pg_config = _glass_db.load_storage_config(toml_data)
         with _glass_db.connect(pg_config) as conn:
             return bool(
                 _glass_db.turn_list(
@@ -632,7 +639,7 @@ def _latest_turn_mode(cli: CliState, campaign_id: str) -> str | None:
     os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
     try:
         toml_data = _load_glass_config()
-        pg_config = _glass_db.load_pg_config(toml_data)
+        pg_config = _glass_db.load_storage_config(toml_data)
         with _glass_db.connect(pg_config) as conn:
             turns = _glass_db.turn_list(
                 conn,
@@ -658,7 +665,7 @@ def _next_intermission_scene_id(cli: CliState, campaign_id: str) -> str:
     os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
     try:
         toml_data = _load_glass_config()
-        pg_config = _glass_db.load_pg_config(toml_data)
+        pg_config = _glass_db.load_storage_config(toml_data)
         with _glass_db.connect(pg_config) as conn:
             turns = _glass_db.turn_list(
                 conn,
@@ -800,7 +807,10 @@ def _run_bootstrap_phase(
             return cli.campaign_manager.load_state(campaign_id)
         detail = json.dumps(exc.failure, indent=2, sort_keys=True)
         raise click.ClickException(f"{phase_label} failed: {exc}\n{detail}") from exc
-    runtime_state = cli.store.load(campaign_id)
+    if dry_run:
+        click.echo(f"      prepared {turns_run} synthetic {phase_label} turn(s)")
+        click.echo("      phase left open for a live provider run")
+        return cli.campaign_manager.load_state(campaign_id)
     _require_bootstrap_mode_ended(
         cli,
         campaign_id=campaign_id,
@@ -819,6 +829,13 @@ def _run_bootstrap_phase(
         checkpoint_label=checkpoint_label,
         next_phase=next_phase,
     )
+
+
+def _echo_dry_run_stop(campaign_id: str, phase: str) -> None:
+    click.echo()
+    click.secho(f"Campaign '{campaign_id}' dry run completed.", fg="green")
+    click.echo(f"Current phase: {phase}")
+    click.echo("No provider was invoked and the phase was not advanced.")
 
 
 def _recover_bootstrap_phase_after_budget_exhaustion(
@@ -948,7 +965,7 @@ def _bootstrap_mode_has_turns(
     os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
     try:
         toml_data = _load_glass_config()
-        pg_config = _glass_db.load_pg_config(toml_data)
+        pg_config = _glass_db.load_storage_config(toml_data)
         with _glass_db.connect(pg_config) as conn:
             turns = _glass_db.turn_list(
                 conn,
@@ -998,7 +1015,7 @@ def _store_operator_org_direction(
     phase_state: dict,
     direction: str,
 ) -> None:
-    """Persist the operator's `--org-direction` hint as a graph fact."""
+    """Persist the operator's `--org-direction` hint as a continuity fact."""
 
     direction_text = direction.strip()
     if not direction_text:
@@ -1037,7 +1054,7 @@ def _store_operator_org_direction(
         else:
             os.environ["GLASS_CONFIG"] = previous_config
     click.secho(
-        "      operator direction stored in fact graph",
+        "      operator direction stored in continuity facts",
         fg="cyan",
     )
 
@@ -1151,12 +1168,12 @@ def _validate_organization_bootstrap_complete(
         try:
             pack = fact_pack(campaign_id=campaign_id, audience="continuity", limit=500)
         except Exception as exc:
-            failures.append(f"fact graph unavailable for organization validation: {exc}")
+            failures.append(f"continuity facts unavailable for organization validation: {exc}")
             pack = {"facts": []}
         else:
             if pack.get("status") == "unavailable":
                 failures.append(
-                    f"fact graph unavailable for organization validation: {pack.get('target')}"
+                    f"continuity facts unavailable for organization validation: {pack.get('target')}"
                 )
         facts = _fact_subject_predicates(pack)
         for subject, predicate in (
@@ -1164,11 +1181,15 @@ def _validate_organization_bootstrap_complete(
             ("organization", "identity"),
             ("organization", "dangerous-work"),
             ("organization", "character-brief"),
+            # Premise gate: the org must want something guarded, hidden, or
+            # contested. Service-provider premises produce service-delivery
+            # fiction (see prompt-guard-ledger.md D7).
+            ("organization", "want"),
         ):
             if (subject, predicate) not in facts:
-                failures.append(f"missing graph fact {subject}.{predicate}")
+                failures.append(f"missing continuity fact {subject}.{predicate}")
 
-        pg_config = _db.load_pg_config(_load_glass_config())
+        pg_config = _db.load_storage_config(_load_glass_config())
         with _db.connect(pg_config) as conn:
             clocks = _db.clock_list(
                 conn,
@@ -1237,7 +1258,7 @@ def _validate_campaign_planning_complete(cli: CliState, campaign_id: str) -> Non
 
     if pack.get("status") == "unavailable":
         failures.append(
-            f"fact graph unavailable for campaign planning validation: {pack.get('target')}"
+            f"continuity facts unavailable for campaign planning validation: {pack.get('target')}"
         )
 
     active_arc = str(state.get("active_arc") or "").strip()
@@ -1269,6 +1290,30 @@ def _validate_campaign_planning_complete(cli: CliState, campaign_id: str) -> Non
     if not has_arc_plan:
         failures.append("missing graph fact for active arc focus, direction, or status")
 
+    # Antagonist gate: the opening arc needs a named opposing agent with a
+    # will, and a consequence that lands if the party does nothing (see
+    # prompt-guard-ledger.md D6).
+    has_arc_antagonist = any(
+        str(row.get("subject_id") or "").strip() in arc_subjects
+        and str(row.get("predicate") or "").strip() == "antagonist"
+        for row in rows
+    )
+    if not has_arc_antagonist:
+        failures.append(
+            "missing graph fact for the arc antagonist (a named opposing "
+            "agent with a goal, resources, and a next move)"
+        )
+    has_inaction_consequence = any(
+        str(row.get("subject_id") or "").strip() in arc_subjects
+        and str(row.get("predicate") or "").strip() == "inaction-consequence"
+        for row in rows
+    )
+    if not has_inaction_consequence:
+        failures.append(
+            "missing graph fact for the arc inaction-consequence (what the "
+            "antagonist takes or breaks if the party does nothing)"
+        )
+
     if failures:
         detail = "\n".join(f"- {failure}" for failure in failures)
         raise click.ClickException(
@@ -1284,7 +1329,7 @@ def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> No
     previous_config = os.environ.get("GLASS_CONFIG")
     os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
     try:
-        pg_config = _db.load_pg_config(_load_glass_config())
+        pg_config = _db.load_storage_config(_load_glass_config())
         with _db.connect(pg_config) as conn:
             characters = _db.character_list(conn, campaign_id)
     finally:
@@ -1314,7 +1359,7 @@ def _validate_character_creation_complete(cli: CliState, campaign_id: str) -> No
             if str(fact.get("predicate") or "").strip() == "relationship"
         }
     except Exception as exc:
-        failures.append(f"fact graph unavailable for relationship validation: {exc}")
+        failures.append(f"continuity facts unavailable for relationship validation: {exc}")
 
     for player_id in PLAYER_IDS:
         player_characters = by_player[player_id]
@@ -1379,33 +1424,6 @@ def _ensure_glass_api_for_run(cli: CliState) -> None:
     )
 
 
-def _ensure_fact_graph_available(cli: CliState) -> None:
-    from cli import graph as _graph
-    from cli.config import load_config as _load_glass_config
-    from cli.local_env import load_repo_env
-
-    previous_config = os.environ.get("GLASS_CONFIG")
-    os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
-    try:
-        load_repo_env()
-        try:
-            config = _graph.load_falkor_config(_load_glass_config())
-        except Exception as exc:
-            raise click.ClickException(f"failed to load FalkorDB configuration: {exc}") from exc
-        if _graph.is_available(config):
-            return
-        raise click.ClickException(
-            "FalkorDB fact graph is required before campaign agents run. "
-            f"Not reachable at {config.describe()}. Start or fix FalkorDB, "
-            "then rerun `aog campaign run`."
-        )
-    finally:
-        if previous_config is None:
-            os.environ.pop("GLASS_CONFIG", None)
-        else:
-            os.environ["GLASS_CONFIG"] = previous_config
-
-
 def _start_webui(
     cli: CliState,
     *,
@@ -1429,22 +1447,17 @@ def _ensure_db_migrated(cli: CliState) -> None:
     os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
     try:
         toml_data = _load_glass_config()
-        if not _glass_db.postgres_configured(toml_data):
-            raise click.ClickException(
-                "Postgres runtime is required. Configure [postgres] in "
-                "agents-of-glass.toml or set libpq environment variables."
-            )
-        pg_config = _glass_db.load_pg_config(toml_data)
+        storage_config = _glass_db.load_storage_config(toml_data)
         try:
-            with _glass_db.connect(pg_config) as conn:
+            with _glass_db.connect(storage_config) as conn:
                 actions = _glass_db.migrate(conn)
         except Exception as exc:
             raise click.ClickException(
-                f"failed to migrate Postgres runtime schema at {pg_config.describe()}: {exc}"
+                f"failed to initialize embedded storage at {storage_config.describe()}: {exc}"
             ) from exc
-        applied = [name for name, action in actions if action == "applied"]
+        applied = [name for name, action in actions if action in {"applied", "updated"}]
         if applied:
-            click.echo(f"      db: applied migrations {', '.join(applied)}")
+            click.echo(f"      storage: initialized {', '.join(applied)}")
     finally:
         if previous_config is None:
             os.environ.pop("GLASS_CONFIG", None)
@@ -1555,7 +1568,7 @@ def campaign_show(cli: CliState, campaign_id: str | None, as_json: bool) -> None
 @click.option("--label", default=None, help="Human-readable checkpoint label.")
 @click.pass_obj
 def campaign_checkpoint(cli: CliState, campaign_id: str, label: str | None) -> None:
-    """Snapshot filesystem, Postgres, and search vectors."""
+    """Snapshot filesystem, embedded rows, and search vectors."""
     checkpoint = _checkpoint_or_raise(cli, campaign_id, label=label)
     click.echo(f"checkpoint: {checkpoint['checkpoint_id']}")
     click.echo(f"path: {checkpoint['path']}")
@@ -1821,7 +1834,7 @@ def campaign_clean(
     keep_workspace: bool,
     yes: bool,
 ) -> None:
-    """Remove a campaign: filesystem + Postgres rows.
+    """Remove a campaign: filesystem plus embedded rows.
 
     Default: drop EVERYTHING (workspace dir and DB rows for the campaign).
     Use --state-only to wipe just the runtime state files (no DB touch).
@@ -1851,13 +1864,13 @@ def campaign_clean(
     if not yes and not click.confirm(f"Delete {', '.join(actions)} for campaign {campaign_id!r}?"):
         raise click.Abort()
 
-    # 1. Postgres
+    # 1. Embedded storage
     try:
         from cli import db as _glass_db
         from cli.config import load_config as _load_glass_config
 
         toml_data = _load_glass_config()
-        pg_config = _glass_db.load_pg_config(toml_data)
+        pg_config = _glass_db.load_storage_config(toml_data)
         with _glass_db.connect(pg_config) as conn:
             deleted_db = _glass_db.delete_campaign_data(conn, campaign_id)
         nonzero = {k: v for k, v in deleted_db.items() if v}
@@ -1970,12 +1983,12 @@ def _reconcile_campaign(
     os.environ["GLASS_CONFIG"] = config_env_value(cli.config)
     try:
         toml_data = _load_glass_config()
-        postgres_configured = _glass_db.postgres_configured(toml_data)
-        check("postgres.configured", postgres_configured, "required")
+        storage_configured = _glass_db.storage_configured(toml_data)
+        check("storage.configured", storage_configured, "embedded")
         check("state.json.absent", not state_path.exists(), str(state_path))
         check("aog-state.json.absent", not aog_state_path.exists(), str(aog_state_path))
-        if postgres_configured:
-            pg_config = _glass_db.load_pg_config(toml_data)
+        if storage_configured:
+            pg_config = _glass_db.load_storage_config(toml_data)
             with _glass_db.connect(pg_config) as conn:
                 runtime = _glass_db.runtime_state_get(conn, campaign_id)
                 turns = _glass_db.turn_list(
@@ -1983,12 +1996,12 @@ def _reconcile_campaign(
                     campaign_id=campaign_id,
                     limit=100000,
                 )
-            check("postgres.runtime", runtime is not None, pg_config.describe())
+            check("storage.runtime", runtime is not None, pg_config.describe())
             if runtime is not None:
                 pg_turn = int(runtime.get("turn_counter", 0))
                 max_turn = max((int(turn["turn_id"]) for turn in turns), default=0)
                 check(
-                    "postgres.turn_counter",
+                    "storage.turn_counter",
                     pg_turn >= max_turn,
                     f"turn_counter={pg_turn}, max_turn={max_turn}",
                 )

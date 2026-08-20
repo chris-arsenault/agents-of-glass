@@ -161,7 +161,7 @@ def turn_begin(
     turn_type_required: bool,
     allow_player_scene_close: bool,
 ) -> None:
-    """Stage canonical active-turn context in Postgres before agent execution."""
+    """Stage canonical active-turn context before agent execution."""
     paths = get_paths()
     campaign_id = active_campaign_id()
     state = load_state(paths, campaign_id)
@@ -628,7 +628,7 @@ def _require_active_turn_context(state: dict[str, Any]) -> dict[str, Any]:
     if not turn_id:
         raise GlassError(
             agent_instruction(
-                "no active turn context is staged in Postgres",
+                "no active turn context is staged in embedded storage",
                 "Call this MCP tool only from an orchestrated turn after the orchestrator has staged the active turn.",
             )
         )

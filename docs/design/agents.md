@@ -91,8 +91,8 @@ The agent's tool loop runs until it has closed with `glass done` and submitted p
 **Agents do not share canonical context with each other.** Provider session
 history may help an actor sound continuous, but durable continuity comes from:
 
-- the fact graph
-- Postgres hard state and turn rows
+- continuity facts
+- embedded hard state and turn rows
 - bounded CLI recall over committed prose
 - character records for players
 
@@ -113,7 +113,7 @@ agents do not author lore files as part of the runtime contract. If a piece of
 lore matters to the next turn, encode the neutral fact through `glass`.
 
 The `glass` CLI is the only path to state mutation. Nobody writes directly to
-Postgres, FalkorDB, local APIs, or campaign files during agent turns.
+SQLite, local APIs, or campaign files during agent turns.
 
 ## Tool Allowlists
 

@@ -1,4 +1,4 @@
-"""FalkorDB-backed reference lore.
+"""Embedded reference lore.
 
 Reference lore is prose source material. It is not campaign continuity. Agents
 may use injected excerpts for color or specificity, but anything that becomes
@@ -12,8 +12,9 @@ from datetime import UTC, datetime
 import re
 from typing import Any
 
+from . import db as _db
 from .config import load_config
-from .errors import GlassError, agent_instruction
+from .errors import GlassError
 from .ids import slugify
 
 
@@ -73,15 +74,12 @@ def namespace_for_scope(scope: str, *, campaign_id: str) -> str:
 
 
 def upsert_lore_entry(*, campaign_id: str, spec: LoreEntrySpec) -> dict[str, Any]:
-    """Persist prose reference material in FalkorDB."""
+    """Persist prose reference material in the embedded store."""
 
-    from . import graph as _graph
-
-    config = _graph.load_falkor_config(load_config())
-    if not _graph.is_available(config):
-        raise GlassError(_unavailable_message(config.describe()))
-    with _graph.connect(config) as g:
-        stored = _upsert_lore_entry_graph(g, campaign_id=campaign_id, spec=spec)
+    config = _db.load_storage_config(load_config())
+    with _db.connect(config) as conn:
+        stored = _upsert_lore_entry_storage(conn, campaign_id=campaign_id, spec=spec)
+        conn.commit()
     return {"target": config.describe(), **stored}
 
 
@@ -92,19 +90,15 @@ def search_lore_entries(
     limit: int = 20,
     include_dm: bool = False,
 ) -> dict[str, Any]:
-    """Search reference/campaign lore prose in FalkorDB."""
-
-    from . import graph as _graph
+    """Search reference and campaign lore prose."""
 
     terms = _query_terms(query)
     if not terms:
         raise GlassError("lore search query is empty")
-    config = _graph.load_falkor_config(load_config())
-    if not _graph.is_available(config):
-        raise GlassError(_unavailable_message(config.describe()))
-    with _graph.connect(config) as g:
-        rows = _search_lore_graph(
-            g,
+    config = _db.load_storage_config(load_config())
+    with _db.connect(config) as conn:
+        rows = _search_lore_storage(
+            conn,
             campaign_id=campaign_id,
             terms=terms,
             limit=limit,
@@ -126,16 +120,12 @@ def read_lore_entry(
     lore_id: str,
     include_dm: bool = False,
 ) -> dict[str, Any]:
-    """Read one lore entry from FalkorDB."""
+    """Read one lore entry from embedded storage."""
 
-    from . import graph as _graph
-
-    config = _graph.load_falkor_config(load_config())
-    if not _graph.is_available(config):
-        raise GlassError(_unavailable_message(config.describe()))
-    with _graph.connect(config) as g:
-        row = _read_lore_graph(
-            g,
+    config = _db.load_storage_config(load_config())
+    with _db.connect(config) as conn:
+        row = _read_lore_storage(
+            conn,
             campaign_id=campaign_id,
             lore_id=normalize_lore_id(lore_id),
             include_dm=include_dm,
@@ -151,16 +141,12 @@ def list_lore_entries(
     limit: int = 50,
     include_dm: bool = False,
 ) -> dict[str, Any]:
-    """List DB-backed lore entries available to this campaign."""
+    """List lore entries available to this campaign."""
 
-    from . import graph as _graph
-
-    config = _graph.load_falkor_config(load_config())
-    if not _graph.is_available(config):
-        raise GlassError(_unavailable_message(config.describe()))
-    with _graph.connect(config) as g:
-        rows = _list_lore_graph(
-            g,
+    config = _db.load_storage_config(load_config())
+    with _db.connect(config) as conn:
+        rows = _list_lore_storage(
+            conn,
             campaign_id=campaign_id,
             limit=limit,
             include_dm=include_dm,
@@ -181,32 +167,13 @@ def reference_lore_pack(
     fact text. Agents do not choose the initial lore search.
     """
 
-    from . import graph as _graph
-
     terms = _terms_from_fact_pack(fact_pack)
     if not terms:
         return {"status": "empty", "entries": [], "count": 0, "terms": []}
-    try:
-        config = _graph.load_falkor_config(load_config())
-    except Exception as exc:
-        return {
-            "status": "unavailable",
-            "target": f"unconfigured FalkorDB ({exc})",
-            "entries": [],
-            "count": 0,
-            "terms": terms,
-        }
-    if not _graph.is_available(config):
-        return {
-            "status": "unavailable",
-            "target": config.describe(),
-            "entries": [],
-            "count": 0,
-            "terms": terms,
-        }
-    with _graph.connect(config) as g:
-        rows = _search_lore_graph(
-            g,
+    config = _db.load_storage_config(load_config())
+    with _db.connect(config) as conn:
+        rows = _search_lore_storage(
+            conn,
             campaign_id=campaign_id,
             terms=terms,
             limit=limit,
@@ -255,6 +222,151 @@ def render_reference_lore_markdown(pack: dict[str, Any]) -> str:
             lines.append(f"  {excerpt}")
     lines.append("")
     return "\n".join(lines)
+
+
+def _upsert_lore_entry_storage(
+    conn: Any,
+    *,
+    campaign_id: str,
+    spec: LoreEntrySpec,
+) -> dict[str, Any]:
+    now = _now_iso()
+    lore_id = normalize_lore_id(spec.lore_id)
+    namespace = spec.namespace or REFERENCE_NAMESPACE
+    uid = f"lore:{namespace}:{lore_id}"
+    tags = [tag.strip() for tag in spec.tags if tag.strip()]
+    body = spec.body.strip()
+    if not body:
+        raise ValueError("lore body is empty")
+    title = spec.title.strip() or lore_id
+    kind = spec.kind.strip() or DEFAULT_KIND
+    visibility = spec.visibility.strip() or DEFAULT_VISIBILITY
+    stored_campaign_id = campaign_id if namespace == campaign_id else None
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO lore_entries (
+                uid, campaign_id, id, namespace, title, kind, visibility,
+                source, tags, tags_text, body_text, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(uid) DO UPDATE SET
+                campaign_id = excluded.campaign_id,
+                title = excluded.title,
+                kind = excluded.kind,
+                visibility = excluded.visibility,
+                source = excluded.source,
+                tags = excluded.tags,
+                tags_text = excluded.tags_text,
+                body_text = excluded.body_text,
+                updated_at = excluded.updated_at
+            """,
+            (
+                uid,
+                stored_campaign_id,
+                lore_id,
+                namespace,
+                title,
+                kind,
+                visibility,
+                spec.source,
+                tags,
+                " ".join(tags),
+                body,
+                now,
+                now,
+            ),
+        )
+    return {
+        "uid": uid,
+        "id": lore_id,
+        "namespace": namespace,
+        "title": title,
+        "kind": kind,
+        "visibility": visibility,
+        "source": spec.source,
+    }
+
+
+def _lore_rows_storage(
+    conn: Any,
+    *,
+    campaign_id: str,
+    include_dm: bool,
+) -> list[tuple[Any, ...]]:
+    visibilities = ["public", "dm"] if include_dm else ["public"]
+    visibility_params = ", ".join("%s" for _visibility in visibilities)
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT id, title, kind, namespace, visibility, source, body_text, updated_at,
+                   tags_text
+            FROM lore_entries
+            WHERE namespace IN (%s, %s)
+              AND visibility IN ({visibility_params})
+            ORDER BY CASE WHEN namespace = %s THEN 0 ELSE 1 END,
+                     updated_at DESC, title
+            """,
+            [REFERENCE_NAMESPACE, campaign_id, *visibilities, campaign_id],
+        )
+        return cur.fetchall()
+
+
+def _search_lore_storage(
+    conn: Any,
+    *,
+    campaign_id: str,
+    terms: list[str],
+    limit: int,
+    include_dm: bool,
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for row in _lore_rows_storage(
+        conn,
+        campaign_id=campaign_id,
+        include_dm=include_dm,
+    ):
+        haystack = " ".join(str(value or "") for value in (*row[:7], row[8])).lower()
+        if not any(term in haystack for term in terms):
+            continue
+        matches.append(_row_to_lore_entry(row, terms=terms, include_body=False))
+        if len(matches) >= limit:
+            break
+    return matches
+
+
+def _read_lore_storage(
+    conn: Any,
+    *,
+    campaign_id: str,
+    lore_id: str,
+    include_dm: bool,
+) -> dict[str, Any] | None:
+    for row in _lore_rows_storage(
+        conn,
+        campaign_id=campaign_id,
+        include_dm=include_dm,
+    ):
+        if row[0] == lore_id:
+            return _row_to_lore_entry(row, terms=[], include_body=True)
+    return None
+
+
+def _list_lore_storage(
+    conn: Any,
+    *,
+    campaign_id: str,
+    limit: int,
+    include_dm: bool,
+) -> list[dict[str, Any]]:
+    rows = _lore_rows_storage(
+        conn,
+        campaign_id=campaign_id,
+        include_dm=include_dm,
+    )
+    return [
+        _row_to_lore_entry(row, terms=[], include_body=False)
+        for row in rows[:limit]
+    ]
 
 
 def _upsert_lore_entry_graph(
@@ -479,14 +591,6 @@ def _excerpt(body: str, *, terms: list[str]) -> str:
     prefix = "..." if start else ""
     suffix = "..." if end < len(compact) else ""
     return prefix + compact[start:end].strip() + suffix
-
-
-def _unavailable_message(target: str) -> str:
-    return agent_instruction(
-        f"FalkorDB is unavailable at {target}",
-        "Reference lore is stored in FalkorDB, not campaign files.",
-        "Fix FalkorDB configuration or continue from injected facts without lore lookup.",
-    )
 
 
 def _now_iso() -> str:

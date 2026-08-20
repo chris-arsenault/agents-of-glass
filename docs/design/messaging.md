@@ -26,7 +26,7 @@ Each agent has a per-recipient read checkpoint, advanced when they read. Reading
 
 ## Storage
 
-Messages live in Postgres. Small schema:
+Messages live in embedded SQLite. Small schema:
 
 | Column | Purpose |
 |--------|---------|
@@ -46,7 +46,7 @@ Read state:
 | `message_id` | which one |
 | `read_ts` | when |
 
-Postgres because messages are queryable corpus data. Analysis later wants to ask "who messaged whom most" or "did secret messages correlate with later betrayals." Markdown-only would lose this.
+SQLite keeps messages as queryable corpus data. Analysis later wants to ask "who messaged whom most" or "did secret messages correlate with later betrayals." Markdown-only would lose this.
 
 There is no file inbox for agent turns. `glass msg read` is the only message read path.
 

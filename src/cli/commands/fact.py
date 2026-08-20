@@ -1,4 +1,4 @@
-"""Neutral fact graph commands."""
+"""Neutral continuity fact commands."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from ..yaml_io import emit
 
 @click.group()
 def fact() -> None:
-    """Read and write neutral continuity facts in FalkorDB."""
+    """Read and write neutral continuity facts."""
 
 
 @fact.command("set")
@@ -178,7 +178,7 @@ def fact_pack_command(
     audience: str,
     output_format: str,
 ) -> None:
-    """Print the current graph fact pack for this turn scope."""
+    """Print the current fact pack for this turn scope."""
 
     pack = fact_pack_service(scene_id=scene_id, actor=actor, audience=audience, limit=limit)
     if output_format == "markdown":
@@ -194,7 +194,7 @@ def fact_pack_service(
     actor: str | None = None,
     limit: int = 80,
 ) -> dict:
-    """Read the current graph fact pack for this turn scope."""
+    """Read the current fact pack for this turn scope."""
 
     paths = get_paths()
     campaign_id = active_campaign_id()

@@ -19,6 +19,22 @@ class ClaudeConfig:
 
 
 @dataclass(frozen=True)
+class PromptsConfig:
+    """Per-role base system-prompt documents (claude provider only).
+
+    Each base document is combined with the actor's persona and assigned
+    narrative style into one system prompt per actor. A missing base file
+    disables the system-prompt flag for that role rather than failing the run.
+    """
+
+    dm_base: Path
+    player_base: Path
+
+    def base_for_role(self, role: str) -> Path:
+        return self.dm_base if role == "dm" else self.player_base
+
+
+@dataclass(frozen=True)
 class CapsConfig:
     session_max_turns: int
     mode_default_max_turns: int
@@ -56,6 +72,7 @@ class AogConfig:
     codex_players: tuple[str, ...]
     skip_player_persona: bool
     claude: ClaudeConfig
+    prompts: PromptsConfig
     caps: CapsConfig
     orchestrator: OrchestratorConfig
 
@@ -72,6 +89,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "provider": "claude",
         "codex_players": list(PLAYER_IDS[:2]),
         "skip_player_persona": False,
+    },
+    "prompts": {
+        "dm": "templates/prompts/dm-base.md",
+        "player": "templates/prompts/player-base.md",
     },
     "claude": {
         "model": "opus",
@@ -135,6 +156,7 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
     lore = data.get("lore", {})
     agent = data.get("agent", {})
     claude = data.get("claude", {})
+    prompts = data.get("prompts", {})
     caps = data.get("caps", {})
     orchestrator = data.get("orchestrator", {})
 
@@ -157,6 +179,16 @@ def load_config(config_path: str | Path | None = None) -> AogConfig:
             model=_optional_string(claude.get("model")),
             turn_timeout_seconds=int(claude.get("turn_timeout_seconds", 300)),
             use_session_id=_bool(claude.get("use_session_id", False)),
+        ),
+        prompts=PromptsConfig(
+            dm_base=_resolve_path(
+                base_dir,
+                prompts.get("dm", "templates/prompts/dm-base.md"),
+            ),
+            player_base=_resolve_path(
+                base_dir,
+                prompts.get("player", "templates/prompts/player-base.md"),
+            ),
         ),
         caps=CapsConfig(
             session_max_turns=int(caps.get("session_max_turns", 200)),

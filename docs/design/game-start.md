@@ -44,7 +44,7 @@ frame the protocol without creating a separate state surface.
 
 ## Phase State
 
-Each campaign has one runtime state row in Postgres. Conceptually, it carries:
+Each campaign has one runtime state row in embedded SQLite. Conceptually, it carries:
 
 ```json
 {
@@ -80,9 +80,9 @@ facts or purpose-built state commands. Public prose alone is not enough.
 viewers have durable reference and exports. Active agents do not write those
 files. During agent turns:
 
-- facts go to the graph through `glass fact ...`
-- hard state goes to Postgres through purpose-built `glass` commands
-- public prose goes to Postgres through `glass turn append --body`
+- facts go to SQLite through `glass fact ...`
+- hard state goes to SQLite through purpose-built `glass` commands
+- public prose goes to SQLite through `glass turn append --body`
 - markdown exports, if any, are generated after commit
 
 ## Operator CLI Surface
@@ -105,5 +105,5 @@ Every phase and every scene is resumable from the last committed CLI boundary.
 If an agent invocation fails, times out, omits `glass done`, or omits
 `glass turn append --body`, the orchestrator stops at the last committed turn.
 
-Checkpoint/restore is an operator action and must include the fact graph,
-Postgres rows, and relevant campaign files/exports.
+Checkpoint/restore is an operator action and must include embedded campaign
+rows and relevant campaign files/exports.

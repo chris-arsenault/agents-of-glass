@@ -1,6 +1,8 @@
+import tempfile
 import unittest
+from pathlib import Path
 
-from cli import facts
+from cli import db, facts
 
 
 class FactParsingTests(unittest.TestCase):
@@ -81,106 +83,83 @@ class FactParsingTests(unittest.TestCase):
         self.assertEqual(scoped[0].scope_id, "party")
 
     def test_dm_fact_pack_visibility_includes_public_and_dm(self) -> None:
-        class _Result:
-            result_set = []
+        with tempfile.TemporaryDirectory() as tmp:
+            with db.connect(db.StorageConfig(Path(tmp) / "store.sqlite3")) as conn:
+                for subject, visibility in (
+                    ("public-fact", "public"),
+                    ("dm-fact", "dm"),
+                    ("private-fact", "private"),
+                ):
+                    facts._set_fact_storage(
+                        conn,
+                        campaign_id="c1",
+                        spec=facts.FactSpec(
+                            subject_id=subject,
+                            predicate="status",
+                            text=f"{subject} text",
+                            audience="continuity",
+                            scope_id="campaign",
+                            visibility=visibility,
+                        ),
+                        actor="dm",
+                        turn_id="t1",
+                        mode="scene-play",
+                        scene_id=None,
+                    )
+                rows = facts._fact_pack_storage(
+                    conn,
+                    campaign_id="c1",
+                    scene_id=None,
+                    actor="dm",
+                    visibility="dm",
+                    audience="continuity",
+                    limit=80,
+                )
 
-        class _Graph:
-            def __init__(self) -> None:
-                self.calls = []
+        self.assertEqual({row["subject_id"] for row in rows}, {"public-fact", "dm-fact"})
 
-            def query(self, cypher, params):
-                self.calls.append((cypher, params))
-                return _Result()
-
-        graph = _Graph()
-        facts._fact_pack_graph(
-            graph,
-            campaign_id="c1",
-            scene_id=None,
-            actor="dm",
-            visibility="dm",
-            audience="continuity",
-            limit=80,
-        )
-
-        _, params = graph.calls[0]
-        self.assertEqual(params["visibilities"], ["public", "dm"])
-
-    def test_fact_pack_filters_audience_and_infers_legacy_rows(self) -> None:
-        class _Result:
-            result_set = [
-                [
-                    "campaign",
-                    "organization",
-                    "public-constraints",
-                    None,
-                    "Records, witnesses, custody, and later proof are not the mission engine.",
-                    "t1",
-                    "normal",
-                    1,
-                    "2026-01-01T00:00:00Z",
-                    None,
-                ],
-                [
-                    "campaign",
-                    "mara-vey",
-                    "social-texture",
-                    None,
-                    "Mara Vey overtrades for sour candies.",
-                    "t2",
-                    "normal",
-                    1,
-                    "2026-01-01T00:00:01Z",
-                    None,
-                ],
-                [
-                    "campaign",
-                    "scene",
-                    "objective",
-                    None,
-                    "The crew must reach the pipe mouth.",
-                    "t3",
-                    "normal",
-                    1,
-                    "2026-01-01T00:00:02Z",
-                    "continuity",
-                ],
-                [
-                    "campaign",
-                    "loose-color",
-                    "description",
-                    None,
-                    "A minor label that should not drive play.",
-                    "t4",
-                    "low",
-                    1,
-                    "2026-01-01T00:00:03Z",
-                    "continuity",
-                ],
-            ]
-
-        class _Graph:
-            def query(self, cypher, params):
-                return _Result()
-
-        continuity = facts._fact_pack_graph(
-            _Graph(),
-            campaign_id="c1",
-            scene_id=None,
-            actor="dm",
-            visibility="dm",
-            audience="continuity",
-            limit=80,
-        )
-        profile = facts._fact_pack_graph(
-            _Graph(),
-            campaign_id="c1",
-            scene_id=None,
-            actor="dm",
-            visibility="dm",
-            audience="profile",
-            limit=80,
-        )
+    def test_fact_pack_filters_audience(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with db.connect(db.StorageConfig(Path(tmp) / "store.sqlite3")) as conn:
+                for subject, predicate, text, audience, salience in (
+                    ("scene", "objective", "Reach the pipe mouth.", "continuity", "medium"),
+                    ("mara-vey", "social-texture", "Trades for sour candies.", "profile", "medium"),
+                    ("loose-color", "description", "A minor label.", "continuity", "low"),
+                ):
+                    facts._set_fact_storage(
+                        conn,
+                        campaign_id="c1",
+                        spec=facts.FactSpec(
+                            subject_id=subject,
+                            predicate=predicate,
+                            text=text,
+                            audience=audience,
+                            salience=salience,
+                            scope_id="campaign",
+                        ),
+                        actor="dm",
+                        turn_id="t1",
+                        mode="scene-play",
+                        scene_id=None,
+                    )
+                continuity = facts._fact_pack_storage(
+                    conn,
+                    campaign_id="c1",
+                    scene_id=None,
+                    actor="dm",
+                    visibility="dm",
+                    audience="continuity",
+                    limit=80,
+                )
+                profile = facts._fact_pack_storage(
+                    conn,
+                    campaign_id="c1",
+                    scene_id=None,
+                    actor="dm",
+                    visibility="dm",
+                    audience="profile",
+                    limit=80,
+                )
 
         self.assertEqual(
             [(row["subject_id"], row["predicate"]) for row in continuity], [("scene", "objective")]
@@ -192,35 +171,33 @@ class FactParsingTests(unittest.TestCase):
         )
 
     def test_fact_pack_omits_low_and_minor_even_from_all_reads(self) -> None:
-        class _Result:
-            result_set = [
-                [
-                    "campaign",
-                    "crumb",
-                    "descriptor",
-                    None,
-                    "A low-value descriptive crumb.",
-                    "t1",
-                    "minor",
-                    0,
-                    "2026-01-01T00:00:00Z",
-                    "continuity",
-                ],
-            ]
-
-        class _Graph:
-            def query(self, cypher, params):
-                return _Result()
-
-        rows = facts._fact_pack_graph(
-            _Graph(),
-            campaign_id="c1",
-            scene_id=None,
-            actor="dm",
-            visibility="dm",
-            audience="all",
-            limit=80,
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with db.connect(db.StorageConfig(Path(tmp) / "store.sqlite3")) as conn:
+                facts._set_fact_storage(
+                    conn,
+                    campaign_id="c1",
+                    spec=facts.FactSpec(
+                        subject_id="crumb",
+                        predicate="descriptor",
+                        text="A low-value descriptive crumb.",
+                        audience="continuity",
+                        salience="minor",
+                        scope_id="campaign",
+                    ),
+                    actor="dm",
+                    turn_id="t1",
+                    mode="scene-play",
+                    scene_id=None,
+                )
+                rows = facts._fact_pack_storage(
+                    conn,
+                    campaign_id="c1",
+                    scene_id=None,
+                    actor="dm",
+                    visibility="dm",
+                    audience="all",
+                    limit=80,
+                )
 
         self.assertEqual(rows, [])
 

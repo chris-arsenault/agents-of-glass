@@ -202,7 +202,7 @@ def _character_creation_mode_end_failures() -> list[str]:
     try:
         pack = fact_pack(campaign_id=campaign_id, audience="continuity", limit=500)
     except Exception as exc:
-        return [f"fact graph unavailable for relationship validation: {exc}"]
+        return [f"continuity facts unavailable for relationship validation: {exc}"]
     subjects_with_relationships = {
         str(fact.get("subject_id") or "").strip()
         for fact in pack.get("facts") or []
